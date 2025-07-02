@@ -43,7 +43,22 @@
             padding-right: 10px;
             font-size: 12px;
             color: #6b7280;
-            grid-row-end: span 2;
+            /* Vertically centers the label on the grid line */
+            position: relative;
+            transform: translateY(-50%);
+            z-index: 15;
+        }
+        .time-label-hour {
+            font-weight: 600;
+            color: #374151;
+        }
+        .time-label-hour span {
+            /* Matches the white background of the schedule container */
+            background-color: #fff;
+            padding: 0 4px;
+        }
+         .time-label-half {
+            color: #9ca3af; /* Lighter color for half-hour marks */
         }
         .day-header {
             text-align: center;
@@ -68,10 +83,13 @@
             position: relative;
         }
         .grid-line {
-            border-bottom: 1px solid #e5e7eb;
+            /* Draws the line at the top of the row */
+            border-top: 1px solid #e5e7eb;
             grid-column: 2 / -1;
             z-index: 1;
-            grid-row-end: span 2;
+        }
+        .grid-line-dashed {
+            border-top-style: dashed;
         }
     </style>
 </head>
@@ -101,18 +119,31 @@
                 <div class="schedule-grid" style="min-width: 600px;">
                     <!-- Grid Lines -->
                     <div class="grid-line" style="grid-row: 2;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 3;"></div>
                     <div class="grid-line" style="grid-row: 4;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 5;"></div>
                     <div class="grid-line" style="grid-row: 6;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 7;"></div>
                     <div class="grid-line" style="grid-row: 8;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 9;"></div>
                     <div class="grid-line" style="grid-row: 10;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 11;"></div>
                     <div class="grid-line" style="grid-row: 12;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 13;"></div>
                     <div class="grid-line" style="grid-row: 14;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 15;"></div>
                     <div class="grid-line" style="grid-row: 16;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 17;"></div>
                     <div class="grid-line" style="grid-row: 18;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 19;"></div>
                     <div class="grid-line" style="grid-row: 20;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 21;"></div>
                     <div class="grid-line" style="grid-row: 22;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 23;"></div>
                     <div class="grid-line" style="grid-row: 24;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 25;"></div>
                     <div class="grid-line" style="grid-row: 26;"></div>
+                    <div class="grid-line grid-line-dashed" style="grid-row: 27;"></div>
 
                     <!-- Headers -->
                     <div></div>
@@ -122,19 +153,33 @@
                     <div class="day-header text-gray-700">Sunday</div>
                     
                     <!-- Time Labels -->
-                    <div class="time-label" style="grid-row: 2;">11 AM</div>
-                    <div class="time-label" style="grid-row: 4;">12 PM</div>
-                    <div class="time-label" style="grid-row: 6;">1 PM</div>
-                    <div class="time-label" style="grid-row: 8;">2 PM</div>
-                    <div class="time-label" style="grid-row: 10;">3 PM</div>
-                    <div class="time-label" style="grid-row: 12;">4 PM</div>
-                    <div class="time-label" style="grid-row: 14;">5 PM</div>
-                    <div class="time-label" style="grid-row: 16;">6 PM</div>
-                    <div class="time-label" style="grid-row: 18;">7 PM</div>
-                    <div class="time-label" style="grid-row: 20;">8 PM</div>
-                    <div class="time-label" style="grid-row: 22;">9 PM</div>
-                    <div class="time-label" style="grid-row: 24;">10 PM</div>
-                    <div class="time-label" style="grid-row: 26;">11 PM</div>
+                    <div class="time-label time-label-hour" style="grid-row: 2;"><span>11 AM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 3;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 4;"><span>12 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 5;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 6;"><span>1 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 7;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 8;"><span>2 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 9;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 10;"><span>3 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 11;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 12;"><span>4 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 13;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 14;"><span>5 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 15;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 16;"><span>6 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 17;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 18;"><span>7 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 19;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 20;"><span>8 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 21;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 22;"><span>9 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 23;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 24;"><span>10 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 25;">:30</div>
+                    <div class="time-label time-label-hour" style="grid-row: 26;"><span>11 PM</span></div>
+                    <div class="time-label time-label-half" style="grid-row: 27;">:30</div>
+
 
                     <!-- Activity Blocks -->
                     <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 18 / 28;">
