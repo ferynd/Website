@@ -77,7 +77,7 @@
 
         <section class="mb-12 bg-white rounded-xl shadow-lg p-4 md:p-6">
             <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Weekend at a Glance</h2>
-            <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 mb-6 text-sm text-gray-600 px-2">
+            <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 mb-2 text-sm text-gray-600 px-2">
                 <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #A0C4FF;"></span>Food</span>
                 <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #C8E6C9;"></span>Activity</span>
                 <span class="border-l border-gray-300 h-4 mx-2"></span>
@@ -85,53 +85,58 @@
                 <span class="font-semibold">➡️ Walk-In</span>
                 <span class="font-semibold">❓ Tentative</span>
             </div>
-            <div class="schedule-grid">
-                <div></div>
-                <div class="day-header text-gray-700">Thursday</div>
-                <div class="day-header text-gray-700">Friday</div>
-                <div class="day-header text-gray-700">Saturday</div>
-                <div class="day-header text-gray-700">Sunday</div>
-                
-                <div class="time-label" style="grid-row: 2;">11 AM</div>
-                <div class="time-label" style="grid-row: 3;">12 PM</div>
-                <div class="time-label" style="grid-row: 4;">1 PM</div>
-                <div class="time-label" style="grid-row: 5;">2 PM</div>
-                <div class="time-label" style="grid-row: 6;">3 PM</div>
-                <div class="time-label" style="grid-row: 7;">4 PM</div>
-                <div class="time-label" style="grid-row: 8;">5 PM</div>
-                <div class="time-label" style="grid-row: 9;">6 PM</div>
-                <div class="time-label" style="grid-row: 10;">7 PM</div>
-                <div class="time-label" style="grid-row: 11;">8 PM</div>
-                <div class="time-label" style="grid-row: 12;">9 PM</div>
-                <div class="time-label" style="grid-row: 13;">10 PM</div>
-                <div class="time-label" style="grid-row: 14;">11 PM</div>
+            <p class="text-center text-gray-500 text-xs md:hidden mb-4">
+                &larr; Scroll schedule to see all days &rarr;
+            </p>
+            <div class="overflow-x-auto">
+                <div class="schedule-grid" style="min-width: 600px;">
+                    <div></div>
+                    <div class="day-header text-gray-700">Thursday</div>
+                    <div class="day-header text-gray-700">Friday</div>
+                    <div class="day-header text-gray-700">Saturday</div>
+                    <div class="day-header text-gray-700">Sunday</div>
+                    
+                    <div class="time-label" style="grid-row: 2;">11 AM</div>
+                    <div class="time-label" style="grid-row: 3;">12 PM</div>
+                    <div class="time-label" style="grid-row: 4;">1 PM</div>
+                    <div class="time-label" style="grid-row: 5;">2 PM</div>
+                    <div class="time-label" style="grid-row: 6;">3 PM</div>
+                    <div class="time-label" style="grid-row: 7;">4 PM</div>
+                    <div class="time-label" style="grid-row: 8;">5 PM</div>
+                    <div class="time-label" style="grid-row: 9;">6 PM</div>
+                    <div class="time-label" style="grid-row: 10;">7 PM</div>
+                    <div class="time-label" style="grid-row: 11;">8 PM</div>
+                    <div class="time-label" style="grid-row: 12;">9 PM</div>
+                    <div class="time-label" style="grid-row: 13;">10 PM</div>
+                    <div class="time-label" style="grid-row: 14;">11 PM</div>
 
-                <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 9 / 14;">
-                    <strong class="font-semibold">Game Night</strong>
-                    <span>At our apartment</span>
-                </div>
-                
-                <div class="activity-block" style="background-color: #C8E6C9; grid-column: 3; grid-row: 4 / 6;">
-                    <strong class="font-semibold">Flight Club ✅</strong>
-                    <span>Darts & Drinks</span>
-                </div>
-                <div class="activity-block" style="background-color: #A0C4FF; grid-column: 3; grid-row: 10 / 12;">
-                    <strong class="font-semibold">Fogo de Chão ✅</strong>
-                    <span>Dinner</span>
-                </div>
+                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 9 / 14;">
+                        <strong class="font-semibold">Game Night</strong>
+                        <span>At our apartment</span>
+                    </div>
+                    
+                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 3; grid-row: 4 / 6;">
+                        <strong class="font-semibold">Flight Club ✅</strong>
+                        <span>Darts & Drinks</span>
+                    </div>
+                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 3; grid-row: 10 / 12;">
+                        <strong class="font-semibold">Fogo de Chão ✅</strong>
+                        <span>Dinner</span>
+                    </div>
 
-                <div class="activity-block" style="background-color: #A0C4FF; grid-column: 4; grid-row: 6 / 8;">
-                    <strong class="font-semibold">Xoco ➡️</strong>
-                    <span>Late Lunch</span>
-                </div>
-                <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 9 / 13;">
-                    <strong class="font-semibold">G-Cue Billiards ❓</strong>
-                    <span>(Tentative)</span>
-                </div>
+                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 4; grid-row: 6 / 8;">
+                        <strong class="font-semibold">Xoco ➡️</strong>
+                        <span>Late Lunch</span>
+                    </div>
+                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 9 / 13;">
+                        <strong class="font-semibold">G-Cue Billiards ❓</strong>
+                        <span>(Tentative)</span>
+                    </div>
 
-                <div class="activity-block" style="background-color: #A0C4FF; grid-column: 5; grid-row: 8 / 11;">
-                    <strong class="font-semibold">Pequod's ✅</strong>
-                    <span>Deep Dish Dinner</span>
+                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 5; grid-row: 8 / 11;">
+                        <strong class="font-semibold">Pequod's ✅</strong>
+                        <span>Deep Dish Dinner</span>
+                    </div>
                 </div>
             </div>
         </section>
