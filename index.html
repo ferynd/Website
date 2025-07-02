@@ -10,6 +10,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
+        html {
+            scroll-behavior: smooth;
+        }
         body {
             font-family: 'Poppins', sans-serif;
             background-color: #f0f2f5;
@@ -55,7 +58,9 @@
             background-color: #fff;
             padding: 0 4px;
         }
-        .time-label-half { color: #9ca3af; }
+         .time-label-half {
+            color: #9ca3af;
+        }
         .day-header {
             text-align: center;
             font-weight: 600;
@@ -83,184 +88,371 @@
             grid-column: 2 / -1;
             z-index: 1;
         }
-        .grid-line-dashed { border-top-style: dashed; }
+        .grid-line-dashed {
+            border-top-style: dashed;
+        }
+        .highlight-overlay {
+            z-index: 12; /* Increased z-index to be on top of activity blocks */
+            background-color: rgba(255, 235, 59, 0.4); /* Translucent yellow */
+            border: 1px solid rgba(252, 211, 77, 0.5);
+            border-radius: 8px;
+        }
+        /* Tab Styles */
+        .tab-button {
+            transition: all 0.3s ease;
+        }
+        .tab-button.active {
+            border-color: #FF4E50;
+            background-color: #FF4E50;
+            color: white;
+        }
     </style>
 </head>
 <body class="text-gray-800">
 
-<div class="container mx-auto p-4 md:p-8 max-w-6xl">
+    <div class="container mx-auto p-4 md:p-8 max-w-full">
 
-    <!-- PAGE HEADER -->
-    <header class="text-center mb-12">
-        <h1 class="text-4xl md:text-5xl font-bold text-[#FF4E50]">Welcome to Chicago!</h1>
-        <p class="text-lg text-gray-600 mt-2">A Visual Itinerary for Your July 4th Weekend Visit</p>
-    </header>
+        <header class="text-center mb-12">
+            <h1 class="text-4xl md:text-5xl font-bold text-[#FF4E50]">Welcome to Chicago!</h1>
+            <p class="text-lg text-gray-600 mt-2">A Visual Itinerary for Your July 4th Weekend Visit</p>
+        </header>
 
-    <!-- WEEKEND AT A GLANCE (original schedule grid) -->
-    <section class="mb-12 bg-white rounded-xl shadow-lg p-4 md:p-6">
-        <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Weekend at a Glance</h2>
-        <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 mb-2 text-sm text-gray-600 px-2">
-            <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #A0C4FF;"></span>Food</span>
-            <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #C8E6C9;"></span>Activity</span>
-            <span class="border-l border-gray-300 h-4 mx-2"></span>
-            <span class="font-semibold">✅ Reserved</span>
-            <span class="font-semibold">➡️ Walk-In</span>
-            <span class="font-semibold">❓ Tentative</span>
-        </div>
-        <p class="text-center text-gray-500 text-xs md:hidden mb-4">&larr; Scroll schedule to see all days &rarr;</p>
+        <section class="mb-12 bg-white rounded-xl shadow-lg p-4 md:p-6">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Weekend at a Glance</h2>
+            <div class="flex flex-nowrap gap-8">
+                <!-- Timeline Column -->
+                <div class="flex-grow" style="min-width: 640px;">
+                    <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 mb-2 text-sm text-gray-600 px-2">
+                        <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #A0C4FF;"></span>Food</span>
+                        <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #C8E6C9;"></span>Activity</span>
+                        <span class="border-l border-gray-300 h-4 mx-2"></span>
+                        <span class="font-semibold">✅ Reserved</span>
+                        <span class="font-semibold">➡️ Walk-In</span>
+                        <span class="font-semibold">❓ Tentative</span>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <div id="schedule-container" class="schedule-grid">
+                            <!-- Highlight overlays will be injected here by JS -->
+                            <div id="highlight-container" class="contents"></div>
 
-        <!-- SCHEDULE GRID (unchanged) -->
-        <div class="overflow-x-auto">
-            <div class="schedule-grid" style="min-width: 600px;">
-                <!-- grid lines, headers, time labels and activity blocks here -->
-                <!-- (omitted for brevity – these are exactly the same as your original code) -->
-                <!-- KEEP all your original schedule-grid rows/columns here -->
-            </div>
-        </div>
-    </section>
+                            <!-- Grid Lines -->
+                            <div class="grid-line" style="grid-row: 2;"></div><div class="grid-line grid-line-dashed" style="grid-row: 3;"></div><div class="grid-line" style="grid-row: 4;"></div><div class="grid-line grid-line-dashed" style="grid-row: 5;"></div><div class="grid-line" style="grid-row: 6;"></div><div class="grid-line grid-line-dashed" style="grid-row: 7;"></div><div class="grid-line" style="grid-row: 8;"></div><div class="grid-line grid-line-dashed" style="grid-row: 9;"></div><div class="grid-line" style="grid-row: 10;"></div><div class="grid-line grid-line-dashed" style="grid-row: 11;"></div><div class="grid-line" style="grid-row: 12;"></div><div class="grid-line grid-line-dashed" style="grid-row: 13;"></div><div class="grid-line" style="grid-row: 14;"></div><div class="grid-line grid-line-dashed" style="grid-row: 15;"></div><div class="grid-line" style="grid-row: 16;"></div><div class="grid-line grid-line-dashed" style="grid-row: 17;"></div><div class="grid-line" style="grid-row: 18;"></div><div class="grid-line grid-line-dashed" style="grid-row: 19;"></div><div class="grid-line" style="grid-row: 20;"></div><div class="grid-line grid-line-dashed" style="grid-row: 21;"></div><div class="grid-line" style="grid-row: 22;"></div><div class="grid-line grid-line-dashed" style="grid-row: 23;"></div><div class="grid-line" style="grid-row: 24;"></div><div class="grid-line grid-line-dashed" style="grid-row: 25;"></div><div class="grid-line" style="grid-row: 26;"></div><div class="grid-line grid-line-dashed" style="grid-row: 27;"></div>
 
-    <!-- NEW PANEL: LOCKED-IN VS SAME-DAY OPTIONS -->
-    <section class="mb-12 grid md:grid-cols-2 gap-6">
-        <!-- LEFT COLUMN – confirmed bookings -->
-        <div class="bg-white rounded-xl shadow-lg p-6">
-            <h3 class="text-2xl font-bold text-[#FF4E50] mb-4 text-center md:text-left">✅ Locked-In Plans</h3>
-            <ul class="space-y-4 text-sm">
-                <li><a href="#timeline-thursday" class="underline text-blue-600 hover:text-blue-800">Thu 3 Jul — Game Night & delivery at home</a></li>
-                <li><a href="#timeline-friday" class="underline text-blue-600 hover:text-blue-800">Fri 4 Jul — Flight Club darts · Fogo de Chão</a></li>
-                <li><a href="#timeline-saturday" class="underline text-blue-600 hover:text-blue-800">Sat 5 Jul — Movie matinee · Xoco late lunch</a></li>
-                <li><a href="#timeline-sunday" class="underline text-blue-600 hover:text-blue-800">Sun 6 Jul — Pequod’s deep-dish farewell</a></li>
-            </ul>
-        </div>
+                            <!-- Headers -->
+                            <div></div><div class="day-header text-gray-700">Thursday</div><div class="day-header text-gray-700">Friday</div><div class="day-header text-gray-700">Saturday</div><div class="day-header text-gray-700">Sunday</div>
+                            
+                            <!-- Time Labels -->
+                            <div class="time-label time-label-hour" style="grid-row: 2;"><span>11 AM</span></div><div class="time-label time-label-half" style="grid-row: 3;">:30</div><div class="time-label time-label-hour" style="grid-row: 4;"><span>12 PM</span></div><div class="time-label time-label-half" style="grid-row: 5;">:30</div><div class="time-label time-label-hour" style="grid-row: 6;"><span>1 PM</span></div><div class="time-label time-label-half" style="grid-row: 7;">:30</div><div class="time-label time-label-hour" style="grid-row: 8;"><span>2 PM</span></div><div class="time-label time-label-half" style="grid-row: 9;">:30</div><div class="time-label time-label-hour" style="grid-row: 10;"><span>3 PM</span></div><div class="time-label time-label-half" style="grid-row: 11;">:30</div><div class="time-label time-label-hour" style="grid-row: 12;"><span>4 PM</span></div><div class="time-label time-label-half" style="grid-row: 13;">:30</div><div class="time-label time-label-hour" style="grid-row: 14;"><span>5 PM</span></div><div class="time-label time-label-half" style="grid-row: 15;">:30</div><div class="time-label time-label-hour" style="grid-row: 16;"><span>6 PM</span></div><div class="time-label time-label-half" style="grid-row: 17;">:30</div><div class="time-label time-label-hour" style="grid-row: 18;"><span>7 PM</span></div><div class="time-label time-label-half" style="grid-row: 19;">:30</div><div class="time-label time-label-hour" style="grid-row: 20;"><span>8 PM</span></div><div class="time-label time-label-half" style="grid-row: 21;">:30</div><div class="time-label time-label-hour" style="grid-row: 22;"><span>9 PM</span></div><div class="time-label time-label-half" style="grid-row: 23;">:30</div><div class="time-label time-label-hour" style="grid-row: 24;"><span>10 PM</span></div><div class="time-label time-label-half" style="grid-row: 25;">:30</div><div class="time-label time-label-hour" style="grid-row: 26;"><span>11 PM</span></div><div class="time-label time-label-half" style="grid-row: 27;">:30</div>
 
-        <!-- RIGHT COLUMN – accordion with delivery, cafés, restaurants, activities -->
-        <div class="bg-white rounded-xl shadow-lg p-6">
-            <h3 class="text-2xl font-bold text-[#FF4E50] mb-4 text-center md:text-left">➡️ Same-Day Options</h3>
-
-            <!-- THURSDAY DELIVERY -->
-            <details class="border-t pt-3">
-                <summary class="cursor-pointer font-semibold text-lg">Thursday night delivery picks</summary>
-                <ul class="mt-3 space-y-2 text-sm">
-                    <li><span class="inline-block h-3 w-3 rounded-full mr-1" style="background:#66bb6a"></span>
-                        <strong>Irazu</strong> — Costa Rican (10:30 AM–9 PM Thu) · cozy Latin comfort · <a href="https://www.irazuchicago.com" target="_blank" class="text-blue-600 underline">site</a></li>
-                    <li><span class="inline-block h-3 w-3 rounded-full mr-1" style="background:#ff80ab"></span>
-                        <strong>Velvet Taco</strong> — Gold Coast (11 AM–1 AM Thu) · globe-trotting fusion tacos · <a href="https://www.velvettaco.com/location/gold-coast/" target="_blank" class="underline">site</a></li>
-                    <li><span class="inline-block h-3 w-3 rounded-full mr-1" style="background:#ffa726"></span>
-                        <strong>Seoul Taco</strong> — River North (11 AM–10 PM Thu) · Korean-Mex bulgogi & gochujang · <a href="https://www.seoultaco.com/river-north" target="_blank" class="underline">site</a></li>
-                    <li><span class="inline-block h-3 w-3 rounded-full mr-1" style="background:#90caf9"></span>
-                        <strong>Jin Ju</strong> — Andersonville (11 AM–9 PM Thu) · classic Korean bibimbap & wings · <a href="https://www.jinjurestaurant.com" target="_blank" class="underline">site</a></li>
-                </ul>
-            </details>
-
-            <!-- WEEKEND CAFÉS / RESTAURANTS / ACTIVITIES -->
-            <details class="border-t pt-3">
-                <summary class="cursor-pointer font-semibold text-lg">Fri – Sun drop-in ideas</summary>
-
-                <!-- CAFÉS -->
-                <h4 class="mt-4 font-semibold">☕ Cafés</h4>
-                <ul class="mt-2 space-y-2 text-sm">
-                    <li><strong>Sawada Coffee</strong> — West Loop, 8 AM–5 PM daily · matcha-espresso “Military Latte”.</li>
-                    <li><strong>Oud Coffee & Café</strong> — River North, early AM → ~7 PM (hours not posted) · cardamom + pistachio baklava lattes.</li>
-                    <li><strong>Tary Coffee House</strong> — River North, Fri 7 AM–8 PM · Sat/Sun 8 AM–8 PM · Kazakh millet drinks & baursak.</li>
-                    <li><strong>Sleep Walk Chocolateria</strong> — Pilsen, 7 AM–5 PM (usually) · Dark Matter brews + Mexican chocolate.</li>
-                    <li><strong>Nomad Chicago</strong> — River North, 10 AM–4 PM Fri-Sun · boutique café/gallery, Metric espresso.</li>
-                </ul>
-
-                <!-- RESTAURANTS -->
-                <h4 class="mt-4 font-semibold">🍴 Restaurants</h4>
-                <ul class="mt-2 space-y-2 text-sm">
-                    <li><strong>Monarch & Lion</strong> — Streeterville, Fri 10 AM-12 AM · Sat 10 AM-12 AM · Sun 10 AM-10 PM.</li>
-                    <li><strong>Armitage Alehouse</strong> — Lincoln Park, walk-in bar seats; Fri 11 AM-10:30 PM · Sat 10 AM-10:30 PM · Sun 10 AM-10 PM.</li>
-                    <li><strong>The Izakaya @ Momotaro</strong> — West Loop, Fri-Sat 4:30 PM-1 AM · Sun 5 PM-11 PM.</li>
-                    <li><strong>Akahoshi Ramen</strong> — Logan Square, Tue-Sat 5 PM-9 PM (closed Sun) · half seats walk-in.</li>
-                    <li><strong>Demera Ethiopian</strong> — Uptown, Fri-Sat 11:30 AM-10 PM · Sun 4 PM-9 PM.</li>
-                </ul>
-
-                <!-- ACTIVITIES -->
-                <h4 class="mt-4 font-semibold">🎯 Easy afternoon activities</h4>
-                <ul class="mt-2 space-y-2 text-sm">
-                    <li><strong>Chicago Cultural Center</strong> — free, daily 10 AM-5 PM · Tiffany dome & art exhibits.</li>
-                    <li><strong>Chicago History Museum</strong> — Fri/Sat 9:30 AM-4:30 PM · Sun 12 PM-5 PM.</li>
-                    <li><strong>Lincoln Park Zoo & Gardens</strong> — gates 8 AM · buildings until 6:30 PM Sat/Sun · free.</li>
-                    <li><strong>Navy Pier Fireworks</strong> — Sat 5 Jul, 10 PM · arrive by 9:15 PM for seats.</li>
-                </ul>
-            </details>
-        </div>
-    </section>
-
-    <!-- DAY-BY-DAY TIMELINE (unchanged from your original) -->
-    <section>
-        <h2 class="text-3xl font-bold text-center mb-8">Your Day-by-Day Guide</h2>
-        <div class="relative pl-8">
-
-            <!-- Thursday Card -->
-            <div id="timeline-thursday" class="mb-10 relative">
-                <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
-                    <h3 class="text-2xl font-bold text-[#FF4E50]">Thursday, July 3rd</h3>
-                    <p class="font-semibold text-gray-500 mb-4">Welcome & Game Night</p>
-                    <ul class="space-y-3 text-gray-700">
-                        <li><strong class="font-semibold">✈️ Afternoon:</strong> Arrival! We're so excited to see you.</li>
-                        <li><strong class="font-semibold">🧙‍♂️ Evening:</strong> Casual night in at our apartment. We'll order food and are looking forward to learning/playing Wizard!</li>
-                    </ul>
+                            <!-- Activity Blocks -->
+                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 18 / 28;"><strong class="font-semibold">Game Night</strong><span>At our apartment</span></div>
+                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 3; grid-row: 6 / 10;"><strong class="font-semibold">Flight Club ✅</strong><span>Darts & Drinks</span></div>
+                            <div class="activity-block" style="background-color: #A0C4FF; grid-column: 3; grid-row: 18 / 22;"><strong class="font-semibold">Fogo de Chão ✅</strong><span>Dinner</span></div>
+                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 5 / 12;"><strong class="font-semibold">Movie: MI:8 ❓</strong><span>AMC Dine-In</span></div>
+                            <div class="activity-block" style="background-color: #A0C4FF; grid-column: 4; grid-row: 12 / 16;"><strong class="font-semibold">Xoco ➡️</strong><span>Late Lunch</span></div>
+                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 17 / 24;"><strong class="font-semibold">G-Cue Billiards ❓</strong><span>(Tentative)</span></div>
+                            <div class="activity-block" style="background-color: #A0C4FF; grid-column: 5; grid-row: 14 / 20;"><strong class="font-semibold">Pequod's ✅</strong><span>Deep Dish Dinner</span></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Options Panel -->
+                <div class="flex-shrink-0" style="width: 320px;">
+                    <div class="bg-gray-50 p-4 rounded-lg h-full">
+                        <h3 class="text-xl font-bold text-center mb-2">Explore Options</h3>
+                        <p class="text-xs text-center text-gray-500 mb-2">Select an option to see its available hours highlighted on the timeline.</p>
+                        <div class="text-center mb-4">
+                            <a href="#more-details-section" id="details-link" class="text-sm text-blue-600 hover:underline">See Full Details Below &darr;</a>
+                        </div>
+                        <div id="options-panel" class="space-y-4 text-sm">
+                            <!-- Options will be injected here by JS -->
+                        </div>
+                    </div>
                 </div>
             </div>
+        </section>
 
-            <!-- Friday Card -->
-            <div id="timeline-friday" class="mb-10 relative">
-                <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
-                    <h3 class="text-2xl font-bold text-[#FF4E50]">Friday, July 4th</h3>
-                    <p class="font-semibold text-gray-500 mb-4">Darts & Dinner</p>
-                    <ul class="space-y-4 text-gray-700">
-                        <li>
-                            <div class="font-semibold">🎯 1:00 PM – 3:00 PM: <a href="https://us.flightclubdarts.com/chicago/wacker/menu/" target="_blank" class="underline text-blue-600 hover:text-blue-800">Flight Club</a></div>
-                            <div class="text-sm pl-5">Darts, light snacks, and drinks. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
-                        </li>
-                        <li>
-                            <div class="font-semibold">🥩 7:00 PM – 9:00 PM: <a href="https://fogodechao.com/location/chicago/" target="_blank" class="underline text-blue-600 hover:text-blue-800">Fogo de Chão</a></div>
-                            <div class="text-sm pl-5">A tasty Brazilian steakhouse experience. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
-                        </li>
-                    </ul>
-                </div>
+        <section class="mt-12" id="more-details-section">
+            <h2 class="text-3xl font-bold text-center mb-6">More Ideas & Options</h2>
+            <div class="flex justify-center mb-6 border-b border-gray-300">
+                <button id="food-tab-button" class="tab-button active text-lg font-semibold py-2 px-6 border-b-4" data-tab="food">Food & Drink</button>
+                <button id="activities-tab-button" class="tab-button text-lg font-semibold py-2 px-6 border-b-4 border-transparent text-gray-500" data-tab="activities">Activities</button>
             </div>
 
-            <!-- Saturday Card -->
-            <div id="timeline-saturday" class="mb-10 relative">
-                <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
-                    <h3 class="text-2xl font-bold text-[#FF4E50]">Saturday, July 5th</h3>
-                    <p class="font-semibold text-gray-500 mb-4">Movie, Tacos & Billiards</p>
-                    <ul class="space-y-4 text-gray-700">
-                        <li>
-                            <div class="font-semibold">🎬 12:30 PM – 4:00 PM: <a href="https://www.amctheatres.com/movie-theatres/chicago/amc-dine-in-block-37" target="_blank" class="underline text-blue-600 hover:text-blue-800">Movie at AMC Dine-In</a></div>
-                            <div class="text-sm pl-5">Mission: Impossible 8. End time includes previews. <span class="font-bold text-orange-500">[❓ Tentative]</span></div>
-                        </li>
-                        <li>
-                            <div class="font-semibold">🌮 4:00 PM – 6:00 PM: <a href="https://www.rickbayless.com/restaurants/xoco/" target="_blank" class="underline text-blue-600 hover:text-blue-800">Xoco</a></div>
-                            <div class="text-sm pl-5">Late lunch at one of Rick Bayless's spots. <span class="font-bold text-blue-600">[➡️ Walk-In]</span></div>
-                        </li>
-                        <li>
-                            <div class="font-semibold">🎱 6:30 PM – 10:00 PM: <a href="https://www.gcuebilliards.com/" target="_blank" class="underline text-blue-600 hover:text-blue-800">G-Cue Billiards</a></div>
-                            <div class="text-sm pl-5">Bar food and drinks. <span class="font-bold text-orange-500">[❓ Tentative]</span></div>
-                        </li>
-                    </ul>
+            <div id="tabs-content">
+                <!-- Food & Drink Content -->
+                <div id="food-content" class="tab-content">
+                    <div class="mb-8">
+                        <h3 class="text-2xl font-semibold mb-4 text-gray-800">📦 Thursday Night Delivery‑Friendly Picks</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://irazuchicago.com" target="_blank" class="underline">Irazu (Costa Rican)</a></h4>
+                                <p><strong>Snapshot:</strong> Family‑run Bucktown landmark serving “pura vida” staples like gallo pinto, plantains and oatmeal shakes since 1990.</p>
+                                <p><strong>Flavors:</strong> Home‑style, mildly spiced Latin comfort; sweet plantains & tangy Lizano sauce provide most of the zip.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 10:30 AM‑9 PM</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://velvettaco.com" target="_blank" class="underline">Velvet Taco</a></h4>
+                                <p><strong>Snapshot:</strong> Late‑night counter spot whose globe‑trotting fillings (tikka chicken, Korean BBQ, paneer) made it a cult favorite.</p>
+                                <p><strong>Flavors:</strong> Bold fusion; expect sweet‑heat sauces, queso, fresh slaws.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 11 AM‑1 AM</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://seoultaco.com" target="_blank" class="underline">Seoul Taco</a></h4>
+                                <p><strong>Snapshot:</strong> Food‑truck‑turned‑mini‑chain marrying Korean bulgogi & gochujang with tortillas, burritos and bowls.</p>
+                                <p><strong>Flavors:</strong> Sweet‑savory marinades, optional gochujang spice, pickled veggies.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 11 AM‑10 PM</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://jinjurestaurant.com" target="_blank" class="underline">Jin Ju (Korean)</a></h4>
+                                <p><strong>Snapshot:</strong> Contemporary Korean dining room known for bibimbap, japchae and craft soju cocktails.</p>
+                                <p><strong>Flavors:</strong> Traditional Korean balance of fermented funk, soy‑garlic sweetness and chile heat.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 11 AM‑9 PM</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-8">
+                        <h3 class="text-2xl font-semibold mb-4 text-gray-800">☕️ Drop‑In Cafés</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                             <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://oudcoffee.cafe" target="_blank" class="underline">Oud Coffee & Café</a></h4>
+                                <p><strong>Snapshot:</strong> Palestinian‑American café with baklava lattes, cardamom‑pistachio “Oud” latte and manakeesh pastries.</p>
+                                <p><strong>Flavors:</strong> Middle‑Eastern spices (cardamom, pistachio, rose), Turkish & Arabic coffee.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat/Sun ~7AM - 7PM (call to confirm)</p>
+                             </div>
+                             <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://tary.co" target="_blank" class="underline">Tary Coffee House</a></h4>
+                                <p><strong>Snapshot:</strong> First U.S. Kazakh café; airy space for baursak fried dough, millet‑based drinks and Central‑Asian brunch.</p>
+                                <p><strong>Flavors:</strong> Earthy golden‑millet drinks, honey, walnut & mild spice.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri 7AM-8PM / Sat-Sun 8AM-8PM</p>
+                             </div>
+                             <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="https://darkmattercoffee.com/sleep-walk" target="_blank" class="underline">Sleep Walk Chocolateria</a></h4>
+                                <p><strong>Snapshot:</strong> Dark Matter Coffee outpost pairing single‑origin brews with small‑batch Mexican chocolate bars.</p>
+                                <p><strong>Flavors:</strong> Deep‑roast coffees, cacao‑forward mochas, subtle chile or cinnamon notes.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat/Sun 7AM-5PM</p>
+                             </div>
+                             <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://nomad-chicago.com" target="_blank" class="underline">Nomad Chicago</a></h4>
+                                <p><strong>Snapshot:</strong> Women‑owned boutique‑café/gallery serving Metric Coffee espresso and ceremonial‑grade matcha.</p>
+                                <p><strong>Flavors:</strong> Bright, lightly fruity espresso; seasonal herb‑and‑fruit lattes; high‑grade matcha.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 10AM-4PM / Sun 10AM-2PM</p>
+                             </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-2xl font-semibold mb-4 text-gray-800">🍴 Other Walk‑In Restaurants</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://monarchandlion.com" target="_blank" class="underline">Monarch & Lion</a></h4>
+                                <p><strong>Snapshot:</strong> SoHo‑chic British pub with Anglo‑Indian twists (tikka masala pot pie, Sunday roast).</p>
+                                <p><strong>Flavors:</strong> Savory pub fare with gentle curry spice and malt‑vinegar tang.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 10AM-12AM / Sun 10AM-10PM</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://armitagealehouse.com" target="_blank" class="underline">Armitage Alehouse</a></h4>
+                                <p><strong>Snapshot:</strong> Candle‑lit 1920s London tavern from Hogsalt; famous for Wagyu burgers and masala chicken pot pie.</p>
+                                <p><strong>Flavors:</strong> Rich British comfort plus warm garam masala & fenugreek undertones.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 10AM-10:30PM / Sun 10AM-10:30PM</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://momotarochicago.com/izakaya" target="_blank" class="underline">The Izakaya at Momotaro</a></h4>
+                                <p><strong>Snapshot:</strong> Sub‑street Tokyo “yokocho” lounge serving yakitori, small plates, highball cocktails & karaoke Mondays.</p>
+                                <p><strong>Flavors:</strong> Honey‑soy, yuzu, shichimi heat; shareable skewers and ramen.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 5PM-1AM / Sun 5PM-11PM</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://akahoshiramen.com" target="_blank" class="underline">Akahoshi Ramen</a></h4>
+                                <p><strong>Snapshot:</strong> Cult 26‑seat shop; house‑made noodles & miso broth draw nightly queues.</p>
+                                <p><strong>Flavors:</strong> Complex miso & shoyu broths, balanced umami; monthly experimental bowls.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 5PM-9PM (Closed Sun)</p>
+                            </div>
+                            <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="http://demerachicago.com" target="_blank" class="underline">Demera Ethiopian</a></h4>
+                                <p><strong>Snapshot:</strong> Casual injera‑and‑stew institution ideal for sharing veggie and doro wot platters; honey wine on tap.</p>
+                                <p><strong>Flavors:</strong> Berbere warmth, tangy injera sourdough, clarified‑butter richness.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 11:30AM-10PM / Sun 4PM-9PM</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Activities Content -->
+                <div id="activities-content" class="tab-content hidden">
+                     <h3 class="text-2xl font-semibold mb-4 text-gray-800">🎆 Easy, No‑Reservation Afternoon Ideas</h3>
+                     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                            <h4 class="font-bold text-lg text-blue-700"><a href="https://www.chicago.gov/city/en/depts/dca/supp_info/chicago_cultural_center.html" target="_blank" class="underline">Chicago Cultural Center</a></h4>
+                            <p><strong>Why it works:</strong> Stroll the largest stained‑glass dome in the world, rotating art shows and comfy benches for resting tired legs.</p>
+                            <p class="text-sm text-gray-600"><strong>Hours:</strong> Daily 10AM-5PM (Free)</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                            <h4 class="font-bold text-lg text-blue-700"><a href="https://www.chicagohistory.org/" target="_blank" class="underline">Chicago History Museum</a></h4>
+                            <p><strong>Why it works:</strong> Engaging but non‑partisan look at the city’s past; elevators, seating and cool A/C make it friendly for older visitors.</p>
+                            <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 9:30AM-4:30PM, Sun 12PM-5PM</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                            <h4 class="font-bold text-lg text-blue-700"><a href="https://www.lpzoo.org/" target="_blank" class="underline">Lincoln Park Zoo & Gardens</a></h4>
+                            <p><strong>Why it works:</strong> Shady walks, conservatory flowers and lake views without advance tickets.</p>
+                            <p class="text-sm text-gray-600"><strong>Hours:</strong> Gates 8AM, Buildings 10AM, Close ~7PM (Free)</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                            <h4 class="font-bold text-lg text-blue-700"><a href="https://navypier.org/events/fireworks/" target="_blank" class="underline">Navy Pier Fireworks</a></h4>
+                            <p><strong>Why it works:</strong> The city shoots its fireworks show on Saturday the 5th, not the 4th. Arrive 30‑45 min early for chairs.</p>
+                            <p class="text-sm text-gray-600"><strong>Hours:</strong> Saturday, July 5th at 10PM</p>
+                        </div>
+                     </div>
                 </div>
             </div>
+        </section>
 
-            <!-- Sunday Card -->
-            <div id="timeline-sunday" class="relative">
-                <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
-                    <h3 class="text-2xl font-bold text-[#FF4E50]">Sunday, July 6th</h3>
-                    <p class="font-semibold text-gray-500 mb-4">Deep Dish Farewell</p>
-                    <ul class="space-y-3 text-gray-700">
-                        <li>
-                            <div class="font-semibold">🍕 5:00 PM – 8:00 PM: <a href="https://pequodspizza.com/" target="_blank" class="underline text-blue-600 hover:text-blue-800">Pequod's Pizza</a></div>
-                            <div class="text-sm pl-5">Iconic Chicago deep-dish. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
-                        </li>
-                    </ul>
-                </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const optionsData = [
+            { 
+                category: '📦 Thursday Delivery',
+                items: [
+                    { name: 'Irazu', availability: { thu: [{ start: '10:30', end: '21:00' }] } },
+                    { name: 'Velvet Taco', availability: { thu: [{ start: '11:00', end: '25:00' }] } }, // 1 AM next day
+                    { name: 'Seoul Taco', availability: { thu: [{ start: '11:00', end: '22:00' }] } },
+                    { name: 'Jin Ju', availability: { thu: [{ start: '11:00', end: '21:00' }] } }
+                ]
+            },
+            {
+                category: '☕️ Drop-In Cafés',
+                items: [
+                    { name: 'Oud Coffee', availability: { fri: [{ start: '7:00', end: '19:00' }], sat: [{ start: '7:00', end: '19:00' }], sun: [{ start: '7:00', end: '19:00' }] } },
+                    { name: 'Tary Coffee', availability: { fri: [{ start: '7:00', end: '20:00' }], sat: [{ start: '8:00', end: '20:00' }], sun: [{ start: '8:00', end: '20:00' }] } },
+                    { name: 'Sleep Walk', availability: { fri: [{ start: '7:00', end: '17:00' }], sat: [{ start: '7:00', end: '17:00' }], sun: [{ start: '7:00', end: '17:00' }] } },
+                    { name: 'Nomad Chicago', availability: { fri: [{ start: '10:00', end: '16:00' }], sat: [{ start: '10:00', end: '16:00' }], sun: [{ start: '10:00', end: '14:00' }] } }
+                ]
+            },
+            {
+                category: '🍴 Walk-In Restaurants',
+                items: [
+                    { name: 'Monarch & Lion', availability: { fri: [{ start: '10:00', end: '24:00' }], sat: [{ start: '10:00', end: '24:00' }], sun: [{ start: '10:00', end: '22:00' }] } },
+                    { name: 'Armitage Alehouse', availability: { fri: [{ start: '11:00', end: '22:30' }], sat: [{ start: '10:00', end: '22:30' }], sun: [{ start: '10:00', end: '22:30' }] } },
+                    { name: 'The Izakaya', availability: { fri: [{ start: '17:00', end: '25:00' }], sat: [{ start: '17:00', end: '25:00' }], sun: [{ start: '17:00', end: '23:00' }] } },
+                    { name: 'Akahoshi Ramen', availability: { fri: [{ start: '17:00', end: '21:00' }], sat: [{ start: '17:00', end: '21:00' }] } },
+                    { name: 'Demera Ethiopian', availability: { fri: [{ start: '11:30', end: '22:00' }], sat: [{ start: '11:30', end: '22:00' }], sun: [{ start: '16:00', end: '21:00' }] } }
+                ]
+            },
+            {
+                category: '🎆 Afternoon Activities',
+                items: [
+                    { name: 'Cultural Center', availability: { fri: [{ start: '10:00', end: '17:00' }], sat: [{ start: '10:00', end: '17:00' }], sun: [{ start: '10:00', end: '17:00' }] } },
+                    { name: 'History Museum', availability: { fri: [{ start: '9:30', end: '16:30' }], sat: [{ start: '9:30', end: '16:30' }], sun: [{ start: '12:00', end: '17:00' }] } },
+                    { name: 'Lincoln Park Zoo', availability: { fri: [{ start: '10:00', end: '19:00' }], sat: [{ start: '10:00', end: '19:00' }], sun: [{ start: '10:00', end: '19:00' }] } },
+                    { name: 'Navy Pier Fireworks', availability: { sat: [{ start: '22:00', end: '22:15' }] } }
+                ]
+            }
+        ];
+
+        const optionsPanel = document.getElementById('options-panel');
+        const highlightContainer = document.getElementById('highlight-container');
+        
+        // Populate the options panel
+        let content = `
+            <div class="flex items-center">
+                <input type="radio" id="clear-highlights" name="highlight-option" value="clear" class="mr-2" checked>
+                <label for="clear-highlights" class="font-semibold">Clear Highlights</label>
             </div>
+        `;
 
-        </div>
-    </section>
+        optionsData.forEach(category => {
+            content += `<h4 class="font-bold mt-4 text-gray-700">${category.category}</h4>`;
+            category.items.forEach(item => {
+                const id = `option-${item.name.replace(/\s+/g, '-')}`;
+                content += `
+                    <div class="flex items-center ml-2">
+                        <input type="radio" id="${id}" name="highlight-option" value="${item.name}" class="mr-2">
+                        <label for="${id}">${item.name}</label>
+                    </div>
+                `;
+            });
+        });
+        optionsPanel.innerHTML = content;
 
-</div>
+        // Add event listener for options panel
+        optionsPanel.addEventListener('change', function(e) {
+            if (e.target.name === 'highlight-option') {
+                updateHighlights(e.target.value);
+            }
+        });
+
+        function timeToRow(timeStr) {
+            const [hour, minute] = timeStr.split(':').map(Number);
+            const totalMinutes = (hour * 60) + (minute || 0);
+            const startMinutes = 11 * 60;
+            const row = 2 + Math.floor((totalMinutes - startMinutes) / 30);
+            return Math.max(2, row); 
+        }
+
+        function updateHighlights(selectedOptionName) {
+            highlightContainer.innerHTML = ''; 
+
+            if (selectedOptionName === 'clear') {
+                return;
+            }
+
+            const selectedItem = optionsData.flatMap(c => c.items).find(i => i.name === selectedOptionName);
+            if (!selectedItem) return;
+
+            const dayToCol = { thu: 2, fri: 3, sat: 4, sun: 5 };
+
+            for (const day in selectedItem.availability) {
+                const col = dayToCol[day];
+                if (!col) continue;
+
+                selectedItem.availability[day].forEach(slot => {
+                    const startRow = timeToRow(slot.start);
+                    let endRow = timeToRow(slot.end);
+                    // Special handling for times that cross midnight like 1 AM
+                    if (parseFloat(slot.end) < parseFloat(slot.start)) {
+                        endRow = 28; // End of the grid
+                    }
+                    
+                    if (endRow > startRow) {
+                        const highlight = document.createElement('div');
+                        highlight.className = 'highlight-overlay';
+                        highlight.style.gridColumn = col;
+                        highlight.style.gridRow = `${startRow} / ${endRow}`;
+                        highlightContainer.appendChild(highlight);
+                    }
+                });
+            }
+        }
+
+        // Tab functionality for bottom section
+        const foodTabButton = document.getElementById('food-tab-button');
+        const activitiesTabButton = document.getElementById('activities-tab-button');
+        const foodContent = document.getElementById('food-content');
+        const activitiesContent = document.getElementById('activities-content');
+        const detailsLink = document.getElementById('details-link');
+
+        foodTabButton.addEventListener('click', () => {
+            foodTabButton.classList.add('active');
+            activitiesTabButton.classList.remove('active');
+            foodContent.classList.remove('hidden');
+            activitiesContent.classList.add('hidden');
+        });
+
+        activitiesTabButton.addEventListener('click', () => {
+            activitiesTabButton.classList.add('active');
+            foodTabButton.classList.remove('active');
+            activitiesContent.classList.remove('hidden');
+            foodContent.classList.add('hidden');
+        });
+        
+        detailsLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            document.getElementById('more-details-section').scrollIntoView({
+                behavior: 'smooth'
+            });
+        });
+    });
+    </script>
 </body>
 </html>
