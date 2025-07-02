@@ -30,9 +30,10 @@
             border-left: 4px solid #FC913A;
         }
         .schedule-grid {
+            position: relative;
             display: grid;
             grid-template-columns: 60px repeat(4, 1fr);
-            grid-template-rows: auto repeat(13, 40px);
+            grid-template-rows: auto repeat(26, 20px);
             gap: 4px;
         }
         .time-label {
@@ -42,7 +43,7 @@
             padding-right: 10px;
             font-size: 12px;
             color: #6b7280;
-            grid-row-end: span 1;
+            grid-row-end: span 2;
         }
         .day-header {
             text-align: center;
@@ -51,7 +52,7 @@
             position: sticky;
             top: 0;
             background-color: #f0f2f5;
-            z-index: 10;
+            z-index: 20;
         }
         .activity-block {
             border-radius: 8px;
@@ -63,6 +64,14 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
+            z-index: 10;
+            position: relative;
+        }
+        .grid-line {
+            border-bottom: 1px solid #e5e7eb;
+            grid-column: 2 / -1;
+            z-index: 1;
+            grid-row-end: span 2;
         }
     </style>
 </head>
@@ -90,50 +99,72 @@
             </p>
             <div class="overflow-x-auto">
                 <div class="schedule-grid" style="min-width: 600px;">
+                    <!-- Grid Lines -->
+                    <div class="grid-line" style="grid-row: 2;"></div>
+                    <div class="grid-line" style="grid-row: 4;"></div>
+                    <div class="grid-line" style="grid-row: 6;"></div>
+                    <div class="grid-line" style="grid-row: 8;"></div>
+                    <div class="grid-line" style="grid-row: 10;"></div>
+                    <div class="grid-line" style="grid-row: 12;"></div>
+                    <div class="grid-line" style="grid-row: 14;"></div>
+                    <div class="grid-line" style="grid-row: 16;"></div>
+                    <div class="grid-line" style="grid-row: 18;"></div>
+                    <div class="grid-line" style="grid-row: 20;"></div>
+                    <div class="grid-line" style="grid-row: 22;"></div>
+                    <div class="grid-line" style="grid-row: 24;"></div>
+                    <div class="grid-line" style="grid-row: 26;"></div>
+
+                    <!-- Headers -->
                     <div></div>
                     <div class="day-header text-gray-700">Thursday</div>
                     <div class="day-header text-gray-700">Friday</div>
                     <div class="day-header text-gray-700">Saturday</div>
                     <div class="day-header text-gray-700">Sunday</div>
                     
+                    <!-- Time Labels -->
                     <div class="time-label" style="grid-row: 2;">11 AM</div>
-                    <div class="time-label" style="grid-row: 3;">12 PM</div>
-                    <div class="time-label" style="grid-row: 4;">1 PM</div>
-                    <div class="time-label" style="grid-row: 5;">2 PM</div>
-                    <div class="time-label" style="grid-row: 6;">3 PM</div>
-                    <div class="time-label" style="grid-row: 7;">4 PM</div>
-                    <div class="time-label" style="grid-row: 8;">5 PM</div>
-                    <div class="time-label" style="grid-row: 9;">6 PM</div>
-                    <div class="time-label" style="grid-row: 10;">7 PM</div>
-                    <div class="time-label" style="grid-row: 11;">8 PM</div>
-                    <div class="time-label" style="grid-row: 12;">9 PM</div>
-                    <div class="time-label" style="grid-row: 13;">10 PM</div>
-                    <div class="time-label" style="grid-row: 14;">11 PM</div>
+                    <div class="time-label" style="grid-row: 4;">12 PM</div>
+                    <div class="time-label" style="grid-row: 6;">1 PM</div>
+                    <div class="time-label" style="grid-row: 8;">2 PM</div>
+                    <div class="time-label" style="grid-row: 10;">3 PM</div>
+                    <div class="time-label" style="grid-row: 12;">4 PM</div>
+                    <div class="time-label" style="grid-row: 14;">5 PM</div>
+                    <div class="time-label" style="grid-row: 16;">6 PM</div>
+                    <div class="time-label" style="grid-row: 18;">7 PM</div>
+                    <div class="time-label" style="grid-row: 20;">8 PM</div>
+                    <div class="time-label" style="grid-row: 22;">9 PM</div>
+                    <div class="time-label" style="grid-row: 24;">10 PM</div>
+                    <div class="time-label" style="grid-row: 26;">11 PM</div>
 
-                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 9 / 14;">
+                    <!-- Activity Blocks -->
+                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 18 / 28;">
                         <strong class="font-semibold">Game Night</strong>
                         <span>At our apartment</span>
                     </div>
                     
-                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 3; grid-row: 4 / 6;">
+                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 3; grid-row: 6 / 10;">
                         <strong class="font-semibold">Flight Club ✅</strong>
                         <span>Darts & Drinks</span>
                     </div>
-                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 3; grid-row: 10 / 12;">
+                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 3; grid-row: 18 / 22;">
                         <strong class="font-semibold">Fogo de Chão ✅</strong>
                         <span>Dinner</span>
                     </div>
 
-                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 4; grid-row: 6 / 8;">
+                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 5 / 12;">
+                        <strong class="font-semibold">Movie: MI:8 ❓</strong>
+                        <span>AMC Dine-In</span>
+                    </div>
+                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 4; grid-row: 12 / 16;">
                         <strong class="font-semibold">Xoco ➡️</strong>
                         <span>Late Lunch</span>
                     </div>
-                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 9 / 13;">
+                    <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 17 / 24;">
                         <strong class="font-semibold">G-Cue Billiards ❓</strong>
                         <span>(Tentative)</span>
                     </div>
 
-                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 5; grid-row: 8 / 11;">
+                    <div class="activity-block" style="background-color: #A0C4FF; grid-column: 5; grid-row: 14 / 20;">
                         <strong class="font-semibold">Pequod's ✅</strong>
                         <span>Deep Dish Dinner</span>
                     </div>
@@ -151,7 +182,7 @@
                         <p class="font-semibold text-gray-500 mb-4">Welcome & Game Night</p>
                         <ul class="space-y-3 text-gray-700">
                             <li><strong class="font-semibold">✈️ Afternoon:</strong> Arrival! We're so excited to see you.</li>
-                            <li><strong class="font-semibold">🧙‍♂️ Evening:</strong> Casual night in at our apartment. We'll order food and you can teach us how to play Wizard!</li>
+                            <li><strong class="font-semibold">🧙‍♂️ Evening:</strong> Casual night in at our apartment. We'll order food and are looking forward to learning/playing Wizard!</li>
                         </ul>
                     </div>
                 </div>
@@ -162,12 +193,12 @@
                         <p class="font-semibold text-gray-500 mb-4">Darts & Dinner</p>
                         <ul class="space-y-4 text-gray-700">
                             <li>
-                                <div class="font-semibold">🎯 1:00 PM - 3:00 PM: <a href="https://us.flightclubdarts.com/chicago/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Flight Club</a></div>
+                                <div class="font-semibold">🎯 1:00 PM - 3:00 PM: <a href="https://us.flightclubdarts.com/chicago/wacker/menu/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Flight Club</a></div>
                                 <div class="text-sm pl-5">Darts, light snacks, and drinks. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
                             </li>
                             <li>
                                 <div class="font-semibold">🥩 7:00 PM - 9:00 PM: <a href="https://fogodechao.com/location/chicago/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Fogo de Chão</a></div>
-                                <div class="text-sm pl-5">A fantastic Brazilian steakhouse experience. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
+                                <div class="text-sm pl-5">A tasty Brazilian steakhouse experience. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
                             </li>
                         </ul>
                     </div>
@@ -176,15 +207,19 @@
                 <div id="timeline-saturday" class="mb-10 relative">
                     <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
                         <h3 class="text-2xl font-bold text-[#FF4E50]">Saturday, July 5th</h3>
-                        <p class="font-semibold text-gray-500 mb-4">Tacos & Billiards</p>
+                        <p class="font-semibold text-gray-500 mb-4">Movie, Tacos & Billiards</p>
                          <ul class="space-y-4 text-gray-700">
                             <li>
-                                <div class="font-semibold">🌮 3:00 PM - 4:00 PM (approx): <a href="https://www.rickbayless.com/restaurants/xoco/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Xoco</a></div>
+                                <div class="font-semibold">🎬 12:30 PM - 4:00 PM: <a href="https://www.amctheatres.com/movie-theatres/chicago/amc-dine-in-block-37" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Movie at AMC Dine-In</a></div>
+                                <div class="text-sm pl-5">Watching Mission: Impossible 8. The end time includes a buffer for previews! <span class="font-bold text-orange-500">[❓ Tentative]</span></div>
+                            </li>
+                            <li>
+                                <div class="font-semibold">🌮 4:00 PM - 6:00 PM: <a href="https://www.rickbayless.com/restaurants/xoco/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Xoco</a></div>
                                 <div class="text-sm pl-5">Late lunch at one of Rick Bayless's famous spots. <span class="font-bold text-blue-600">[➡️ Walk-In]</span></div>
                             </li>
                             <li>
-                                <div class="font-semibold">🎱 6:00 PM onwards: <a href="https://www.gcuebilliards.com/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">G-Cue Billiards</a></div>
-                                <div class="text-sm pl-5">A possible evening of friendly competition. <span class="font-bold text-orange-500">[❓ Tentative]</span></div>
+                                <div class="font-semibold">🎱 6:30 PM - 10:00 PM: <a href="https://www.gcuebilliards.com/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">G-Cue Billiards</a></div>
+                                <div class="text-sm pl-5">An option for something fun to do as a group - snacky bar food and drinks available. <span class="font-bold text-orange-500">[❓ Tentative]</span></div>
                             </li>
                         </ul>
                     </div>
