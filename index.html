@@ -110,7 +110,7 @@
 </head>
 <body class="text-gray-800">
 
-    <div class="container mx-auto p-4 md:p-8 max-w-full">
+    <div class="p-4 md:p-8 w-full">
 
         <header class="text-center mb-12">
             <h1 class="text-4xl md:text-5xl font-bold text-[#FF4E50]">Welcome to Chicago!</h1>
@@ -119,54 +119,139 @@
 
         <section class="mb-12 bg-white rounded-xl shadow-lg p-4 md:p-6">
             <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Weekend at a Glance</h2>
-            <div class="flex flex-nowrap gap-8">
-                <!-- Timeline Column -->
-                <div class="flex-grow" style="min-width: 640px;">
-                    <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 mb-2 text-sm text-gray-600 px-2">
-                        <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #A0C4FF;"></span>Food</span>
-                        <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #C8E6C9;"></span>Activity</span>
-                        <span class="border-l border-gray-300 h-4 mx-2"></span>
-                        <span class="font-semibold">✅ Reserved</span>
-                        <span class="font-semibold">➡️ Walk-In</span>
-                        <span class="font-semibold">❓ Tentative</span>
+            
+            <!-- This container will scroll horizontally on smaller screens -->
+            <div class="overflow-x-auto">
+                <div class="flex">
+                    <!-- Timeline Column -->
+                    <div style="min-width: 640px;">
+                        <div class="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 mb-2 text-sm text-gray-600 px-2">
+                            <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #A0C4FF;"></span>Food</span>
+                            <span class="flex items-center"><span class="h-3 w-3 rounded-full mr-2" style="background-color: #C8E6C9;"></span>Activity</span>
+                            <span class="border-l border-gray-300 h-4 mx-2"></span>
+                            <span class="font-semibold">✅ Reserved</span>
+                            <span class="font-semibold">➡️ Walk-In</span>
+                            <span class="font-semibold">❓ Tentative</span>
+                        </div>
+                        
+                        <!-- The grid container. No overflow or min-width needed here as parent handles it. -->
+                        <div>
+                             <div id="schedule-container" class="schedule-grid">
+                                <!-- Highlight overlays will be injected here by JS -->
+                                <div id="highlight-container" class="contents"></div>
+
+                                <!-- Grid Lines -->
+                                <div class="grid-line" style="grid-row: 2;"></div><div class="grid-line grid-line-dashed" style="grid-row: 3;"></div><div class="grid-line" style="grid-row: 4;"></div><div class="grid-line grid-line-dashed" style="grid-row: 5;"></div><div class="grid-line" style="grid-row: 6;"></div><div class="grid-line grid-line-dashed" style="grid-row: 7;"></div><div class="grid-line" style="grid-row: 8;"></div><div class="grid-line grid-line-dashed" style="grid-row: 9;"></div><div class="grid-line" style="grid-row: 10;"></div><div class="grid-line grid-line-dashed" style="grid-row: 11;"></div><div class="grid-line" style="grid-row: 12;"></div><div class="grid-line grid-line-dashed" style="grid-row: 13;"></div><div class="grid-line" style="grid-row: 14;"></div><div class="grid-line grid-line-dashed" style="grid-row: 15;"></div><div class="grid-line" style="grid-row: 16;"></div><div class="grid-line grid-line-dashed" style="grid-row: 17;"></div><div class="grid-line" style="grid-row: 18;"></div><div class="grid-line grid-line-dashed" style="grid-row: 19;"></div><div class="grid-line" style="grid-row: 20;"></div><div class="grid-line grid-line-dashed" style="grid-row: 21;"></div><div class="grid-line" style="grid-row: 22;"></div><div class="grid-line grid-line-dashed" style="grid-row: 23;"></div><div class="grid-line" style="grid-row: 24;"></div><div class="grid-line grid-line-dashed" style="grid-row: 25;"></div><div class="grid-line" style="grid-row: 26;"></div><div class="grid-line grid-line-dashed" style="grid-row: 27;"></div>
+
+                                <!-- Headers -->
+                                <div></div><div class="day-header text-gray-700">Thursday</div><div class="day-header text-gray-700">Friday</div><div class="day-header text-gray-700">Saturday</div><div class="day-header text-gray-700">Sunday</div>
+                                
+                                <!-- Time Labels -->
+                                <div class="time-label time-label-hour" style="grid-row: 2;"><span>11 AM</span></div><div class="time-label time-label-half" style="grid-row: 3;">:30</div><div class="time-label time-label-hour" style="grid-row: 4;"><span>12 PM</span></div><div class="time-label time-label-half" style="grid-row: 5;">:30</div><div class="time-label time-label-hour" style="grid-row: 6;"><span>1 PM</span></div><div class="time-label time-label-half" style="grid-row: 7;">:30</div><div class="time-label time-label-hour" style="grid-row: 8;"><span>2 PM</span></div><div class="time-label time-label-half" style="grid-row: 9;">:30</div><div class="time-label time-label-hour" style="grid-row: 10;"><span>3 PM</span></div><div class="time-label time-label-half" style="grid-row: 11;">:30</div><div class="time-label time-label-hour" style="grid-row: 12;"><span>4 PM</span></div><div class="time-label time-label-half" style="grid-row: 13;">:30</div><div class="time-label time-label-hour" style="grid-row: 14;"><span>5 PM</span></div><div class="time-label time-label-half" style="grid-row: 15;">:30</div><div class="time-label time-label-hour" style="grid-row: 16;"><span>6 PM</span></div><div class="time-label time-label-half" style="grid-row: 17;">:30</div><div class="time-label time-label-hour" style="grid-row: 18;"><span>7 PM</span></div><div class="time-label time-label-half" style="grid-row: 19;">:30</div><div class="time-label time-label-hour" style="grid-row: 20;"><span>8 PM</span></div><div class="time-label time-label-half" style="grid-row: 21;">:30</div><div class="time-label time-label-hour" style="grid-row: 22;"><span>9 PM</span></div><div class="time-label time-label-half" style="grid-row: 23;">:30</div><div class="time-label time-label-hour" style="grid-row: 24;"><span>10 PM</span></div><div class="time-label time-label-half" style="grid-row: 25;">:30</div><div class="time-label time-label-hour" style="grid-row: 26;"><span>11 PM</span></div><div class="time-label time-label-half" style="grid-row: 27;">:30</div>
+
+                                <!-- Activity Blocks -->
+                                <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 18 / 28;"><strong class="font-semibold">Game Night</strong><span>At our apartment</span></div>
+                                <div class="activity-block" style="background-color: #C8E6C9; grid-column: 3; grid-row: 6 / 10;"><strong class="font-semibold">Flight Club ✅</strong><span>Darts & Drinks</span></div>
+                                <div class="activity-block" style="background-color: #A0C4FF; grid-column: 3; grid-row: 18 / 22;"><strong class="font-semibold">Fogo de Chão ✅</strong><span>Dinner</span></div>
+                                <div class="activity-block" style="background-color: #A0C4FF; grid-column: 4; grid-row: 11 / 15;"><strong class="font-semibold">Xoco ➡️</strong><span>Late Lunch</span></div>
+                                <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 16 / 24;"><strong class="font-semibold">G-Cue Billiards ❓</strong><span>(Tentative)</span></div>
+                                <div class="activity-block" style="background-color: #C8E6C9; grid-column: 5; grid-row: 5 / 12;"><strong class="font-semibold">Movie: MI:8 ✅</strong><span>AMC Dine-In</span></div>
+                                <div class="activity-block" style="background-color: #A0C4FF; grid-column: 5; grid-row: 14 / 20;"><strong class="font-semibold">Pequod's ✅</strong><span>Deep Dish Dinner</span></div>
+                            </div>
+                        </div>
                     </div>
-                    
-                    <div class="overflow-x-auto">
-                        <div id="schedule-container" class="schedule-grid">
-                            <!-- Highlight overlays will be injected here by JS -->
-                            <div id="highlight-container" class="contents"></div>
-
-                            <!-- Grid Lines -->
-                            <div class="grid-line" style="grid-row: 2;"></div><div class="grid-line grid-line-dashed" style="grid-row: 3;"></div><div class="grid-line" style="grid-row: 4;"></div><div class="grid-line grid-line-dashed" style="grid-row: 5;"></div><div class="grid-line" style="grid-row: 6;"></div><div class="grid-line grid-line-dashed" style="grid-row: 7;"></div><div class="grid-line" style="grid-row: 8;"></div><div class="grid-line grid-line-dashed" style="grid-row: 9;"></div><div class="grid-line" style="grid-row: 10;"></div><div class="grid-line grid-line-dashed" style="grid-row: 11;"></div><div class="grid-line" style="grid-row: 12;"></div><div class="grid-line grid-line-dashed" style="grid-row: 13;"></div><div class="grid-line" style="grid-row: 14;"></div><div class="grid-line grid-line-dashed" style="grid-row: 15;"></div><div class="grid-line" style="grid-row: 16;"></div><div class="grid-line grid-line-dashed" style="grid-row: 17;"></div><div class="grid-line" style="grid-row: 18;"></div><div class="grid-line grid-line-dashed" style="grid-row: 19;"></div><div class="grid-line" style="grid-row: 20;"></div><div class="grid-line grid-line-dashed" style="grid-row: 21;"></div><div class="grid-line" style="grid-row: 22;"></div><div class="grid-line grid-line-dashed" style="grid-row: 23;"></div><div class="grid-line" style="grid-row: 24;"></div><div class="grid-line grid-line-dashed" style="grid-row: 25;"></div><div class="grid-line" style="grid-row: 26;"></div><div class="grid-line grid-line-dashed" style="grid-row: 27;"></div>
-
-                            <!-- Headers -->
-                            <div></div><div class="day-header text-gray-700">Thursday</div><div class="day-header text-gray-700">Friday</div><div class="day-header text-gray-700">Saturday</div><div class="day-header text-gray-700">Sunday</div>
-                            
-                            <!-- Time Labels -->
-                            <div class="time-label time-label-hour" style="grid-row: 2;"><span>11 AM</span></div><div class="time-label time-label-half" style="grid-row: 3;">:30</div><div class="time-label time-label-hour" style="grid-row: 4;"><span>12 PM</span></div><div class="time-label time-label-half" style="grid-row: 5;">:30</div><div class="time-label time-label-hour" style="grid-row: 6;"><span>1 PM</span></div><div class="time-label time-label-half" style="grid-row: 7;">:30</div><div class="time-label time-label-hour" style="grid-row: 8;"><span>2 PM</span></div><div class="time-label time-label-half" style="grid-row: 9;">:30</div><div class="time-label time-label-hour" style="grid-row: 10;"><span>3 PM</span></div><div class="time-label time-label-half" style="grid-row: 11;">:30</div><div class="time-label time-label-hour" style="grid-row: 12;"><span>4 PM</span></div><div class="time-label time-label-half" style="grid-row: 13;">:30</div><div class="time-label time-label-hour" style="grid-row: 14;"><span>5 PM</span></div><div class="time-label time-label-half" style="grid-row: 15;">:30</div><div class="time-label time-label-hour" style="grid-row: 16;"><span>6 PM</span></div><div class="time-label time-label-half" style="grid-row: 17;">:30</div><div class="time-label time-label-hour" style="grid-row: 18;"><span>7 PM</span></div><div class="time-label time-label-half" style="grid-row: 19;">:30</div><div class="time-label time-label-hour" style="grid-row: 20;"><span>8 PM</span></div><div class="time-label time-label-half" style="grid-row: 21;">:30</div><div class="time-label time-label-hour" style="grid-row: 22;"><span>9 PM</span></div><div class="time-label time-label-half" style="grid-row: 23;">:30</div><div class="time-label time-label-hour" style="grid-row: 24;"><span>10 PM</span></div><div class="time-label time-label-half" style="grid-row: 25;">:30</div><div class="time-label time-label-hour" style="grid-row: 26;"><span>11 PM</span></div><div class="time-label time-label-half" style="grid-row: 27;">:30</div>
-
-                            <!-- Activity Blocks -->
-                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 2; grid-row: 18 / 28;"><strong class="font-semibold">Game Night</strong><span>At our apartment</span></div>
-                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 3; grid-row: 6 / 10;"><strong class="font-semibold">Flight Club ✅</strong><span>Darts & Drinks</span></div>
-                            <div class="activity-block" style="background-color: #A0C4FF; grid-column: 3; grid-row: 18 / 22;"><strong class="font-semibold">Fogo de Chão ✅</strong><span>Dinner</span></div>
-                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 5 / 12;"><strong class="font-semibold">Movie: MI:8 ❓</strong><span>AMC Dine-In</span></div>
-                            <div class="activity-block" style="background-color: #A0C4FF; grid-column: 4; grid-row: 12 / 16;"><strong class="font-semibold">Xoco ➡️</strong><span>Late Lunch</span></div>
-                            <div class="activity-block" style="background-color: #C8E6C9; grid-column: 4; grid-row: 17 / 24;"><strong class="font-semibold">G-Cue Billiards ❓</strong><span>(Tentative)</span></div>
-                            <div class="activity-block" style="background-color: #A0C4FF; grid-column: 5; grid-row: 14 / 20;"><strong class="font-semibold">Pequod's ✅</strong><span>Deep Dish Dinner</span></div>
+                    <!-- Options Panel -->
+                    <div class="flex-shrink-0 w-[320px] ml-8">
+                        <div class="bg-gray-50 p-4 rounded-lg h-full">
+                            <h3 class="text-xl font-bold text-center mb-2">Explore Options</h3>
+                            <p class="text-xs text-center text-gray-500 mb-2">Select an option to see its available hours highlighted on the timeline.</p>
+                            <div class="text-center mb-4">
+                                <a href="#more-details-section" id="details-link" class="text-sm text-blue-600 hover:underline">See Full Details Below &darr;</a>
+                            </div>
+                            <div id="options-panel" class="space-y-4 text-sm">
+                                <!-- Options will be injected here by JS -->
+                            </div>
                         </div>
                     </div>
                 </div>
-                <!-- Options Panel -->
-                <div class="flex-shrink-0" style="width: 320px;">
-                    <div class="bg-gray-50 p-4 rounded-lg h-full">
-                        <h3 class="text-xl font-bold text-center mb-2">Explore Options</h3>
-                        <p class="text-xs text-center text-gray-500 mb-2">Select an option to see its available hours highlighted on the timeline.</p>
-                        <div class="text-center mb-4">
-                            <a href="#more-details-section" id="details-link" class="text-sm text-blue-600 hover:underline">See Full Details Below &darr;</a>
-                        </div>
-                        <div id="options-panel" class="space-y-4 text-sm">
-                            <!-- Options will be injected here by JS -->
-                        </div>
+            </div>
+        </section>
+
+        <!-- Day-by-Day Guide Section -->
+        <section class="mt-12">
+            <h2 class="text-3xl font-bold text-center mb-8">Your Day-by-Day Guide</h2>
+            <div class="relative pl-8">
+                <div id="timeline-thursday" class="mb-10 relative">
+                    <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
+                        <h3 class="text-2xl font-bold text-[#FF4E50]">Thursday, July 3rd</h3>
+                        <p class="font-semibold text-gray-500 mb-4">Welcome & Game Night</p>
+                        <ul class="space-y-3 text-gray-700">
+                            <li><strong class="font-semibold">✈️ Afternoon:</strong> Arrival! We're so excited to see you.</li>
+                            <li><strong class="font-semibold">🧙‍♂️ Evening:</strong> Casual night in at our apartment. We'll order food and are looking forward to learning/playing Wizard!</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div id="timeline-friday" class="mb-10 relative">
+                    <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
+                        <h3 class="text-2xl font-bold text-[#FF4E50]">Friday, July 4th</h3>
+                        <p class="font-semibold text-gray-500 mb-4">Darts & Dinner</p>
+                        <ul class="space-y-4 text-gray-700">
+                            <li>
+                                <div class="font-semibold">🎯 1:00 PM - 3:00 PM:
+                                    <a href="https://us.flightclubdarts.com/chicago/wacker/menu/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Flight Club</a>
+                                </div>
+                                <div class="text-sm pl-5">Darts, light snacks, and drinks. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
+                            </li>
+                            <li>
+                                <div class="font-semibold">🥩 7:00 PM - 9:00 PM:
+                                    <a href="https://fogodechao.com/location/chicago/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Fogo de Chão</a>
+                                </div>
+                                <div class="text-sm pl-5">A tasty Brazilian steakhouse experience. <span class="font-bold text-green-600">[✅ Reserved]</span></div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div id="timeline-saturday" class="mb-10 relative">
+                    <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
+                        <h3 class="text-2xl font-bold text-[#FF4E50]">Saturday, July 5th</h3>
+                        <p class="font-semibold text-gray-500 mb-4">Tacos & Billiards</p>
+                        <ul class="space-y-4 text-gray-700">
+                            <li>
+                                <div class="font-semibold">🌮 3:30 PM - 5:30 PM:
+                                    <a href="https://www.rickbayless.com/restaurants/xoco/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Xoco</a>
+                                </div>
+                                <div class="text-sm pl-5">Late lunch at one of Rick Bayless's famous spots. <span class="font-bold text-blue-600">[➡️ Walk-In]</span></div>
+                            </li>
+                            <li>
+                                <div class="font-semibold">🎱 6:00 PM - 10:00 PM:
+                                    <a href="https://www.gcuebilliards.com/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">G-Cue Billiards</a>
+                                </div>
+                                <div class="text-sm pl-5">An option for something fun to do as a group&nbsp;&mdash; snacky bar food and drinks available. <span class="font-bold text-orange-500">[❓ Tentative]</span></div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div id="timeline-sunday" class="relative">
+                    <div class="day-card bg-white rounded-xl shadow-lg p-6 timeline-item">
+                        <h3 class="text-2xl font-bold text-[#FF4E50]">Sunday, July 6th</h3>
+                        <p class="font-semibold text-gray-500 mb-4">Movie & Deep Dish Farewell</p>
+                        <ul class="space-y-4 text-gray-700">
+                             <li>
+                                <div class="font-semibold">🎬 12:30 PM - 4:00 PM:
+                                    <a href="https://www.amctheatres.com/movie-theatres/chicago/amc-dine-in-block-37" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Movie at AMC Dine-In</a>
+                                </div>
+                                <div class="text-sm pl-5">Watching Mission: Impossible 8. The end time includes a buffer for previews! <span class="font-bold text-green-600">[✅ Reserved]</span></div>
+                            </li>
+                            <li>
+                                <div class="font-semibold">🍕 5:00 PM - 8:00 PM:
+                                    <a href="https://pequodspizza.com/" target="_blank" rel="noopener noreferrer" class="underline text-blue-600 hover:text-blue-800">Pequod's Pizza</a>
+                                </div>
+                                <div class="text-sm pl-5">Ending the trip with some iconic Chicago deep-dish! <span class="font-bold text-green-600">[✅ Reserved]</span></div>
+                            </li>
+                        </ul>
                     </div>
                 </div>
             </div>
@@ -189,7 +274,7 @@
                                 <h4 class="font-bold text-lg text-blue-700"><a href="http://irazuchicago.com" target="_blank" class="underline">Irazu (Costa Rican)</a></h4>
                                 <p><strong>Snapshot:</strong> Family‑run Bucktown landmark serving “pura vida” staples like gallo pinto, plantains and oatmeal shakes since 1990.</p>
                                 <p><strong>Flavors:</strong> Home‑style, mildly spiced Latin comfort; sweet plantains & tangy Lizano sauce provide most of the zip.</p>
-                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 10:30 AM‑9 PM</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 11 AM‑9 PM</p>
                             </div>
                             <div class="bg-white p-4 rounded-lg shadow space-y-2">
                                 <h4 class="font-bold text-lg text-blue-700"><a href="http://velvettaco.com" target="_blank" class="underline">Velvet Taco</a></h4>
@@ -207,7 +292,7 @@
                                 <h4 class="font-bold text-lg text-blue-700"><a href="http://jinjurestaurant.com" target="_blank" class="underline">Jin Ju (Korean)</a></h4>
                                 <p><strong>Snapshot:</strong> Contemporary Korean dining room known for bibimbap, japchae and craft soju cocktails.</p>
                                 <p><strong>Flavors:</strong> Traditional Korean balance of fermented funk, soy‑garlic sweetness and chile heat.</p>
-                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 11 AM‑9 PM</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Thu 5 PM-9 PM (dine-in)</p>
                             </div>
                         </div>
                     </div>
@@ -215,10 +300,10 @@
                         <h3 class="text-2xl font-semibold mb-4 text-gray-800">☕️ Drop‑In Cafés</h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                              <div class="bg-white p-4 rounded-lg shadow space-y-2">
-                                <h4 class="font-bold text-lg text-blue-700"><a href="http://oudcoffee.cafe" target="_blank" class="underline">Oud Coffee & Café</a></h4>
+                                <h4 class="font-bold text-lg text-blue-700"><a href="https://chicago.eater.com/2023/1/31/23579676/oud-cafe-palestinian-coffee-shop-lincoln-park-open" target="_blank" class="underline">Oud Coffee & Café</a></h4>
                                 <p><strong>Snapshot:</strong> Palestinian‑American café with baklava lattes, cardamom‑pistachio “Oud” latte and manakeesh pastries.</p>
                                 <p><strong>Flavors:</strong> Middle‑Eastern spices (cardamom, pistachio, rose), Turkish & Arabic coffee.</p>
-                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat/Sun ~7AM - 7PM (call to confirm)</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri 7AM-7PM / Sat-Sun 8AM-7PM</p>
                              </div>
                              <div class="bg-white p-4 rounded-lg shadow space-y-2">
                                 <h4 class="font-bold text-lg text-blue-700"><a href="http://tary.co" target="_blank" class="underline">Tary Coffee House</a></h4>
@@ -236,7 +321,13 @@
                                 <h4 class="font-bold text-lg text-blue-700"><a href="http://nomad-chicago.com" target="_blank" class="underline">Nomad Chicago</a></h4>
                                 <p><strong>Snapshot:</strong> Women‑owned boutique‑café/gallery serving Metric Coffee espresso and ceremonial‑grade matcha.</p>
                                 <p><strong>Flavors:</strong> Bright, lightly fruity espresso; seasonal herb‑and‑fruit lattes; high‑grade matcha.</p>
-                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 10AM-4PM / Sun 10AM-2PM</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 10AM-4PM / Sun 10AM-4PM</p>
+                             </div>
+                             <div class="bg-white p-4 rounded-lg shadow space-y-2">
+                                <h4 class="font-bold text-lg text-blue-700"><a href="https://www.sawadacoffee.com/chi/home" target="_blank" class="underline">Sawada Coffee</a></h4>
+                                <p><strong>Snapshot:</strong> West Loop café from Japanese latte-art master Hiroshi Sawada, famed for its graffitied warehouse vibe and signature matcha-espresso “Military Latte.”</p>
+                                <p><strong>Flavors:</strong> Grassy matcha meets bold espresso (Military Latte) with vanilla-cocoa sweetness; smoky hojicha-espresso “Black Camo” and other inventive lattes pair with Doughnut Vault pastries.</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 8 AM-4 PM / Sun 8 AM-4 PM</p>
                              </div>
                         </div>
                     </div>
@@ -253,7 +344,7 @@
                                 <h4 class="font-bold text-lg text-blue-700"><a href="http://armitagealehouse.com" target="_blank" class="underline">Armitage Alehouse</a></h4>
                                 <p><strong>Snapshot:</strong> Candle‑lit 1920s London tavern from Hogsalt; famous for Wagyu burgers and masala chicken pot pie.</p>
                                 <p><strong>Flavors:</strong> Rich British comfort plus warm garam masala & fenugreek undertones.</p>
-                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri/Sat 10AM-10:30PM / Sun 10AM-10:30PM</p>
+                                <p class="text-sm text-gray-600"><strong>Hours:</strong> Fri 11AM-10:30PM / Sat 10AM-10:30PM / Sun 10AM-10PM</p>
                             </div>
                             <div class="bg-white p-4 rounded-lg shadow space-y-2">
                                 <h4 class="font-bold text-lg text-blue-700"><a href="http://momotarochicago.com/izakaya" target="_blank" class="underline">The Izakaya at Momotaro</a></h4>
@@ -314,26 +405,27 @@
             { 
                 category: '📦 Thursday Delivery',
                 items: [
-                    { name: 'Irazu', availability: { thu: [{ start: '10:30', end: '21:00' }] } },
+                    { name: 'Irazu', availability: { thu: [{ start: '11:00', end: '21:00' }] } },
                     { name: 'Velvet Taco', availability: { thu: [{ start: '11:00', end: '25:00' }] } }, // 1 AM next day
                     { name: 'Seoul Taco', availability: { thu: [{ start: '11:00', end: '22:00' }] } },
-                    { name: 'Jin Ju', availability: { thu: [{ start: '11:00', end: '21:00' }] } }
+                    { name: 'Jin Ju', availability: { thu: [{ start: '17:00', end: '21:00' }] } }
                 ]
             },
             {
                 category: '☕️ Drop-In Cafés',
                 items: [
-                    { name: 'Oud Coffee', availability: { fri: [{ start: '7:00', end: '19:00' }], sat: [{ start: '7:00', end: '19:00' }], sun: [{ start: '7:00', end: '19:00' }] } },
+                    { name: 'Oud Coffee', availability: { fri: [{ start: '7:00', end: '19:00' }], sat: [{ start: '8:00', end: '19:00' }], sun: [{ start: '8:00', end: '19:00' }] } },
                     { name: 'Tary Coffee', availability: { fri: [{ start: '7:00', end: '20:00' }], sat: [{ start: '8:00', end: '20:00' }], sun: [{ start: '8:00', end: '20:00' }] } },
                     { name: 'Sleep Walk', availability: { fri: [{ start: '7:00', end: '17:00' }], sat: [{ start: '7:00', end: '17:00' }], sun: [{ start: '7:00', end: '17:00' }] } },
-                    { name: 'Nomad Chicago', availability: { fri: [{ start: '10:00', end: '16:00' }], sat: [{ start: '10:00', end: '16:00' }], sun: [{ start: '10:00', end: '14:00' }] } }
+                    { name: 'Nomad Chicago', availability: { fri: [{ start: '10:00', end: '16:00' }], sat: [{ start: '10:00', end: '16:00' }], sun: [{ start: '10:00', end: '16:00' }] } },
+                    { name: 'Sawada Coffee', availability: { fri: [{ start: '8:00', end: '16:00' }], sat: [{ start: '8:00', end: '16:00' }], sun: [{ start: '8:00', end: '16:00' }] } }
                 ]
             },
             {
                 category: '🍴 Walk-In Restaurants',
                 items: [
                     { name: 'Monarch & Lion', availability: { fri: [{ start: '10:00', end: '24:00' }], sat: [{ start: '10:00', end: '24:00' }], sun: [{ start: '10:00', end: '22:00' }] } },
-                    { name: 'Armitage Alehouse', availability: { fri: [{ start: '11:00', end: '22:30' }], sat: [{ start: '10:00', end: '22:30' }], sun: [{ start: '10:00', end: '22:30' }] } },
+                    { name: 'Armitage Alehouse', availability: { fri: [{ start: '11:00', end: '22:30' }], sat: [{ start: '10:00', end: '22:30' }], sun: [{ start: '10:00', end: '22:00' }] } },
                     { name: 'The Izakaya', availability: { fri: [{ start: '17:00', end: '25:00' }], sat: [{ start: '17:00', end: '25:00' }], sun: [{ start: '17:00', end: '23:00' }] } },
                     { name: 'Akahoshi Ramen', availability: { fri: [{ start: '17:00', end: '21:00' }], sat: [{ start: '17:00', end: '21:00' }] } },
                     { name: 'Demera Ethiopian', availability: { fri: [{ start: '11:30', end: '22:00' }], sat: [{ start: '11:30', end: '22:00' }], sun: [{ start: '16:00', end: '21:00' }] } }
@@ -345,7 +437,7 @@
                     { name: 'Cultural Center', availability: { fri: [{ start: '10:00', end: '17:00' }], sat: [{ start: '10:00', end: '17:00' }], sun: [{ start: '10:00', end: '17:00' }] } },
                     { name: 'History Museum', availability: { fri: [{ start: '9:30', end: '16:30' }], sat: [{ start: '9:30', end: '16:30' }], sun: [{ start: '12:00', end: '17:00' }] } },
                     { name: 'Lincoln Park Zoo', availability: { fri: [{ start: '10:00', end: '19:00' }], sat: [{ start: '10:00', end: '19:00' }], sun: [{ start: '10:00', end: '19:00' }] } },
-                    { name: 'Navy Pier Fireworks', availability: { sat: [{ start: '22:00', end: '22:15' }] } }
+                    { name: 'Navy Pier Fireworks', availability: { sat: [{ start: '22:00', end: '23:00' }] } }
                 ]
             }
         ];
