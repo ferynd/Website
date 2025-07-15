@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3-Day Rolling Average Nutrition Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .progress-bar-bg {
+            background-color: #e0e0e0;
+        }
+        .progress-bar-fill {
+            transition: width 0.5s ease-in-out;
+        }
+        .nutrient-card {
+            transition: all 0.3s ease-in-out;
+        }
+        .nutrient-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        /* Custom scrollbar for better aesthetics */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+
+    <!-- Firebase Config -->
+    <script type="module">
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+              apiKey:"AIzaSyBHdodVoGI962K1MWeyAp519duJX22ZDss",
+              authDomain: "jlb-calorietracker.firebaseapp.com",
+              projectId: "jlb-calorietracker",
+              storageBucket: "jlb-calorietracker.firebasestorage.app",
+              messagingSenderId: "994744135946",
+              appId: "1:994744135946:web:ccf2aa11ce73c2c77c4af3",
+              measurementId: "G-3SWQ8KQ2EQ"
+            };
+    
+        // --- Firebase Imports ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { 
+            getAuth, onAuthStateChanged, signInAnonymously, 
+            createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut 
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    
+        // --- App Initialization ---
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // --- Global State ---
+        let userId;
+        let baselineTargets = {};
+        let dailyEntries = new Map();
+    
+        // --- Nutrient Configuration ---
+        const nutrients = {
+            macros: ['calories', 'protein', 'carbs', 'fat'],
+            vitaminsDaily: ['vitaminB12', 'folate', 'vitaminC', 'vitaminB6'],
+            vitaminsAvg: ['vitaminA', 'vitaminD', 'vitaminE', 'vitaminK'],
+            mineralsDaily: ['iron', 'calcium', 'magnesium', 'zinc', 'potassium', 'sodium'],
+            mineralsAvg: ['selenium', 'iodine', 'phosphorus'],
+            optional: ['omega3', 'fiber', 'choline']
+        };
+        const allNutrients = [
+            ...nutrients.macros, ...nutrients.vitaminsDaily, ...nutrients.vitaminsAvg,
+            ...nutrients.mineralsDaily, ...nutrients.mineralsAvg, ...nutrients.optional
+        ];
+        const dailyTrackedNutrients = ['protein', ...nutrients.vitaminsDaily, ...nutrients.mineralsDaily];
+    
+        // --- DOM Elements ---
+        const settingsModal = document.getElementById('settings-modal');
+        const loginModal = document.getElementById('login-modal');
+        const dateInput = document.getElementById('date-input');
+        const dashboard = document.getElementById('dashboard');
+        const loader = document.getElementById('loader');
+        const mainContent = document.getElementById('main-content');
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const userStatus = document.getElementById('user-status');
+    
+        // --- Utility Functions ---
+        const formatDate = (date) => date.toISOString().split('T')[0];
+        const getPastDate = (date, days) => {
+            const pastDate = new Date(date);
+            pastDate.setDate(pastDate.getDate() - days);
+            return pastDate;
+        };
+    
+        const showMessage = (text, isError = false, duration = 5000) => {
+            messageText.textContent = text;
+            messageBox.classList.remove('hidden', 'bg-green-500', 'bg-red-500');
+            messageBox.classList.add(isError ? 'bg-red-500' : 'bg-green-500');
+            setTimeout(() => messageBox.classList.add('hidden'), duration);
+        };
+    
+        // --- App Data Loading ---
+        async function loadUserData() {
+            if (!userId) return;
+            mainContent.classList.add('hidden');
+            loader.classList.remove('hidden');
+            
+            baselineTargets = await fetchTargets();
+            dailyEntries = await fetchRecentEntries();
+            populateStagingAreaFromLog(); // Populate staging area with today's log initially
+            updateDashboard();
+            
+            loader.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+        }
+    
+        // --- UI State Management ---
+        function updateAuthStateUI(user) {
+            if (user) {
+                loginModal.classList.add('hidden');
+                document.getElementById('open-login-btn').classList.add('hidden');
+                document.getElementById('logout-btn').classList.remove('hidden');
+                userStatus.classList.remove('hidden');
+                userStatus.textContent = user.isAnonymous ? 'Logged in as Guest' : user.email;
+            } else {
+                mainContent.classList.add('hidden');
+                loader.classList.add('hidden');
+                loginModal.classList.remove('hidden');
+                document.getElementById('open-login-btn').classList.remove('hidden');
+                document.getElementById('logout-btn').classList.add('hidden');
+                userStatus.classList.add('hidden');
+                userStatus.textContent = '';
+            }
+        }
+        
+        // --- Authentication Logic ---
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                updateAuthStateUI(user);
+                loadUserData();
+            } else {
+                userId = null;
+                updateAuthStateUI(null);
+            }
+        });
+    
+        async function handleSignUp() {
+            const email = document.getElementById('email-input').value;
+            const password = document.getElementById('password-input').value;
+            if (!email || !password) return showMessage("Please enter both email and password.", true);
+            if (password.length < 6) return showMessage("Password should be at least 6 characters long.", true);
+            
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showMessage('Account created successfully!', false);
+            } catch (error) {
+                console.error("Sign up failed:", error);
+                if (error.code === 'auth/email-already-in-use') {
+                    showMessage('This email address is already in use by another account.', true);
+                } else {
+                    showMessage(error.message, true);
+                }
+            }
+        }
+    
+        async function handleLogin() {
+            const email = document.getElementById('email-input').value;
+            const password = document.getElementById('password-input').value;
+            if (!email || !password) return showMessage("Please enter both email and password.", true);
+            
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showMessage('Logged in successfully!', false);
+            } catch (error) {
+                console.error("Login failed:", error);
+                if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+                    showMessage('Incorrect password or email. Please try again.', true);
+                } else {
+                    showMessage(error.message, true);
+                }
+            }
+        }
+        
+        async function handleGuestLogin() {
+            try {
+                await signInAnonymously(auth);
+                showMessage('Continuing as a guest. Data is saved to this browser only.', false);
+            } catch (error) {
+                console.error("Anonymous sign-in failed:", error);
+                showMessage("Could not sign in as guest.", true);
+            }
+        }
+    
+        async function handleLogout() {
+            try {
+                await signOut(auth);
+                baselineTargets = {};
+                dailyEntries.clear();
+                dashboard.innerHTML = '';
+                showMessage("You have been logged out.", false);
+            } catch (error) {
+                console.error("Logout failed:", error);
+                showMessage("Failed to log out.", true);
+            }
+        }
+    
+        // --- Firebase Functions ---
+        async function saveTargets(targets) {
+            if (!userId) return showMessage("Cannot save targets. Not authenticated.", true);
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/targets/baseline`), targets);
+                baselineTargets = targets;
+                showMessage("Targets saved successfully!");
+                updateDashboard();
+            } catch (error) {
+                console.error("Error saving targets:", error);
+                showMessage("Failed to save targets.", true);
+            }
+        }
+    
+        async function fetchTargets() {
+            if (!userId) return {};
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/targets/baseline`);
+                const docSnap = await getDoc(docRef);
+                return docSnap.exists() ? docSnap.data() : {};
+            } catch (error) {
+                console.error("Error fetching targets:", error);
+                return {};
+            }
+        }
+        
+        async function saveDailyEntry(dateStr, entry) {
+            if (!userId) return showMessage("Cannot save entry. Not authenticated.", true);
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/dailyEntries`, dateStr), entry);
+                dailyEntries.set(dateStr, entry);
+                showMessage(`Entry for ${dateStr} saved!`);
+                updateDashboard();
+                populateStagingAreaFromLog(); // Re-sync staging area after save
+            } catch (error) {
+                console.error("Error saving daily entry:", error);
+                showMessage("Failed to save entry.", true);
+            }
+        }
+        
+        async function fetchAllEntries() {
+            if (!userId) return [];
+            const entries = [];
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const q = query(collection(db, `artifacts/${appId}/users/${userId}/dailyEntries`), orderBy("date", "asc"));
+            const querySnapshot = await getDocs(q);
+            querySnapshot.forEach((doc) => entries.push(doc.data()));
+            return entries;
+        }
+    
+        async function fetchRecentEntries() {
+            if (!userId) return new Map();
+            const entries = new Map();
+            const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const q = query(collection(db, `artifacts/${appId}/users/${userId}/dailyEntries`), orderBy("date", "desc"), limit(10));
+            const querySnapshot = await getDocs(q);
+            querySnapshot.forEach((doc) => entries.set(doc.id, doc.data()));
+            return entries;
+        }
+    
+        // --- Calculation Engine ---
+        function calculateDashboardMetrics() {
+            const todayStr = dateInput.value;
+            const today = new Date(todayStr + 'T00:00:00');
+            const yesterday = getPastDate(today, 1);
+            const dayBefore = getPastDate(today, 2);
+    
+            const todayEntry = dailyEntries.get(formatDate(today)) || {};
+            const yesterdayEntry = dailyEntries.get(formatDate(yesterday)) || {};
+            const dayBeforeEntry = dailyEntries.get(formatDate(dayBefore)) || {};
+            
+            const T = (name) => parseFloat(baselineTargets[name] || 0);
+    
+            const calculateAdjustedTarget = (nutrientName) => {
+                const baselineTarget = T(nutrientName);
+                const yesterdayActual = parseFloat(yesterdayEntry[nutrientName]) || baselineTarget;
+                const dayBeforeActual = parseFloat(dayBeforeEntry[nutrientName]) || baselineTarget;
+                const adjustment = (yesterdayActual + dayBeforeActual) - (baselineTarget * 2);
+                return Math.max(0, baselineTarget - adjustment);
+            };
+    
+            const metrics = {};
+    
+            allNutrients.forEach(n => {
+                const baselineTarget = T(n);
+                const adjustedTarget = dailyTrackedNutrients.includes(n) ? baselineTarget : calculateAdjustedTarget(n);
+                metrics[n] = { name: n, baselineTarget, adjustedTarget, actualToday: parseFloat(todayEntry[n]) || 0 };
+            });
+    
+            const adjustedCalorieTarget = metrics['calories'].adjustedTarget;
+            const proteinGrams = metrics['protein'].adjustedTarget;
+            const proteinCalories = proteinGrams * 4;
+            let adjustedFatGrams = metrics['fat'].adjustedTarget;
+            if (adjustedFatGrams < 50) adjustedFatGrams = 50;
+            const fatCalories = adjustedFatGrams * 9;
+            const carbCalories = adjustedCalorieTarget - proteinCalories - fatCalories;
+            const adjustedCarbGrams = Math.max(0, carbCalories / 4);
+    
+            metrics['fat'].adjustedTarget = adjustedFatGrams;
+            metrics['carbs'].adjustedTarget = adjustedCarbGrams;
+    
+            for (const n in metrics) {
+                const metric = metrics[n];
+                metric.percentage = metric.adjustedTarget > 0 ? (metric.actualToday / metric.adjustedTarget) * 100 : 0;
+                metric.diff = metric.actualToday - metric.adjustedTarget;
+            }
+    
+            return { metrics };
+        }
+    
+        // --- UI Update Functions ---
+        function updateDashboard() {
+            if (!userId || Object.keys(baselineTargets).length === 0) {
+                dashboard.innerHTML = `<div class="text-center p-8 bg-white rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700">Welcome!</h3><p class="mt-2 text-gray-500">Please log in and set your baseline targets to get started.</p><button onclick="document.getElementById('open-settings-btn').click()" class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Set Targets</button></div>`;
+                return;
+            }
+    
+            const { metrics } = calculateDashboardMetrics();
+            
+            const createCard = (metric) => {
+                const percentage = metric.percentage;
+                let color = 'bg-red-500';
+                if (percentage >= 90 && percentage <= 110) color = 'bg-green-500';
+                else if (percentage >= 75 || percentage > 110) color = 'bg-yellow-500';
+                
+                const diffText = metric.diff > 0 ? `+${metric.diff.toFixed(1)}` : metric.diff.toFixed(1);
+                const diffColor = metric.diff >= 0 ? 'text-green-600' : 'text-red-600';
+    
+                return `<div class="bg-white p-4 rounded-lg shadow-md nutrient-card">
+                        <h4 class="font-bold capitalize text-gray-800">${metric.name.replace(/([A-Z])/g, ' $1').trim()}</h4>
+                        <p class="text-sm text-gray-500">${metric.actualToday.toFixed(1)} / ${metric.adjustedTarget.toFixed(1)}</p>
+                        <div class="w-full progress-bar-bg rounded-full h-2.5 mt-2"><div class="progress-bar-fill h-2.5 rounded-full ${color}" style="width: ${Math.min(100, percentage)}%"></div></div>
+                        <p class="text-sm font-medium text-gray-600 mt-2">Status: <span class="font-bold ${diffColor}">${diffText}</span></p>
+                    </div>`;
+            };
+    
+            const renderGroup = (title, nutrientNames) => {
+                const cards = nutrientNames.map(name => metrics[name] ? createCard(metrics[name]) : '').join('');
+                return `<div class="mb-8"><h3 class="text-2xl font-bold text-gray-700 mb-4">${title}</h3><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div></div>`;
+            };
+    
+            const infoBox = `<div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200"><h3 class="font-semibold text-blue-900 mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3><ul class="text-sm text-blue-800 space-y-1 list-disc list-inside"><li><strong>Daily Nutrients:</strong> Targets for these nutrients (like Protein) are fixed each day.</li><li><strong>Averaged Nutrients:</strong> Targets for these (like Calories, Fat) adjust daily based on your previous two days' intake.</li><li><strong>Carbs:</strong> The carb target is dynamic, filling the remainder of your adjusted calorie budget.</li></ul></div>`;
+    
+            dashboard.innerHTML = infoBox + renderGroup('Macronutrients', nutrients.macros) + renderGroup('Daily Vitamins (Fixed Target)', nutrients.vitaminsDaily) + renderGroup('Daily Minerals (Fixed Target)', nutrients.mineralsDaily) + renderGroup('Averaged Vitamins (Adjusted Target)', nutrients.vitaminsAvg) + renderGroup('Averaged Minerals (Adjusted Target)', nutrients.mineralsAvg) + renderGroup('Optional Nutrients (Adjusted Target)', nutrients.optional);
+        }
+    
+        function populateStagingAreaFromLog() {
+            const dateStr = dateInput.value;
+            const entry = dailyEntries.get(dateStr) || {};
+            allNutrients.forEach(name => {
+                const input = document.getElementById(`actual-${name}`);
+                if (input) input.value = entry[name] || '';
+            });
+        }
+    
+        // --- Text Parsing Logic ---
+        const nutrientMap = {
+            'calories': 'calories', 'cal': 'calories', 'protein': 'protein', 'prot': 'protein',
+            'carbs': 'carbs', 'carbohydrate': 'carbs', 'fat': 'fat', 'vitamin d': 'vitaminD', 'vit d': 'vitaminD',
+            'vitamin b12': 'vitaminB12', 'vit b12': 'vitaminB12', 'b12': 'vitaminB12', 'folate': 'folate', 'b9': 'folate',
+            'vitamin c': 'vitaminC', 'vit c': 'vitaminC', 'vitamin b6': 'vitaminB6', 'vit b6': 'vitaminB6', 'b6': 'vitaminB6',
+            'vitamin a': 'vitaminA', 'vit a': 'vitaminA', 'vitamin e': 'vitaminE', 'vit e': 'vitaminE',
+            'vitamin k': 'vitaminK', 'vit k': 'vitaminK', 'iron': 'iron', 'calcium': 'calcium', 'magnesium': 'magnesium', 'zinc': 'zinc',
+            'potassium': 'potassium', 'sodium': 'sodium', 'selenium': 'selenium', 'iodine': 'iodine', 'phosphorus': 'phosphorus',
+            'omega-3': 'omega3', 'omega 3': 'omega3', 'fiber': 'fiber', 'choline': 'choline'
+        };
+    
+        function parseAndStage() {
+            const text = document.getElementById('paste-area').value;
+            if (!text) return showMessage("Paste area is empty.", true);
+            
+            const lines = text.split('\n');
+            let valuesFound = 0;
+
+            lines.forEach(line => {
+                const lowerLine = line.toLowerCase();
+                for (const key in nutrientMap) {
+                    const regex = new RegExp(`\\b${key}\\b`, 'i');
+                    if (regex.test(lowerLine)) {
+                        let numberString = lowerLine.replace(regex, '');
+                        numberString = numberString.replace(/(mg|mcg|g|kcal)/gi, '').replace(/,/g, '');
+                        const numberMatch = numberString.match(/-?[\d\.]+/);
+                        if (numberMatch) {
+                            const nutrientName = nutrientMap[key];
+                            const inputElement = document.getElementById(`actual-${nutrientName}`);
+                            if(inputElement) {
+                                inputElement.value = parseFloat(numberMatch[0]);
+                                valuesFound++;
+                            }
+                            break;
+                        }
+                    }
+                }
+            });
+
+            if (valuesFound > 0) showMessage(`Parsed and staged ${valuesFound} fields.`);
+            else showMessage("Could not find any recognizable nutrient values.", true);
+        }
+
+        function getStagedValues() {
+            const values = {};
+            allNutrients.forEach(name => {
+                const input = document.getElementById(`actual-${name}`);
+                if (input) values[name] = parseFloat(input.value) || 0;
+            });
+            return values;
+        }
+    
+        function handleStagingAction(mode) {
+            const stagedValues = getStagedValues();
+            const dateStr = dateInput.value;
+
+            if (mode === 'updateTargets') {
+                saveTargets(stagedValues);
+            } else {
+                const newEntry = dailyEntries.get(dateStr) || { date: dateStr };
+                allNutrients.forEach(name => {
+                    const stagedVal = stagedValues[name] || 0;
+                    const currentVal = parseFloat(newEntry[name]) || 0;
+                    if (mode === 'add') newEntry[name] = currentVal + stagedVal;
+                    else if (mode === 'subtract') newEntry[name] = Math.max(0, currentVal - stagedVal);
+                    else if (mode === 'replace') newEntry[name] = stagedVal;
+                });
+                saveDailyEntry(dateStr, newEntry);
+            }
+        }
+    
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            dateInput.value = formatDate(new Date());
+            loader.classList.remove('hidden');
+        });
+        
+        document.getElementById('open-login-btn').addEventListener('click', () => loginModal.classList.remove('hidden'));
+        document.getElementById('close-login-btn').addEventListener('click', () => loginModal.classList.add('hidden'));
+        document.getElementById('login-btn').addEventListener('click', handleLogin);
+        document.getElementById('signup-btn').addEventListener('click', handleSignUp);
+        document.getElementById('guest-btn').addEventListener('click', handleGuestLogin);
+        document.getElementById('logout-btn').addEventListener('click', handleLogout);
+        document.getElementById('open-settings-btn').addEventListener('click', () => settingsModal.classList.remove('hidden'));
+        document.getElementById('close-settings-btn').addEventListener('click', () => settingsModal.classList.add('hidden'));
+        
+        document.getElementById('settings-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newTargets = {};
+            allNutrients.forEach(name => newTargets[name] = parseFloat(document.getElementById(`target-${name}`).value) || 0);
+            saveTargets(newTargets);
+            settingsModal.classList.add('hidden');
+        });
+    
+        dateInput.addEventListener('change', async () => {
+            await loadUserData();
+        });
+    
+        document.getElementById('parse-btn').addEventListener('click', parseAndStage);
+        document.getElementById('add-day-btn').addEventListener('click', () => handleStagingAction('add'));
+        document.getElementById('subtract-day-btn').addEventListener('click', () => handleStagingAction('subtract'));
+        document.getElementById('replace-day-btn').addEventListener('click', () => handleStagingAction('replace'));
+        document.getElementById('stage-to-targets-btn').addEventListener('click', () => handleStagingAction('updateTargets'));
+    
+        document.getElementById('export-btn').addEventListener('click', async () => {
+            showMessage("Fetching all data for export...", false);
+            const allEntries = await fetchAllEntries();
+            if (allEntries.length === 0) return showMessage("No data to export.", true);
+            
+            const headers = ['date', ...allNutrients];
+            let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
+            
+            allEntries.forEach(entry => {
+                const row = headers.map(header => entry[header] || '0');
+                csvContent += row.join(",") + "\n";
+            });
+    
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "nutrition_tracker_export.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showMessage("Export complete!", false);
+        });
+    
+        window.openSettings = () => settingsModal.classList.remove('hidden');
+    </script>
+
+    <!-- Main Application Body -->
+    <div id="loader" class="flex justify-center items-center h-screen"><i class="fas fa-spinner fa-spin fa-3x text-blue-600"></i></div>
+
+    <div id="main-content" class="hidden">
+        <header class="bg-white shadow-md p-4 flex justify-between items-center">
+            <div class="flex items-center">
+                <i class="fas fa-chart-pie text-3xl text-blue-600 mr-3"></i>
+                <h1 class="text-2xl font-bold text-gray-800">3-Day Rolling Nutrition Tracker</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="user-status" class="text-gray-600 text-sm hidden"></span>
+                <button id="open-login-btn" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Login / Sign Up</button>
+                <button id="logout-btn" class="hidden px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Logout</button>
+                <button id="open-settings-btn" class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+        </header>
+
+        <main class="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-lg h-fit">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Daily Log</h2>
+                
+                <div class="mb-4"><label for="date-input" class="block text-sm font-medium text-gray-700 mb-1">Date</label><input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></div>
+                
+                <div class="mb-4">
+                    <label for="paste-area" class="block text-sm font-medium text-gray-700 mb-1">Paste Log to Stage</label>
+                    <textarea id="paste-area" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Paste your log here..."></textarea>
+                    <button type="button" id="parse-btn" class="w-full mt-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-indigo-700">
+                        <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
+                    </button>
+                </div>
+                <hr class="my-4">
+
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">Staging Area</h3>
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button type="button" id="add-day-btn" class="w-full bg-green-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-green-700 text-sm">Add to Day</button>
+                    <button type="button" id="subtract-day-btn" class="w-full bg-yellow-500 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-yellow-600 text-sm">Subtract from Day</button>
+                    <button type="button" id="replace-day-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700 text-sm">Replace Day's Log</button>
+                    <button type="button" id="stage-to-targets-btn" class="w-full bg-purple-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-purple-700 text-sm">Update Targets</button>
+                </div>
+                <div class="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
+                    <!-- Nutrient inputs are dynamically populated but need placeholders -->
+                    <h4 class="text-lg font-semibold text-gray-700 pt-2 sticky top-0 bg-white">Macros</h4>
+                    <div><label for="actual-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="actual-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="actual-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="actual-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="actual-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Vitamins</h4>
+                    <div><label for="actual-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="actual-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Vitamins</h4>
+                    <div><label for="actual-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Minerals</h4>
+                    <div><label for="actual-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="actual-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="actual-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="actual-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="actual-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="actual-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Minerals</h4>
+                    <div><label for="actual-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Optional</h4>
+                    <div><label for="actual-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="actual-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="actual-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                </div>
+            </div>
+
+            <div id="dashboard" class="lg:col-span-2"><!-- Dashboard content is generated by JS --></div>
+        </main>
+    </div>
+
+    <div id="login-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
+            <button id="close-login-btn" class="absolute top-2 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Account Access</h2>
+            
+            <form id="auth-form" class="space-y-4">
+                <div>
+                    <label for="email-input" class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="email-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <div>
+                    <label for="password-input" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button type="button" id="login-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700">Login</button>
+                    <button type="button" id="signup-btn" class="w-full bg-green-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-green-700">Sign Up</button>
+                </div>
+            </form>
+    
+            <div class="my-4 flex items-center">
+                <hr class="flex-grow border-t border-gray-300">
+                <span class="mx-2 text-gray-500 text-sm">OR</span>
+                <hr class="flex-grow border-t border-gray-300">
+            </div>
+    
+            <button id="guest-btn" class="w-full bg-gray-500 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-600">Continue as Guest</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] relative">
+            <button id="close-settings-btn" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">Set Baseline Targets</h2>
+            <form id="settings-form" class="overflow-y-auto max-h-[70vh] pr-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Target inputs are dynamically populated but need placeholders -->
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-2 border-b pb-2 mb-2">Macros</h3></div>
+                    <div><label for="target-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="target-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="target-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="target-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="target-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Vitamins (Water-Soluble)</h3></div>
+                    <div><label for="target-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="target-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="target-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="target-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Vitamins (Fat-Soluble)</h3></div>
+                    <div><label for="target-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="target-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="target-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="target-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="target-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Minerals</h3></div>
+                    <div><label for="target-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="target-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="target-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="target-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="target-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="target-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="target-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Minerals</h3></div>
+                    <div><label for="target-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="target-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="target-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="target-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Optional Nutrients</h3></div>
+                    <div><label for="target-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="target-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="target-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="target-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                </div>
+                <div class="mt-8 flex justify-between items-center">
+                    <button type="button" id="export-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700">Export All Data (CSV)</button>
+                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700">Save Targets</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="message-box" class="hidden fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg z-50"><p id="message-text"></p></div>
+</body>
+</html>
