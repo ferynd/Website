@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shadows Over Boston: A Monster Noir Adventure</title>
+
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      body {
+        font-family: "Roboto", sans-serif;
+        background-color: #f3e9d2;
+        background-image: url("../images/Foggy beacon hill.png");
+      }
+      h1, h2, h3 {
+        font-family: "Playfair Display", serif;
+        font-weight: 700;
+      }
+      img {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .vignette {
+        position: relative;
+      }
+      .vignette::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+      }
+      .case-file-stamp {
+        border: 4px double #8c0000;
+        color: #8c0000;
+        padding: 4px 8px;
+        transform: rotate(-10deg);
+        font-family: "Courier New", Courier, monospace;
+        font-weight: bold;
+        font-size: 1.1rem;
+        position: absolute;
+        top: -20px;
+        right: 10px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+
+  <body class="antialiased text-gray-800">
+    <div
+      class="container mx-auto max-w-5xl p-4 sm:p-8 my-8 bg-white/50 shadow-2xl rounded-lg border-4 border-black/20"
+    >
+      <!-- Header -->
+      <header
+        class="text-center border-b-4 border-double border-gray-600 pb-6 mb-6 relative"
+      >
+        <h1 class="text-4xl sm:text-6xl text-gray-900 tracking-wider">
+          Shadows Over Boston
+        </h1>
+        <p class="text-xl sm:text-2xl text-gray-700 mt-2">
+          A Monster Noir Adventure
+        </p>
+        <span class="case-file-stamp hidden sm:block">TOP SECRET</span>
+      </header>
+
+      <!-- Setting -->
+      <section class="mb-8">
+        <div class="grid md:grid-cols-3 gap-8 items-start">
+          <div class="md:col-span-2 space-y-4">
+            <p class="text-lg italic text-justify">…Intro text…</p>
+          </div>
+
+          <figure class="vignette rounded-lg overflow-hidden shadow-lg">
+            <img
+              src="images/Foggy beacon hill.png"
+              alt="A foggy street in 1940s Beacon Hill, Boston"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <!-- Case -->
+      <section class="mb-10 p-6 bg-yellow-50/50 border-l-4 border-red-800 rounded-r-lg shadow-md relative">
+        <h2 class="text-3xl text-red-900 mb-3">The Case: The Tenant Who Wasn't There</h2>
+        <p class="text-justify">…Case text…</p>
+        <svg class="w-10 h-10 text-red-800/50 absolute top-2 right-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0…"/>
+        </svg>
+      </section>
+
+      <!-- Investigators -->
+      <section>
+        <h2 class="text-4xl text-center mb-8">The Investigators</h2>
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <!-- Repeat these article blocks for each investigator -->
+          <article class="bg-gray-200/60 p-4 rounded-lg shadow-lg text-center flex flex-col">
+            <img src="images/vamp.png" alt="Detective Vasily Drăculești" class="w-full h-auto rounded-md mb-4 border-2 border-gray-400 grayscale"/>
+            <h3 class="text-xl">Detective Vasily Drăculești</h3>
+            <p class="text-sm text-red-900 font-semibold mb-2">The Vampire | Lead Investigator</p>
+            <p class="text-sm text-justify flex-grow">…Description…</p>
+          </article>
+          <!-- …other investigators similarly with their images -->
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="mt-10 pt-6 border-t-4 border-double border-gray-600">
+        <p class="text-center italic text-gray-700">…Footer text…</p>
+      </footer>
+    </div>
+
+    <!-- Background audio -->
+    <audio id="bg-audio" src="audio/1940 test.mp3" preload="auto" playsinline></audio>
+
+    <script>
+      const audio = document.getElementById('bg-audio');
+      window.addEventListener('load', () => {
+        const attempt = audio.play();
+        if (attempt !== undefined) {
+          attempt.catch(() => {
+            const btn = document.createElement('button');
+            btn.textContent = '🔊 Enable sound';
+            btn.className = 'fixed bottom-4 right-4 bg-gray-800 text-white py-2 px-4 rounded shadow-lg';
+            btn.onclick = () => { audio.play(); btn.remove(); };
+            document.body.appendChild(btn);
+          });
+        }
+      });
+    </script>
+  </body>
+</html>
