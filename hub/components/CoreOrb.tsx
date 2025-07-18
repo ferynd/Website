@@ -12,10 +12,8 @@ export default function CoreOrb() {
   return (
     <motion.div
       aria-hidden
-      className="rounded-full bg-blue-500 shadow-2xl"
+      className="rounded-full bg-neon-blue glow pulse"
       style={{ width: CONFIG.size, height: CONFIG.size }}
-      animate={{ scale: [1, CONFIG.pulseScale, 1] }}
-      transition={{ duration: CONFIG.duration, repeat: Infinity }}
     />
   )
 }
