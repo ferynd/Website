@@ -1,11 +1,11 @@
 # Personal Website
 
-This repository contains the static files for my personal site. The pages are plain HTML with inline CSS and a few external libraries.
+This repository contains the static HTML pages for my website. There is no build step or framework; the site is served directly from these files.
 
 ## Local Setup
 
 1. Clone the repository.
-2. No build step is required. Serve the files directly with a static file server of your choice. For example, using Python:
+2. Start a simple static server from the project root. For example:
    ```bash
    python3 -m http.server 8080
    ```
@@ -13,18 +13,16 @@ This repository contains the static files for my personal site. The pages are pl
 
 ## Directory Overview
 
-- `index.html` – Home page linking to all other sections.
-- `games/` – Small experiments and demos.
-  - `noir_detective_idea/` – Prototype for a noir adventure game.
+- `index.html` – Landing page linking to everything else.
+- `games/` – Small demos and experiments.
+  - `noir_detective_idea/` – Prototype noir adventure.
 - `tools/` – Utility pages.
-  - `CalorieTracker/` – 3‑day rolling average nutrition tracker.
-- `trips/` – Itineraries and travel notes.
+  - `CalorieTracker/` – Three‑day rolling average nutrition tracker.
+- `trips/` – Travel notes and itineraries.
   - `ChicagoTripItinerary/` – Example weekend plan for Chicago.
 
 ## Deployment on Cloudflare Pages
 
-1. Log into Cloudflare and create a new Pages project.
-2. Connect the project to this repository.
-3. For build settings, leave the build command empty and set the root directory to `/`.
-4. Cloudflare will serve the files from the main branch. Any new commit will trigger a deployment.
-
+1. Create a new Pages project and connect it to this repository.
+2. Leave the build command blank and set the root directory to `/`.
+3. Cloudflare will deploy on every commit to the main branch.
