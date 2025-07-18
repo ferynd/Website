@@ -23,6 +23,7 @@ This repository hosts my static pages along with a small Next.js app that powers
 - `index.html` – Redirects visitors to the React hub under `/hub/`.
 - `index_legacy.html` – Previous static landing page kept for reference.
 - `hub/` – Next.js project containing the interactive hub.
+- The hub is exported with `basePath: '/hub'` so all assets load from this folder.
 - `games/` – Small demos and experiments.
   - `noir_detective_idea/` – Prototype noir adventure.
 - `tools/` – Utility pages.
@@ -34,6 +35,7 @@ This repository hosts my static pages along with a small Next.js app that powers
 
 1. Create a new Pages project and connect it to this repository.
 2. Set the build command to `npm run build` and the build directory to `hub/out`.
+   The Next.js config specifies `basePath: '/hub'` so the static export works from this subfolder.
 3. Add a deployment step that copies the `games`, `tools`, and `trips` directories into `hub/out` so they remain accessible.
 
 ## Firebase Config
