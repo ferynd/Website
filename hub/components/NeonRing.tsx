@@ -31,7 +31,7 @@ export default function NeonRing({
     <motion.button
       type="button"
       aria-label={category.name}
-      className="absolute rounded-full border-2 border-pink-500 text-white"
+      className="absolute rounded-full border-2 border-neon-pink text-neon-pink glow"
       style={{
         width: CONFIG.size,
         height: CONFIG.size,
