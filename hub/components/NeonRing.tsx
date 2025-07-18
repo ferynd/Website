@@ -31,7 +31,7 @@ export default function NeonRing({
     <motion.button
       type="button"
       aria-label={category.name}
-      className="absolute rounded-full border-2 border-neon-pink text-neon-pink glow"
+      className="block sm:absolute rounded-full border-2 border-neon-pink text-neon-pink glow min-w-[48px] min-h-[48px]"
       style={{
         width: CONFIG.size,
         height: CONFIG.size,
@@ -41,7 +41,7 @@ export default function NeonRing({
       onHoverStart={() => setActive(index)}
       onHoverEnd={() => setActive(null)}
       whileHover={{ scale: 1.1 }}
-      whileTap={{ scale: 0.9 }}
+      whileTap={{ scale: 0.9, x: 16 }}
       animate={{ opacity: isDimmed ? 0.3 : 1 }}
       layoutId={`ring-${index}`}
     >
