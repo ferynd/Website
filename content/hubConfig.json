@@ -1,0 +1,35 @@
+[
+  {
+    "slug": "travel",
+    "name": "Travel",
+    "links": [
+      {
+        "title": "Chicago Trip Itinerary",
+        "url": "/trips/ChicagoTripItinerary/",
+        "icon": "🌍"
+      }
+    ]
+  },
+  {
+    "slug": "tools",
+    "name": "Tools",
+    "links": [
+      {
+        "title": "Calorie Tracker",
+        "url": "/tools/CalorieTracker/",
+        "icon": "🛠️"
+      }
+    ]
+  },
+  {
+    "slug": "games",
+    "name": "Games",
+    "links": [
+      {
+        "title": "Noir Detective Idea",
+        "url": "/games/noir_detective_idea/",
+        "icon": "🎮"
+      }
+    ]
+  }
+]

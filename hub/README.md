@@ -29,4 +29,4 @@ npm run build
 
 ## Customization
 
-The links and categories on the landing page are configured in `app/page.tsx`. Edit the `categories` array to add new resources.
+Hub data is normally assembled from markdown files under `../content/hub`. To load a static JSON file instead, set `useJsonHubData` in `next.config.ts` to `true`. The JSON configuration lives at `content/hubConfig.json` and uses the same `HubCategory[]` structure returned by `getHubData`.
