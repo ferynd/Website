@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
-import { LayoutGroup, motion } from 'framer-motion'
-import type { HubCategory } from '../lib/getHubData'
+import { LayoutGroup, motion, AnimatePresence } from 'framer-motion'
+import useHubData from '../lib/useHubData'
 import CoreOrb from './CoreOrb'
 import NeonRing from './NeonRing'
 
@@ -10,11 +10,8 @@ const CONFIG = {
   canvasSize: 300 // Square size of the canvas in pixels
 }
 
-export interface HubCanvasProps {
-  categories: HubCategory[]
-}
-
-export default function HubCanvas({ categories }: HubCanvasProps) {
+export default function HubCanvas() {
+  const categories = useHubData()
   const [active, setActive] = useState<number | null>(null)
 
   return (
@@ -24,16 +21,18 @@ export default function HubCanvas({ categories }: HubCanvasProps) {
     >
       <LayoutGroup id="hub-rings">
         <CoreOrb />
-        {categories.map((cat, i) => (
-          <NeonRing
-            key={cat.slug}
-            category={cat}
-            index={i}
-            total={categories.length}
-            isDimmed={active !== null && active !== i}
-            setActive={setActive}
-          />
-        ))}
+        <AnimatePresence>
+          {categories.map((cat, i) => (
+            <NeonRing
+              key={cat.slug}
+              category={cat}
+              index={i}
+              total={categories.length}
+              isDimmed={active !== null && active !== i}
+              setActive={setActive}
+            />
+          ))}
+        </AnimatePresence>
       </LayoutGroup>
     </motion.div>
   )

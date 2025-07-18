@@ -1,18 +1,19 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { getHubData } from '../../../lib/getHubData'
+import { loadHubData } from '../../../lib/loadHubData'
 
 export const dynamic = 'force-static'
 
-export default async function CategoryPage({ params }: { params: Promise<{ category: string }> }) {
-  const { category: slug } = await params
-  const categories = await getHubData()
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export default async function CategoryPage({ params }: any) {
+  const { category: slug } = params as { category: string }
+  const categories = await loadHubData()
   const category = categories.find(cat => cat.slug === slug)
   if (!category) return notFound()
   return (
     <div className="min-h-screen mx-auto max-w-3xl p-4">
       <header className="mb-8">
-        <Link href="/hub" className="text-blue-600">&larr; Back</Link>
+        <Link href="/" className="text-blue-600">&larr; Back</Link>
         <h1 className="text-2xl font-bold mt-2">{category.name}</h1>
       </header>
       <ul className="grid gap-4 sm:grid-cols-2">
@@ -29,6 +30,6 @@ export default async function CategoryPage({ params }: { params: Promise<{ categ
 }
 
 export async function generateStaticParams() {
-  const categories = await getHubData()
+  const categories = await loadHubData()
   return categories.map(cat => ({ category: cat.slug }))
 }
