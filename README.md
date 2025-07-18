@@ -2,22 +2,26 @@
 
 This repository contains a small Next.js application that serves as an interactive hub along with various static pages.  All content lives in the `hub` folder and is exported to static files under `hub/out` for deployment.
 
+## Setup
+
+Ensure you have a recent Node.js version installed (tested with Node 18+). Install project dependencies inside the `hub` directory:
+
+```bash
+cd hub && npm install
+```
+
 ## Local Development
 
-1. Install dependencies inside the `hub` directory if you plan to work on the React hub:
-   ```bash
-   cd hub && npm install
-   ```
-2. Start the development server:
+1. Start the development server:
    ```bash
    npm run dev
    ```
    The hub will be available at `http://localhost:3000`.
-3. Build the static site (output goes to `hub/out`):
+2. Build the static site (output goes to `hub/out`):
    ```bash
    npm run build
    ```
-4. To view the static pages without a build step, run a simple server from the project root:
+3. To view the static pages without a build step, run a simple server from the project root:
    ```bash
    python3 -m http.server 8080
    ```
@@ -31,6 +35,22 @@ This repository contains a small Next.js application that serves as an interacti
   - `public/` – Static assets used by the hub.
   - `out/` – Static export produced by `npm run build`.
     - `games/`, `tools/`, `trips/` – Demos, utilities, and travel notes copied here during deployment.
+
+## Updating Hub Links
+
+Links shown in the hub are normally collected from Markdown files under `content/hub/<category>/`. Create a new markdown file with `title`, `url`, and `icon` front matter to add a link:
+
+```markdown
+---
+title: "Cool Project"
+url: "/projects/cool/"
+icon: "✨"
+---
+
+Short description here.
+```
+
+Alternatively, you can maintain a single JSON configuration by editing `content/hubConfig.json` and enabling the `useJsonHubData` flag in `hub/next.config.ts`.
 
 ## Deployment on Cloudflare Pages
 
