@@ -1,19 +1,28 @@
 # Personal Website
 
-This repository contains the static HTML pages for my website. There is no build step or framework; the site is served directly from these files.
+This repository hosts my static pages along with a small Next.js app that powers the main landing page.
 
-## Local Setup
+## Local Development
 
-1. Clone the repository.
-2. Start a simple static server from the project root. For example:
+1. Install dependencies inside the `hub` directory if you plan to work on the React hub:
+   ```bash
+   cd hub && npm install
+   ```
+2. Start the development server:
+   ```bash
+   npm run dev
+   ```
+   The hub will be available at `http://localhost:3000`.
+3. To view the static pages without a build step, you can run a simple server from the project root:
    ```bash
    python3 -m http.server 8080
    ```
-   Then open `http://localhost:8080` in your browser.
 
 ## Directory Overview
 
-- `index.html` – Landing page linking to everything else.
+- `index.html` – Redirects visitors to the React hub under `/hub/`.
+- `index_legacy.html` – Previous static landing page kept for reference.
+- `hub/` – Next.js project containing the interactive hub.
 - `games/` – Small demos and experiments.
   - `noir_detective_idea/` – Prototype noir adventure.
 - `tools/` – Utility pages.
@@ -24,8 +33,8 @@ This repository contains the static HTML pages for my website. There is no build
 ## Deployment on Cloudflare Pages
 
 1. Create a new Pages project and connect it to this repository.
-2. Leave the build command blank and set the root directory to `/`.
-3. Cloudflare will deploy on every commit to the main branch.
+2. Set the build command to `npm run build` and the build directory to `hub/out`.
+3. Add a deployment step that copies the `games`, `tools`, and `trips` directories into `hub/out` so they remain accessible.
 
 ## Firebase Config
 

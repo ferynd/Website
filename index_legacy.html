@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>James Berto's Hub</title>
+    <style>
+        /* --- Configuration --- */
+        :root {
+            --background-color: #f4f4f9;
+            --text-color: #333;
+            --header-color: #fff;
+            --card-bg-color: #fff;
+            --card-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            --accent-color: #007bff;
+            --border-radius: 8px;
+        }
+
+        /* --- General Styling --- */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        header {
+            background-color: var(--header-color);
+            padding: 2rem 0;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 2rem;
+        }
+        header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+        }
+        h2 {
+            border-bottom: 2px solid var(--accent-color);
+            padding-bottom: 10px;
+            margin-top: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .project-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            list-style: none;
+            padding: 0;
+        }
+        .project-card {
+            background-color: var(--card-bg-color);
+            border-radius: var(--border-radius);
+            box-shadow: var(--card-shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .project-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+        }
+        .project-card a {
+            display: block;
+            padding: 20px;
+            text-decoration: none;
+            color: var(--accent-color);
+            font-weight: bold;
+            font-size: 1.1rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Welcome to My Corner of the Web</h1>
+    </header>
+
+    <main class="container">
+
+        <section id="trips">
+            <h2>🌍 Trips</h2>
+            <ul class="project-grid">
+                <li class="project-card"><a href="/trips/ChicagoTripItinerary/">Chicago Trip Itinerary</a></li>
+            </ul>
+        </section>
+
+        <section id="tools">
+            <h2>🛠️ Tools</h2>
+            <ul class="project-grid">
+                <li class="project-card"><a href="/tools/CalorieTracker/">Calorie Tracker</a></li>
+            </ul>
+        </section>
+        
+        <section id="games">
+            <h2>🎮 Games</h2>
+            <ul class="project-grid">
+                <li class="project-card"><a href="/games/noir_detective_idea/">Noir Detective Idea</a></li>
+                </ul>
+        </section>
+
+    </main>
+
+</body>
+</html>
