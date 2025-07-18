@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Shadows Over Boston: A Monster Noir Adventure</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Roboto:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <style>
+      body {
+        font-family: "Roboto", sans-serif;
+        background-color: #f3e9d2;
+        background-image: url("https://www.transparenttextures.com/patterns/crissxcross.png");
+      }
+      h1,
+      h2,
+      h3 {
+        font-family: "Playfair Display", serif;
+        font-weight: 700;
+      }
+      /* fluid images, no cropping */
+      img {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .vignette {
+        position: relative;
+      }
+      .vignette::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        box-shadow: inset 0 0 150px rgba(0, 0, 0, 0.6);
+        pointer-events: none;
+      }
+      .case-file-stamp {
+        border: 4px double #8c0000;
+        color: #8c0000;
+        padding: 4px 8px;
+        transform: rotate(-10deg);
+        font-family: "Courier New", Courier, monospace;
+        font-weight: bold;
+        font-size: 1.1rem;
+        position: absolute;
+        top: -20px;
+        right: 10px;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+
+  <body class="antialiased text-gray-800">
+    <nav class="p-2 text-sm"><a href="/" class="text-blue-600 hover:underline">Back to Hub</a></nav>
+    <div
+      class="container mx-auto max-w-5xl p-4 sm:p-8 my-8 bg-white/50 shadow-2xl rounded-lg border-4 border-black/20"
+    >
+      <header
+        class="text-center border-b-4 border-double border-gray-600 pb-6 mb-6 relative"
+      >
+        <h1 class="text-4xl sm:text-6xl text-gray-900 tracking-wider">
+          Shadows Over Boston
+        </h1>
+        <p class="text-xl sm:text-2xl text-gray-700 mt-2">
+          A Monster Noir Adventure
+        </p>
+        <span class="case-file-stamp hidden sm:block">TOP SECRET</span>
+      </header>
+
+      <section class="mb-8">
+        <div class="grid md:grid-cols-3 gap-8 items-start">
+          <div class="md:col-span-2 space-y-4">
+            <p class="text-lg italic text-justify">
+              It’s 1947. The war is over, but in Boston, the shadows have their
+              own stories. The gas lamps of Beacon Hill hiss in the harbor fog,
+              the elevated train rattles a rhythm of iron and sparks over
+              downtown, and things with old-world bones and ancient hungers walk
+              the streets alongside everyone else.
+            </p>
+            <p class="text-justify">
+              Twenty-four years ago, the Monster Integration Act gave
+              citizenship to the city’s “non-standard humanoids.” Vampires from
+              the old country settled in the North End, changelings found a home
+              among the Irish of Southie, and trolls fought on the undercard at
+              the Boston Garden. It’s a fragile peace, a hard-won truce between
+              the mundane and the magical. You keep that peace.
+            </p>
+            <p
+              class="font-semibold text-lg text-center bg-gray-200 p-3 rounded-md shadow"
+            >
+              You are the Constables of Saint Cyprian, the Paranormal Division
+              of the Boston Police Department. And you just caught a case that
+              could unravel it all.
+            </p>
+          </div>
+
+          <figure class="vignette rounded-lg overflow-hidden shadow-lg">
+            <img
+              src="images/Foggy beacon hill.png"
+              alt="A foggy street in 1940s Beacon Hill, Boston"
+            />
+          </figure>
+        </div>
+      </section>
+
+      <section
+        class="mb-10 p-6 bg-yellow-50/50 border-l-4 border-red-800 rounded-r-lg shadow-md relative"
+      >
+        <h2 class="text-3xl text-red-900 mb-3">
+          The Case: The Tenant Who Wasn't There
+        </h2>
+        <p class="text-justify">
+          Three days ago, Margaret Holloway, the beloved landlady of a Beacon
+          Hill brownstone, vanished. She left her coat on the hook and a pot of
+          tea on the stove. Her disappearance has pulled a thread in the city’s
+          supernatural fabric, and things are coming undone. The ghost in
+          apartment 3B is fading. The gargoyle on the roof is turning to stone.
+          And a ticking clock has begun on a secret that, if revealed, could
+          ignite a war between monsters and mortals.
+        </p>
+
+        <svg
+          class="w-10 h-10 text-red-800/50 absolute top-2 right-2"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+          />
+        </svg>
+      </section>
+
+      <section>
+        <h2 class="text-4xl text-center mb-8">The Investigators</h2>
+
+        <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          <article
+            class="bg-gray-200/60 p-4 rounded-lg shadow-lg text-center flex flex-col"
+          >
+            <img
+              src="images/vamp.png"
+              alt="Detective Vasily Drăculești"
+              class="w-full h-auto rounded-md mb-4 border-2 border-gray-400 grayscale"
+            />
+            <h3 class="text-xl">Detective Vasily Drăculești</h3>
+            <p class="text-sm text-red-900 font-semibold mb-2">
+              The Vampire | Lead Investigator
+            </p>
+            <p class="text-sm text-justify flex-grow">
+              A world-weary Old-World vampire haunted by his past. A professional
+              with a poet's soul, but he cannot cross a threshold uninvited—a
+              major problem for a homicide detective.
+            </p>
+          </article>
+
+          <article
+            class="bg-gray-200/60 p-4 rounded-lg shadow-lg text-center flex flex-col"
+          >
+            <img
+              src="images/Werewolf.png"
+              alt="Sergeant Luna Nightwhisper"
+              class="w-full h-auto rounded-md mb-4 border-2 border-gray-400 grayscale"
+            />
+            <h3 class="text-xl">Sgt. Luna Nightwhisper</h3>
+            <p class="text-sm text-red-900 font-semibold mb-2">
+              The Werewolf | Tracker
+            </p>
+            <p class="text-sm text-justify flex-grow">
+              Her bloodline is tied to the land Boston sits on. Her senses are a
+              razor—she can track a scent through the city's chaos. Silver is
+              poison to her touch.
+            </p>
+          </article>
+
+          <article
+            class="bg-gray-200/60 p-4 rounded-lg shadow-lg text-center flex flex-col"
+          >
+            <img
+              src="images/changeling done.png"
+              alt="Inspector Thursday Goldleaf"
+              class="w-full h-auto rounded-md mb-4 border-2 border-gray-400 grayscale"
+            />
+            <h3 class="text-xl">Inspector Thursday Goldleaf</h3>
+            <p class="text-sm text-red-900 font-semibold mb-2">
+              The Changeling | Puzzle-Solver
+            </p>
+            <p class="text-sm text-justify flex-grow">
+              A creature of the Fae Courts raised by humans. She cannot speak a
+              direct lie, forcing a mastery of creative truth-telling. Iron
+              burns her skin, making the city an obstacle course.
+            </p>
+          </article>
+
+          <article
+            class="bg-gray-200/60 p-4 rounded-lg shadow-lg text-center flex flex-col"
+          >
+            <img
+              src="images/Gargoyle done.png"
+              alt="Constable Ezra Stone"
+              class="w-full h-auto rounded-md mb-4 border-2 border-gray-400 grayscale"
+            />
+            <h3 class="text-xl">Constable Ezra Stone</h3>
+            <p class="text-sm text-red-900 font-semibold mb-2">
+              The Gargoyle | Guardian
+            </p>
+            <p class="text-sm text-justify flex-grow">
+              A piece of the city given life. Immensely strong and immune to
+              mortal weapons. He is bound to Boston's architecture and turns to
+              stone in direct sunlight, forcing him to live in the shadows.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <footer class="mt-10 pt-6 border-t-4 border-double border-gray-600">
+        <p class="text-center italic text-gray-700">
+          This is a game of noir investigation, atmosphere, and secrets… where
+          the greatest danger isn’t always the monster—sometimes, it’s the
+          truth.
+        </p>
+      </footer>
+    </div>
+
+    <audio
+      id="bg-audio"
+      src="audio/1940 test.mp3"
+      preload="auto"
+      playsinline
+    ></audio>
+
+    <script>
+      const audio = document.getElementById('bg-audio');
+
+      window.addEventListener('load', () => {
+        const attempt = audio.play();
+
+        if (attempt !== undefined) {
+          attempt.catch(() => {
+            const btn = document.createElement('button');
+            btn.textContent = '🔊 Enable sound';
+            btn.className =
+              'fixed bottom-4 right-4 bg-gray-800 text-white py-2 px-4 rounded shadow-lg';
+            btn.onclick = () => {
+              audio.play();
+              btn.remove();
+            };
+            document.body.appendChild(btn);
+          });
+        }
+      });
+    </script>
+  </body>
+</html>
