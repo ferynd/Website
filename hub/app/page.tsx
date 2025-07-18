@@ -1,14 +1,17 @@
-import HubClient from './HubClient'
+import HubCanvas from '../components/HubCanvas'
 import { loadHubData } from '../lib/loadHubData'
 
+export const dynamic = 'force-static'
 export default async function Home() {
-  const categories = await loadHubData()
+  await loadHubData()
   return (
-    <div className="min-h-screen font-sans p-4 sm:p-8 mx-auto max-w-3xl">
-      <header className="mb-8 text-center">
-        <h1 className="text-2xl font-bold">Welcome to My Corner of the Web</h1>
-      </header>
-      <HubClient categories={categories} />
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <HubCanvas />
     </div>
   )
+}
+
+export async function generateStaticParams() {
+  const categories = await loadHubData()
+  return categories.map(cat => ({ category: cat.slug }))
 }

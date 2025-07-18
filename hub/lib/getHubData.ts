@@ -9,7 +9,7 @@ const HUB_CONTENT_DIR = path.resolve(process.cwd(), '../content/hub')
 export interface HubLink {
   title: string
   url: string
-  icon: string
+  icon?: string
 }
 
 export interface HubCategory {
