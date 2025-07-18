@@ -1,6 +1,6 @@
 # Personal Website
 
-This repository hosts my static pages along with a small Next.js app that powers the main landing page.
+This repository contains a small Next.js application that serves as an interactive hub along with various static pages.  All content lives in the `hub` folder and is exported to static files under `hub/out` for deployment.
 
 ## Local Development
 
@@ -13,22 +13,24 @@ This repository hosts my static pages along with a small Next.js app that powers
    npm run dev
    ```
    The hub will be available at `http://localhost:3000`.
-3. To view the static pages without a build step, you can run a simple server from the project root:
+3. Build the static site (output goes to `hub/out`):
+   ```bash
+   npm run build
+   ```
+4. To view the static pages without a build step, run a simple server from the project root:
    ```bash
    python3 -m http.server 8080
    ```
 
-## Directory Overview
+## Project Structure
 
 - `index.html` – Redirects visitors to the React hub under `/hub/`.
 - `index_legacy.html` – Previous static landing page kept for reference.
-- `hub/` – Next.js project containing the interactive hub.
-- `games/` – Small demos and experiments.
-  - `noir_detective_idea/` – Prototype noir adventure.
-- `tools/` – Utility pages.
-  - `CalorieTracker/` – Three‑day rolling average nutrition tracker.
-- `trips/` – Travel notes and itineraries.
-  - `ChicagoTripItinerary/` – Example weekend plan for Chicago.
+- `hub/` – Source for the Next.js hub.
+  - `app/` – Application routes and components.
+  - `public/` – Static assets used by the hub.
+  - `out/` – Static export produced by `npm run build`.
+    - `games/`, `tools/`, `trips/` – Demos, utilities, and travel notes copied here during deployment.
 
 ## Deployment on Cloudflare Pages
 
