@@ -19,7 +19,7 @@ export default function HubCanvas({ categories }: HubCanvasProps) {
 
   return (
     <motion.div
-      className="relative mx-auto"
+      className="mx-auto flex flex-col items-center gap-4 sm:relative sm:block min-w-[48px] min-h-[48px]"
       style={{ width: CONFIG.canvasSize, height: CONFIG.canvasSize }}
     >
       <LayoutGroup id="hub-rings">
