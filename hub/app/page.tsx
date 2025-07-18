@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -73,12 +72,9 @@ function CategoryBand({ category }: { category: Category }) {
                   key={item.href}
                   className="bg-white rounded-lg shadow transition-transform hover:-translate-y-1 hover:shadow-lg list-none"
                 >
-                  <Link
-                    href={item.href}
-                    className="block p-4 text-blue-600 font-bold"
-                  >
+                  <a href={item.href} className="block p-4 text-blue-600 font-bold">
                     {item.name}
-                  </Link>
+                  </a>
                 </li>
               ))}
             </ul>
