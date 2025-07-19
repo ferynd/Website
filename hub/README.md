@@ -30,3 +30,13 @@ npm run build
 ## Customization
 
 Hub data is normally assembled from markdown files under `../content/hub`. To load a static JSON file instead, set `useJsonHubData` in `next.config.ts` to `true`. The JSON configuration lives at `content/hubConfig.json` and uses the same `HubCategory[]` structure returned by `getHubData`.
+
+### How to add animation layers
+
+Animations use Framer Motion and Tailwind utilities. Add new layers by creating a client component that renders `OrbLayer` with your items and push its key onto the `layerStack` in `HubStage`. Each layer appears with the `popSpring` transition defined in `components/Orb.tsx`.
+
+To enable particle ambience run:
+```bash
+npm install react-tsparticles tsparticles-engine
+```
+This repository already includes those packages.

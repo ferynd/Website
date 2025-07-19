@@ -24,3 +24,39 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@layer utilities {
+  .bg-gradient-radial {
+    background: radial-gradient(
+      circle at center,
+      #0c2038 0%,
+      #0a0f1a 60%,
+      #000 100%
+    );
+  }
+}
+
+@layer components {
+  .orb {
+    position: relative;
+    transform-style: preserve-3d;
+  }
+  .orb::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 0 12px currentColor;
+    filter: blur(12px);
+    z-index: -1;
+  }
+  .orb::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    z-index: -1;
+    transform: translateZ(-1px);
+  }
+}
