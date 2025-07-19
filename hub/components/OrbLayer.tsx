@@ -1,19 +1,24 @@
 "use client"
-import { AnimatePresence } from 'framer-motion'
-import Orb from './Orb'
+import { AnimatePresence, motion } from "framer-motion"
+import { Orb } from "./Orb"
 
 export interface OrbItem {
-  key: string
+  id: string
   label: string
+  kind: "folder" | "link"
 }
 
-export interface OrbLayerProps {
+export function OrbLayer({
+  items,
+  radius,
+  onSelect,
+  dimmedIndex
+}: {
   items: OrbItem[]
   radius: number
-  onSelect: (key: string) => void
-}
-
-export default function OrbLayer({ items, radius, onSelect }: OrbLayerProps) {
+  onSelect: (item: OrbItem) => void
+  dimmedIndex?: number | null
+}) {
   return (
     <AnimatePresence>
       {items.map((item, i) => {
@@ -21,12 +26,16 @@ export default function OrbLayer({ items, radius, onSelect }: OrbLayerProps) {
         const x = Math.cos(theta) * radius
         const y = Math.sin(theta) * radius
         return (
-          <Orb
-            key={item.key}
-            label={item.label}
-            style={{ position: 'absolute', left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)` }}
-            onSelect={() => onSelect(item.key)}
-          />
+          <motion.div
+            key={item.id}
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: dimmedIndex === undefined || dimmedIndex === i ? 1 : 0.2 }}
+            exit={{ scale: 0, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+            style={{ position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)` }}
+          >
+            <Orb label={item.label} kind={item.kind} onSelect={() => onSelect(item)} />
+          </motion.div>
         )
       })}
     </AnimatePresence>

@@ -1,14 +1,7 @@
-import HubStage from '../components/HubStage'
-import HubDataClientProvider from '../lib/HubDataClientProvider'
-import { loadHubData } from '../lib/loadHubData'
+import { redirect } from 'next/navigation'
 
 export const dynamic = 'force-static'
 
-export default async function Home() {
-  const categories = await loadHubData()
-  return (
-    <HubDataClientProvider categories={categories}>
-      <HubStage />
-    </HubDataClientProvider>
-  )
+export default function Home() {
+  redirect('/hub')
 }

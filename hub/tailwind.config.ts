@@ -21,7 +21,8 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        neonBlue: '#18ffff',
+        neonBlue: '#3ab4ff',
+        neonBlueDark: '#1577ff',
         neonPink: '#ff48fb'
       },
       keyframes: {
@@ -40,8 +41,9 @@ const config: Config = {
           '50%': { transform: 'scale(1.1)' }
         },
         orbPulse: {
-          '0%, 100%': { transform: 'scale(1)' },
-          '50%': { transform: 'scale(1.05)' }
+          '0%': { opacity: 0.9 },
+          '50%': { opacity: 1 },
+          '100%': { opacity: 0.9 }
         }
       },
       animation: {
@@ -58,7 +60,7 @@ const config: Config = {
         '.pulse': { '@apply animate-neon-pulse': {} },
         '.bg-gradient-radial': {
           background:
-            'radial-gradient(circle at center, #0c2038 0%, #0a0f1a 60%, #000 100%)'
+            'radial-gradient(circle at center, #1e293b 0%, #0f172a 60%, #000 100%)'
         }
       })
     })
