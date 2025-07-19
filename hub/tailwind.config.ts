@@ -3,6 +3,9 @@
  *
  * Manual settings – adjust here if file locations or animation timings change
  */
+import type { Config } from 'tailwindcss'
+import plugin from 'tailwindcss/plugin'
+
 const CONFIG = {
   contentPaths: [
     './app/**/*.{js,ts,jsx,tsx}',
@@ -13,16 +16,13 @@ const CONFIG = {
   pulseDuration: '1.6s'
 }
 
-const plugin = require('tailwindcss/plugin')
-
-/** @type {import('tailwindcss').Config} */
-const config = {
+const config: Config = {
   content: CONFIG.contentPaths,
   theme: {
     extend: {
       colors: {
-        'neon-blue': '#18ffff',
-        'neon-pink': '#ff48fb'
+        neonBlue: '#18ffff',
+        neonPink: '#ff48fb'
       },
       keyframes: {
         glow: {
@@ -38,11 +38,16 @@ const config = {
         pulse: {
           '0%, 100%': { transform: 'scale(1)' },
           '50%': { transform: 'scale(1.1)' }
+        },
+        orbPulse: {
+          '0%, 100%': { transform: 'scale(1)' },
+          '50%': { transform: 'scale(1.05)' }
         }
       },
       animation: {
         'neon-glow': `glow ${CONFIG.glowDuration} ease-in-out infinite`,
-        'neon-pulse': `pulse ${CONFIG.pulseDuration} ease-in-out infinite`
+        'neon-pulse': `pulse ${CONFIG.pulseDuration} ease-in-out infinite`,
+        'orb-pulse': 'orbPulse 2s ease-in-out infinite'
       }
     }
   },
@@ -50,10 +55,14 @@ const config = {
     plugin(function ({ addUtilities }) {
       addUtilities({
         '.glow': { '@apply animate-neon-glow': {} },
-        '.pulse': { '@apply animate-neon-pulse': {} }
+        '.pulse': { '@apply animate-neon-pulse': {} },
+        '.bg-gradient-radial': {
+          background:
+            'radial-gradient(circle at center, #0c2038 0%, #0a0f1a 60%, #000 100%)'
+        }
       })
     })
   ]
 }
 
-module.exports = config
+export default config

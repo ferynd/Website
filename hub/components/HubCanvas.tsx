@@ -1,18 +1,17 @@
 'use client'
-import { useState } from 'react'
 import { LayoutGroup, motion, AnimatePresence } from 'framer-motion'
 import useHubData from '../lib/useHubData'
 import CoreOrb from './CoreOrb'
-import NeonRing from './NeonRing'
+import Orb from './Orb'
 
 // --- Configuration ------------------------------------------------------------
 const CONFIG = {
-  canvasSize: 300 // Square size of the canvas in pixels
+  canvasSize: 300, // Square size of the canvas in pixels
+  radius: 120 // distance from center to orb layer
 }
 
 export default function HubCanvas() {
   const categories = useHubData()
-  const [active, setActive] = useState<number | null>(null)
 
   return (
     <motion.div
@@ -23,13 +22,15 @@ export default function HubCanvas() {
         <CoreOrb />
         <AnimatePresence>
           {categories.map((cat, i) => (
-            <NeonRing
+            <Orb
               key={cat.slug}
-              category={cat}
-              index={i}
-              total={categories.length}
-              isDimmed={active !== null && active !== i}
-              setActive={setActive}
+              label={cat.name}
+              style={{
+                position: 'absolute',
+                left: `calc(50% + ${Math.cos((i / categories.length) * 2 * Math.PI) * CONFIG.radius}px)`,
+                top: `calc(50% + ${Math.sin((i / categories.length) * 2 * Math.PI) * CONFIG.radius}px)`
+              }}
+              onSelect={() => null}
             />
           ))}
         </AnimatePresence>

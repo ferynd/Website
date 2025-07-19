@@ -76,3 +76,12 @@ export const auth = getAuth(app);
 ```
 
 Import the `auth` instance in your React components wherever authentication is required.
+
+### How to add animation layers
+
+Animation layers are controlled by the `HubStage` component inside `hub/components`. Create new client components that render `OrbLayer` and update the `layerStack` when selected. New orb elements use the shared `popSpring` transition.
+
+Install particle dependencies with:
+```bash
+npm install react-tsparticles tsparticles-engine
+```
