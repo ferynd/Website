@@ -6,7 +6,7 @@ import { loadSlim } from 'tsparticles-slim'
 
 // --- Configuration -----------------------------------------------------------
 const CONFIG = {
-  count: 30 // number of particles
+  count: 25 // number of particles
 }
 
 export default function ParticleField() {

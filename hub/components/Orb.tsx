@@ -1,39 +1,19 @@
 "use client"
-import { motion } from 'framer-motion'
-import type { Transition } from 'framer-motion'
-import type { CSSProperties } from 'react'
+import { motion } from "framer-motion"
 
-// --- Configuration -----------------------------------------------------------
-const CONFIG = {
-  sizes: { sm: 40, md: 64, lg: 96 }
-}
+type Kind = "folder" | "link"
 
-export const popSpring: Transition = {
-  type: 'spring',
-  mass: 0.7,
-  stiffness: 180,
-  damping: 20
-}
-
-export interface OrbProps {
-  label: string
-  size?: keyof typeof CONFIG.sizes
-  onSelect?: () => void
-  style?: CSSProperties
-}
-
-export default function Orb({ label, size = 'md', onSelect, style }: OrbProps) {
-  const dim = CONFIG.sizes[size]
+export function Orb({ label, kind, onSelect, layoutId, style }: { label: string; kind: Kind; onSelect: () => void; layoutId?: string; style?: React.CSSProperties }) {
+  const base = kind === "link" ? "rounded-xl" : "rounded-full"
   return (
     <motion.button
-      type="button"
+      layoutId={layoutId}
+      style={style}
       aria-label={label}
-      onClick={onSelect}
-      className="orb flex items-center justify-center rounded-full text-white bg-neonPink glow"
-      style={{ width: dim, height: dim, ...style }}
+      className={`${base} w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center font-medium text-neonBlue shadow-[0_0_8px_3px_theme(colors.neonBlue/0.7)] relative before:absolute before:inset-0 before:rounded-inherit before:blur-lg before:bg-neonBlue/60`}
       whileHover={{ scale: 1.15 }}
       whileTap={{ scale: 0.95 }}
-      transition={popSpring}
+      onClick={onSelect}
     >
       {label}
     </motion.button>

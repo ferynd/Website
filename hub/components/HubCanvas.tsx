@@ -2,7 +2,7 @@
 import { LayoutGroup, motion, AnimatePresence } from 'framer-motion'
 import useHubData from '../lib/useHubData'
 import CoreOrb from './CoreOrb'
-import Orb from './Orb'
+import { Orb } from './Orb'
 
 // --- Configuration ------------------------------------------------------------
 const CONFIG = {
@@ -25,6 +25,7 @@ export default function HubCanvas() {
             <Orb
               key={cat.slug}
               label={cat.name}
+              kind="folder"
               style={{
                 position: 'absolute',
                 left: `calc(50% + ${Math.cos((i / categories.length) * 2 * Math.PI) * CONFIG.radius}px)`,
