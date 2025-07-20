@@ -34,7 +34,12 @@ export function OrbLayer({
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
             style={{ position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)` }}
           >
-            <Orb label={item.label} kind={item.kind} onSelect={() => onSelect(item)} />
+            <Orb
+              label={item.label}
+              kind={item.kind}
+              onSelect={() => onSelect(item)}
+              layoutId={item.id}
+            />
           </motion.div>
         )
       })}

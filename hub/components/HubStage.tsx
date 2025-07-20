@@ -43,6 +43,10 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
 
   const dimIndex = animatingTo ? items.findIndex(i => i.id === animatingTo) : null
 
+  const activeId = animatingTo ?? currentKey
+  const activeLabel =
+    animatingTo ? items.find(i => i.id === animatingTo)?.label ?? title : title
+
   return (
     <LayoutGroup>
       <div className="relative h-full w-full flex items-center justify-center">
@@ -63,8 +67,18 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
           className="absolute inset-0 flex items-center justify-center"
           onAnimationComplete={handleAnimationComplete}
         >
-          <Orb label={title} kind="folder" onSelect={() => {}} layoutId={currentKey} />
-          <OrbLayer items={items} radius={150} onSelect={handleSelect} dimmedIndex={dimIndex} />
+          <Orb
+            label={activeLabel}
+            kind="folder"
+            onSelect={() => {}}
+            layoutId={activeId}
+          />
+          <OrbLayer
+            items={items}
+            radius={150}
+            onSelect={handleSelect}
+            dimmedIndex={dimIndex}
+          />
         </motion.div>
       </div>
     </LayoutGroup>
