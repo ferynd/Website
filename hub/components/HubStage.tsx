@@ -1,6 +1,6 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
-import { AnimatePresence, LayoutGroup, motion } from "framer-motion"
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "framer-motion"
 import { useRouter } from "next/navigation"
 import type { HubCategory } from "../lib/getHubData"
 import { OrbLayer, OrbItem } from "./OrbLayer"
@@ -12,6 +12,7 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
   const [animatingTo, setAnimatingTo] = useState<string | null>(null)
   const backButtonRef = useRef<HTMLButtonElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const prefersReducedMotion = useReducedMotion()
 
   useEffect(() => {
     if (layerStack.length > 1) {
@@ -70,6 +71,7 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={prefersReducedMotion ? { duration: 0.2 } : undefined}
           >
             ← Back
           </motion.button>
@@ -78,6 +80,10 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
           key={currentKey}
           className="absolute inset-0 flex items-center justify-center"
           onAnimationComplete={handleAnimationComplete}
+          initial={prefersReducedMotion ? { opacity: 0, scale: 0.95 } : undefined}
+          animate={prefersReducedMotion ? { opacity: 1, scale: 1 } : undefined}
+          exit={prefersReducedMotion ? { opacity: 0, scale: 0.95 } : undefined}
+          transition={prefersReducedMotion ? { duration: 0.2 } : undefined}
         >
           <Orb
             label={activeLabel}

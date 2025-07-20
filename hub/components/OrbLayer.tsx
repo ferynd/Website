@@ -1,5 +1,5 @@
 "use client"
-import { AnimatePresence, motion } from "framer-motion"
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion"
 import { Orb } from "./Orb"
 
 export interface OrbItem {
@@ -20,6 +20,7 @@ export function OrbLayer({
   onSelect: (item: OrbItem) => void
   dimmedIndex?: number | null
 }) {
+  const prefersReducedMotion = useReducedMotion()
   return (
     <AnimatePresence>
       {items.map((item, i) => {
@@ -32,7 +33,11 @@ export function OrbLayer({
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: dimmedIndex === undefined || dimmedIndex === i ? 1 : 0.2 }}
             exit={{ scale: 0, opacity: 0 }}
-            transition={{ type: "spring", stiffness: 260, damping: 20 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0.2 }
+                : { type: "spring", stiffness: 260, damping: 20 }
+            }
             style={{ position: "absolute", left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)` }}
           >
             <Orb
