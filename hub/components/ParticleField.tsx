@@ -27,6 +27,12 @@ export default function ParticleField() {
           size: { value: { min: 1, max: 3 } },
           color: { value: '#fff' },
           move: { enable: true, speed: 0.2 }
+        },
+        interactivity: {
+          events: {
+            onHover: { enable: false },
+            onClick: { enable: false }
+          }
         }
       }}
     />
