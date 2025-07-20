@@ -4,9 +4,14 @@ import { loadHubData } from '../../../lib/loadHubData'
 
 export const dynamic = 'force-static'
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export default async function CategoryPage({ params }: any) {
-  const { category: slug } = params as { category: string }
+interface CategoryPageProps {
+  params: {
+    category: string
+  }
+}
+
+export default async function CategoryPage({ params }: CategoryPageProps) {
+  const { category: slug } = params
   const categories = await loadHubData()
   const category = categories.find(cat => cat.slug === slug)
   if (!category) return notFound()
