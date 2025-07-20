@@ -20,12 +20,12 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
     }
     const cat = categories.find(c => c.slug === key)
     if (!cat) return []
-    return cat.links.map(l => ({ id: l.url, label: l.title, kind: "link" as const }))
+    return cat.links.map(l => ({ id: l.url, label: l.title, kind: "link" as const, url: l.url }))
   }
 
   function handleSelect(item: OrbItem) {
     if (item.kind === "link") {
-      router.push(item.id)
+      router.push(item.url ?? item.id)
       return
     }
     setAnimatingTo(item.id)
