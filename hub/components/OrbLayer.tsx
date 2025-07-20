@@ -6,6 +6,7 @@ export interface OrbItem {
   id: string
   label: string
   kind: "folder" | "link"
+  url?: string
 }
 
 export function OrbLayer({
@@ -39,6 +40,7 @@ export function OrbLayer({
               kind={item.kind}
               onSelect={() => onSelect(item)}
               layoutId={item.id}
+              url={item.url}
             />
           </motion.div>
         )
