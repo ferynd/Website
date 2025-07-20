@@ -50,7 +50,7 @@ icon: "✨"
 Short description here.
 ```
 
-Alternatively, you can maintain a single JSON configuration by editing `content/hubConfig.json` and enabling the `useJsonHubData` flag in `hub/next.config.ts`.
+Alternatively, you can maintain a single JSON configuration by editing `content/hubConfig.json` and setting the `USE_JSON_HUB_DATA` environment variable to `true`.
 
 ## Deployment on Cloudflare Pages
 
