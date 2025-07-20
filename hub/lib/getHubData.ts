@@ -1,10 +1,5 @@
 // Utility to collect hub metadata from markdown files
-import fs from 'fs/promises'
-import path from 'path'
-import matter from 'gray-matter'
-
-// --- Configuration: adjust the root directory for hub content if needed ---
-const HUB_CONTENT_DIR = path.resolve(process.cwd(), '../content/hub')
+import { parseContentTree } from './contentParser'
 
 export interface HubLink {
   title: string
@@ -23,32 +18,21 @@ export interface HubCategory {
  * assemble a list of categories with their associated links.
  */
 export async function getHubData(): Promise<HubCategory[]> {
-  const dirs = await fs.readdir(HUB_CONTENT_DIR, { withFileTypes: true })
+  const tree = await parseContentTree()
   const categories: HubCategory[] = []
-
-  for (const dir of dirs) {
-    if (!dir.isDirectory()) continue
-
-    const slug = dir.name
-    const name = slug.charAt(0).toUpperCase() + slug.slice(1)
-    const categoryDir = path.join(HUB_CONTENT_DIR, slug)
-    const files = await fs.readdir(categoryDir)
-
+  for (const node of tree) {
+    if (node.type !== 'folder') continue
+    const slug = node.slug ?? node.id
     const links: HubLink[] = []
-    for (const file of files) {
-      if (!file.endsWith('.md')) continue
-      const filePath = path.join(categoryDir, file)
-      const content = await fs.readFile(filePath, 'utf8')
-      const { data } = matter(content)
+    for (const child of node.children ?? []) {
+      if (child.type !== 'page') continue
       links.push({
-        title: data.title ?? file.replace(/\.md$/, ''),
-        url: data.url ?? '#',
-        icon: data.icon ?? ''
+        title: child.label,
+        url: child.slug ?? '#',
+        icon: ''
       })
     }
-
-    categories.push({ slug, name, links })
+    categories.push({ slug, name: node.label, links })
   }
-
   return categories
 }
