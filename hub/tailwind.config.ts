@@ -57,11 +57,7 @@ const config: Config = {
     plugin(function ({ addUtilities }) {
       addUtilities({
         '.glow': { '@apply animate-neon-glow': {} },
-        '.pulse': { '@apply animate-neon-pulse': {} },
-        '.bg-gradient-radial': {
-          background:
-            'radial-gradient(circle at center, #1e293b 0%, #0f172a 60%, #000 100%)'
-        }
+        '.pulse': { '@apply animate-neon-pulse': {} }
       })
     })
   ]
