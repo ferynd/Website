@@ -1,5 +1,5 @@
 "use client"
-import { useState } from "react"
+import { useState, useRef, useEffect } from "react"
 import { AnimatePresence, LayoutGroup, motion } from "framer-motion"
 import { useRouter } from "next/navigation"
 import type { HubCategory } from "../lib/getHubData"
@@ -10,6 +10,17 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
   const router = useRouter()
   const [layerStack, setLayerStack] = useState<string[]>(["hub"])
   const [animatingTo, setAnimatingTo] = useState<string | null>(null)
+  const backButtonRef = useRef<HTMLButtonElement | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (layerStack.length > 1) {
+      backButtonRef.current?.focus()
+    } else {
+      const first = containerRef.current?.querySelector('a,button') as HTMLElement | null
+      first?.focus()
+    }
+  }, [layerStack])
 
   const categories = initialData
   const currentKey = layerStack[layerStack.length - 1]
@@ -49,10 +60,11 @@ export default function HubStage({ initialData }: { initialData: HubCategory[] }
 
   return (
     <LayoutGroup>
-      <div className="relative h-full w-full flex items-center justify-center">
+      <div ref={containerRef} className="relative h-full w-full flex items-center justify-center">
         <AnimatePresence>{layerStack.length > 1 && (
           <motion.button
             key="back"
+            ref={backButtonRef}
             onClick={() => setLayerStack(layerStack.slice(0, -1))}
             className="absolute top-4 left-4 text-neonBlue"
             initial={{ opacity: 0 }}
