@@ -1,0 +1,1772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3-Day Rolling Average Nutrition Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .progress-bar-bg {
+            background-color: #e0e0e0;
+        }
+        .progress-bar-fill {
+            transition: width 0.5s ease-in-out;
+        }
+        .nutrient-card {
+            transition: all 0.3s ease-in-out;
+        }
+        .nutrient-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        .food-dropdown {
+            position: relative;
+        }
+        .food-dropdown-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #d1d5db;
+            border-top: none;
+            border-radius: 0 0 0.375rem 0.375rem;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .food-dropdown-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #f3f4f6;
+            transition: background-color 0.2s;
+        }
+        .food-dropdown-item:hover {
+            background-color: #f3f4f6;
+        }
+        .food-dropdown-item:last-child {
+            border-bottom: none;
+        }
+        .food-dropdown-item.highlighted {
+            background-color: #eff6ff;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+    <nav class="p-2 text-sm"><a href="/" class="text-blue-600 hover:underline">Back to Hub</a></nav>
+    <!-- Firebase Config -->
+    <script type="module">
+        // === CONFIGURATION SECTION ===
+        const CONFIG = {
+            // App Configuration
+            TIMEZONE: 'America/Chicago',
+            DEFAULT_CHART_NUTRIENT: 'calories',
+            DEFAULT_CHART_TIMEFRAME: 'week',
+            DEFAULT_FAT_MINIMUM: 50, // Default minimum fat in grams - configurable in settings
+
+            // Chart Configuration
+            CHART_COLORS: [
+                '#3B82F6', '#EF4444', '#10B981', '#F59E0B',
+                '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'
+            ],
+            CHART_AVERAGE_LOOKBACK: 3, // Days beyond display period for 3-day averages
+
+            // Food Search Configuration
+            SEARCH_MIN_CHARS: 1, // Minimum characters to trigger search
+            SEARCH_DEBOUNCE_MS: 300, // Milliseconds to wait before searching
+            MAX_DROPDOWN_ITEMS: 10, // Maximum items to show in dropdown
+
+            // Debugging Configuration
+            DEBUG_MODE: true, // Set to true for detailed console logging
+
+            // UI Configuration
+            ANIMATION_DURATION: 300 // Milliseconds for UI animations
+        };
+
+        // Firebase configuration - try external file first, fallback to embedded
+        let firebaseConfig;
+        try {
+            // Try to import from external file first
+            const { firebaseConfig: importedConfig } = await import("./firebaseConfig.js");
+            firebaseConfig = importedConfig;
+            if (CONFIG.DEBUG_MODE) console.log("✅ Firebase config loaded from external file");
+        } catch (error) {
+            console.warn("⚠️ Could not load external Firebase config, using fallback:", error);
+            // Fallback configuration
+            firebaseConfig = {
+                apiKey: "YOUR_API_KEY",
+                authDomain: "YOUR_AUTH_DOMAIN",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_STORAGE_BUCKET",
+                messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+                appId: "YOUR_APP_ID",
+                measurementId: "YOUR_MEASUREMENT_ID"
+            };
+        }
+
+        // === FIREBASE IMPORTS ===
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import {
+            getAuth, onAuthStateChanged, signInAnonymously,
+            createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import {
+            getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, deleteDoc
+        } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // === APP INITIALIZATION ===
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // === GLOBAL STATE ===
+        let userId;
+        let baselineTargets = {};
+        let dailyEntries = new Map();
+        let chartInstance = null;
+        let dailyFoodItems = []; // Track individual food items for the day
+        let savedFoodItems = new Map(); // Cache of saved food items from database
+        let foodDropdownVisible = false;
+        let searchTimeout = null; // For debounced search
+        let selectedDropdownIndex = -1; // For keyboard navigation
+
+        // === NUTRIENT CONFIGURATION ===
+        const nutrients = {
+            macros: ['calories', 'protein', 'carbs', 'fat'],
+            vitaminsDaily: ['vitaminB12', 'folate', 'vitaminC', 'vitaminB6'],
+            vitaminsAvg: ['vitaminA', 'vitaminD', 'vitaminE', 'vitaminK'],
+            mineralsDaily: ['iron', 'calcium', 'magnesium', 'zinc', 'potassium', 'sodium'],
+            mineralsAvg: ['selenium', 'iodine', 'phosphorus'],
+            optional: ['omega3', 'fiber', 'choline']
+        };
+        const allNutrients = [
+            ...nutrients.macros, ...nutrients.vitaminsDaily, ...nutrients.vitaminsAvg,
+            ...nutrients.mineralsDaily, ...nutrients.mineralsAvg, ...nutrients.optional
+        ];
+        const dailyTrackedNutrients = ['protein', ...nutrients.vitaminsDaily, ...nutrients.mineralsDaily];
+
+        // === DOM ELEMENTS ===
+        const settingsModal = document.getElementById('settings-modal');
+        const loginModal = document.getElementById('login-modal');
+        const foodManagerModal = document.getElementById('food-manager-modal');
+        const duplicateFoodModal = document.getElementById('duplicate-food-modal');
+        const dateInput = document.getElementById('date-input');
+        const dashboard = document.getElementById('dashboard');
+        const loader = document.getElementById('loader');
+        const mainContent = document.getElementById('main-content');
+        const messageBox = document.getElementById('message-box');
+        const messageText = document.getElementById('message-text');
+        const userStatus = document.getElementById('user-status');
+
+        // === UTILITY FUNCTIONS ===
+        const formatDate = (date) => date.toISOString().split('T')[0];
+
+        const getTodayInTimezone = () => {
+            try {
+                return new Date().toLocaleDateString('en-CA', { timeZone: CONFIG.TIMEZONE });
+            } catch (error) {
+                debugLog('timezone-error', 'Timezone not supported, using local time', error);
+                return formatDate(new Date());
+            }
+        };
+
+        const getPastDate = (date, days) => {
+            const pastDate = new Date(date);
+            pastDate.setDate(pastDate.getDate() - days);
+            return pastDate;
+        };
+
+        const showMessage = (text, isError = false, duration = 5000) => {
+            debugLog('user-message', { text, isError, duration });
+            if (messageText && messageBox) {
+                messageText.textContent = text;
+                messageBox.classList.remove('hidden', 'bg-green-500', 'bg-red-500');
+                messageBox.classList.add(isError ? 'bg-red-500' : 'bg-green-500');
+                setTimeout(() => messageBox.classList.add('hidden'), duration);
+            }
+        };
+        const formatNutrientName = (name) => {
+            return name.replace(/([A-Z])/g, ' $1').trim()
+                .replace(/^vitamin/i, 'Vitamin ')
+                .replace(/^omega/i, 'Omega-');
+        };
+        const getFatMinimum = () => {
+            return parseFloat(baselineTargets.fatMinimum) || CONFIG.DEFAULT_FAT_MINIMUM;
+        };
+        const debugLog = (context, message, data = null) => {
+            if (CONFIG.DEBUG_MODE) {
+                console.log(`[NUTRITION-TRACKER][${context.toUpperCase()}]:`, message, data || '');
+            }
+        };
+        const handleError = (context, error, userMessage = 'An error occurred') => {
+            console.error(`[NUTRITION-TRACKER][ERROR][${context.toUpperCase()}]:`, error);
+            showMessage(userMessage, true);
+            return null;
+        };
+
+        // === APP DATA LOADING ===
+        async function loadUserData() {
+            if (!userId) {
+                debugLog('load-user-data', 'No user ID available');
+                return;
+            }
+
+            mainContent.classList.add('hidden');
+            loader.classList.remove('hidden');
+
+            try {
+                debugLog('load-user-data', 'Starting data load', { userId });
+
+                baselineTargets = await fetchTargets();
+                dailyEntries = await fetchRecentEntries();
+                await loadSavedFoodItems(); // Load saved food items
+                loadDailyFoodItems(); // Load food items for current day
+                populateSettingsForm(); // Populate settings with current targets
+                updateDashboard();
+                updateChart(); // Update chart with current data
+
+                debugLog('load-user-data', 'Data load completed successfully', {
+                    targetsCount: Object.keys(baselineTargets).length,
+                    entriesCount: dailyEntries.size,
+                    foodItemsCount: savedFoodItems.size
+                });
+            } catch (error) {
+                handleError('load-user-data', error, 'Error loading data. Please refresh and try again.');
+            }
+
+            loader.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+        }
+
+        // === UI STATE MANAGEMENT ===
+        function updateAuthStateUI(user) {
+            if (user) {
+                loginModal.classList.add('hidden');
+                document.getElementById('open-login-btn').classList.add('hidden');
+                document.getElementById('logout-btn').classList.remove('hidden');
+                userStatus.classList.remove('hidden');
+                userStatus.textContent = user.isAnonymous ? 'Logged in as Guest' : user.email;
+                debugLog('auth-state', 'User authenticated', { isAnonymous: user.isAnonymous, email: user.email });
+            } else {
+                mainContent.classList.add('hidden');
+                loader.classList.add('hidden');
+                loginModal.classList.remove('hidden');
+                document.getElementById('open-login-btn').classList.remove('hidden');
+                document.getElementById('logout-btn').classList.add('hidden');
+                userStatus.classList.add('hidden');
+                userStatus.textContent = '';
+                debugLog('auth-state', 'User not authenticated');
+            }
+        }
+
+        // === AUTHENTICATION LOGIC ===
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                userId = user.uid;
+                updateAuthStateUI(user);
+                loadUserData();
+            } else {
+                userId = null;
+                updateAuthStateUI(null);
+            }
+        });
+
+        async function handleSignUp() {
+            const email = document.getElementById('email-input').value.trim();
+            const password = document.getElementById('password-input').value;
+
+            if (!email || !password) {
+                return showMessage("Please enter both email and password.", true);
+            }
+            if (password.length < 6) {
+                return showMessage("Password should be at least 6 characters long.", true);
+            }
+
+            try {
+                await createUserWithEmailAndPassword(auth, email, password);
+                showMessage('Account created successfully!');
+                debugLog('auth-signup', 'Account created successfully', { email });
+            } catch (error) {
+                const message = error.code === 'auth/email-already-in-use'
+                    ? 'This email address is already in use by another account.'
+                    : error.message;
+                handleError('auth-signup', error, message);
+            }
+        }
+
+        async function handleLogin() {
+            const email = document.getElementById('email-input').value.trim();
+            const password = document.getElementById('password-input').value;
+
+            if (!email || !password) {
+                return showMessage("Please enter both email and password.", true);
+            }
+
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                showMessage('Logged in successfully!');
+                debugLog('auth-login', 'Login successful', { email });
+            } catch (error) {
+                const message = ['auth/invalid-credential', 'auth/wrong-password'].includes(error.code)
+                    ? 'Incorrect password or email. Please try again.'
+                    : error.message;
+                handleError('auth-login', error, message);
+            }
+        }
+
+        async function handleGuestLogin() {
+            try {
+                await signInAnonymously(auth);
+                showMessage('Continuing as a guest. Data is saved to this browser only.');
+                debugLog('auth-guest', 'Guest login successful');
+            } catch (error) {
+                handleError('auth-guest', error, "Could not sign in as guest.");
+            }
+        }
+
+        async function handleLogout() {
+            try {
+                await signOut(auth);
+                baselineTargets = {};
+                dailyEntries.clear();
+                dailyFoodItems = [];
+                savedFoodItems.clear();
+                dashboard.innerHTML = '';
+                if (chartInstance) {
+                    chartInstance.destroy();
+                    chartInstance = null;
+                }
+                showMessage("You have been logged out.");
+                debugLog('auth-logout', 'Logout successful');
+            } catch (error) {
+                handleError('auth-logout', error, "Failed to log out.");
+            }
+        }
+
+        // === FIREBASE FUNCTIONS ===
+        async function saveTargets(targets) {
+            if (!userId) return showMessage("Cannot save targets. Not authenticated.", true);
+
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/targets/baseline`), targets);
+                baselineTargets = targets;
+                showMessage("Targets saved successfully!");
+                updateDashboard();
+                updateChart();
+                debugLog('targets-save', 'Targets saved successfully', { targetsCount: Object.keys(targets).length });
+            } catch (error) {
+                handleError('targets-save', error, "Failed to save targets.");
+            }
+        }
+
+        async function fetchTargets() {
+            if (!userId) return {};
+
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const docRef = doc(db, `artifacts/${appId}/users/${userId}/targets/baseline`);
+                const docSnap = await getDoc(docRef);
+                const result = docSnap.exists() ? docSnap.data() : {};
+                debugLog('targets-fetch', 'Targets fetched', { count: Object.keys(result).length });
+                return result;
+            } catch (error) {
+                handleError('targets-fetch', error);
+                return {};
+            }
+        }
+
+        async function saveDailyEntry(dateStr, entry) {
+            if (!userId) return showMessage("Cannot save entry. Not authenticated.", true);
+
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                // Include food items in the entry
+                entry.foodItems = dailyFoodItems;
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/dailyEntries`, dateStr), entry);
+                dailyEntries.set(dateStr, entry);
+                showMessage(`Entry for ${dateStr} saved!`);
+                updateDashboard();
+                updateChart();
+                updateFoodItemsList();
+                debugLog('daily-entry-save', 'Daily entry saved', { date: dateStr, nutrientsCount: Object.keys(entry).length });
+            } catch (error) {
+                handleError('daily-entry-save', error, "Failed to save entry.");
+            }
+        }
+
+        async function fetchAllEntries() {
+            if (!userId) return [];
+
+            const entries = [];
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const q = query(collection(db, `artifacts/${appId}/users/${userId}/dailyEntries`), orderBy("date", "asc"));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach((doc) => entries.push(doc.data()));
+                debugLog('fetch-all-entries', 'All entries fetched', { count: entries.length });
+            } catch (error) {
+                handleError('fetch-all-entries', error);
+            }
+            return entries;
+        }
+
+        async function fetchRecentEntries() {
+            if (!userId) return new Map();
+
+            const entries = new Map();
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                // Fetch more entries to support 3-day averages
+                const q = query(collection(db, `artifacts/${appId}/users/${userId}/dailyEntries`), orderBy("date", "desc"), limit(100));
+                const querySnapshot = await getDocs(q);
+                querySnapshot.forEach((doc) => entries.set(doc.id, doc.data()));
+                debugLog('fetch-recent-entries', 'Recent entries fetched', { count: entries.size });
+            } catch (error) {
+                handleError('fetch-recent-entries', error);
+            }
+            return entries;
+        }
+        // === ENHANCED FOOD ITEM MANAGEMENT ===
+        async function loadSavedFoodItems() {
+            if (!userId) return;
+
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const q = query(collection(db, `artifacts/${appId}/users/${userId}/foodItems`), orderBy("name"));
+                const querySnapshot = await getDocs(q);
+                savedFoodItems.clear();
+                querySnapshot.forEach((doc) => {
+                    savedFoodItems.set(doc.id, doc.data());
+                });
+                debugLog('load-saved-foods', 'Saved food items loaded', { count: savedFoodItems.size });
+            } catch (error) {
+                handleError('load-saved-foods', error);
+            }
+        }
+        async function saveFoodItem(foodData) {
+            if (!userId) {
+                throw new Error('User not authenticated');
+            }
+
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                const foodId = foodData.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                await setDoc(doc(db, `artifacts/${appId}/users/${userId}/foodItems`, foodId), foodData);
+                savedFoodItems.set(foodId, foodData);
+                debugLog('save-food-item', 'Food item saved', { name: foodData.name });
+            } catch (error) {
+                handleError('save-food-item', error, 'Failed to save food item');
+                throw error;
+            }
+        }
+        async function deleteFoodItem(foodId) {
+            if (!userId) {
+                throw new Error('User not authenticated');
+            }
+
+            try {
+                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/foodItems`, foodId));
+                savedFoodItems.delete(foodId);
+                debugLog('delete-food-item', 'Food item deleted', { foodId });
+            } catch (error) {
+                handleError('delete-food-item', error, 'Failed to delete food item');
+                throw error;
+            }
+        }
+        function loadDailyFoodItems() {
+            const dateStr = dateInput.value;
+            const entry = dailyEntries.get(dateStr) || {};
+            dailyFoodItems = entry.foodItems || [];
+            updateFoodItemsList();
+            debugLog('load-daily-foods', 'Daily food items loaded', { date: dateStr, count: dailyFoodItems.length });
+        }
+        function updateFoodItemsList() {
+            const container = document.getElementById('food-items-list');
+            if (!container) return;
+
+            if (dailyFoodItems.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">No food items logged yet.</p>';
+                return;
+            }
+            const listHTML = dailyFoodItems.map((item, index) => {
+                const itemName = item.name || '(blank)';
+                return `
+                <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                    <span class="text-sm">
+                        <strong>${itemName}:</strong>
+                         Cal: ${item.calories || 0} | P: ${item.protein || 0} / C: ${item.carbs || 0} / F: ${item.fat || 0}
+                    </span>
+                    <button onclick="removeFoodItem(${index})" class="text-red-500 hover:text-red-700 text-xs">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                `;
+            }).join('');
+            container.innerHTML = listHTML;
+        }
+        // === ENHANCED FOOD DROPDOWN WITH SEARCH ===
+        function setupFoodDropdown() {
+            const foodInput = document.getElementById('food-item-input');
+            const dropdownContainer = document.getElementById('food-dropdown');
+
+            if (!foodInput || !dropdownContainer) {
+                debugLog('setup-dropdown', 'Food dropdown elements not found');
+                return;
+            }
+
+            // Enhanced search with debouncing and keyboard navigation
+            foodInput.addEventListener('input', (e) => {
+                clearTimeout(searchTimeout);
+                const value = e.target.value.trim();
+
+                searchTimeout = setTimeout(() => {
+                    if (value.length >= CONFIG.SEARCH_MIN_CHARS) {
+                        performFoodSearch(value);
+                    } else {
+                        hideFoodDropdown();
+                    }
+                }, CONFIG.SEARCH_DEBOUNCE_MS);
+            });
+
+            // Keyboard navigation
+            foodInput.addEventListener('keydown', (e) => {
+                if (!foodDropdownVisible) return;
+
+                const items = dropdownContainer.querySelectorAll('.food-dropdown-item');
+
+                switch(e.key) {
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        selectedDropdownIndex = Math.min(selectedDropdownIndex + 1, items.length - 1);
+                        updateDropdownHighlight(items);
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        selectedDropdownIndex = Math.max(selectedDropdownIndex - 1, -1);
+                        updateDropdownHighlight(items);
+                        break;
+                    case 'Enter':
+                        e.preventDefault();
+                        if (selectedDropdownIndex >= 0 && items[selectedDropdownIndex]) {
+                            const foodName = items[selectedDropdownIndex].dataset.foodName;
+                            selectFoodItem(foodName);
+                        }
+                        break;
+                    case 'Escape':
+                        hideFoodDropdown();
+                        break;
+                }
+            });
+
+            // Hide dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!dropdownContainer.contains(e.target) && e.target !== foodInput) {
+                    hideFoodDropdown();
+                }
+            });
+
+            debugLog('setup-dropdown', 'Enhanced food dropdown setup completed');
+        }
+        function performFoodSearch(searchTerm) {
+            const matches = Array.from(savedFoodItems.values())
+                .filter(food => food.name.toLowerCase().includes(searchTerm.toLowerCase()))
+                .sort((a, b) => {
+                    // Prioritize exact matches, then starts with, then contains
+                    const aName = a.name.toLowerCase();
+                    const bName = b.name.toLowerCase();
+                    const searchLower = searchTerm.toLowerCase();
+
+                    if (aName === searchLower) return -1;
+                    if (bName === searchLower) return 1;
+                    if (aName.startsWith(searchLower) && !bName.startsWith(searchLower)) return -1;
+                    if (bName.startsWith(searchLower) && !aName.startsWith(searchLower)) return 1;
+                    return aName.localeCompare(bName);
+                })
+                .slice(0, CONFIG.MAX_DROPDOWN_ITEMS);
+
+            if (matches.length > 0) {
+                showFoodDropdown(matches);
+                debugLog('food-search', 'Search performed', { searchTerm, resultCount: matches.length });
+            } else {
+                hideFoodDropdown();
+            }
+        }
+        function showFoodDropdown(matches) {
+            const dropdownContainer = document.getElementById('food-dropdown');
+            selectedDropdownIndex = -1;
+
+            const listHTML = matches.map((food, index) => `
+                <div class="food-dropdown-item" data-food-name="${food.name}" onclick="selectFoodItem('${food.name.replace(/'/g, '\\\'')}')" data-index="${index}">
+                    <div class="font-medium">${food.name}</div>
+                    <div class="text-xs text-gray-500">Cal: ${food.calories || 0} | P: ${food.protein || 0} / C: ${food.carbs || 0} / F: ${food.fat || 0}</div>
+                </div>
+            `).join('');
+
+            dropdownContainer.innerHTML = listHTML;
+            dropdownContainer.classList.remove('hidden');
+            foodDropdownVisible = true;
+        }
+        function updateDropdownHighlight(items) {
+            items.forEach((item, index) => {
+                item.classList.toggle('highlighted', index === selectedDropdownIndex);
+            });
+        }
+        function hideFoodDropdown() {
+            const dropdownContainer = document.getElementById('food-dropdown');
+            if (dropdownContainer) {
+                dropdownContainer.classList.add('hidden');
+                foodDropdownVisible = false;
+                selectedDropdownIndex = -1;
+            }
+        }
+        window.selectFoodItem = (foodName) => {
+            const foodData = Array.from(savedFoodItems.values()).find(f => f.name === foodName);
+            if (foodData) {
+                document.getElementById('food-item-input').value = foodName;
+                populateStagingFromFood(foodData);
+                hideFoodDropdown();
+                debugLog('select-food-item', 'Food item selected', { name: foodName });
+            }
+        };
+        function populateStagingFromFood(foodData) {
+            allNutrients.forEach(nutrient => {
+                const input = document.getElementById(`actual-${nutrient}`);
+                if (input && foodData[nutrient] !== undefined) {
+                    input.value = foodData[nutrient];
+                }
+            });
+            debugLog('populate-staging', 'Staging area populated from food data', { foodName: foodData.name });
+        }
+        async function addFoodItem() {
+            const foodName = document.getElementById('food-item-input').value.trim();
+            const stagedValues = getStagedValues();
+
+            // Check if food name already exists
+            const existingFood = Array.from(savedFoodItems.values()).find(f => f.name.toLowerCase() === foodName.toLowerCase());
+
+            if (existingFood && foodName) {
+                // Check if values are different
+                const hasDifferences = allNutrients.some(nutrient =>
+                    parseFloat(existingFood[nutrient] || 0) !== parseFloat(stagedValues[nutrient] || 0)
+                );
+
+                if (hasDifferences) {
+                    showDuplicateDialog(existingFood, stagedValues, foodName);
+                    return;
+                } else {
+                    // Values are the same, just use existing
+                    debugLog('add-food-item', 'Using existing food with identical values', { name: foodName });
+                }
+            }
+
+            // Save as new food item if name provided and has nutrient data
+            if (foodName && Object.values(stagedValues).some(v => v > 0)) {
+                const foodData = { name: foodName, ...stagedValues, lastUpdated: new Date().toISOString() };
+                try {
+                    await saveFoodItem(foodData);
+                    showMessage(`Food item "${foodName}" saved to database.`);
+                } catch (error) {
+                    debugLog('add-food-item', 'Failed to save food item', error);
+                    // Continue with daily entry even if save fails
+                }
+            }
+
+            // Create daily food entry
+            const foodItem = {
+                name: foodName || '',
+                calories: stagedValues.calories || 0,
+                protein: stagedValues.protein || 0,
+                carbs: stagedValues.carbs || 0,
+                fat: stagedValues.fat || 0,
+                timestamp: new Date().toISOString(),
+                ...stagedValues
+            };
+            dailyFoodItems.push(foodItem);
+
+            // Clear the food input
+            document.getElementById('food-item-input').value = '';
+
+            updateFoodItemsList();
+            showMessage(`Added ${foodName || '(blank)'} to daily log.`);
+            debugLog('add-food-item', 'Food item added to daily log', { name: foodName || '(blank)' });
+        }
+        // === ENHANCED DUPLICATE FOOD HANDLING ===
+        function showDuplicateDialog(existingFood, newValues, foodName) {
+            const modal = document.getElementById('duplicate-food-modal');
+            const container = document.getElementById('duplicate-comparison');
+
+            // Find differences
+            const differences = [];
+            allNutrients.forEach(nutrient => {
+                const existing = parseFloat(existingFood[nutrient] || 0);
+                const newVal = parseFloat(newValues[nutrient] || 0);
+                if (existing !== newVal) {
+                    differences.push({
+                        nutrient: formatNutrientName(nutrient),
+                        existing,
+                        new: newVal,
+                        delta: newVal - existing
+                    });
+                }
+            });
+
+            const comparisonHTML = `
+                <h3 class="text-lg font-semibold mb-4">Food item "${foodName}" already exists with different values:</h3>
+                <div class="overflow-x-auto mb-6">
+                    <table class="min-w-full bg-white border border-gray-300">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 border-b text-left">Nutrient</th>
+                                <th class="px-4 py-2 border-b text-center">Saved</th>
+                                <th class="px-4 py-2 border-b text-center">Current</th>
+                                <th class="px-4 py-2 border-b text-center">Delta</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${differences.map(diff => `
+                                <tr>
+                                    <td class="px-4 py-2 border-b font-medium">${diff.nutrient}</td>
+                                    <td class="px-4 py-2 border-b text-center">${diff.existing.toFixed(1)}</td>
+                                    <td class="px-4 py-2 border-b text-center">${diff.new.toFixed(1)}</td>
+                                    <td class="px-4 py-2 border-b text-center ${diff.delta >= 0 ? 'text-green-600' : 'text-red-600'}">
+                                        ${diff.delta >= 0 ? '+' : ''}${diff.delta.toFixed(1)}
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="flex gap-3 justify-center">
+                    <button onclick="useSavedFood('${foodName}')" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Use Saved Version
+                    </button>
+                    <button onclick="replaceSavedFood('${foodName}')" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                        Replace Saved
+                    </button>
+                    <button onclick="keepBothFoods()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                        Keep Both
+                    </button>
+                    <button onclick="closeDuplicateDialog()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">
+                        Cancel
+                    </button>
+                </div>
+            `;
+
+            container.innerHTML = comparisonHTML;
+            modal.classList.remove('hidden');
+            debugLog('duplicate-dialog', 'Duplicate dialog shown', { foodName, differencesCount: differences.length });
+        }
+        window.useSavedFood = (foodName) => {
+            selectFoodItem(foodName);
+            closeDuplicateDialog();
+            debugLog('duplicate-resolution', 'Used saved food version', { foodName });
+        };
+        window.replaceSavedFood = async (foodName) => {
+            const stagedValues = getStagedValues();
+            const foodData = { name: foodName, ...stagedValues, lastUpdated: new Date().toISOString() };
+            try {
+                await saveFoodItem(foodData);
+                showMessage(`Food item "${foodName}" updated in database.`);
+                addFoodItem(); // Add to daily log
+                debugLog('duplicate-resolution', 'Replaced saved food version', { foodName });
+            } catch (error) {
+                handleError('replace-saved-food', error, 'Failed to update food item.');
+            }
+            closeDuplicateDialog();
+        };
+        window.keepBothFoods = () => {
+            const currentName = document.getElementById('food-item-input').value.trim();
+            const newName = prompt(`Enter a new name for the current version (currently "${currentName}"):`);
+            if (newName && newName.trim() && newName.trim() !== currentName) {
+                document.getElementById('food-item-input').value = newName.trim();
+                closeDuplicateDialog();
+                addFoodItem();
+                debugLog('duplicate-resolution', 'Kept both foods with rename', { originalName: currentName, newName: newName.trim() });
+            } else if (newName === null) {
+                // User cancelled
+                debugLog('duplicate-resolution', 'User cancelled rename operation');
+            } else {
+                showMessage('Please enter a different name.', true);
+            }
+        };
+        window.closeDuplicateDialog = () => {
+            document.getElementById('duplicate-food-modal').classList.add('hidden');
+        };
+
+        // === FIX: This function now correctly subtracts nutrients and saves to the database ===
+        window.removeFoodItem = async (index) => {
+            if (index < 0 || index >= dailyFoodItems.length) return;
+
+            const itemToRemove = dailyFoodItems[index];
+
+            if (confirm(`Are you sure you want to remove "${itemToRemove.name || '(blank)'}"?\n\nThis will subtract its nutrients from today's totals.`)) {
+                try {
+                    // Get today's entry from the cache
+                    const dateStr = dateInput.value;
+                    const todayEntry = dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+
+                    // Subtract the removed food's nutrients from the day's total nutrients
+                    allNutrients.forEach(nutrient => {
+                        const currentVal = parseFloat(todayEntry[nutrient]) || 0;
+                        const foodVal = parseFloat(itemToRemove[nutrient]) || 0;
+                        todayEntry[nutrient] = Math.max(0, currentVal - foodVal);
+                    });
+
+                    // Remove the item from the global daily food list array
+                    dailyFoodItems.splice(index, 1);
+
+                    // Update the foodItems array within the entry object itself
+                    todayEntry.foodItems = dailyFoodItems;
+
+                    // Save the entire updated entry back to Firebase.
+                    // This function will also trigger UI updates (dashboard, chart, food list).
+                    await saveDailyEntry(dateStr, todayEntry);
+
+                    showMessage(`Removed "${itemToRemove.name || '(blank)'}" and updated totals.`);
+                    debugLog('remove-food-item', 'Food item removed and totals updated', { item: itemToRemove });
+
+                } catch (error) {
+                    handleError('remove-food-item', error, 'Failed to remove food item.');
+                }
+            }
+        };
+
+        // === ENHANCED FOOD MANAGER ===
+        function openFoodManager() {
+            const modal = document.getElementById('food-manager-modal');
+            const container = document.getElementById('food-manager-list');
+
+            const foodList = Array.from(savedFoodItems.entries())
+                .sort(([,a], [,b]) => a.name.localeCompare(b.name));
+
+            const listHTML = foodList.map(([id, food]) => `
+                <div class="flex justify-between items-center p-3 border-b border-gray-200">
+                    <div>
+                        <div class="font-medium">${food.name}</div>
+                        <div class="text-sm text-gray-500">
+                            Cal: ${food.calories || 0} | P: ${food.protein || 0} / C: ${food.carbs || 0} / F: ${food.fat || 0}
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="editFoodItem('${id}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                            Edit
+                        </button>
+                        <button onclick="deleteFoodItemFromManager('${id}')" class="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700">
+                            Delete
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+
+            container.innerHTML = listHTML || '<p class="text-gray-500 text-center p-4">No saved food items.</p>';
+            modal.classList.remove('hidden');
+            debugLog('food-manager', 'Food manager opened', { totalFoods: foodList.length });
+        }
+        window.editFoodItem = (foodId) => {
+            const food = savedFoodItems.get(foodId);
+            if (food) {
+                document.getElementById('food-item-input').value = food.name;
+                populateStagingFromFood(food);
+                document.getElementById('food-manager-modal').classList.add('hidden');
+                showMessage(`Loaded "${food.name}" for editing. Modify values and add to update.`);
+                debugLog('edit-food-item', 'Food item loaded for editing', { name: food.name });
+            }
+        };
+        // === SMART DELETION WITH DAILY TOTAL SUBTRACTION ===
+        window.deleteFoodItemFromManager = async (foodId) => {
+            const food = savedFoodItems.get(foodId);
+            if (!food) return;
+
+            if (confirm(`Delete "${food.name}" from saved foods?\n\nThis will also subtract its nutrients from today's totals if it was consumed today.`)) {
+                try {
+                    // First, subtract nutrients from today's totals if this food was consumed
+                    const dateStr = dateInput.value;
+                    const todayEntry = dailyEntries.get(dateStr) || { date: dateStr };
+                    let removedCount = 0;
+
+                    // Remove matching food items from today's food list and subtract nutrients
+                    dailyFoodItems = dailyFoodItems.filter(item => {
+                        if (item.name === food.name) {
+                            // Subtract this food's nutrients from today's totals
+                            allNutrients.forEach(nutrient => {
+                                const currentVal = parseFloat(todayEntry[nutrient]) || 0;
+                                const foodVal = parseFloat(item[nutrient]) || 0;
+                                todayEntry[nutrient] = Math.max(0, currentVal - foodVal);
+                            });
+                            removedCount++;
+                            return false; // Remove this item
+                        }
+                        return true; // Keep this item
+                    });
+
+                    // Save updated daily entry if nutrients were subtracted
+                    if (removedCount > 0) {
+                        await saveDailyEntry(dateStr, todayEntry);
+                        debugLog('delete-food-manager', 'Subtracted nutrients from daily totals', {
+                            foodName: food.name,
+                            removedCount
+                        });
+                    }
+
+                    // Delete from saved foods
+                    await deleteFoodItem(foodId);
+                    showMessage(`Deleted "${food.name}" from saved foods${removedCount > 0 ? ` and subtracted ${removedCount} servings from today's totals` : ''}.`);
+                    openFoodManager(); // Refresh the list
+                    updateFoodItemsList(); // Refresh today's food list
+
+                    debugLog('delete-food-manager', 'Food item deleted successfully', {
+                        name: food.name,
+                        removedFromToday: removedCount
+                    });
+                } catch (error) {
+                    handleError('delete-food-manager', error, 'Failed to delete food item.');
+                }
+            }
+        };
+        window.closeFoodManager = () => {
+            document.getElementById('food-manager-modal').classList.add('hidden');
+        };
+
+        // === CALCULATION ENGINE ===
+        function calculateDashboardMetrics() {
+            const todayStr = dateInput.value;
+            const today = new Date(todayStr + 'T00:00:00');
+            const yesterday = getPastDate(today, 1);
+
+            const todayEntry = dailyEntries.get(formatDate(today)) || {};
+            const yesterdayEntry = dailyEntries.get(formatDate(yesterday)) || {};
+
+            const T = (name) => parseFloat(baselineTargets[name] || 0);
+
+            // 2-day reset system: Today's target compensates for yesterday's variance
+            const calculateAdjustedTarget = (nutrientName) => {
+                const baselineTarget = T(nutrientName);
+                const yesterdayActual = parseFloat(yesterdayEntry[nutrientName]) || baselineTarget;
+                const yesterdayVariance = baselineTarget - yesterdayActual;
+                return Math.max(0, baselineTarget + yesterdayVariance);
+            };
+
+            const metrics = {};
+
+            allNutrients.forEach(n => {
+                const baselineTarget = T(n);
+                const adjustedTarget = dailyTrackedNutrients.includes(n) ? baselineTarget : calculateAdjustedTarget(n);
+                metrics[n] = { name: n, baselineTarget, adjustedTarget, actualToday: parseFloat(todayEntry[n]) || 0 };
+            });
+
+            const adjustedCalorieTarget = metrics['calories'].adjustedTarget;
+            const proteinGrams = metrics['protein'].adjustedTarget;
+            const proteinCalories = proteinGrams * 4;
+            let adjustedFatGrams = metrics['fat'].adjustedTarget;
+            const fatMinimum = getFatMinimum();
+            if (adjustedFatGrams < fatMinimum) adjustedFatGrams = fatMinimum;
+            const fatCalories = adjustedFatGrams * 9;
+            const carbCalories = adjustedCalorieTarget - proteinCalories - fatCalories;
+            const adjustedCarbGrams = Math.max(0, carbCalories / 4);
+
+            metrics['fat'].adjustedTarget = adjustedFatGrams;
+            metrics['carbs'].adjustedTarget = adjustedCarbGrams;
+
+            for (const n in metrics) {
+                const metric = metrics[n];
+                metric.percentage = metric.adjustedTarget > 0 ? (metric.actualToday / metric.adjustedTarget) * 100 : 0;
+                metric.diff = metric.actualToday - metric.adjustedTarget;
+            }
+
+            return { metrics };
+        }
+
+        // === UI UPDATE FUNCTIONS ===
+        function updateDashboard() {
+            if (!userId || Object.keys(baselineTargets).length === 0) {
+                dashboard.innerHTML = `<div class="text-center p-8 bg-white rounded-lg shadow-md"><h3 class="text-xl font-semibold text-gray-700">Welcome!</h3><p class="mt-2 text-gray-500">Please log in and set your baseline targets to get started.</p><button onclick="document.getElementById('open-settings-btn').click()" class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Set Targets</button></div>`;
+                return;
+            }
+
+            const { metrics } = calculateDashboardMetrics();
+
+            const createCard = (metric) => {
+                const percentage = metric.percentage;
+                let color = 'bg-red-500';
+                if (percentage >= 90 && percentage <= 110) color = 'bg-green-500';
+                else if (percentage >= 75 || percentage > 110) color = 'bg-yellow-500';
+
+                const diffText = metric.diff > 0 ? `+${metric.diff.toFixed(1)}` : metric.diff.toFixed(1);
+                const diffColor = metric.diff >= 0 ? 'text-green-600' : 'text-red-600';
+
+                return `<div class="bg-white p-4 rounded-lg shadow-md nutrient-card">
+                        <h4 class="font-bold capitalize text-gray-800">${formatNutrientName(metric.name)}</h4>
+                        <p class="text-sm text-gray-500">${metric.actualToday.toFixed(1)} / ${metric.adjustedTarget.toFixed(1)}</p>
+                        <div class="w-full progress-bar-bg rounded-full h-2.5 mt-2"><div class="progress-bar-fill h-2.5 rounded-full ${color}" style="width: ${Math.min(100, percentage)}%"></div></div>
+                        <p class="text-sm font-medium text-gray-600 mt-2">Status: <span class="font-bold ${diffColor}">${diffText}</span></p>
+                    </div>`;
+            };
+
+            const renderGroup = (title, nutrientNames) => {
+                const cards = nutrientNames.map(name => metrics[name] ? createCard(metrics[name]) : '').join('');
+                return `<div class="mb-8"><h3 class="text-2xl font-bold text-gray-700 mb-4">${title}</h3><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">${cards}</div></div>`;
+            };
+
+            const infoBox = `<div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200"><h3 class="font-semibold text-blue-900 mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3><ul class="text-sm text-blue-800 space-y-1 list-disc list-inside"><li><strong>Daily Nutrients:</strong> Targets for these nutrients (like Protein) are fixed each day.</li><li><strong>Averaged Nutrients:</strong> Today's targets adjust based on yesterday's intake to get you back to baseline tomorrow.</li><li><strong>Carbs:</strong> The carb target is dynamic, filling the remainder of your adjusted calorie budget.</li></ul></div>`;
+
+            // Enhanced Chart section HTML
+            const chartSection = `
+                <div class="mb-8 bg-white p-6 rounded-lg shadow-lg">
+                    <h3 class="text-2xl font-bold text-gray-700 mb-4">Nutrition Progress Chart</h3>
+
+                    <!-- Chart Controls -->
+                    <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label for="chart-nutrients" class="block text-sm font-medium text-gray-700 mb-1">Select Nutrients (hold Ctrl/Cmd for multiple)</label>
+                            <select id="chart-nutrients" multiple class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" size="4">
+                                <!-- Options populated by JavaScript -->
+                            </select>
+                        </div>
+                        <div>
+                            <label for="chart-timeframe" class="block text-sm font-medium text-gray-700 mb-1">Time Frame</label>
+                            <select id="chart-timeframe" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                                <option value="3days">Last 3 Days</option>
+                                <option value="week">Last Week</option>
+                                <option value="month">Last Month</option>
+                                <option value="year">Last Year</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Options</label>
+                            <div class="flex items-center mt-2">
+                                <input type="checkbox" id="show-3day-avg" class="mr-2">
+                                <label for="show-3day-avg" class="text-sm text-gray-700">Show 3-day average</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Chart Canvas -->
+                    <div class="chart-container">
+                        <canvas id="nutrition-chart"></canvas>
+                    </div>
+
+                    <!-- Chart Data Table -->
+                    <div id="chart-table" class="mt-6">
+                        <!-- Table populated by JavaScript -->
+                    </div>
+                </div>
+            `;
+
+            dashboard.innerHTML = infoBox + chartSection + renderGroup('Macronutrients', nutrients.macros) + renderGroup('Daily Vitamins (Fixed Target)', nutrients.vitaminsDaily) + renderGroup('Daily Minerals (Fixed Target)', nutrients.mineralsDaily) + renderGroup('Averaged Vitamins (Adjusted Target)', nutrients.vitaminsAvg) + renderGroup('Averaged Minerals (Adjusted Target)', nutrients.mineralsAvg) + renderGroup('Optional Nutrients (Adjusted Target)', nutrients.optional);
+
+            // Re-initialize chart controls
+            initializeChartControls();
+        }
+        function populateSettingsForm() {
+            allNutrients.forEach(name => {
+                const input = document.getElementById(`target-${name}`);
+                if (input) input.value = baselineTargets[name] || '';
+            });
+
+            // Populate fat minimum
+            const fatMinInput = document.getElementById('target-fatMinimum');
+            if (fatMinInput) fatMinInput.value = baselineTargets.fatMinimum || CONFIG.DEFAULT_FAT_MINIMUM;
+        }
+
+        // === TEXT PARSING LOGIC ===
+        const nutrientMap = {
+            'calories': 'calories', 'cal': 'calories', 'protein': 'protein', 'prot': 'protein',
+            'carbs': 'carbs', 'carbohydrate': 'carbs', 'fat': 'fat', 'vitamin d': 'vitaminD', 'vit d': 'vitaminD',
+            'vitamin b12': 'vitaminB12', 'vit b12': 'vitaminB12', 'b12': 'vitaminB12', 'folate': 'folate', 'b9': 'folate',
+            'vitamin c': 'vitaminC', 'vit c': 'vitaminC', 'vitamin b6': 'vitaminB6', 'vit b6': 'vitaminB6', 'b6': 'vitaminB6',
+            'vitamin a': 'vitaminA', 'vit a': 'vitaminA', 'vitamin e': 'vitaminE', 'vit e': 'vitaminE',
+            'vitamin k': 'vitaminK', 'vit k': 'vitaminK', 'iron': 'iron', 'calcium': 'calcium', 'magnesium': 'magnesium', 'zinc': 'zinc',
+            'potassium': 'potassium', 'sodium': 'sodium', 'selenium': 'selenium', 'iodine': 'iodine', 'phosphorus': 'phosphorus',
+            'omega-3': 'omega3', 'omega 3': 'omega3', 'fiber': 'fiber', 'choline': 'choline'
+        };
+
+        function parseAndStage() {
+            const text = document.getElementById('paste-area').value;
+            if (!text) return showMessage("Paste area is empty.", true);
+
+            const lines = text.split('\n');
+            let valuesFound = 0;
+            lines.forEach(line => {
+                const lowerLine = line.toLowerCase();
+                for (const key in nutrientMap) {
+                    const regex = new RegExp(`\\b${key}\\b`, 'i');
+                    if (regex.test(lowerLine)) {
+                        let numberString = lowerLine.replace(regex, '');
+                        numberString = numberString.replace(/(mg|mcg|g|kcal)/gi, '').replace(/,/g, '');
+                        const numberMatch = numberString.match(/-?[\d\.]+/);
+                        if (numberMatch) {
+                            const nutrientName = nutrientMap[key];
+                            const inputElement = document.getElementById(`actual-${nutrientName}`);
+                            if(inputElement) {
+                                inputElement.value = parseFloat(numberMatch[0]);
+                                valuesFound++;
+                            }
+                            break;
+                        }
+                    }
+                }
+            });
+            if (valuesFound > 0) {
+                showMessage(`Parsed and staged ${valuesFound} fields.`);
+                debugLog('parse-and-stage', 'Text parsing completed', { valuesFound });
+            } else {
+                showMessage("Could not find any recognizable nutrient values.", true);
+            }
+        }
+        function getStagedValues() {
+            const values = {};
+            allNutrients.forEach(name => {
+                const input = document.getElementById(`actual-${name}`);
+                if (input) values[name] = parseFloat(input.value) || 0;
+            });
+            return values;
+        }
+
+        function handleStagingAction(mode) {
+            const stagedValues = getStagedValues();
+            const dateStr = dateInput.value;
+            if (mode === 'updateTargets') {
+                if (confirm('Are you sure you want to update your baseline targets? This will affect future daily calculations.')) {
+                    saveTargets(stagedValues);
+                }
+                return;
+            }
+            if (mode === 'replace') {
+                if (!confirm('Are you sure you want to replace the entire day\'s log? This will overwrite all existing data for this day.')) {
+                    return;
+                }
+            }
+            const newEntry = dailyEntries.get(dateStr) || { date: dateStr };
+            allNutrients.forEach(name => {
+                const stagedVal = stagedValues[name] || 0;
+                const currentVal = parseFloat(newEntry[name]) || 0;
+                if (mode === 'add') newEntry[name] = currentVal + stagedVal;
+                else if (mode === 'subtract') newEntry[name] = Math.max(0, currentVal - stagedVal);
+                else if (mode === 'replace') newEntry[name] = stagedVal;
+            });
+            saveDailyEntry(dateStr, newEntry);
+            debugLog('staging-action', 'Staging action performed', { mode, date: dateStr });
+        }
+        // === ENHANCED CHART FUNCTIONALITY ===
+        function initializeChartControls() {
+            const chartNutrients = document.getElementById('chart-nutrients');
+            const chartTimeframe = document.getElementById('chart-timeframe');
+            const show3DayAvg = document.getElementById('show-3day-avg');
+
+            if (!chartNutrients) return; // Element not ready yet
+
+            // Clear and populate nutrients dropdown
+            chartNutrients.innerHTML = '';
+            allNutrients.forEach(nutrient => {
+                const option = document.createElement('option');
+                option.value = nutrient;
+                option.textContent = formatNutrientName(nutrient);
+                if (nutrient === CONFIG.DEFAULT_CHART_NUTRIENT) {
+                    option.selected = true;
+                }
+                chartNutrients.appendChild(option);
+            });
+
+            chartTimeframe.value = CONFIG.DEFAULT_CHART_TIMEFRAME;
+
+            // Add event listeners
+            chartNutrients.addEventListener('change', updateChart);
+            chartTimeframe.addEventListener('change', updateChart);
+            show3DayAvg.addEventListener('change', updateChart);
+
+            updateChart();
+            debugLog('chart-controls', 'Chart controls initialized');
+        }
+        function getChartData(nutrients, timeframe, show3DayAvg = false) {
+            const endDate = new Date(dateInput.value + 'T00:00:00');
+            let days;
+
+            switch(timeframe) {
+                case '3days': days = 3; break;
+                case 'week': days = 7; break;
+                case 'month': days = 30; break;
+                case 'year': days = 365; break;
+                default: days = 7;
+            }
+
+            // Extended date range for 3-day average calculation that displays across all columns
+            const extendedDays = days + CONFIG.CHART_AVERAGE_LOOKBACK;
+            const extendedStartDate = getPastDate(endDate, extendedDays - 1);
+            const displayStartDate = getPastDate(endDate, days - 1);
+
+            const allLabels = [];
+            const displayLabels = [];
+            const datasets = [];
+            const tableData = {};
+
+            // Generate all date labels (including extended range for calculations)
+            for (let i = 0; i < extendedDays; i++) {
+                const currentDate = new Date(extendedStartDate);
+                currentDate.setDate(extendedStartDate.getDate() + i);
+                allLabels.push(formatDate(currentDate));
+            }
+
+            // Generate display labels
+            for (let i = 0; i < days; i++) {
+                const currentDate = new Date(displayStartDate);
+                currentDate.setDate(displayStartDate.getDate() + i);
+                const dateStr = formatDate(currentDate);
+                displayLabels.push(dateStr);
+                tableData[dateStr] = {};
+            }
+
+            // Create datasets for each selected nutrient
+            nutrients.forEach((nutrient, index) => {
+                // Daily data for display period
+                const displayData = displayLabels.map(dateStr => {
+                    const entry = dailyEntries.get(dateStr) || {};
+                    const actual = parseFloat(entry[nutrient]) || 0;
+                    const baseline = parseFloat(baselineTargets[nutrient]) || 1;
+                    return baseline > 0 ? (actual / baseline) * 100 : 0;
+                });
+
+                const actualValues = displayLabels.map(dateStr => {
+                    const entry = dailyEntries.get(dateStr) || {};
+                    return parseFloat(entry[nutrient]) || 0;
+                });
+
+                datasets.push({
+                    label: formatNutrientName(nutrient),
+                    data: displayData,
+                    backgroundColor: CONFIG.CHART_COLORS[index % CONFIG.CHART_COLORS.length],
+                    borderColor: CONFIG.CHART_COLORS[index % CONFIG.CHART_COLORS.length],
+                    borderWidth: 1,
+                    actualValues: actualValues
+                });
+
+                // Add to table data
+                displayLabels.forEach((dateStr, dayIndex) => {
+                    tableData[dateStr][nutrient] = {
+                        actual: actualValues[dayIndex],
+                        percentage: displayData[dayIndex],
+                        baseline: parseFloat(baselineTargets[nutrient]) || 0
+                    };
+                });
+                // Add 3-day average line if requested and nutrient is in averaged category
+                if (show3DayAvg && !dailyTrackedNutrients.includes(nutrient)) {
+                    const avgData = displayLabels.map((dateStr, displayIdx) => {
+                        // Calculate 3-day average using extended data so lines appear across all columns
+                        const allDateIdx = allLabels.indexOf(dateStr);
+                        if (allDateIdx < 2) return null; // Need at least 3 days of data
+
+                        let sum = 0;
+                        let count = 0;
+                        for (let j = 0; j < 3; j++) {
+                            const lookbackDate = allLabels[allDateIdx - j];
+                            if (lookbackDate) {
+                                const entry = dailyEntries.get(lookbackDate) || {};
+                                const actual = parseFloat(entry[nutrient]) || 0;
+                                sum += actual;
+                                count++;
+                            }
+                        }
+
+                        if (count === 0) return null;
+                        const avg = sum / count;
+                        const baseline = parseFloat(baselineTargets[nutrient]) || 1;
+                        return baseline > 0 ? (avg / baseline) * 100 : 0;
+                    });
+                    datasets.push({
+                        label: `${formatNutrientName(nutrient)} (3-day avg)`,
+                        data: avgData,
+                        type: 'line',
+                        borderColor: CONFIG.CHART_COLORS[index % CONFIG.CHART_COLORS.length],
+                        backgroundColor: 'transparent',
+                        borderWidth: 3, // Solid line, more visible
+                        fill: false,
+                        pointRadius: 3,
+                        pointBackgroundColor: CONFIG.CHART_COLORS[index % CONFIG.CHART_COLORS.length],
+                        spanGaps: false,
+                        tension: 0.4, // Smooth curves instead of straight lines
+                        cubicInterpolationMode: 'monotone' // Better curve fitting
+                    });
+                }
+            });
+
+            debugLog('chart-data', 'Enhanced chart data generated', {
+                nutrientsCount: nutrients.length,
+                timeframe,
+                days,
+                showAverage: show3DayAvg
+            });
+
+            return { labels: displayLabels, datasets, tableData };
+        }
+
+        function updateChart() {
+            if (!userId || Object.keys(baselineTargets).length === 0) return;
+
+            const chartNutrients = document.getElementById('chart-nutrients');
+            const chartTimeframe = document.getElementById('chart-timeframe');
+            const show3DayAvg = document.getElementById('show-3day-avg');
+
+            if (!chartNutrients) return; // Elements not ready
+
+            const selectedNutrients = Array.from(chartNutrients.selectedOptions)
+                .map(option => option.value);
+            const timeframe = chartTimeframe.value;
+            const showAverage = show3DayAvg.checked;
+
+            if (selectedNutrients.length === 0) return;
+
+            const { labels, datasets, tableData } = getChartData(selectedNutrients, timeframe, showAverage);
+
+            const ctx = document.getElementById('nutrition-chart');
+            if (!ctx) return;
+
+            if (chartInstance) {
+                chartInstance.destroy();
+            }
+
+            chartInstance = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        // Baseline line at 100%
+                        {
+                            label: 'Target (100%)',
+                            data: new Array(labels.length).fill(100),
+                            type: 'line',
+                            borderColor: '#6B7280',
+                            borderDash: [5, 5],
+                            borderWidth: 2,
+                            fill: false,
+                            pointRadius: 0,
+                            order: 1
+                        },
+                        ...datasets
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: '% of Baseline Target'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.datasetIndex === 0) {
+                                        return 'Target: 100%';
+                                    }
+                                    const datasetIndex = context.datasetIndex - 1;
+                                    if (datasets[datasetIndex] && datasets[datasetIndex].actualValues) {
+                                        const actualValue = datasets[datasetIndex].actualValues[context.dataIndex];
+                                        const percentage = context.parsed.y;
+                                        return `${context.dataset.label}: ${actualValue.toFixed(1)} (${percentage.toFixed(1)}%)`;
+                                    }
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(1)}%`;
+                                }
+                            }
+                        },
+                        legend: {
+                            display: true
+                        }
+                    }
+                }
+            });
+
+            // Update table
+            updateChartTable(tableData, selectedNutrients, labels);
+        }
+
+        function updateChartTable(tableData, nutrients, labels) {
+            const tableContainer = document.getElementById('chart-table');
+
+            if (Object.keys(tableData).length === 0 || nutrients.length === 0) {
+                tableContainer.innerHTML = '<p class="text-gray-500 text-center">No data available</p>';
+                return;
+            }
+
+            // Transpose: dates as columns, nutrients as rows
+            let tableHTML = `
+                <div class="overflow-x-auto">
+                    <table class="min-w-full bg-white border border-gray-300 rounded-lg">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-4 py-2 border-b text-left font-semibold text-gray-700">Nutrient</th>
+            `;
+
+            labels.forEach(date => {
+                tableHTML += `<th class="px-2 py-2 border-b text-center font-semibold text-gray-700 text-xs">${date}</th>`;
+            });
+
+            tableHTML += `
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            nutrients.forEach(nutrient => {
+                tableHTML += `<tr class="hover:bg-gray-50">
+                    <td class="px-4 py-2 border-b font-medium">${formatNutrientName(nutrient)}</td>`;
+
+                labels.forEach(date => {
+                    const data = tableData[date][nutrient];
+                    if (data) {
+                        const colorClass = data.percentage >= 90 && data.percentage <= 110 ? 'text-green-600' :
+                                           data.percentage >= 75 ? 'text-yellow-600' : 'text-red-600';
+                        tableHTML += `<td class="px-2 py-2 border-b text-center text-xs">
+                            <div>${data.actual.toFixed(1)}</div>
+                            <div class="${colorClass}">${data.percentage.toFixed(0)}%</div>
+                        </td>`;
+                    } else {
+                        tableHTML += `<td class="px-2 py-2 border-b text-center text-xs">-</td>`;
+                    }
+                });
+
+                tableHTML += `</tr>`;
+            });
+
+            tableHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            tableContainer.innerHTML = tableHTML;
+        }
+
+        // === EVENT LISTENERS ===
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set date to today based on timezone
+            dateInput.value = getTodayInTimezone();
+            loader.classList.remove('hidden');
+
+            // Setup enhanced food dropdown after DOM is ready
+            setTimeout(setupFoodDropdown, 100);
+
+            debugLog('app-init', 'Application initialized with enhancements', {
+                timezone: CONFIG.TIMEZONE,
+                todayDate: dateInput.value
+            });
+        });
+
+        document.getElementById('open-login-btn').addEventListener('click', () => loginModal.classList.remove('hidden'));
+        document.getElementById('close-login-btn').addEventListener('click', () => loginModal.classList.add('hidden'));
+        document.getElementById('login-btn').addEventListener('click', handleLogin);
+        document.getElementById('signup-btn').addEventListener('click', handleSignUp);
+        document.getElementById('guest-btn').addEventListener('click', handleGuestLogin);
+        document.getElementById('logout-btn').addEventListener('click', handleLogout);
+        document.getElementById('open-settings-btn').addEventListener('click', () => settingsModal.classList.remove('hidden'));
+        document.getElementById('close-settings-btn').addEventListener('click', () => settingsModal.classList.add('hidden'));
+
+        document.getElementById('settings-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newTargets = {};
+            allNutrients.forEach(name => newTargets[name] = parseFloat(document.getElementById(`target-${name}`).value) || 0);
+            // Include fat minimum
+            newTargets.fatMinimum = parseFloat(document.getElementById('target-fatMinimum').value) || CONFIG.DEFAULT_FAT_MINIMUM;
+            saveTargets(newTargets);
+            settingsModal.classList.add('hidden');
+        });
+
+        dateInput.addEventListener('change', async () => {
+            await loadUserData();
+        });
+
+        document.getElementById('parse-btn').addEventListener('click', parseAndStage);
+        document.getElementById('add-day-btn').addEventListener('click', () => handleStagingAction('add'));
+        document.getElementById('subtract-day-btn').addEventListener('click', () => handleStagingAction('subtract'));
+        document.getElementById('replace-day-btn').addEventListener('click', () => handleStagingAction('replace'));
+        document.getElementById('stage-to-targets-btn').addEventListener('click', () => handleStagingAction('updateTargets'));
+
+        // Enhanced food item management
+        document.getElementById('add-food-btn').addEventListener('click', addFoodItem);
+        document.getElementById('food-item-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') addFoodItem();
+        });
+
+        // Food manager
+        document.getElementById('open-food-manager-btn').addEventListener('click', openFoodManager);
+
+        document.getElementById('export-btn').addEventListener('click', async () => {
+            showMessage("Fetching all data for export...", false);
+            const allEntries = await fetchAllEntries();
+            if (allEntries.length === 0) return showMessage("No data to export.", true);
+
+            const headers = ['date', ...allNutrients];
+            let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
+
+            allEntries.forEach(entry => {
+                const row = headers.map(header => entry[header] || '0');
+                csvContent += row.join(",") + "\n";
+            });
+
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "nutrition_tracker_export.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showMessage("Export complete!", false);
+            debugLog('export', 'Data export completed', { entriesCount: allEntries.length });
+        });
+
+        window.openSettings = () => settingsModal.classList.remove('hidden');
+    </script>
+    <!-- Main Application Body -->
+    <div id="loader" class="flex justify-center items-center h-screen"><i class="fas fa-spinner fa-spin fa-3x text-blue-600"></i></div>
+    <div id="main-content" class="hidden">
+        <header class="bg-white shadow-md p-4 flex justify-between items-center">
+            <div class="flex items-center">
+                <i class="fas fa-chart-pie text-3xl text-blue-600 mr-3"></i>
+                <h1 class="text-2xl font-bold text-gray-800">3-Day Rolling Nutrition Tracker</h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="user-status" class="text-gray-600 text-sm hidden"></span>
+                <button id="open-login-btn" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Login / Sign Up</button>
+                <button id="logout-btn" class="hidden px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Logout</button>
+                <button id="open-settings-btn" class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300">
+                    <i class="fas fa-cog"></i>
+                </button>
+            </div>
+        </header>
+        <main class="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-lg h-fit">
+                <h2 class="text-2xl font-bold mb-4 text-gray-800">Daily Log</h2>
+
+                <div class="mb-4"><label for="date-input" class="block text-sm font-medium text-gray-700 mb-1">Date</label><input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"></div>
+
+                <div class="mb-4">
+                    <label for="paste-area" class="block text-sm font-medium text-gray-700 mb-1">Paste Log to Stage</label>
+                    <textarea id="paste-area" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Paste your log here..."></textarea>
+                    <button type="button" id="parse-btn" class="w-full mt-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-indigo-700">
+                        <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
+                    </button>
+                </div>
+                <hr class="my-4">
+                <h3 class="text-xl font-semibold text-gray-800 mb-2">Staging Area</h3>
+
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex gap-2">
+                        <button type="button" id="add-day-btn" class="w-10 h-10 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 flex items-center justify-center">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                        <button type="button" id="subtract-day-btn" class="w-10 h-10 bg-yellow-500 text-white font-bold rounded-lg shadow-md hover:bg-yellow-600 flex items-center justify-center">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <button type="button" id="replace-day-btn" class="px-3 py-1 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 text-xs">Replace Day</button>
+                        <button type="button" id="stage-to-targets-btn" class="px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 text-xs">Update Targets</button>
+                    </div>
+                </div>
+                <!-- Enhanced Food Item Entry Section -->
+                <div class="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div class="flex justify-between items-center mb-2">
+                        <label for="food-item-input" class="block text-sm font-medium text-gray-700">Add Food Item</label>
+                        <button type="button" id="open-food-manager-btn" class="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600">
+                            <i class="fas fa-list mr-1"></i>Manage Foods
+                        </button>
+                    </div>
+                    <div class="food-dropdown relative">
+                        <input type="text" id="food-item-input" placeholder="Enter or select food name..." class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+                        <div id="food-dropdown" class="food-dropdown-list hidden">
+                            <!-- Enhanced dropdown items populated by JavaScript -->
+                        </div>
+                    </div>
+                    <button type="button" id="add-food-btn" class="w-full mt-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Add Item</button>
+
+                    <!-- Enhanced Food Items List -->
+                    <div class="mt-3">
+                        <h4 class="text-sm font-semibold text-gray-700 mb-2">Today's Food Items:</h4>
+                        <div id="food-items-list" class="space-y-2 max-h-32 overflow-y-auto">
+                            <!-- Food items automatically populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
+                    <!-- Nutrient inputs are dynamically populated but need placeholders -->
+                    <h4 class="text-lg font-semibold text-gray-700 pt-2 sticky top-0 bg-white">Macros</h4>
+                    <div><label for="actual-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="actual-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="actual-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="actual-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="actual-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Vitamins</h4>
+                    <div><label for="actual-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="actual-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Vitamins</h4>
+                    <div><label for="actual-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Minerals</h4>
+                    <div><label for="actual-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="actual-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="actual-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="actual-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="actual-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="actual-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Minerals</h4>
+                    <div><label for="actual-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Optional</h4>
+                    <div><label for="actual-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="actual-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="actual-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="actual-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                </div>
+            </div>
+            <div class="lg:col-span-2">
+                <div id="dashboard"><!-- Enhanced dashboard content is generated by JS --></div>
+            </div>
+        </main>
+    </div>
+    <!-- Login Modal -->
+    <div id="login-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
+            <button id="close-login-btn" class="absolute top-2 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Account Access</h2>
+
+            <form id="auth-form" class="space-y-4">
+                <div>
+                    <label for="email-input" class="block text-sm font-medium text-gray-700">Email</label>
+                    <input type="email" id="email-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <div>
+                    <label for="password-input" class="block text-sm font-medium text-gray-700">Password</label>
+                    <input type="password" id="password-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+                </div>
+                <div class="flex space-x-2 pt-2">
+                    <button type="button" id="login-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700">Login</button>
+                    <button type="button" id="signup-btn" class="w-full bg-green-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-green-700">Sign Up</button>
+                </div>
+            </form>
+                <div class="my-4 flex items-center">
+                <hr class="flex-grow border-t border-gray-300">
+                <span class="mx-2 text-gray-500 text-sm">OR</span>
+                <hr class="flex-grow border-t border-gray-300">
+            </div>
+                <button id="guest-btn" class="w-full bg-gray-500 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-600">Continue as Guest</button>
+        </div>
+    </div>
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] relative">
+            <button id="close-settings-btn" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">Set Baseline Targets</h2>
+            <form id="settings-form" class="overflow-y-auto max-h-[70vh] pr-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <!-- Target inputs are dynamically populated but need placeholders -->
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-2 border-b pb-2 mb-2">Macros</h3></div>
+                    <div><label for="target-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="target-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="target-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="target-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="target-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Configuration</h3></div>
+                    <div><label for="target-fatMinimum" class="block text-sm font-medium text-gray-600">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Vitamins (Water-Soluble)</h3></div>
+                    <div><label for="target-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="target-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="target-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="target-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Vitamins (Fat-Soluble)</h3></div>
+                    <div><label for="target-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="target-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="target-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="target-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="target-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Minerals</h3></div>
+                    <div><label for="target-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="target-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="target-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="target-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="target-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="target-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="target-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Minerals</h3></div>
+                    <div><label for="target-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="target-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="target-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="target-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+                    <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Optional Nutrients</h3></div>
+                    <div><label for="target-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="target-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="target-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                    <div><label for="target-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="target-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
+                </div>
+                <div class="mt-8 flex justify-between items-center">
+                    <button type="button" id="export-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700">Export All Data (CSV)</button>
+                    <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700">Save Targets</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <!-- Enhanced Food Manager Modal -->
+    <div id="food-manager-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] relative">
+            <button onclick="closeFoodManager()" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            <h2 class="text-2xl font-bold mb-6 text-gray-800">Manage Saved Foods</h2>
+            <div class="overflow-y-auto max-h-[70vh] pr-4">
+                <div id="food-manager-list">
+                    <!-- Food list populated by JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Enhanced Duplicate Food Modal -->
+    <div id="duplicate-food-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-3xl max-h-[90vh] relative">
+            <div id="duplicate-comparison" class="overflow-y-auto max-h-[70vh]">
+                <!-- Comparison content populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+    <div id="message-box" class="hidden fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg z-50"><p id="message-text"></p></div>
+</body>
+</html>

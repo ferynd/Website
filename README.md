@@ -1,36 +1,73 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+My Website & Digital Garden
 
-## Getting Started
+Welcome to my personal website project! This is a monorepo for all of my creative and technical projects, including games, tools, and travel logs. It's built with Next.js and Tailwind CSS for a modern, fast, and scalable experience.
+Tech Stack
 
-First, run the development server:
+    Framework: Next.js (using the App Router)
 
-```bash
+    Language: TypeScript
+
+    Styling: Tailwind CSS
+
+    Deployment: Cloudflare Pages
+
+Project Structure
+
+This project uses a flat and organized structure to make finding and adding content intuitive.
+
+    /app: Core Application & Pages. This is where all your website's routes and pages live. Each folder inside /app represents a URL segment.
+
+        /app/page.tsx: The main landing page.
+
+        /app/games/page.tsx: The main landing page for all your games.
+
+        /app/tools/page.tsx: The main landing page for all your tools.
+
+    /components: Reusable React Components. Any component used in more than one place (like buttons, cards, or navbars) should be stored here.
+
+    /content: Markdown Content. This folder is for blog posts, articles, or any long-form content written in Markdown (.md or .mdx). The app can read these files to dynamically generate pages.
+
+    /lib: Library & Helper Functions. A place for utility functions, helper scripts, and configurations (like your firebaseConfig.js).
+
+    /public: Static Assets. This folder is the home for any file that needs to be accessed directly via a URL. This is the perfect place for:
+
+        Your self-contained HTML/JS games and tools.
+
+        Images, fonts, videos, and other static files.
+
+        Example: A game in public/games/my-cool-game/ can be accessed at yourdomain.com/games/my-cool-game/index.html.
+
+Getting Started
+1. Install Dependencies
+
+If you've just cloned the repo, you need to install all the required packages.
+
+npm install
+
+2. Run the Development Server
+
+To start the local development server and see your site in action:
+
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000 with your browser to see the result.
+How to Add Content
+Adding a New Page or Category
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+    To create a new top-level category (e.g., /blog), simply create a new folder inside /app named blog and add a page.tsx file inside it.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Adding a New Standalone Game/Tool
 
-## Learn More
+    Place the entire folder for your game/tool (e.g., my-new-game) into the appropriate subfolder within /public (e.g., public/games/).
 
-To learn more about Next.js, take a look at the following resources:
+    You can then link to it directly from any page: <a href="/games/my-new-game/index.html">Play My New Game</a>.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Adding a New Blog Post / Trip Log
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+    Create a new .md or .mdx file in the /content/trips directory.
 
-## Deploy on Vercel
+    The application can be configured to read these files and automatically create a page for each one.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Deployment
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is configured for deployment on Cloudflare Pages. Simply connect your GitHub repository and select "Next.js" as the framework preset. Cloudflare will handle the build and deployment process automatically.
