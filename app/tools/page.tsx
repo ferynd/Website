@@ -28,7 +28,7 @@ export default function ToolsPage() {
             Tools & Utilities
           </h1>
           <p className="mt-4 max-w-2xl mx-auto text-lg text-gray-400">
-            A collection of useful apps I've built.
+            A collection of useful apps I&apos;ve built.
           </p>
         </div>
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 
 // --- Type Definitions for the Application ---
 interface Person {
@@ -345,7 +345,7 @@ const EditExpenseModal: React.FC<EditExpenseModalProps> = ({ isOpen, onClose, ex
  */
 const TripCostPage = () => {
   // --- Configuration ---
-  const expenseCategories = ['Meals', 'Flights', 'Accommodation', 'Activities', 'Transport', 'Other'];
+  const expenseCategories = useMemo(() => ['Meals', 'Flights', 'Accommodation', 'Activities', 'Transport', 'Other'], []);
 
   // --- State Management ---
   const [people, setPeople] = useState<Person[]>([{ id: 'person-1', name: 'Person 1' }, { id: 'person-2', name: 'Person 2' }]);
@@ -369,7 +369,7 @@ const TripCostPage = () => {
   const [confirmModalProps, setConfirmModalProps] = useState({ title: '', message: '' });
 
   // --- Helper Functions ---
-  const createInitialExpenseState = (currentPeople: Person[]): NewExpenseState => ({
+  const createInitialExpenseState = useCallback((currentPeople: Person[]): NewExpenseState => ({
     category: expenseCategories[0],
     description: '',
     totalAmount: '',
@@ -377,9 +377,13 @@ const TripCostPage = () => {
     splitType: 'even',
     splitParticipants: currentPeople.map(person => person.id),
     manualSplit: currentPeople.reduce((acc, person) => ({ ...acc, [person.id]: { type: 'percent', value: '' } }), {}),
-  });
+  }), [expenseCategories]);
 
   const [newExpense, setNewExpense] = useState<NewExpenseState>(() => createInitialExpenseState(people));
+
+  useEffect(() => {
+      setNewExpense(createInitialExpenseState(people));
+  }, [people, createInitialExpenseState]);
 
   // --- Confirmation Modal Logic ---
   const openConfirmationModal = (onConfirm: () => void, title: string, message: string) => {
@@ -402,7 +406,6 @@ const TripCostPage = () => {
     const newPerson = { id: crypto.randomUUID(), name: newPersonName.trim() };
     const updatedPeople = [...people, newPerson];
     setPeople(updatedPeople);
-    setNewExpense(createInitialExpenseState(updatedPeople)); // Reset new expense form with new person
     setNewPersonName('');
   };
 
@@ -412,7 +415,6 @@ const TripCostPage = () => {
       setPeople(updatedPeople);
       setExpenses(prev => prev.filter(exp => !Object.keys(exp.paidBy).includes(personIdToRemove)));
       setAllPayments(prev => prev.filter(p => p.payerId !== personIdToRemove && p.payeeId !== personIdToRemove));
-      setNewExpense(createInitialExpenseState(updatedPeople));
     };
     openConfirmationModal(onConfirm, "Delete Participant?", `Are you sure you want to remove this person? All their associated expenses and payments will be deleted.`);
   };
@@ -434,7 +436,7 @@ const TripCostPage = () => {
   const handleManualSplitValueChange = (personId: string, value: string) => setNewExpense(prev => ({ ...prev, manualSplit: { ...prev.manualSplit, [personId]: { ...prev.manualSplit[personId], value: value === '' ? '' : parseFloat(value) || 0 } } }));
 
   // --- Expense CRUD ---
-  const addExpense = () => {
+  const addExpense = useCallback(() => {
     const totalAmount = parseFloat(String(newExpense.totalAmount));
     if (isNaN(totalAmount) || totalAmount <= 0 || newExpense.description.trim() === '') {
       setAddExpenseError("Please enter a valid amount and description.");
@@ -467,7 +469,6 @@ const TripCostPage = () => {
 
     setAddExpenseError('');
     
-    // Convert form state to strict Expense type
     const finalPaidBy: { [key: string]: number } = {};
     for (const key in newExpense.paidBy) {
         finalPaidBy[key] = parseFloat(String(newExpense.paidBy[key])) || 0;
@@ -484,8 +485,7 @@ const TripCostPage = () => {
         manualSplit: newExpense.manualSplit
     };
     setExpenses(prev => [...prev, finalExpense]);
-    setNewExpense(createInitialExpenseState(people));
-  };
+  }, [newExpense, createInitialExpenseState]);
 
   const deleteExpense = useCallback((expenseIdToDelete: string) => {
     const onConfirm = () => {

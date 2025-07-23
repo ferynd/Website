@@ -35,10 +35,10 @@ export default function HomePage() {
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
         <div className="text-center">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
-            James' Digital Garden
+            James Digital Garden
           </h1>
           <p className="mt-4 max-w-2xl mx-auto text-lg sm:text-xl text-gray-400">
-            A curated collection of projects, thoughts, and adventures. Explore what I've been building and where I've been.
+            A curated collection of projects, thoughts, and adventures. Explore what I&apos;ve been building and where I&apos;ve been.
           </p>
         </div>
 
