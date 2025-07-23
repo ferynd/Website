@@ -1,5 +1,3 @@
-'use client';
-
 import dynamic from 'next/dynamic';
 import React from 'react';
 
@@ -12,6 +10,7 @@ const TripCostClientComponent = dynamic(() => import('./trip-cost-client'), {
 });
 
 // The actual page component is now very simple.
+// IMPORTANT: This file should NOT have 'use client' at the top.
 export default function TripCostPage() {
   return <TripCostClientComponent />;
 }
