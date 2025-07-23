@@ -1,16 +1,9 @@
-import dynamic from 'next/dynamic';
 import React from 'react';
+import TripCostLoader from './trip-cost-loader';
 
-// Dynamically import the main client component.
-// This tells Next.js to load it as a separate chunk.
-// ssr: false means it will only render on the client-side.
-const TripCostClientComponent = dynamic(() => import('./trip-cost-client'), {
-  ssr: false,
-  loading: () => <p className="p-8 text-center text-lg">Loading Calculator...</p>,
-});
-
-// The actual page component is now very simple.
-// IMPORTANT: This file should NOT have 'use client' at the top.
+// This is the main page (Server Component).
+// It's very simple and just imports the loader.
+// This file should NOT have 'use client' at the top.
 export default function TripCostPage() {
-  return <TripCostClientComponent />;
+  return <TripCostLoader />;
 }
