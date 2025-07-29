@@ -37,6 +37,7 @@
         }
         ::-webkit-scrollbar-thumb:hover {
             background: #555;
+            border-radius: 10px;
         }
         .chart-container {
             position: relative;
@@ -108,32 +109,61 @@
             ANIMATION_DURATION: 300 // Milliseconds for UI animations
         };
 
-        // Firebase configuration - try external file first, fallback to embedded
+        // Firebase configuration - prioritize Canvas globals, then external file, then fallback
         let firebaseConfig;
-        try {
-            // Try to import from external file first
-            const { firebaseConfig: importedConfig } = await import("./firebaseConfig.js");
-            firebaseConfig = importedConfig;
-            if (CONFIG.DEBUG_MODE) console.log("✅ Firebase config loaded from external file");
-        } catch (error) {
-            console.warn("⚠️ Could not load external Firebase config, using fallback:", error);
-            // Fallback configuration
-            firebaseConfig = {
-                apiKey: "YOUR_API_KEY",
-                authDomain: "YOUR_AUTH_DOMAIN",
-                projectId: "YOUR_PROJECT_ID",
-                storageBucket: "YOUR_STORAGE_BUCKET",
-                messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-                appId: "YOUR_APP_ID",
-                measurementId: "YOUR_MEASUREMENT_ID"
-            };
+        // __app_id is a global variable provided by the Canvas environment
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+            try {
+                firebaseConfig = JSON.parse(__firebase_config);
+                if (CONFIG.DEBUG_MODE) console.log("✅ Firebase config loaded from Canvas environment");
+            } catch (e) {
+                console.error("❌ Error parsing __firebase_config from Canvas:", e);
+                // Fallback to external or hardcoded if parsing fails
+                try {
+                    const { firebaseConfig: importedConfig } = await import("./firebaseConfig.js");
+                    firebaseConfig = importedConfig;
+                    if (CONFIG.DEBUG_MODE) console.log("✅ Firebase config loaded from external file (fallback)");
+                } catch (error) {
+                    console.warn("⚠️ Could not load external Firebase config, using default placeholders:", error);
+                    // Fallback configuration (placeholders, ensure these are replaced in a real app)
+                    firebaseConfig = {
+                        apiKey: "YOUR_API_KEY",
+                        authDomain: "YOUR_AUTH_DOMAIN",
+                        projectId: "YOUR_PROJECT_ID",
+                        storageBucket: "YOUR_STORAGE_BUCKET",
+                        messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+                        appId: "YOUR_APP_ID",
+                        measurementId: "YOUR_MEASUREMENT_ID"
+                    };
+                }
+            }
+        } else {
+            try {
+                const { firebaseConfig: importedConfig } = await import("./firebaseConfig.js");
+                firebaseConfig = importedConfig;
+                if (CONFIG.DEBUG_MODE) console.log("✅ Firebase config loaded from external file");
+            } catch (error) {
+                console.warn("⚠️ Could not load external Firebase config, using default placeholders:", error);
+                // Fallback configuration (placeholders, ensure these are replaced in a real app)
+                firebaseConfig = {
+                    apiKey: "YOUR_API_KEY",
+                    authDomain: "YOUR_AUTH_DOMAIN",
+                    projectId: "YOUR_PROJECT_ID",
+                    storageBucket: "YOUR_STORAGE_BUCKET",
+                    messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+                    appId: "YOUR_APP_ID",
+                    measurementId: "YOUR_MEASUREMENT_ID"
+                };
+            }
         }
 
         // === FIREBASE IMPORTS ===
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import {
             getAuth, onAuthStateChanged, signInAnonymously,
-            createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut
+            createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, signInWithCustomToken
         } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import {
             getFirestore, doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit, deleteDoc
@@ -171,10 +201,12 @@
         const dailyTrackedNutrients = ['protein', ...nutrients.vitaminsDaily, ...nutrients.mineralsDaily];
 
         // === DOM ELEMENTS ===
+        // These are declared here, but their event listeners and manipulations happen after DOMContentLoaded
         const settingsModal = document.getElementById('settings-modal');
         const loginModal = document.getElementById('login-modal');
         const foodManagerModal = document.getElementById('food-manager-modal');
         const duplicateFoodModal = document.getElementById('duplicate-food-modal');
+        const blankFoodNameModal = document.getElementById('blank-food-name-modal');
         const dateInput = document.getElementById('date-input');
         const dashboard = document.getElementById('dashboard');
         const loader = document.getElementById('loader');
@@ -182,6 +214,13 @@
         const messageBox = document.getElementById('message-box');
         const messageText = document.getElementById('message-text');
         const userStatus = document.getElementById('user-status');
+        const confirmationModal = document.getElementById('confirmation-modal'); // Added
+        const confirmationMessage = document.getElementById('confirmation-message'); // Added
+        const confirmActionButton = document.getElementById('confirm-action-btn'); // Added
+        const cancelActionButton = document.getElementById('cancel-action-btn'); // Added
+        const promptInput = document.getElementById('prompt-input'); // Added for prompt mode
+        const promptInputContainer = document.getElementById('prompt-input-container'); // Added for prompt mode
+
 
         // === UTILITY FUNCTIONS ===
         const formatDate = (date) => date.toISOString().split('T')[0];
@@ -229,6 +268,41 @@
             return null;
         };
 
+        // Custom modal replacement for browser's `confirm` and `prompt`
+        function showConfirmationModal(message, onConfirm, onCancel = null, isPrompt = false, defaultValue = '') {
+            confirmationMessage.textContent = message;
+            promptInput.value = defaultValue;
+
+            if (isPrompt) {
+                promptInputContainer.classList.remove('hidden');
+                promptInput.focus();
+            } else {
+                promptInputContainer.classList.add('hidden');
+            }
+
+            confirmationModal.classList.remove('hidden');
+
+            const handleConfirmClick = () => {
+                const value = isPrompt ? promptInput.value.trim() : null;
+                onConfirm(value);
+                confirmationModal.classList.add('hidden');
+                // Clean up event listeners
+                confirmActionButton.removeEventListener('click', handleConfirmClick);
+                cancelActionButton.removeEventListener('click', handleCancelClick);
+            };
+
+            const handleCancelClick = () => {
+                if (onCancel) onCancel();
+                confirmationModal.classList.add('hidden');
+                // Clean up event listeners
+                confirmActionButton.removeEventListener('click', handleConfirmClick);
+                cancelActionButton.removeEventListener('click', handleCancelClick);
+            };
+
+            confirmActionButton.addEventListener('click', handleConfirmClick);
+            cancelActionButton.addEventListener('click', handleCancelClick);
+        }
+
         // === APP DATA LOADING ===
         async function loadUserData() {
             if (!userId) {
@@ -270,8 +344,8 @@
                 document.getElementById('open-login-btn').classList.add('hidden');
                 document.getElementById('logout-btn').classList.remove('hidden');
                 userStatus.classList.remove('hidden');
-                userStatus.textContent = user.isAnonymous ? 'Logged in as Guest' : user.email;
-                debugLog('auth-state', 'User authenticated', { isAnonymous: user.isAnonymous, email: user.email });
+                userStatus.textContent = user.isAnonymous ? `Logged in as Guest (ID: ${userId.substring(0, 8)}...)` : user.email;
+                debugLog('auth-state', 'User authenticated', { isAnonymous: user.isAnonymous, email: user.email, userId: userId });
             } else {
                 mainContent.classList.add('hidden');
                 loader.classList.add('hidden');
@@ -285,14 +359,40 @@
         }
 
         // === AUTHENTICATION LOGIC ===
-        onAuthStateChanged(auth, (user) => {
+        // onAuthStateChanged listener will handle initial auth and subsequent changes
+        onAuthStateChanged(auth, async (user) => {
             if (user) {
                 userId = user.uid;
                 updateAuthStateUI(user);
                 loadUserData();
             } else {
-                userId = null;
-                updateAuthStateUI(null);
+                // If no user is logged in, attempt anonymous sign-in using __initial_auth_token
+                // This ensures a user ID is always available for Firestore operations
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    try {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                        // The onAuthStateChanged listener will be triggered again with the new user
+                    } catch (error) {
+                        console.error("Error signing in with custom token:", error);
+                        // Fallback to anonymous if custom token fails
+                        try {
+                            await signInAnonymously(auth);
+                        } catch (anonError) {
+                            handleError('auth-anon-fallback', anonError, "Failed to sign in anonymously.");
+                            userId = null;
+                            updateAuthStateUI(null);
+                        }
+                    }
+                } else {
+                    // If no custom token, and no user, sign in anonymously for data persistence
+                    try {
+                        await signInAnonymously(auth);
+                    } catch (anonError) {
+                        handleError('auth-anon-initial', anonError, "Failed to sign in anonymously.");
+                        userId = null;
+                        updateAuthStateUI(null);
+                    }
+                }
             }
         });
 
@@ -332,8 +432,8 @@
                 showMessage('Logged in successfully!');
                 debugLog('auth-login', 'Login successful', { email });
             } catch (error) {
-                const message = ['auth/invalid-credential', 'auth/wrong-password'].includes(error.code)
-                    ? 'Incorrect password or email. Please try again.'
+                const message = ['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(error.code)
+                    ? 'Incorrect email or password. Please try again.'
                     : error.message;
                 handleError('auth-login', error, message);
             }
@@ -373,7 +473,6 @@
             if (!userId) return showMessage("Cannot save targets. Not authenticated.", true);
 
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                 await setDoc(doc(db, `artifacts/${appId}/users/${userId}/targets/baseline`), targets);
                 baselineTargets = targets;
                 showMessage("Targets saved successfully!");
@@ -389,7 +488,6 @@
             if (!userId) return {};
 
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                 const docRef = doc(db, `artifacts/${appId}/users/${userId}/targets/baseline`);
                 const docSnap = await getDoc(docRef);
                 const result = docSnap.exists() ? docSnap.data() : {};
@@ -405,16 +503,15 @@
             if (!userId) return showMessage("Cannot save entry. Not authenticated.", true);
 
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                // Include food items in the entry
+                // Ensure foodItems is always an array, even if empty
                 entry.foodItems = dailyFoodItems;
                 await setDoc(doc(db, `artifacts/${appId}/users/${userId}/dailyEntries`, dateStr), entry);
-                dailyEntries.set(dateStr, entry);
+                dailyEntries.set(dateStr, entry); // Update local cache
                 showMessage(`Entry for ${dateStr} saved!`);
                 updateDashboard();
                 updateChart();
                 updateFoodItemsList();
-                debugLog('daily-entry-save', 'Daily entry saved', { date: dateStr, nutrientsCount: Object.keys(entry).length });
+                debugLog('daily-entry-save', 'Daily entry saved', { date: dateStr, nutrientsCount: Object.keys(entry).length, foodItemsCount: entry.foodItems.length });
             } catch (error) {
                 handleError('daily-entry-save', error, "Failed to save entry.");
             }
@@ -425,7 +522,6 @@
 
             const entries = [];
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                 const q = query(collection(db, `artifacts/${appId}/users/${userId}/dailyEntries`), orderBy("date", "asc"));
                 const querySnapshot = await getDocs(q);
                 querySnapshot.forEach((doc) => entries.push(doc.data()));
@@ -441,9 +537,8 @@
 
             const entries = new Map();
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                // Fetch more entries to support 3-day averages
-                const q = query(collection(db, `artifacts/${appId}/users/${userId}/dailyEntries`), orderBy("date", "desc"), limit(100));
+                // Fetch more entries to support 3-day averages and historical data
+                const q = query(collection(db, `artifacts/${appId}/users/${userId}/dailyEntries`), orderBy("date", "desc"), limit(365)); // Fetch up to a year of data
                 const querySnapshot = await getDocs(q);
                 querySnapshot.forEach((doc) => entries.set(doc.id, doc.data()));
                 debugLog('fetch-recent-entries', 'Recent entries fetched', { count: entries.size });
@@ -457,7 +552,6 @@
             if (!userId) return;
 
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                 const q = query(collection(db, `artifacts/${appId}/users/${userId}/foodItems`), orderBy("name"));
                 const querySnapshot = await getDocs(q);
                 savedFoodItems.clear();
@@ -469,37 +563,107 @@
                 handleError('load-saved-foods', error);
             }
         }
-        async function saveFoodItem(foodData) {
-            if (!userId) {
-                throw new Error('User not authenticated');
+        // Renamed and repurposed function: Only saves food to database, does not affect daily log
+        async function saveFoodItemToDatabase() {
+            const foodNameInput = document.getElementById('food-item-input');
+            let foodName = foodNameInput.value.trim();
+            const stagedValues = getStagedValues();
+
+            if (!foodName) {
+                // Show custom modal for blank food name
+                blankFoodNameModal.classList.remove('hidden');
+                document.getElementById('blank-food-name-input').value = ''; // Clear previous input
+                document.getElementById('blank-food-name-prompt').classList.remove('hidden'); // Ensure prompt is visible
+                document.getElementById('blank-food-name-input-container').classList.add('hidden'); // Ensure input is hidden
+
+                document.getElementById('confirm-blank-name-btn').onclick = async () => {
+                    blankFoodNameModal.classList.add('hidden');
+                    foodName = '(blank)'; // Use blank name
+                    await processSaveFoodItem(foodName, stagedValues);
+                };
+                document.getElementById('enter-name-btn').onclick = () => {
+                    document.getElementById('blank-food-name-prompt').classList.add('hidden');
+                    document.getElementById('blank-food-name-input-container').classList.remove('hidden');
+                    document.getElementById('blank-food-name-input').focus(); // Focus the new input
+                };
+                document.getElementById('submit-new-food-name-btn').onclick = async () => {
+                    const newName = document.getElementById('blank-food-name-input').value.trim();
+                    if (newName) {
+                        blankFoodNameModal.classList.add('hidden');
+                        await processSaveFoodItem(newName, stagedValues);
+                    } else {
+                        showMessage('Please enter a name or choose to save as (blank).', true);
+                    }
+                };
+                document.getElementById('cancel-blank-name-btn').onclick = () => {
+                    blankFoodNameModal.classList.add('hidden');
+                    foodNameInput.value = ''; // Clear input if cancelled
+                    // Reset modal state for next time
+                    document.getElementById('blank-food-name-prompt').classList.remove('hidden');
+                    document.getElementById('blank-food-name-input-container').classList.add('hidden');
+                };
+                return; // Exit, as the modal will handle the rest
             }
 
+            // Check if food name already exists
+            const existingFood = Array.from(savedFoodItems.values()).find(f => f.name.toLowerCase() === foodName.toLowerCase());
+
+            if (existingFood) {
+                // Check if values are different
+                const hasDifferences = allNutrients.some(nutrient =>
+                    parseFloat(existingFood[nutrient] || 0) !== parseFloat(stagedValues[nutrient] || 0)
+                );
+
+                if (hasDifferences) {
+                    showDuplicateDialog(existingFood, stagedValues, foodName);
+                    return;
+                } else {
+                    showMessage(`Food item "${foodName}" already exists with identical values. No update needed.`, false);
+                    debugLog('save-food-item', 'Using existing food with identical values', { name: foodName });
+                    foodNameInput.value = ''; // Clear input after processing
+                    clearStagingArea(); // Clear staging area
+                    return;
+                }
+            }
+
+            // If no duplicate or values are the same, proceed to save
+            await processSaveFoodItem(foodName, stagedValues);
+        }
+
+        async function processSaveFoodItem(foodName, stagedValues) {
+            if (!userId) {
+                showMessage("Cannot save food item. Not authenticated.", true);
+                return;
+            }
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-                const foodId = foodData.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+                const foodId = foodName.toLowerCase().replace(/[^a-z0-9]/g, '_'); // Generate ID from name
+                const foodData = { name: foodName, ...stagedValues, lastUpdated: new Date().toISOString() };
                 await setDoc(doc(db, `artifacts/${appId}/users/${userId}/foodItems`, foodId), foodData);
                 savedFoodItems.set(foodId, foodData);
+                showMessage(`Food item "${foodName}" saved to your database.`);
+                document.getElementById('food-item-input').value = ''; // Clear input
+                clearStagingArea(); // Clear staging area
                 debugLog('save-food-item', 'Food item saved', { name: foodData.name });
             } catch (error) {
                 handleError('save-food-item', error, 'Failed to save food item');
-                throw error;
             }
         }
+
         async function deleteFoodItem(foodId) {
             if (!userId) {
                 throw new Error('User not authenticated');
             }
 
             try {
-                const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
                 await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/foodItems`, foodId));
                 savedFoodItems.delete(foodId);
-                debugLog('delete-food-item', 'Food item deleted', { foodId });
+                debugLog('delete-food-item', 'Food item deleted from database', { foodId });
             } catch (error) {
-                handleError('delete-food-item', error, 'Failed to delete food item');
+                handleError('delete-food-item', error, 'Failed to delete food item from database');
                 throw error;
             }
         }
+
         function loadDailyFoodItems() {
             const dateStr = dateInput.value;
             const entry = dailyEntries.get(dateStr) || {};
@@ -507,12 +671,13 @@
             updateFoodItemsList();
             debugLog('load-daily-foods', 'Daily food items loaded', { date: dateStr, count: dailyFoodItems.length });
         }
+
         function updateFoodItemsList() {
             const container = document.getElementById('food-items-list');
             if (!container) return;
 
             if (dailyFoodItems.length === 0) {
-                container.innerHTML = '<p class="text-gray-500 text-sm">No food items logged yet.</p>';
+                container.innerHTML = '<p class="text-gray-500 text-sm">No food items logged yet for this day.</p>';
                 return;
             }
             const listHTML = dailyFoodItems.map((item, index) => {
@@ -521,7 +686,7 @@
                 <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
                     <span class="text-sm">
                         <strong>${itemName}:</strong>
-                         Cal: ${item.calories || 0} | P: ${item.protein || 0} / C: ${item.carbs || 0} / F: ${item.fat || 0}
+                        Cal: ${item.calories || 0} | P: ${item.protein || 0} / C: ${item.carbs || 0} / F: ${item.fat || 0}
                     </span>
                     <button onclick="removeFoodItem(${index})" class="text-red-500 hover:text-red-700 text-xs">
                         <i class="fas fa-times"></i>
@@ -531,6 +696,17 @@
             }).join('');
             container.innerHTML = listHTML;
         }
+
+        function clearStagingArea() {
+            allNutrients.forEach(nutrient => {
+                const input = document.getElementById(`actual-${nutrient}`);
+                if (input) input.value = '';
+            });
+            document.getElementById('paste-area').value = '';
+            document.getElementById('food-item-input').value = '';
+            debugLog('clear-staging', 'Staging area cleared');
+        }
+
         // === ENHANCED FOOD DROPDOWN WITH SEARCH ===
         function setupFoodDropdown() {
             const foodInput = document.getElementById('food-item-input');
@@ -576,7 +752,7 @@
                         e.preventDefault();
                         if (selectedDropdownIndex >= 0 && items[selectedDropdownIndex]) {
                             const foodName = items[selectedDropdownIndex].dataset.foodName;
-                            selectFoodItem(foodName);
+                            window.selectFoodItem(foodName); // Use window.selectFoodItem
                         }
                         break;
                     case 'Escape':
@@ -636,6 +812,9 @@
         function updateDropdownHighlight(items) {
             items.forEach((item, index) => {
                 item.classList.toggle('highlighted', index === selectedDropdownIndex);
+                if (index === selectedDropdownIndex) {
+                    item.scrollIntoView({ block: 'nearest' }); // Scroll to highlighted item
+                }
             });
         }
         function hideFoodDropdown() {
@@ -664,59 +843,7 @@
             });
             debugLog('populate-staging', 'Staging area populated from food data', { foodName: foodData.name });
         }
-        async function addFoodItem() {
-            const foodName = document.getElementById('food-item-input').value.trim();
-            const stagedValues = getStagedValues();
 
-            // Check if food name already exists
-            const existingFood = Array.from(savedFoodItems.values()).find(f => f.name.toLowerCase() === foodName.toLowerCase());
-
-            if (existingFood && foodName) {
-                // Check if values are different
-                const hasDifferences = allNutrients.some(nutrient =>
-                    parseFloat(existingFood[nutrient] || 0) !== parseFloat(stagedValues[nutrient] || 0)
-                );
-
-                if (hasDifferences) {
-                    showDuplicateDialog(existingFood, stagedValues, foodName);
-                    return;
-                } else {
-                    // Values are the same, just use existing
-                    debugLog('add-food-item', 'Using existing food with identical values', { name: foodName });
-                }
-            }
-
-            // Save as new food item if name provided and has nutrient data
-            if (foodName && Object.values(stagedValues).some(v => v > 0)) {
-                const foodData = { name: foodName, ...stagedValues, lastUpdated: new Date().toISOString() };
-                try {
-                    await saveFoodItem(foodData);
-                    showMessage(`Food item "${foodName}" saved to database.`);
-                } catch (error) {
-                    debugLog('add-food-item', 'Failed to save food item', error);
-                    // Continue with daily entry even if save fails
-                }
-            }
-
-            // Create daily food entry
-            const foodItem = {
-                name: foodName || '',
-                calories: stagedValues.calories || 0,
-                protein: stagedValues.protein || 0,
-                carbs: stagedValues.carbs || 0,
-                fat: stagedValues.fat || 0,
-                timestamp: new Date().toISOString(),
-                ...stagedValues
-            };
-            dailyFoodItems.push(foodItem);
-
-            // Clear the food input
-            document.getElementById('food-item-input').value = '';
-
-            updateFoodItemsList();
-            showMessage(`Added ${foodName || '(blank)'} to daily log.`);
-            debugLog('add-food-item', 'Food item added to daily log', { name: foodName || '(blank)' });
-        }
         // === ENHANCED DUPLICATE FOOD HANDLING ===
         function showDuplicateDialog(existingFood, newValues, foodName) {
             const modal = document.getElementById('duplicate-food-modal');
@@ -784,7 +911,7 @@
             debugLog('duplicate-dialog', 'Duplicate dialog shown', { foodName, differencesCount: differences.length });
         }
         window.useSavedFood = (foodName) => {
-            selectFoodItem(foodName);
+            window.selectFoodItem(foodName); // Populate staging area
             closeDuplicateDialog();
             debugLog('duplicate-resolution', 'Used saved food version', { foodName });
         };
@@ -792,9 +919,8 @@
             const stagedValues = getStagedValues();
             const foodData = { name: foodName, ...stagedValues, lastUpdated: new Date().toISOString() };
             try {
-                await saveFoodItem(foodData);
+                await processSaveFoodItem(foodName, stagedValues); // Use the unified save function
                 showMessage(`Food item "${foodName}" updated in database.`);
-                addFoodItem(); // Add to daily log
                 debugLog('duplicate-resolution', 'Replaced saved food version', { foodName });
             } catch (error) {
                 handleError('replace-saved-food', error, 'Failed to update food item.');
@@ -803,22 +929,37 @@
         };
         window.keepBothFoods = () => {
             const currentName = document.getElementById('food-item-input').value.trim();
-            const newName = prompt(`Enter a new name for the current version (currently "${currentName}"):`);
-            if (newName && newName.trim() && newName.trim() !== currentName) {
-                document.getElementById('food-item-input').value = newName.trim();
-                closeDuplicateDialog();
-                addFoodItem();
-                debugLog('duplicate-resolution', 'Kept both foods with rename', { originalName: currentName, newName: newName.trim() });
-            } else if (newName === null) {
-                // User cancelled
-                debugLog('duplicate-resolution', 'User cancelled rename operation');
-            } else {
-                showMessage('Please enter a different name.', true);
-            }
+            showConfirmationModal(`Enter a new name for the current version (currently "${currentName}"):`,
+                (newName) => { // onConfirm
+                    if (newName && newName.trim() && newName.trim() !== currentName) {
+                        document.getElementById('food-item-input').value = newName.trim();
+                        closeDuplicateDialog(); // Close the duplicate food modal
+                        saveFoodItemToDatabase(); // Save with new name
+                        debugLog('duplicate-resolution', 'Kept both foods with rename', { originalName: currentName, newName: newName.trim() });
+                    } else {
+                        showMessage('Please enter a different name.', true);
+                    }
+                },
+                () => { // onCancel
+                    debugLog('duplicate-resolution', 'User cancelled rename operation');
+                },
+                true, // isPrompt
+                currentName // defaultValue for prompt
+            );
         };
         window.closeDuplicateDialog = () => {
             document.getElementById('duplicate-food-modal').classList.add('hidden');
         };
+
+        // Custom modal for blank food name
+        window.closeBlankFoodNameModal = () => {
+            document.getElementById('blank-food-name-modal').classList.add('hidden');
+            document.getElementById('blank-food-name-input').value = '';
+            // Reset modal state
+            document.getElementById('blank-food-name-prompt').classList.remove('hidden');
+            document.getElementById('blank-food-name-input-container').classList.add('hidden');
+        };
+
 
         // === FIX: This function now correctly subtracts nutrients and saves to the database ===
         window.removeFoodItem = async (index) => {
@@ -826,9 +967,8 @@
 
             const itemToRemove = dailyFoodItems[index];
 
-            if (confirm(`Are you sure you want to remove "${itemToRemove.name || '(blank)'}"?\n\nThis will subtract its nutrients from today's totals.`)) {
+            showConfirmationModal(`Are you sure you want to remove "${itemToRemove.name || '(blank)'}"?\n\nThis will subtract its nutrients from today's totals.`, async () => {
                 try {
-                    // Get today's entry from the cache
                     const dateStr = dateInput.value;
                     const todayEntry = dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
 
@@ -846,7 +986,6 @@
                     todayEntry.foodItems = dailyFoodItems;
 
                     // Save the entire updated entry back to Firebase.
-                    // This function will also trigger UI updates (dashboard, chart, food list).
                     await saveDailyEntry(dateStr, todayEntry);
 
                     showMessage(`Removed "${itemToRemove.name || '(blank)'}" and updated totals.`);
@@ -855,7 +994,7 @@
                 } catch (error) {
                     handleError('remove-food-item', error, 'Failed to remove food item.');
                 }
-            }
+            });
         };
 
         // === ENHANCED FOOD MANAGER ===
@@ -895,7 +1034,7 @@
                 document.getElementById('food-item-input').value = food.name;
                 populateStagingFromFood(food);
                 document.getElementById('food-manager-modal').classList.add('hidden');
-                showMessage(`Loaded "${food.name}" for editing. Modify values and add to update.`);
+                showMessage(`Loaded "${food.name}" for editing. Modify values and save to update.`);
                 debugLog('edit-food-item', 'Food item loaded for editing', { name: food.name });
             }
         };
@@ -904,7 +1043,7 @@
             const food = savedFoodItems.get(foodId);
             if (!food) return;
 
-            if (confirm(`Delete "${food.name}" from saved foods?\n\nThis will also subtract its nutrients from today's totals if it was consumed today.`)) {
+            showConfirmationModal(`Delete "${food.name}" from saved foods?\n\nThis will also subtract its nutrients from today's totals if it was consumed today.`, async () => {
                 try {
                     // First, subtract nutrients from today's totals if this food was consumed
                     const dateStr = dateInput.value;
@@ -948,7 +1087,7 @@
                 } catch (error) {
                     handleError('delete-food-manager', error, 'Failed to delete food item.');
                 }
-            }
+            });
         };
         window.closeFoodManager = () => {
             document.getElementById('food-manager-modal').classList.add('hidden');
@@ -977,7 +1116,11 @@
 
             allNutrients.forEach(n => {
                 const baselineTarget = T(n);
-                const adjustedTarget = dailyTrackedNutrients.includes(n) ? baselineTarget : calculateAdjustedTarget(n);
+                // Daily tracked nutrients (like protein, specific vitamins/minerals) have fixed targets.
+                // Averaged nutrients (like fat-soluble vitamins, certain minerals, and macros except protein) adjust.
+                const adjustedTarget = dailyTrackedNutrients.includes(n) || n === 'calories' || n === 'protein'
+                                       ? baselineTarget
+                                       : calculateAdjustedTarget(n);
                 metrics[n] = { name: n, baselineTarget, adjustedTarget, actualToday: parseFloat(todayEntry[n]) || 0 };
             });
 
@@ -1022,11 +1165,11 @@
                 const diffColor = metric.diff >= 0 ? 'text-green-600' : 'text-red-600';
 
                 return `<div class="bg-white p-4 rounded-lg shadow-md nutrient-card">
-                        <h4 class="font-bold capitalize text-gray-800">${formatNutrientName(metric.name)}</h4>
-                        <p class="text-sm text-gray-500">${metric.actualToday.toFixed(1)} / ${metric.adjustedTarget.toFixed(1)}</p>
-                        <div class="w-full progress-bar-bg rounded-full h-2.5 mt-2"><div class="progress-bar-fill h-2.5 rounded-full ${color}" style="width: ${Math.min(100, percentage)}%"></div></div>
-                        <p class="text-sm font-medium text-gray-600 mt-2">Status: <span class="font-bold ${diffColor}">${diffText}</span></p>
-                    </div>`;
+                            <h4 class="font-bold capitalize text-gray-800">${formatNutrientName(metric.name)}</h4>
+                            <p class="text-sm text-gray-500">${metric.actualToday.toFixed(1)} / ${metric.adjustedTarget.toFixed(1)}</p>
+                            <div class="w-full progress-bar-bg rounded-full h-2.5 mt-2"><div class="progress-bar-fill h-2.5 rounded-full ${color}" style="width: ${Math.min(100, percentage)}%"></div></div>
+                            <p class="text-sm font-medium text-gray-600 mt-2">Status: <span class="font-bold ${diffColor}">${diffText}</span></p>
+                        </div>`;
             };
 
             const renderGroup = (title, nutrientNames) => {
@@ -1149,30 +1292,100 @@
             return values;
         }
 
+        // New function to add staged nutrients to daily log and food items
+        async function addStagedNutrientsToDailyLog() {
+            const stagedValues = getStagedValues();
+            const dateStr = dateInput.value;
+            const newEntry = dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+
+            // Add nutrients to daily totals
+            allNutrients.forEach(name => {
+                const stagedVal = stagedValues[name] || 0;
+                const currentVal = parseFloat(newEntry[name]) || 0;
+                newEntry[name] = currentVal + stagedVal;
+            });
+
+            // Create a "Manual Entry" food item for the daily log
+            const foodItem = {
+                name: 'Manual Entry',
+                calories: stagedValues.calories || 0,
+                protein: stagedValues.protein || 0,
+                carbs: stagedValues.carbs || 0,
+                fat: stagedValues.fat || 0,
+                timestamp: new Date().toISOString(),
+                ...stagedValues // Include all staged nutrients
+            };
+            dailyFoodItems.push(foodItem);
+
+            await saveDailyEntry(dateStr, newEntry);
+            showMessage("Staged nutrients added to today's log!");
+            clearStagingArea();
+            debugLog('staging-action', 'Staged nutrients added to daily log', { date: dateStr, foodItem });
+        }
+
+        // New function to subtract staged nutrients from daily log and add a "Manual Subtraction" food item
+        async function subtractStagedNutrientsFromDailyLog() {
+            const stagedValues = getStagedValues();
+            const dateStr = dateInput.value;
+            const newEntry = dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+
+            // Subtract nutrients from daily totals, ensuring non-negative
+            allNutrients.forEach(name => {
+                const stagedVal = stagedValues[name] || 0;
+                const currentVal = parseFloat(newEntry[name]) || 0;
+                newEntry[name] = Math.max(0, currentVal - stagedVal);
+            });
+
+            // Create a "Manual Subtraction" food item for the daily log
+            const foodItem = {
+                name: 'Manual Subtraction',
+                calories: -(stagedValues.calories || 0),
+                protein: -(stagedValues.protein || 0),
+                carbs: -(stagedValues.carbs || 0),
+                fat: -(stagedValues.fat || 0),
+                timestamp: new Date().toISOString(),
+                ...Object.fromEntries(Object.entries(stagedValues).map(([key, value]) => [key, -value])) // Negate all values
+            };
+            dailyFoodItems.push(foodItem); // Add as a negative entry
+
+            await saveDailyEntry(dateStr, newEntry);
+            showMessage("Staged nutrients subtracted from today's log!");
+            clearStagingArea();
+            debugLog('staging-action', 'Staged nutrients subtracted from daily log', { date: dateStr, foodItem });
+        }
+
         function handleStagingAction(mode) {
             const stagedValues = getStagedValues();
             const dateStr = dateInput.value;
             if (mode === 'updateTargets') {
-                if (confirm('Are you sure you want to update your baseline targets? This will affect future daily calculations.')) {
+                showConfirmationModal('Are you sure you want to update your baseline targets? This will affect future daily calculations.', () => {
                     saveTargets(stagedValues);
-                }
+                });
                 return;
             }
             if (mode === 'replace') {
-                if (!confirm('Are you sure you want to replace the entire day\'s log? This will overwrite all existing data for this day.')) {
-                    return;
-                }
+                showConfirmationModal('Are you sure you want to replace the entire day\'s log? This will overwrite all existing data for this day.', async () => {
+                    const newEntry = { date: dateStr, foodItems: [] };
+                    allNutrients.forEach(name => {
+                        newEntry[name] = stagedValues[name] || 0;
+                    });
+                    // When replacing, the foodItems for the day should reflect the new total as a single "Manual Replacement" entry
+                    dailyFoodItems = [{
+                        name: 'Manual Replacement',
+                        calories: stagedValues.calories || 0,
+                        protein: stagedValues.protein || 0,
+                        carbs: stagedValues.carbs || 0,
+                        fat: stagedValues.fat || 0,
+                        timestamp: new Date().toISOString(),
+                        ...stagedValues
+                    }];
+                    await saveDailyEntry(dateStr, newEntry);
+                    showMessage("Day's log replaced with staged values!");
+                    clearStagingArea();
+                    debugLog('staging-action', 'Day log replaced', { date: dateStr });
+                });
+                return;
             }
-            const newEntry = dailyEntries.get(dateStr) || { date: dateStr };
-            allNutrients.forEach(name => {
-                const stagedVal = stagedValues[name] || 0;
-                const currentVal = parseFloat(newEntry[name]) || 0;
-                if (mode === 'add') newEntry[name] = currentVal + stagedVal;
-                else if (mode === 'subtract') newEntry[name] = Math.max(0, currentVal - stagedVal);
-                else if (mode === 'replace') newEntry[name] = stagedVal;
-            });
-            saveDailyEntry(dateStr, newEntry);
-            debugLog('staging-action', 'Staging action performed', { mode, date: dateStr });
         }
         // === ENHANCED CHART FUNCTIONALITY ===
         function initializeChartControls() {
@@ -1302,15 +1515,15 @@
                         label: `${formatNutrientName(nutrient)} (3-day avg)`,
                         data: avgData,
                         type: 'line',
-                        borderColor: CONFIG.CHART_COLORS[index % CONFIG.CHART_COLORS.length],
+                        borderColor: CONFIG.CHART_COLORS[index % CONFIG.CHART_COLORS.length], // Use original color
                         backgroundColor: 'transparent',
-                        borderWidth: 3, // Solid line, more visible
+                        borderWidth: 2, // Slightly thinner
                         fill: false,
-                        pointRadius: 3,
-                        pointBackgroundColor: CONFIG.CHART_COLORS[index % CONFIG.CHART_COLORS.length],
+                        pointRadius: 0, // No points for average line
                         spanGaps: false,
                         tension: 0.4, // Smooth curves instead of straight lines
-                        cubicInterpolationMode: 'monotone' // Better curve fitting
+                        cubicInterpolationMode: 'monotone', // Better curve fitting
+                        order: 0 // Render in front of bars (bars have default order of 1)
                     });
                 }
             });
@@ -1438,7 +1651,7 @@
             });
 
             tableHTML += `
-                            </tr>
+                                </tr>
                         </thead>
                         <tbody>
             `;
@@ -1451,7 +1664,7 @@
                     const data = tableData[date][nutrient];
                     if (data) {
                         const colorClass = data.percentage >= 90 && data.percentage <= 110 ? 'text-green-600' :
-                                           data.percentage >= 75 ? 'text-yellow-600' : 'text-red-600';
+                                             data.percentage >= 75 ? 'text-yellow-600' : 'text-red-600';
                         tableHTML += `<td class="px-2 py-2 border-b text-center text-xs">
                             <div>${data.actual.toFixed(1)}</div>
                             <div class="${colorClass}">${data.percentage.toFixed(0)}%</div>
@@ -1473,6 +1686,78 @@
             tableContainer.innerHTML = tableHTML;
         }
 
+        // === EXPORT FUNCTIONS ===
+        async function exportTargetsJson() {
+            if (!userId) {
+                showMessage("Cannot export targets. Not authenticated.", true);
+                return;
+            }
+            try {
+                const targets = await fetchTargets();
+                const jsonContent = JSON.stringify(targets, null, 2);
+                const blob = new Blob([jsonContent], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `nutrition_targets_${formatDate(new Date())}.json`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showMessage("Targets exported successfully as JSON!");
+                debugLog('export-targets', 'Targets exported');
+            } catch (error) {
+                handleError('export-targets', error, 'Failed to export targets.');
+            }
+        }
+
+        async function exportSavedFoodsCsv() {
+            if (!userId) {
+                showMessage("Cannot export saved foods. Not authenticated.", true);
+                return;
+            }
+            try {
+                // Fetch all saved food items (they are already in savedFoodItems Map)
+                const foods = Array.from(savedFoodItems.values());
+                if (foods.length === 0) {
+                    showMessage("No saved food items to export.", true);
+                    return;
+                }
+
+                // Define headers: name, lastUpdated, and all nutrients
+                const headers = ['name', 'lastUpdated', ...allNutrients];
+                let csvContent = headers.map(header => `"${header}"`).join(',') + '\n';
+
+                foods.forEach(food => {
+                    const row = headers.map(header => {
+                        let value = food[header] || '';
+                        // For string values (like name, lastUpdated) and potential other string fields,
+                        // ensure they are properly quoted and escaped.
+                        if (typeof value === 'string') {
+                            value = `"${value.replace(/"/g, '""')}"`; // Escape double quotes and wrap in quotes
+                        }
+                        return value;
+                    }).join(',');
+                    csvContent += row + '\n';
+                });
+
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `saved_food_items_${formatDate(new Date())}.csv`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(url);
+                showMessage("Saved food items exported successfully as CSV!");
+                debugLog('export-saved-foods', 'Saved food items exported', { count: foods.length });
+            } catch (error) {
+                handleError('export-saved-foods', error, 'Failed to export saved food items.');
+            }
+        }
+
+
         // === EVENT LISTENERS ===
         document.addEventListener('DOMContentLoaded', () => {
             // Set date to today based on timezone
@@ -1486,71 +1771,82 @@
                 timezone: CONFIG.TIMEZONE,
                 todayDate: dateInput.value
             });
-        });
 
-        document.getElementById('open-login-btn').addEventListener('click', () => loginModal.classList.remove('hidden'));
-        document.getElementById('close-login-btn').addEventListener('click', () => loginModal.classList.add('hidden'));
-        document.getElementById('login-btn').addEventListener('click', handleLogin);
-        document.getElementById('signup-btn').addEventListener('click', handleSignUp);
-        document.getElementById('guest-btn').addEventListener('click', handleGuestLogin);
-        document.getElementById('logout-btn').addEventListener('click', handleLogout);
-        document.getElementById('open-settings-btn').addEventListener('click', () => settingsModal.classList.remove('hidden'));
-        document.getElementById('close-settings-btn').addEventListener('click', () => settingsModal.classList.add('hidden'));
+            // All event listeners are now attached within DOMContentLoaded or functions called by it.
+            document.getElementById('open-login-btn').addEventListener('click', () => loginModal.classList.remove('hidden'));
+            document.getElementById('close-login-btn').addEventListener('click', () => loginModal.classList.add('hidden'));
+            document.getElementById('login-btn').addEventListener('click', handleLogin);
+            document.getElementById('signup-btn').addEventListener('click', handleSignUp);
+            document.getElementById('guest-btn').addEventListener('click', handleGuestLogin);
+            document.getElementById('logout-btn').addEventListener('click', handleLogout);
+            document.getElementById('open-settings-btn').addEventListener('click', () => settingsModal.classList.remove('hidden'));
+            document.getElementById('close-settings-btn').addEventListener('click', () => settingsModal.classList.add('hidden'));
 
-        document.getElementById('settings-form').addEventListener('submit', (e) => {
-            e.preventDefault();
-            const newTargets = {};
-            allNutrients.forEach(name => newTargets[name] = parseFloat(document.getElementById(`target-${name}`).value) || 0);
-            // Include fat minimum
-            newTargets.fatMinimum = parseFloat(document.getElementById('target-fatMinimum').value) || CONFIG.DEFAULT_FAT_MINIMUM;
-            saveTargets(newTargets);
-            settingsModal.classList.add('hidden');
-        });
-
-        dateInput.addEventListener('change', async () => {
-            await loadUserData();
-        });
-
-        document.getElementById('parse-btn').addEventListener('click', parseAndStage);
-        document.getElementById('add-day-btn').addEventListener('click', () => handleStagingAction('add'));
-        document.getElementById('subtract-day-btn').addEventListener('click', () => handleStagingAction('subtract'));
-        document.getElementById('replace-day-btn').addEventListener('click', () => handleStagingAction('replace'));
-        document.getElementById('stage-to-targets-btn').addEventListener('click', () => handleStagingAction('updateTargets'));
-
-        // Enhanced food item management
-        document.getElementById('add-food-btn').addEventListener('click', addFoodItem);
-        document.getElementById('food-item-input').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') addFoodItem();
-        });
-
-        // Food manager
-        document.getElementById('open-food-manager-btn').addEventListener('click', openFoodManager);
-
-        document.getElementById('export-btn').addEventListener('click', async () => {
-            showMessage("Fetching all data for export...", false);
-            const allEntries = await fetchAllEntries();
-            if (allEntries.length === 0) return showMessage("No data to export.", true);
-
-            const headers = ['date', ...allNutrients];
-            let csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n";
-
-            allEntries.forEach(entry => {
-                const row = headers.map(header => entry[header] || '0');
-                csvContent += row.join(",") + "\n";
+            document.getElementById('settings-form').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const newTargets = {};
+                allNutrients.forEach(name => newTargets[name] = parseFloat(document.getElementById(`target-${name}`).value) || 0);
+                // Include fat minimum
+                newTargets.fatMinimum = parseFloat(document.getElementById('target-fatMinimum').value) || CONFIG.DEFAULT_FAT_MINIMUM;
+                saveTargets(newTargets);
+                settingsModal.classList.add('hidden');
             });
 
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", "nutrition_tracker_export.csv");
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            showMessage("Export complete!", false);
-            debugLog('export', 'Data export completed', { entriesCount: allEntries.length });
-        });
+            dateInput.addEventListener('change', async () => {
+                await loadUserData();
+            });
 
-        window.openSettings = () => settingsModal.classList.remove('hidden');
+            document.getElementById('parse-btn').addEventListener('click', parseAndStage);
+            document.getElementById('add-day-btn').addEventListener('click', addStagedNutrientsToDailyLog);
+            document.getElementById('subtract-day-btn').addEventListener('click', subtractStagedNutrientsFromDailyLog);
+            document.getElementById('replace-day-btn').addEventListener('click', () => handleStagingAction('replace'));
+            document.getElementById('stage-to-targets-btn').addEventListener('click', () => handleStagingAction('updateTargets'));
+
+            document.getElementById('save-food-item-btn').addEventListener('click', saveFoodItemToDatabase);
+            document.getElementById('food-item-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') saveFoodItemToDatabase();
+            });
+
+            document.getElementById('open-food-manager-btn').addEventListener('click', openFoodManager);
+
+            document.getElementById('export-all-data-btn').addEventListener('click', async () => {
+                showMessage("Fetching all daily log data for export...", false);
+                const allEntries = await fetchAllEntries();
+                if (allEntries.length === 0) return showMessage("No daily log data to export.", true);
+
+                const headers = ['date', ...allNutrients, 'foodItems'];
+                let csvContent = "data:text/csv;charset=utf-8," + headers.map(h => `"${h}"`).join(",") + "\n";
+
+                allEntries.forEach(entry => {
+                    const row = headers.map(header => {
+                        if (header === 'foodItems') {
+                            return `"${JSON.stringify(entry.foodItems || []).replace(/"/g, '""')}"`;
+                        }
+                        let value = entry[header] || '0';
+                        if (typeof value === 'string') {
+                            value = `"${value.replace(/"/g, '""')}"`;
+                        }
+                        return value;
+                    });
+                    csvContent += row.join(",") + "\n";
+                });
+
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", "nutrition_daily_log_export.csv");
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showMessage("Daily log export complete!", false);
+                debugLog('export-daily-log', 'Daily log data export completed', { entriesCount: allEntries.length });
+            });
+
+            document.getElementById('export-targets-json-btn').addEventListener('click', exportTargetsJson);
+            document.getElementById('export-saved-foods-csv-btn').addEventListener('click', exportSavedFoodsCsv);
+
+            window.openSettings = () => settingsModal.classList.remove('hidden');
+        });
     </script>
     <!-- Main Application Body -->
     <div id="loader" class="flex justify-center items-center h-screen"><i class="fas fa-spinner fa-spin fa-3x text-blue-600"></i></div>
@@ -1587,22 +1883,22 @@
 
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex gap-2">
-                        <button type="button" id="add-day-btn" class="w-10 h-10 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 flex items-center justify-center">
+                        <button type="button" id="add-day-btn" class="w-10 h-10 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 flex items-center justify-center" title="Add staged nutrients to today's log">
                             <i class="fas fa-plus"></i>
                         </button>
-                        <button type="button" id="subtract-day-btn" class="w-10 h-10 bg-yellow-500 text-white font-bold rounded-lg shadow-md hover:bg-yellow-600 flex items-center justify-center">
+                        <button type="button" id="subtract-day-btn" class="w-10 h-10 bg-yellow-500 text-white font-bold rounded-lg shadow-md hover:bg-yellow-600 flex items-center justify-center" title="Subtract staged nutrients from today's log">
                             <i class="fas fa-minus"></i>
                         </button>
                     </div>
                     <div class="flex gap-2">
-                        <button type="button" id="replace-day-btn" class="px-3 py-1 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 text-xs">Replace Day</button>
-                        <button type="button" id="stage-to-targets-btn" class="px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 text-xs">Update Targets</button>
+                        <button type="button" id="replace-day-btn" class="px-3 py-1 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 text-xs" title="Replace today's entire log with staged values">Replace Day</button>
+                        <button type="button" id="stage-to-targets-btn" class="px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 text-xs" title="Update your baseline targets with staged values">Update Targets</button>
                     </div>
                 </div>
                 <!-- Enhanced Food Item Entry Section -->
                 <div class="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
                     <div class="flex justify-between items-center mb-2">
-                        <label for="food-item-input" class="block text-sm font-medium text-gray-700">Add Food Item</label>
+                        <label for="food-item-input" class="block text-sm font-medium text-gray-700">Food Item Database</label>
                         <button type="button" id="open-food-manager-btn" class="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600">
                             <i class="fas fa-list mr-1"></i>Manage Foods
                         </button>
@@ -1613,7 +1909,7 @@
                             <!-- Enhanced dropdown items populated by JavaScript -->
                         </div>
                     </div>
-                    <button type="button" id="add-food-btn" class="w-full mt-2 px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Add Item</button>
+                    <button type="button" id="save-food-item-btn" class="w-full mt-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Save Food Item</button>
 
                     <!-- Enhanced Food Items List -->
                     <div class="mt-3">
@@ -1655,6 +1951,7 @@
                     <div><label for="actual-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
                     <div><label for="actual-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
                     <div><label for="actual-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
                     <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Optional</h4>
                     <div><label for="actual-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
                     <div><label for="actual-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="actual-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
@@ -1741,7 +2038,9 @@
                     <div><label for="target-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="target-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
                 </div>
                 <div class="mt-8 flex justify-between items-center">
-                    <button type="button" id="export-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700">Export All Data (CSV)</button>
+                    <button type="button" id="export-targets-json-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700 text-sm">Export Targets (JSON)</button>
+                    <button type="button" id="export-saved-foods-csv-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700 text-sm">Export Saved Foods (CSV)</button>
+                    <button type="button" id="export-all-data-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700 text-sm">Export Daily Log (CSV)</button>
                     <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700">Save Targets</button>
                 </div>
             </form>
@@ -1767,6 +2066,44 @@
             </div>
         </div>
     </div>
+    <!-- Blank Food Name Modal (New) -->
+    <div id="blank-food-name-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
+            <button onclick="closeBlankFoodNameModal()" class="absolute top-2 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Food Name Required</h2>
+            <div id="blank-food-name-prompt" class="text-center">
+                <p class="mb-4">The food name is blank. Would you like to save it as "(blank)" or enter a name?</p>
+                <div class="flex justify-center gap-4">
+                    <button id="confirm-blank-name-btn" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">Save as (blank)</button>
+                    <button id="enter-name-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enter Name</button>
+                </div>
+            </div>
+            <div id="blank-food-name-input-container" class="hidden mt-4">
+                <label for="blank-food-name-input" class="block text-sm font-medium text-gray-700 mb-1">Enter New Food Name</label>
+                <input type="text" id="blank-food-name-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Unlabeled Snack">
+                <div class="flex justify-end gap-4 mt-4">
+                    <button id="cancel-blank-name-btn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cancel</button>
+                    <button id="submit-new-food-name-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Custom Confirmation Modal (New) -->
+    <div id="confirmation-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+        <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
+            <h2 class="text-xl font-bold mb-4 text-center text-gray-800">Confirm Action</h2>
+            <p id="confirmation-message" class="text-gray-700 text-center mb-6"></p>
+            <div id="prompt-input-container" class="mt-4 hidden">
+                <label for="prompt-input" class="block text-sm font-medium text-gray-700 mb-1">Enter Value:</label>
+                <input type="text" id="prompt-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+            </div>
+            <div class="flex justify-center gap-4 mt-6">
+                <button id="confirm-action-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Confirm</button>
+                <button id="cancel-action-btn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <div id="message-box" class="hidden fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg z-50"><p id="message-text"></p></div>
 </body>
 </html>
