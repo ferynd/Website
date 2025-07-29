@@ -934,8 +934,12 @@
       const dateStr = dateInput.value;
       const newEntry = dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
       allNutrients.forEach(n=> newEntry[n] = (parseFloat(newEntry[n])||0) + (staged[n]||0));
-
-      const foodItem = { name:'Manual Entry', calories: staged.calories||0, protein: staged.protein||0, carbs: staged.carbs||0, fat: staged.fat||0, timestamp:new Date().toISOString(), ...staged };
+    
+      // Get the food name from the input field, or use "(blank)" if empty
+      const foodNameInput = document.getElementById('food-item-input');
+      const foodName = foodNameInput?.value.trim() || '(blank)';
+      
+      const foodItem = { name: foodName, calories: staged.calories||0, protein: staged.protein||0, carbs: staged.carbs||0, fat: staged.fat||0, timestamp:new Date().toISOString(), ...staged };
       dailyFoodItems.push(foodItem);
       await saveDailyEntry(dateStr, newEntry);
       showMessage("Staged nutrients added to today's log!");
@@ -949,8 +953,9 @@
       allNutrients.forEach(n=> newEntry[n] = Math.max(0, (parseFloat(newEntry[n])||0) - (staged[n]||0)));
 
       const neg = Object.fromEntries(Object.entries(staged).map(([k,v])=>[k,-(v||0)]));
-      const foodItem = { name:'Manual Subtraction', calories: -(staged.calories||0), protein: -(staged.protein||0), carbs: -(staged.carbs||0), fat: -(staged.fat||0), timestamp:new Date().toISOString(), ...neg };
-      dailyFoodItems.push(foodItem);
+      const foodNameInput = document.getElementById('food-item-input');
+      const foodName = foodNameInput?.value.trim() || '(blank)';
+      const foodItem = { name: `${foodName} (subtracted)`, calories: -(staged.calories||0), protein: -(staged.protein||0), carbs: -(staged.carbs||0), fat: -(staged.fat||0), timestamp:new Date().toISOString(), ...neg };      dailyFoodItems.push(foodItem);
 
       await saveDailyEntry(dateStr, newEntry);
       showMessage("Staged nutrients subtracted from today's log!");
@@ -968,8 +973,9 @@
         showConfirmationModal(`Replace all of ${dateStr} with staged values? This will overwrite existing data for this day.`, async ()=>{
           const newEntry = { date: dateStr, foodItems: [] };
           allNutrients.forEach(n=> newEntry[n] = staged[n] || 0);
-          dailyFoodItems = [{ name:'Manual Replacement', calories: staged.calories||0, protein: staged.protein||0, carbs: staged.carbs||0, fat: staged.fat||0, timestamp:new Date().toISOString(), ...staged }];
-          await saveDailyEntry(dateStr, newEntry);
+          const foodNameInput = document.getElementById('food-item-input');
+          const foodName = foodNameInput?.value.trim() || '(blank)';
+          dailyFoodItems = [{ name: foodName, calories: staged.calories||0, protein: staged.protein||0, carbs: staged.carbs||0, fat: staged.fat||0, timestamp:new Date().toISOString(), ...staged }];          await saveDailyEntry(dateStr, newEntry);
           showMessage("Day's log replaced with staged values!");
           clearStagingArea();
         });
@@ -1540,10 +1546,9 @@
       </div>
     </div>
 
-  <div id="message-box" class="hidden fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg z-50"><p id="message-text"></p></div>
-    <!-- Toast / Message box -->
-    <div id="message-box" class="hidden fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg z-50">
-      <p id="message-text"></p>
-    </div>
+<!-- Toast / Message box -->
+  <div id="message-box" class="hidden fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+    <p id="message-text"></p>
+  </div>
 </body>
 </html>
