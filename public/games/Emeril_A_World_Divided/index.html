@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emeril: A World Divided</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800&family=Lato:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- Configuration --- */
+        :root {
+            --color-bg: #0f172a; /* slate-900 */
+            --color-text: #cbd5e1; /* slate-300 */
+            --color-heading: #f1f5f9; /* slate-100 */
+            
+            /* Faction Colors */
+            --color-tides-reach-primary: #3b82f6;  /* blue-500 */
+            --color-tides-reach-secondary: #f59e0b; /* amber-500 */
+
+            --color-citadel-primary: #dc2626;  /* red-600 */
+            --color-citadel-secondary: #1f2937; /* gray-800 */
+
+            --color-sanctum-primary: #a16207;  /* yellow-700 */
+            --color-sanctum-secondary: #9ca3af; /* gray-400 */
+        }
+
+        /* --- Base Styles --- */
+        body {
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            font-family: 'Lato', sans-serif;
+            background-image: 
+                radial-gradient(circle at 15% 15%, rgba(8, 145, 178, 0.15), transparent 40%),
+                radial-gradient(circle at 85% 80%, rgba(109, 40, 217, 0.1), transparent 40%);
+            background-attachment: fixed;
+        }
+
+        h1, h2, h3, h4 {
+            font-family: 'Cinzel', serif;
+            color: var(--color-heading);
+            font-weight: 700;
+        }
+
+        /* --- Animation & Transition --- */
+        .scroll-reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: opacity 0.8s ease-out, transform 0.6s ease-out;
+        }
+        .scroll-reveal.is-visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .details-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.7s ease-in-out, opacity 0.5s ease-in-out;
+            opacity: 0;
+        }
+        .details-content.expanded {
+            max-height: 1000px; /* Adjust as needed */
+            opacity: 1;
+        }
+
+        /* --- Component Styles --- */
+        .glass-pane {
+            background: rgba(30, 41, 55, 0.3); /* slate-800/30 */
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 1rem;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            transition: border-color 0.5s ease;
+        }
+
+        .section-title {
+            font-size: 2.5rem; /* text-4xl */
+            font-weight: 800;
+            letter-spacing: 0.05em;
+            text-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+        }
+
+        .prose-custom {
+            font-size: 1.125rem; /* text-lg */
+            line-height: 1.75;
+            font-weight: 300;
+        }
+        .prose-custom strong {
+            color: var(--color-tides-reach-secondary);
+            font-weight: 700;
+        }
+        
+        .read-more-btn {
+            color: var(--color-tides-reach-secondary);
+            cursor: pointer;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 1rem;
+            border-bottom: 1px dotted var(--color-tides-reach-secondary);
+        }
+
+        /* --- Tab Styles --- */
+        .tab-button {
+            transition: all 0.3s ease-in-out;
+            border-bottom: 3px solid transparent;
+        }
+        .tab-button:hover:not(.active) {
+            color: var(--color-heading);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        /* Tide's Reach Active Style */
+        .tab-button[data-tab="tides-reach"].active { color: var(--color-tides-reach-secondary); border-bottom-color: var(--color-tides-reach-secondary); }
+        .tab-button[data-tab="tides-reach"]:hover:not(.active) { border-bottom-color: var(--color-tides-reach-primary); }
+        #tab-contents.tides-reach-active { border-left: 4px solid var(--color-tides-reach-secondary); }
+        
+        /* Iron Citadel Active Style */
+        .tab-button[data-tab="iron-citadel"].active { color: var(--color-citadel-primary); border-bottom-color: var(--color-citadel-primary); }
+        .tab-button[data-tab="iron-citadel"]:hover:not(.active) { border-bottom-color: var(--color-citadel-secondary); }
+        #tab-contents.iron-citadel-active { border-left: 4px solid var(--color-citadel-primary); }
+
+        /* High Sanctum Active Style */
+        .tab-button[data-tab="high-sanctum"].active { color: var(--color-sanctum-secondary); border-bottom-color: var(--color-sanctum-secondary); }
+        .tab-button[data-tab="high-sanctum"]:hover:not(.active) { border-bottom-color: var(--color-sanctum-primary); }
+        #tab-contents.high-sanctum-active { border-left: 4px solid var(--color-sanctum-secondary); }
+
+        @keyframes pulse-glow {
+            0%, 100% { filter: drop-shadow(0 0 3px var(--color-tides-reach-primary)); transform: scale(1); }
+            50% { filter: drop-shadow(0 0 10px var(--color-tides-reach-primary)); transform: scale(1.05); }
+        }
+        .portal-icon { animation: pulse-glow 5s infinite ease-in-out; }
+
+    </style>
+</head>
+<body class="w-full overflow-x-hidden">
+
+    <!-- Hero Section -->
+    <header class="h-screen w-full flex flex-col items-center justify-center text-center p-4 relative overflow-hidden">
+        <div class="absolute inset-0 bg-slate-900/50"></div>
+        <div class="relative z-10">
+            <h1 class="text-6xl md:text-8xl font-extrabold text-slate-100" style="letter-spacing: 0.1em;">EMERIL</h1>
+            <p class="mt-4 text-xl md:text-2xl text-slate-300 font-light tracking-wider">A WORLD DIVIDED</p>
+        </div>
+        <div class="absolute bottom-10 text-slate-400 animate-bounce">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+        </div>
+    </header>
+
+    <!-- Main Content Wrapper -->
+    <main class="max-w-5xl mx-auto p-4 md:p-8 space-y-24 md:space-y-32">
+
+        <!-- Section: The World That Was -->
+        <section id="world-that-was" class="scroll-reveal text-center">
+            <h2 class="section-title text-amber-400">The World That Was</h2>
+            <div class="mt-8 prose-custom max-w-3xl mx-auto text-left">
+                <p>Imagine stepping through a towering ring of carved stone and emerging instantly on the other side of the continent. In Emeril's golden age, this wasn't fantasy—it was Tuesday morning.</p>
+                <div class="details-content" id="world-details">
+                    <div class="my-12 flex justify-center">
+                        <svg class="w-24 h-24 text-cyan-400 portal-icon" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M50,10 A40,40 0 1,1 50,90 A40,40 0 1,1 50,10 M50,20 A30,30 0 1,0 50,80 A30,30 0 1,0 50,20" fill="none" stroke="currentColor" stroke-width="3"/>
+                            <path d="M50,2 L50,18 M98,50 L82,50 M50,98 L50,82 M2,50 L18,50" stroke="currentColor" stroke-width="2"/>
+                            <circle cx="50" cy="10" r="3" fill="currentColor"/><circle cx="90" cy="50" r="3" fill="currentColor"/><circle cx="50" cy="90" r="3" fill="currentColor"/><circle cx="10" cy="50" r="3" fill="currentColor"/>
+                        </svg>
+                    </div>
+                    <p>The portals dominated the landscape like monuments to impossible dreams made real. These massive rings of stone and metal stretched twenty feet high, their surfaces alive with runes that shifted and flowed in patterns that hurt to follow too closely. Crystals embedded in their frames pulsed with light that seemed to come from somewhere beyond the physical world, and the air around them hummed with power that made your teeth ache and your hair stand on end.</p>
+                    <p>The Precursors built them, along with countless other wonders we can only guess at. This vanished civilization left scattered traces across Emeril—buried vaults, crystalline devices that serve unknown purposes, and architectural fragments that seem to mock the laws of physics. But the portals? Those were impossible to miss. Towering, functional, and utterly transformative, they became the arteries of civilization itself.</p>
+                    <p>Magic was stronger then, flowing through the world like blood through veins. Wizards wielded powers that today exist only in legend—spells of incredible scope and complexity that modern practitioners can barely comprehend, let alone cast. Most magic users today struggle to manage anything beyond simple cantrips and basic enchantments.</p>
+                    <p>Nobody truly understood how the portals worked, but that didn't stop anyone from using them. Priests developed elaborate ceremonies they swore kept the portals stable. Scholars wrote treatises on portal theory that contradicted each other completely. Meanwhile, caravans stepped through rings in remote farmlands and emerged in city marketplaces, fresh bread still warm from ovens hundreds of miles away.</p>
+                    <p>For over a thousand years, this was simply how the world worked.</p>
+                </div>
+                <div class="text-center">
+                    <span class="read-more-btn" data-target="world-details">Read More</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section: The Collapse -->
+        <section id="the-collapse" class="scroll-reveal">
+            <div class="glass-pane p-8 md:p-12 text-center border-t-4 border-red-500">
+                <h2 class="text-4xl md:text-5xl text-red-400">The Day Everything Changed</h2>
+                <div class="prose-custom max-w-3xl mx-auto text-left">
+                    <p class="mt-6 text-xl md:text-2xl text-slate-200 italic text-center">One hundred years ago, in a single, terrible moment, every portal across Emeril went dark.</p>
+                    <div class="details-content" id="collapse-details">
+                        <p>No warning. No explanation. The great rings that had hummed with power for millennia became nothing more than elaborate stone sculptures. Cities that had grown dependent on distant resources found themselves cut off overnight. Trade networks collapsed. Populations that had swelled beyond their local capacity to feed suddenly faced starvation.</p>
+                        <p class="mt-4 font-semibold text-center text-amber-300">The world didn't end, but it came close.</p>
+                    </div>
+                     <div class="text-center">
+                        <span class="read-more-btn" data-target="collapse-details">Read More</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section: The Powers That Remain -->
+        <section id="powers" class="scroll-reveal text-center">
+            <h2 class="section-title text-amber-400">The Powers That Remain</h2>
+            <p class="mt-4 prose-custom max-w-3xl mx-auto">From the chaos, three powers emerged, each on a different path to survival.</p>
+            
+            <div id="tab-buttons" class="flex flex-wrap justify-center gap-6 md:gap-12 my-12 text-slate-400 text-lg">
+                <button data-tab="tides-reach" class="tab-button active flex items-center gap-3 p-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" style="color: var(--color-tides-reach-primary)" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v11.494m-9-5.747h18M5 12.253L8.6 9.65a5 5 0 016.8 0L19 12.253"/></svg>
+                    Tide's Reach
+                </button>
+                <button data-tab="iron-citadel" class="tab-button flex items-center gap-3 p-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" style="color: var(--color-citadel-primary)" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                    The Iron Citadel
+                </button>
+                <button data-tab="high-sanctum" class="tab-button flex items-center gap-3 p-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" style="color: var(--color-sanctum-primary)" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.354a1.76 1.76 0 011.17-2.173l5.145-1.715a1.76 1.76 0 012.173 1.17l2.147 6.354a1.76 1.76 0 01-.592 3.417v-2.947a2.35 2.35 0 00-4.7 0v2.947"/></svg>
+                    High Sanctum
+                </button>
+            </div>
+
+            <div id="tab-contents" class="glass-pane p-8 md:p-12 text-left prose-custom max-w-3xl mx-auto tides-reach-active">
+                <div id="tides-reach-content" class="tab-content active">
+                    <h3>Tide's Reach</h3>
+                    <p>The jewel of the western coast became a maritime empire out of necessity. When the portals failed, Tide's Reach turned to the sea. Merchant fleets replaced portal networks, and the city became a hub of learning and innovation. Scholars here still dream of understanding the portal mystery, pouring over Precursor artifacts and ancient texts. The city buzzes with ambitious merchants, brilliant inventors, and determined researchers who believe the portals can be restored.</p>
+                </div>
+                <div id="iron-citadel-content" class="tab-content">
+                    <h3>The Iron Citadel</h3>
+                    <p>Where Tide's Reach adapted through trade and knowledge, the Iron Citadel chose conquest. This fortress-city forged itself into an unstoppable war machine, deciding that if the old world was gone, they would build a new one through strength and steel. Their armies march under black banners, claiming territory and resources through superior discipline and brutal efficiency. They see the portal collapse as an opportunity—why restore a system that made the world soft when you can rule it properly through force?</p>
+                </div>
+                <div id="high-sanctum-content" class="tab-content">
+                    <h3>High Sanctum</h3>
+                    <p>Perched in the mountains, this monastery city stands apart from the political struggles below. The monks of High Sanctum position themselves as spiritual guides and peacekeepers, sending emissaries to both Tide's Reach and the Iron Citadel. They perform ancient rites, offer wisdom, and maintain an air of serene detachment from worldly concerns. Many believe they hold the deepest knowledge about the portals and the Precursors, though they speak in riddles and parables rather than clear answers.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section: The World Today -->
+        <section id="world-today" class="scroll-reveal space-y-16">
+            <div class="text-center">
+                 <h2 class="section-title text-amber-400">The World Today</h2>
+            </div>
+            <div class="grid md:grid-cols-2 gap-8 items-start">
+                <div>
+                    <h3 class="text-3xl text-slate-100">The Wildlands Between</h3>
+                    <p class="mt-4 prose-custom">Between these three powers stretch the wildlands—vast territories where smaller settlements struggle to survive, where broken portal rings stand as haunting monuments to better times, and where strange things prowl in the shadows. The collapse didn't just cut off transportation; it left scars in the magical fabric of the world itself. Travelers report twisted creatures, patches of unstable magic, and ruins that whisper with residual power.</p>
+                    <p class="mt-4 prose-custom">Some say the very land remembers the trauma of that day, and that the wounds still bleed strange energies into the world.</p>
+                </div>
+                <div class="glass-pane p-6 text-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16 mx-auto text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                    <h4 class="mt-4 text-xl">Whispers and Theories</h4>
+                    <p class="mt-2 text-slate-400 prose-custom">Everyone has an explanation for why the portals failed. The faithful claim divine punishment for mortal hubris. Scholars blame magical exhaustion or systematic failure. Politicians point fingers at their rivals, certain that sabotage or forbidden experiments caused the catastrophe.</p>
+                    <p class="mt-2 text-slate-400 prose-custom">The truth remains as elusive as morning mist. What's certain is that the world has spent a century adapting to its new reality, building trade routes where portals once provided instant passage and learning to thrive within the boundaries of distance once again.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Section: Your Place -->
+        <section id="your-place" class="scroll-reveal">
+             <div class="glass-pane p-8 md:p-12 border-l-4 border-amber-500">
+                <h2 class="text-3xl md:text-4xl">Your Place in This World</h2>
+                <p class="mt-6 prose-custom">You find yourself in Tide's Reach, where the salt air carries whispers of ancient mysteries and distant shores. Here, scholars debate theories in marble halls while merchants plan expeditions to forgotten ruins. The city thrums with possibility—and with the tension of a world that refuses to accept that its golden age is truly over.</p>
+                <p class="mt-4 prose-custom">Adventure calls from every direction. Expeditions venture into the wildlands seeking lost Precursor sites. Scholars need protection while investigating broken portals. Political tensions simmer between the great powers. And somewhere out there, in forgotten ruins and guarded libraries, the truth about the collapse waits to be discovered.</p>
+                <p class="mt-6 text-xl text-slate-100 font-semibold italic">The question isn't whether you'll find adventure in this fractured world—it's whether you're ready for what that adventure might reveal about the forces that shaped Emeril's fate.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="text-center py-12 mt-24 border-t border-slate-800/50">
+        <p class="text-slate-500 tracking-widest font-light">EMERIL</p>
+    </footer>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- Tabbed Interface Logic ---
+            const tabButtonsContainer = document.getElementById('tab-buttons');
+            const tabContentsContainer = document.getElementById('tab-contents');
+            if (tabButtonsContainer && tabContentsContainer) {
+                const factionClasses = ['tides-reach-active', 'iron-citadel-active', 'high-sanctum-active'];
+
+                tabButtonsContainer.addEventListener('click', function(event) {
+                    const clickedButton = event.target.closest('.tab-button');
+                    if (!clickedButton) return;
+
+                    const tabId = clickedButton.dataset.tab;
+                    const targetContent = document.getElementById(tabId + '-content');
+                    
+                    // Update button active states
+                    tabButtonsContainer.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+                    clickedButton.classList.add('active');
+
+                    // Update content visibility
+                    tabContentsContainer.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                    if (targetContent) {
+                        targetContent.classList.add('active');
+                    }
+                    
+                    // Update container class for styling
+                    tabContentsContainer.classList.remove(...factionClasses);
+                    tabContentsContainer.classList.add(tabId + '-active');
+                });
+            }
+
+            // --- Scroll Reveal Animation Logic ---
+            const revealElements = document.querySelectorAll('.scroll-reveal');
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.classList.add('is-visible');
+                    }
+                });
+            }, { threshold: 0.1 });
+            revealElements.forEach(el => observer.observe(el));
+
+            // --- Read More/Less Logic ---
+            document.querySelectorAll('.read-more-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const targetId = this.dataset.target;
+                    const targetContent = document.getElementById(targetId);
+                    if (targetContent) {
+                        targetContent.classList.toggle('expanded');
+                        if (targetContent.classList.contains('expanded')) {
+                            this.textContent = 'Read Less';
+                        } else {
+                            this.textContent = 'Read More';
+                        }
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
