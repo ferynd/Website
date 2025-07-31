@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Drama } from 'lucide-react';
+import { ArrowRight, Drama, Swords } from 'lucide-react';
 
 const gameList = [
   {
@@ -9,6 +9,12 @@ const gameList = [
     description: 'An interactive detective story concept (Static HTML).',
     href: '/games/noir_detective_idea/index.html',
     icon: <Drama size={24} className="text-purple-500" />,
+  },
+  {
+    name: 'Emeril: A World Divided',
+    description: 'An interactive lore page for a world of lost magic and warring factions.',
+    href: '/games/Emeril_A_World_Divided/index.html',
+    icon: <Swords size={24} className="text-amber-500" />,
   },
 ];
 
