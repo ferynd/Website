@@ -113,7 +113,21 @@
           <label for="date-input" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
           <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
         </div>
+        <div class="mb-4">
+          <label for="date-input" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
+          <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+        </div>
 
+        <div class="mb-4">
+          <label for="paste-area" class="block text-sm font-medium text-gray-700 mb-1">Paste Log to Stage</label>
+          <textarea id="paste-area" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Paste your log here..."></textarea>
+          <button type="button" id="parse-btn" class="w-full mt-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-indigo-700">
+            <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
+          </button>
+        </div>
+
+        <hr class="my-4">
+        <h3 class="text-xl font-semibold text-gray-800 mb-2">Staging Area</h3>
         <div class="mb-4">
           <label for="paste-area" class="block text-sm font-medium text-gray-700 mb-1">Paste Log to Stage</label>
           <textarea id="paste-area" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Paste your log here..."></textarea>
@@ -149,7 +163,36 @@
             <div id="food-dropdown" class="food-dropdown-list hidden"></div>
           </div>
           <button type="button" id="save-food-item-btn" class="w-full mt-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Save Food Item</button>
+        <div class="flex justify-between items-center mb-4">
+          <div class="flex gap-2">
+            <button type="button" id="add-day-btn" class="w-10 h-10 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 flex items-center justify-center" title="Add staged nutrients to today's log"><i class="fas fa-plus"></i></button>
+            <button type="button" id="subtract-day-btn" class="w-10 h-10 bg-yellow-500 text-white font-bold rounded-lg shadow-md hover:bg-yellow-600 flex items-center justify-center" title="Subtract staged nutrients from today's log"><i class="fas fa-minus"></i></button>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" id="replace-day-btn" class="px-3 py-1 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 text-xs" title="Replace today's entire log with staged values">Replace Day</button>
+            <button type="button" id="stage-to-targets-btn" class="px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 text-xs" title="Update your baseline targets with staged values">Update Targets</button>
+          </div>
+        </div>
 
+        <!-- Food DB -->
+        <div class="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
+          <div class="flex justify-between items-center mb-2">
+            <label for="food-item-input" class="block text-sm font-medium text-gray-700">Food Item Database</label>
+            <button type="button" id="open-food-manager-btn" class="text-xs px-2 py-1 bg-gray-500 text-white rounded hover:bg-gray-600">
+              <i class="fas fa-list mr-1"></i>Manage Foods
+            </button>
+          </div>
+          <div class="food-dropdown relative">
+            <input type="text" id="food-item-input" placeholder="Enter or select food name..." class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+            <div id="food-dropdown" class="food-dropdown-list hidden"></div>
+          </div>
+          <button type="button" id="save-food-item-btn" class="w-full mt-2 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700">Save Food Item</button>
+
+          <div class="mt-3">
+            <h4 class="text-sm font-semibold text-gray-700 mb-2">Today's Food Items:</h4>
+            <div id="food-items-list" class="space-y-2 max-h-32 overflow-y-auto"></div>
+          </div>
+        </div>
           <div class="mt-3">
             <h4 class="text-sm font-semibold text-gray-700 mb-2">Today's Food Items:</h4>
             <div id="food-items-list" class="space-y-2 max-h-32 overflow-y-auto"></div>
@@ -163,7 +206,19 @@
           <div><label for="actual-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="actual-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="actual-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="actual-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+        <!-- Staging inputs -->
+        <div class="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
+          <h4 class="text-lg font-semibold text-gray-700 pt-2 sticky top-0 bg-white">Macros</h4>
+          <div><label for="actual-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="actual-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="actual-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="actual-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="actual-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
 
+          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Vitamins</h4>
+          <div><label for="actual-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="actual-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Vitamins</h4>
           <div><label for="actual-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="actual-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
@@ -183,12 +238,47 @@
           <div><label for="actual-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="actual-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="actual-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="actual-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Vitamins</h4>
+          <div><label for="actual-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Minerals</h4>
+          <div><label for="actual-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="actual-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="actual-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="actual-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="actual-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="actual-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
 
           <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Minerals</h4>
           <div><label for="actual-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Minerals</h4>
+          <div><label for="actual-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
 
+          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Optional</h4>
+          <div><label for="actual-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="actual-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="actual-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="actual-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
+        </div>
+      </div>
+
+      <div class="lg:col-span-2">
+        <div id="dashboard"></div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Login Modal -->
+  <div id="login-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
+      <button id="close-login-btn" class="absolute top-2 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+      <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Account Access</h2>
           <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Optional</h4>
           <div><label for="actual-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="actual-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="actual-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
@@ -244,10 +334,53 @@
           <div><label for="target-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="target-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="target-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="target-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="target-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="target-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+      <form id="auth-form" class="space-y-4">
+        <div>
+          <label for="email-input" class="block text-sm font-medium text-gray-700">Email</label>
+          <input type="email" id="email-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+        </div>
+        <div>
+          <label for="password-input" class="block text-sm font-medium text-gray-700">Password</label>
+          <input type="password" id="password-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+        </div>
+        <div class="flex space-x-2 pt-2">
+          <button type="button" id="login-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700">Login</button>
+          <button type="button" id="signup-btn" class="w-full bg-green-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-green-700">Sign Up</button>
+        </div>
+      </form>
+
+      <div class="my-4 flex items-center">
+        <hr class="flex-grow border-t border-gray-300">
+        <span class="mx-2 text-gray-500 text-sm">OR</span>
+        <hr class="flex-grow border-t border-gray-300">
+      </div>
+      <button id="guest-btn" class="w-full bg-gray-500 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-600">Continue as Guest</button>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
+    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] relative">
+      <button id="close-settings-btn" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
+      <h2 class="text-2xl font-bold mb-6 text-gray-800">Set Baseline Targets</h2>
+      <form id="settings-form" class="overflow-y-auto max-h-[70vh] pr-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-2 border-b pb-2 mb-2">Macros</h3></div>
+          <div><label for="target-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="target-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="target-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="target-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="target-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
 
           <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Configuration</h3></div>
           <div><label for="target-fatMinimum" class="block text-sm font-medium text-gray-600">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Configuration</h3></div>
+          <div><label for="target-fatMinimum" class="block text-sm font-medium text-gray-600">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum" class="w-full p-2 border border-gray-300 rounded-md"></div>
 
+          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Vitamins (Water-Soluble)</h3></div>
+          <div><label for="target-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="target-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="target-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="target-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Vitamins (Water-Soluble)</h3></div>
           <div><label for="target-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="target-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="target-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
@@ -267,7 +400,24 @@
           <div><label for="target-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="target-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="target-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="target-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="target-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="target-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Vitamins (Fat-Soluble)</h3></div>
+          <div><label for="target-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="target-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="target-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="target-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="target-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
 
+          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Minerals</h3></div>
+          <div><label for="target-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="target-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="target-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="target-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="target-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="target-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="target-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+
+          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Minerals</h3></div>
+          <div><label for="target-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="target-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="target-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <div><label for="target-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="target-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Minerals</h3></div>
           <div><label for="target-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="target-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
           <div><label for="target-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="target-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
