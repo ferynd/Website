@@ -1,7 +1,6 @@
 /**
  * @file src/food/manager.js
- * @description Handles the food management UI and logic, including the food manager modal,
- * editing, and deleting saved food items.
+ * @description FIXED: Food management that doesn't affect prior days when deleting saved foods
  */
 
 import { state } from '../state/store.js';
@@ -116,54 +115,31 @@ export function editFoodItem(foodId) {
 }
 
 /**
- * Deletes a food item from the saved foods database and removes it from the current day's log if present.
+ * FIXED: Deletes a food item from the saved foods database ONLY.
+ * This no longer affects any prior daily entries - only removes from the food database.
  * @param {string} foodId - The ID of the food item to delete.
  */
 export async function deleteFoodItemFromManager(foodId) {
   const food = state.savedFoodItems.get(foodId);
   if (!food) return;
 
-  showConfirmationModal(`Delete "${food.name}" from saved foods? This action is permanent and will also remove any instances of this food from today's log.`, async () => {
-    try {
-      const dateStr = state.dom.dateInput.value;
-      const todayEntry = state.dailyEntries.get(dateStr) || { date: dateStr };
-      let removedCount = 0;
-      let needsSave = false;
+  showConfirmationModal(
+    `Delete "${food.name}" from your saved foods database? This will only remove it from your food library and will NOT affect any previous daily logs.`, 
+    async () => {
+      try {
+        // FIXED: Only delete from the food database - do not touch daily entries
+        await deleteFoodItem(foodId);
 
-      // Filter out the deleted food from today's log and subtract its nutrients.
-      state.dailyFoodItems = state.dailyFoodItems.filter(item => {
-        if (item.name === food.name) {
-          allNutrients.forEach(n => {
-            const currentTotal = parseFloat(todayEntry[n]) || 0;
-            const itemValue = parseFloat(item[n]) || 0;
-            todayEntry[n] = Math.max(0, currentTotal - itemValue);
-          });
-          removedCount++;
-          needsSave = true;
-          return false; // Remove from the array
-        }
-        return true; // Keep in the array
-      });
+        showMessage(`Deleted "${food.name}" from your saved foods database. Your historical daily logs are unchanged.`);
 
-      // Save the updated daily entry if any items were removed.
-      if (needsSave) {
-        await saveDailyEntry(dateStr, todayEntry);
+        // Refresh only the food manager modal
+        openFoodManager();
+        
+      } catch (e) {
+        handleError('delete-food-manager', e, 'Failed to delete food item from database.');
       }
-
-      // Delete the item from the main food database.
-      await deleteFoodItem(foodId);
-
-      showMessage(`Deleted "${food.name}" from saved foods${removedCount > 0 ? ` and subtracted ${removedCount} servings from today's totals` : ''}.`);
-
-      // Refresh the food manager modal and the main UI.
-      openFoodManager();
-      updateDashboard();
-      updateChart();
-      updateFoodItemsList();
-    } catch (e) {
-      handleError('delete-food-manager', e, 'Failed to delete food item.');
     }
-  });
+  );
 }
 
 /**

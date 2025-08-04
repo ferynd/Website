@@ -1,7 +1,6 @@
 /**
  * @file src/services/data.js
- * @description Handles loading and preparing application data.
- * Acts as a bridge between Firebase services and UI components.
+ * @description UPDATED: Data handling with expandable food items list
  */
 import { state, cacheDom } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
@@ -10,6 +9,14 @@ import { fetchTargets, fetchRecentEntries, loadSavedFoodItems } from './firebase
 import { updateDashboard, populateSettingsForm } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { allNutrients } from '../constants.js';
+
+// Configuration at top of file
+const DATA_CONFIG = {
+  MAX_FOOD_ITEMS_DISPLAY: 50, // Maximum food items to show before scrolling
+  FOOD_ITEM_ANIMATION_DURATION: 200, // Animation for adding/removing items
+  AUTO_SCROLL_TO_NEW_ITEMS: true, // Scroll to newly added items
+  DEBUG_FOOD_OPERATIONS: true // Log food item operations
+};
 
 /**
  * Ensures the date input has a value, defaulting to today's date in the correct timezone.
@@ -99,7 +106,7 @@ export function loadDailyFoodItems() {
 }
 
 /**
- * Renders the list of food items logged for the current day in the UI.
+ * UPDATED: Renders the expandable list of food items logged for the current day
  */
 export function updateFoodItemsList() {
   const container = document.getElementById('food-items-list');
@@ -108,31 +115,109 @@ export function updateFoodItemsList() {
     return;
   }
 
+  // Clear existing content with animation
+  if (DATA_CONFIG.FOOD_ITEM_ANIMATION_DURATION > 0) {
+    container.style.transition = `opacity ${DATA_CONFIG.FOOD_ITEM_ANIMATION_DURATION}ms ease-in-out`;
+    container.style.opacity = '0';
+    
+    setTimeout(() => {
+      renderFoodItemsContent(container);
+      container.style.opacity = '1';
+    }, DATA_CONFIG.FOOD_ITEM_ANIMATION_DURATION / 2);
+  } else {
+    renderFoodItemsContent(container);
+  }
+
+  if (DATA_CONFIG.DEBUG_FOOD_OPERATIONS) {
+    debugLog('data-ui', 'Food items list updated', {
+      itemCount: state.dailyFoodItems.length,
+      containerHeight: container.offsetHeight
+    });
+  }
+}
+
+/**
+ * UPDATED: Renders the actual content of the food items list with improved layout
+ */
+function renderFoodItemsContent(container) {
   if (state.dailyFoodItems.length === 0) {
-    container.innerHTML = '<p class="text-gray-500 text-sm">No food items logged yet for this day.</p>';
-    debugLog('data-ui', 'No food items to display');
+    container.innerHTML = `
+      <div class="text-center py-8 text-gray-500">
+        <i class="fas fa-utensils text-2xl mb-2 opacity-50"></i>
+        <p class="text-sm">No food items logged for this day yet.</p>
+        <p class="text-xs mt-1">Add nutrients above and hit the + button!</p>
+      </div>`;
+    debugLog('data-ui', 'Showing empty state for food items');
     return;
   }
 
-  container.innerHTML = state.dailyFoodItems.map((item, index) => {
+  // Calculate totals for summary
+  const totals = state.dailyFoodItems.reduce((acc, item) => {
+    acc.calories += parseFloat(item.calories) || 0;
+    acc.protein += parseFloat(item.protein) || 0;
+    acc.carbs += parseFloat(item.carbs) || 0;
+    acc.fat += parseFloat(item.fat) || 0;
+    return acc;
+  }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+  // Generate food items HTML with improved styling
+  const itemsHtml = state.dailyFoodItems.map((item, index) => {
     const name = item.name || '(blank)';
-    // Check if the item represents a subtraction (negative calories).
     const isSubtraction = (item.calories || 0) < 0;
-    const details = `Cal: ${item.calories || 0} | P: ${item.protein || 0} / C: ${item.carbs || 0} / F: ${item.fat || 0}`;
+    const details = `Cal: ${Math.round(item.calories || 0)} | P: ${Math.round(item.protein || 0)} / C: ${Math.round(item.carbs || 0)} / F: ${Math.round(item.fat || 0)}`;
+    
+    // Format timestamp if available
+    let timeStamp = '';
+    if (item.timestamp) {
+      const time = new Date(item.timestamp);
+      timeStamp = time.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+      });
+    }
 
     return `
-      <div class="flex justify-between items-center p-2 rounded ${isSubtraction ? 'bg-red-50' : 'bg-gray-50'}">
-        <span class="text-sm">
-          <strong>${name}:</strong>
-          ${details}
-        </span>
-        <button onclick="removeFoodItem(${index})" class="text-red-500 hover:text-red-700 text-xs" title="Remove Item">
+      <div class="group flex justify-between items-center p-3 rounded-lg border ${isSubtraction ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} hover:shadow-md transition-all duration-200">
+        <div class="flex-grow min-w-0">
+          <div class="flex items-center justify-between mb-1">
+            <span class="font-medium text-gray-900 truncate">${name}</span>
+            ${timeStamp ? `<span class="text-xs text-gray-500 ml-2">${timeStamp}</span>` : ''}
+          </div>
+          <div class="text-xs text-gray-600">${details}</div>
+        </div>
+        <button onclick="removeFoodItem(${index})" class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-red-500 hover:text-red-700 text-sm p-1" title="Remove Item">
           <i class="fas fa-times"></i>
         </button>
       </div>`;
   }).join('');
-  
-  debugLog('data-ui', 'Food items list updated', state.dailyFoodItems.length);
+
+  // Summary section
+  const summaryHtml = `
+    <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+      <div class="flex justify-between items-center">
+        <span class="text-sm font-medium text-blue-800">Today's Totals (${state.dailyFoodItems.length} items):</span>
+        <span class="text-sm font-bold text-blue-900">
+          ${Math.round(totals.calories)} cal | ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f
+        </span>
+      </div>
+    </div>
+  `;
+
+  // Combine summary and items
+  container.innerHTML = summaryHtml + itemsHtml;
+
+  // Auto-scroll to show new items if enabled
+  if (DATA_CONFIG.AUTO_SCROLL_TO_NEW_ITEMS && state.dailyFoodItems.length > 3) {
+    setTimeout(() => {
+      container.scrollTop = container.scrollHeight;
+    }, DATA_CONFIG.FOOD_ITEM_ANIMATION_DURATION);
+  }
+
+  debugLog('data-ui', 'Food items content rendered', { 
+    itemCount: state.dailyFoodItems.length,
+    totals: totals
+  });
 }
 
 /**
@@ -165,7 +250,7 @@ export function clearStagingArea() {
 }
 
 /**
- * ADDED: Validates that required data is loaded before performing operations
+ * Validates that required data is loaded before performing operations
  * @returns {boolean} True if data is ready for operations
  */
 export function validateDataReady() {
@@ -184,7 +269,7 @@ export function validateDataReady() {
 }
 
 /**
- * ADDED: Gets the current daily entry for the selected date, creating one if it doesn't exist
+ * Gets the current daily entry for the selected date, creating one if it doesn't exist
  * @returns {Object} Daily entry object
  */
 export function getCurrentDailyEntry() {
@@ -210,7 +295,7 @@ export function getCurrentDailyEntry() {
 }
 
 /**
- * ADDED: Refreshes all UI components that depend on data
+ * Refreshes all UI components that depend on data
  */
 export function refreshUI() {
   try {
@@ -224,7 +309,7 @@ export function refreshUI() {
 }
 
 /**
- * ADDED: Gets summary statistics for debugging and monitoring
+ * Gets summary statistics for debugging and monitoring
  * @returns {Object} Summary of current data state
  */
 export function getDataSummary() {
@@ -234,7 +319,8 @@ export function getDataSummary() {
     totalDailyEntries: state.dailyEntries.size,
     totalFoodItems: state.savedFoodItems.size,
     currentDayFoodItems: state.dailyFoodItems.length,
-    currentDate: state.dom.dateInput?.value || 'not set'
+    currentDate: state.dom.dateInput?.value || 'not set',
+    foodItemsContainerHeight: document.getElementById('food-items-list')?.offsetHeight || 'not found'
   };
   
   debugLog('data-summary', 'Data summary generated', summary);

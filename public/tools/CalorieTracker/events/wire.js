@@ -1,7 +1,6 @@
 /**
  * @file src/events/wire.js
- * @description Wires up all DOM event listeners for the application.
- * This keeps the main HTML clean and centralizes event management.
+ * @description Fixed event wiring with proper training bump integration
  */
 
 import { state } from '../state/store.js';
@@ -13,15 +12,14 @@ import { openFoodManager, closeFoodManager, selectFoodItem, editFoodItem, delete
 import { closeBlankFoodNameModal, closeDuplicateDialog } from '../ui/modals.js';
 import { saveFoodItemToDatabase } from '../food/save.js';
 import { handleLogin, handleSignUp, handleGuestLogin, handleLogout } from '../main.js';
-import { saveTargets } from '../services/firebase.js';
+import { saveTargets, saveDailyEntry } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { debugLog, handleError } from '../utils/ui.js';
 
 /**
- * Attaches all event listeners to the DOM elements.
- * Called from main.js after DOM is ready and elements are cached.
+ * Main event wiring function - called from main.js after DOM is ready
  */
 export function wire() {
   try {
@@ -37,7 +35,7 @@ export function wire() {
       }
     }, 100);
 
-    // --- Auth & Modals ---
+    // Wire up all event categories
     wireAuthEvents();
     wireModalEvents();
     wireSettingsEvents();
@@ -46,7 +44,7 @@ export function wire() {
     wireFoodDatabaseEvents();
     wireExportEvents();
     
-    // --- Expose Globals for Inline HTML `onclick` Handlers ---
+    // Expose global functions for inline HTML onclick handlers
     exposeGlobalFunctions();
 
     debugLog('wire', 'All event listeners attached successfully');
@@ -122,13 +120,20 @@ function wireSettingsEvents() {
         
         try {
           const newTargets = {};
-          allNutrients.forEach(n => {
-            const input = document.getElementById(`target-${n}`);
-            newTargets[n] = input ? (parseFloat(input.value) || 0) : 0;
+          
+          // Get all nutrient targets
+          allNutrients.forEach(nutrient => {
+            const input = document.getElementById(`target-${nutrient}`);
+            if (input) {
+              newTargets[nutrient] = parseFloat(input.value) || 0;
+            }
           });
           
+          // Get banking-specific settings
           const fatMinInput = document.getElementById('target-fatMinimum');
-          newTargets.fatMinimum = fatMinInput ? (parseFloat(fatMinInput.value) || 50) : 50;
+          if (fatMinInput) {
+            newTargets.fatMinimum = parseFloat(fatMinInput.value) || 50;
+          }
 
           await saveTargets(newTargets);
           
@@ -139,6 +144,8 @@ function wireSettingsEvents() {
           // Refresh UI to reflect new targets
           updateDashboard();
           updateChart();
+          
+          debugLog('wire-settings', 'Targets saved successfully');
           
         } catch (error) {
           handleError('wire-settings-save', error, 'Failed to save targets');
@@ -153,26 +160,92 @@ function wireSettingsEvents() {
 }
 
 /**
- * Wire up main control events
+ * Wire up main control events including date and training bump
  */
 function wireMainControls() {
   try {
+    // Date input change handler
     if (state.dom.dateInput) {
-      state.dom.dateInput.addEventListener('change', () => {
+      state.dom.dateInput.addEventListener('change', async () => {
         try {
-          // When date changes, load food items for that day and update UI
-          loadDailyFoodItems();
+          // Load food items and training bump for the new date
+          await loadDailyFoodItems();
+          loadTrainingBumpForDate();
+          
+          // Update UI
           updateDashboard();
           updateChart();
+          
+          debugLog('wire-date', 'Date changed and UI updated');
         } catch (error) {
           handleError('wire-date-change', error, 'Failed to handle date change');
         }
       });
     }
 
+    // Training bump change handler
+    const trainingBumpSelect = document.getElementById('training-bump');
+    if (trainingBumpSelect) {
+      trainingBumpSelect.addEventListener('change', async (e) => {
+        try {
+          const dateStr = state.dom.dateInput?.value;
+          if (!dateStr) return;
+          
+          const trainingBump = parseFloat(e.target.value) || 0;
+          
+          // Get or create today's entry
+          let entry = state.dailyEntries.get(dateStr) || { 
+            date: dateStr, 
+            foodItems: state.dailyFoodItems || [] 
+          };
+          
+          // Update training bump
+          entry.trainingBump = trainingBump;
+          
+          // Save to local state and Firebase
+          state.dailyEntries.set(dateStr, entry);
+          await saveDailyEntry(dateStr, entry);
+          
+          // Update UI to reflect new calculations
+          updateDashboard();
+          
+          debugLog('wire-training', `Training bump set to ${trainingBump} kcal for ${dateStr}`);
+          
+        } catch (error) {
+          handleError('wire-training-bump', error, 'Failed to save training bump');
+        }
+      });
+      
+      // Load training bump when page loads
+      setTimeout(loadTrainingBumpForDate, 500);
+    }
+
     debugLog('wire', 'Main control events wired');
   } catch (error) {
     handleError('wire-main', error, 'Failed to wire main control events');
+  }
+}
+
+/**
+ * Load and display the training bump for the currently selected date
+ */
+function loadTrainingBumpForDate() {
+  try {
+    const dateStr = state.dom.dateInput?.value;
+    const trainingBumpSelect = document.getElementById('training-bump');
+    
+    if (!dateStr || !trainingBumpSelect) return;
+    
+    const entry = state.dailyEntries.get(dateStr) || {};
+    const trainingBump = parseFloat(entry.trainingBump) || 0;
+    
+    // Set the select value
+    trainingBumpSelect.value = trainingBump.toString();
+    
+    debugLog('wire-training-load', `Loaded training bump: ${trainingBump} kcal for ${dateStr}`);
+    
+  } catch (error) {
+    handleError('wire-training-load', error, 'Failed to load training bump for date');
   }
 }
 
@@ -252,7 +325,6 @@ function wireExportEvents() {
 
 /**
  * Expose functions globally for inline HTML onclick handlers
- * This maintains compatibility with existing HTML without rewriting it
  */
 function exposeGlobalFunctions() {
   try {

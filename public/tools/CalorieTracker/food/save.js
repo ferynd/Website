@@ -1,7 +1,6 @@
 /**
  * @file src/food/save.js
- * @description Handles the entire workflow for saving a food item to the database.
- * This includes validation, handling blank names, and managing duplicates.
+ * @description FIXED: Food saving workflow that preserves staging area for immediate use
  */
 
 import { state } from '../state/store.js';
@@ -11,26 +10,35 @@ import { showConfirmationModal, closeDuplicateDialog } from '../ui/modals.js';
 import { db } from '../services/firebase.js';
 import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { appId } from '../config.js';
-import { clearStagingArea } from '../services/data.js';
 import { getStagedValues } from '../staging/parser.js';
 import { selectFoodItem } from './manager.js';
 
+// Configuration at top of file
+const SAVE_CONFIG = {
+  PRESERVE_STAGING_AFTER_SAVE: true, // NEW: Don't clear staging after successful save
+  SUCCESS_MESSAGE_DURATION: 3000, // Show success message for 3 seconds
+  DEBUG_SAVE_OPERATIONS: true // Log save operations for debugging
+};
+
 /**
- * The main function to orchestrate saving a food item.
- * It gets values from the staging area and runs validation checks.
+ * UPDATED: Main function to save food item with preserved staging workflow
  */
 export async function saveFoodItemToDatabase() {
   const foodNameInput = document.getElementById('food-item-input');
   let foodName = foodNameInput.value.trim();
   const stagedValues = getStagedValues();
 
-  // --- Handle blank food name ---
+  if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
+    console.log('🍽️ [FOOD-SAVE] Starting save process:', { foodName, stagedValues });
+  }
+
+  // Handle blank food name
   if (!foodName) {
     handleBlankName(stagedValues);
     return;
   }
 
-  // --- Handle existing food item (check for duplicates) ---
+  // Handle existing food item (check for duplicates)
   const existingFood = Array.from(state.savedFoodItems.values()).find(f => f.name.toLowerCase() === foodName.toLowerCase());
   if (existingFood) {
     const hasDifferences = allNutrients.some(n => parseFloat(existingFood[n] || 0) !== parseFloat(stagedValues[n] || 0));
@@ -38,40 +46,49 @@ export async function saveFoodItemToDatabase() {
       showDuplicateDialog(existingFood, stagedValues, foodName);
       return;
     }
-    showMessage(`Food item "${foodName}" already exists with identical values. No update needed.`);
-    clearStagingArea();
+    // UPDATED: Show message but don't clear staging
+    showMessage(`Food item "${foodName}" already exists with identical values. Ready to add to today's log!`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
     return;
   }
 
-  // --- Process new food item ---
+  // Process new food item
   await processSaveFoodItem(foodName, stagedValues);
 }
 
 /**
- * Writes the food item data to Firestore and updates the local state.
- * @param {string} foodName - The name of the food item.
- * @param {object} stagedValues - The nutrient values for the food.
+ * UPDATED: Save food item and preserve staging area
  */
 async function processSaveFoodItem(foodName, stagedValues) {
   if (!state.userId) return showMessage('Cannot save food item. Not authenticated.', true);
+  
   try {
-    // Generate a consistent ID from the food name.
+    // Generate a consistent ID from the food name
     const foodId = foodName.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const foodData = { name: foodName, ...stagedValues, lastUpdated: new Date().toISOString() };
 
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
     state.savedFoodItems.set(foodId, foodData); // Update local state
 
-    showMessage(`Food item "${foodName}" saved to your database.`);
-    clearStagingArea();
+    if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
+      console.log('✅ [FOOD-SAVE] Successfully saved:', { foodId, foodData });
+    }
+
+    // UPDATED: Show success message but DON'T clear staging
+    showMessage(`✅ "${foodName}" saved to database! Ready to add to today's log.`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
+    
+    // REMOVED: clearStagingArea() call - staging area is preserved for immediate use
+    
   } catch (e) {
     handleError('save-food-item', e, 'Failed to save food item');
+    
+    if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
+      console.error('❌ [FOOD-SAVE] Save failed:', e);
+    }
   }
 }
 
 /**
- * Manages the UI flow for when a user tries to save a food with no name.
- * @param {object} stagedValues - The nutrient values to be saved.
+ * UPDATED: Handle blank name workflow with preserved staging
  */
 function handleBlankName(stagedValues) {
   const modal = state.dom.blankFoodNameModal;
@@ -80,16 +97,18 @@ function handleBlankName(stagedValues) {
   document.getElementById('blank-food-name-prompt').classList.remove('hidden');
   document.getElementById('blank-food-name-input-container').classList.add('hidden');
 
-  // --- Event Listeners for the Blank Name Modal ---
+  // Event Listeners for the Blank Name Modal
   document.getElementById('confirm-blank-name-btn').onclick = async () => {
     modal.classList.add('hidden');
     await processSaveFoodItem('(blank)', stagedValues);
   };
+  
   document.getElementById('enter-name-btn').onclick = () => {
     document.getElementById('blank-food-name-prompt').classList.add('hidden');
     document.getElementById('blank-food-name-input-container').classList.remove('hidden');
     document.getElementById('blank-food-name-input').focus();
   };
+  
   document.getElementById('submit-new-food-name-btn').onclick = async () => {
     const newName = document.getElementById('blank-food-name-input').value.trim();
     if (newName) {
@@ -99,6 +118,7 @@ function handleBlankName(stagedValues) {
       showMessage('Please enter a name or choose to save as (blank).', true);
     }
   };
+  
   document.getElementById('cancel-blank-name-btn').onclick = () => {
     modal.classList.add('hidden');
     document.getElementById('food-item-input').value = '';
@@ -106,15 +126,13 @@ function handleBlankName(stagedValues) {
 }
 
 /**
- * Shows the dialog for handling duplicate food items, allowing the user to choose an action.
- * @param {object} existingFood - The food data already in the database.
- * @param {object} newValues - The new values from the staging area.
- * @param {string} foodName - The name of the duplicate food.
+ * UPDATED: Duplicate dialog workflow with preserved staging
  */
 function showDuplicateDialog(existingFood, newValues, foodName) {
   const modal = state.dom.duplicateFoodModal;
   const container = document.getElementById('duplicate-comparison');
   const diffs = [];
+  
   allNutrients.forEach(n => {
     const e = parseFloat(existingFood[n] || 0);
     const nv = parseFloat(newValues[n] || 0);
@@ -152,24 +170,28 @@ function showDuplicateDialog(existingFood, newValues, foodName) {
       <button id="dup-keep-both" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">Keep Both (Rename)</button>
       <button onclick="closeDuplicateDialog()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700">Cancel</button>
     </div>`;
+  
   modal.classList.remove('hidden');
 
-  // --- Event Listeners for the Duplicate Dialog ---
+  // Event Listeners for the Duplicate Dialog
   document.getElementById('dup-use-saved').onclick = () => {
     selectFoodItem(foodName); // Populate staging with the saved version
     closeDuplicateDialog();
+    showMessage(`Loaded saved version of "${foodName}" into staging area.`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
   };
+  
   document.getElementById('dup-replace').onclick = async () => {
     await processSaveFoodItem(foodName, newValues); // Overwrite the saved version
     closeDuplicateDialog();
   };
+  
   document.getElementById('dup-keep-both').onclick = () => {
     const currentName = document.getElementById('food-item-input').value.trim();
     showConfirmationModal(`Enter a new name for the current version (currently "${currentName}"):`,
       async (newName) => {
         if (newName && newName.trim() && newName.trim().toLowerCase() !== currentName.toLowerCase()) {
           closeDuplicateDialog();
-          // This will re-trigger the save flow with the new name.
+          // Update the food name input and re-trigger save
           document.getElementById('food-item-input').value = newName.trim();
           await saveFoodItemToDatabase();
         } else {

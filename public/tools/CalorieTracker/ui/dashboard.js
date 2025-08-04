@@ -1,156 +1,778 @@
 /**
  * @file src/ui/dashboard.js
- * @description Handles rendering the main dashboard UI, including nutrient cards and calculations.
+ * @description Complete dashboard with fixed banking calculations, collapsible details, and configurable safety caps
  */
 
 import { state } from '../state/store.js';
-import { allNutrients, nutrients, dailyTrackedNutrients } from '../constants.js';
+import { 
+  allNutrients, 
+  nutrients, 
+  dailyTrackedNutrients, 
+  averagedNutrients,
+  BANKING_CONFIG, 
+  DAILY_DECAY_FACTOR, 
+  BankingHelpers,
+  DEFAULT_TARGETS 
+} from '../constants.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
-import { CONFIG } from '../config.js';
 import { initializeChartControls } from './chart.js';
+import { CONFIG } from '../config.js';
+
+// =========================
+// CONFIGURATION (Top of file for easy modification)
+// =========================
+const DASHBOARD_CONFIG = {
+  // Banking calculation settings
+  ENABLE_BANKING_DEBUG: true, // Set to false to disable banking debug logs
+  SHOW_MATH_VERIFICATION: true, // Show math verification in UI when debugging
+  MAX_BANK_HISTORY_DAYS: 30, // How many days back to look for bank calculations
+  
+  // UI behavior settings
+  DEFAULT_COLLAPSED_DETAILS: true, // Start with bank details collapsed
+  ANIMATION_DURATION: 300, // Milliseconds for UI animations
+  SHOW_CONFIGURATION_HINTS: true, // Show helpful tooltips in settings
+  
+  // Micronutrient display settings
+  SHOW_TRAINING_SCALING_BADGES: true, // Show "Training+" badges on scaled nutrients
+  GROUP_NUTRIENTS_BY_TYPE: true, // Group nutrients in logical sections
+  SHOW_PERCENTAGE_PROGRESS: true, // Show percentage bars for nutrients
+  
+  // Error handling
+  SHOW_ERRORS_IN_UI: true, // Display errors in the dashboard
+  LOG_CALCULATION_STEPS: true, // Log detailed calculation steps
+  FALLBACK_TO_DEFAULTS: true // Use default values if user settings are invalid
+};
+
+// =========================
+// MICRONUTRIENT SCALING CONFIGURATION
+// =========================
+const TRAINING_SCALING = {
+  // Electrolytes scale with training intensity (sweat replacement)
+  sodium: { light: 1.1, hard: 1.3, hiit: 1.5 },
+  potassium: { light: 1.1, hard: 1.2, hiit: 1.3 },
+  magnesium: { light: 1.1, hard: 1.2, hiit: 1.3 },
+  
+  // Slight protein bump for very intense sessions only
+  protein: { light: 1.0, hard: 1.0, hiit: 1.1 },
+  
+  // Water-soluble vitamins may increase slightly for hard sessions
+  vitaminC: { light: 1.0, hard: 1.1, hiit: 1.2 },
+  vitaminB6: { light: 1.0, hard: 1.1, hiit: 1.1 }
+};
+
+const TRAINING_EXPLANATIONS = {
+  rest: "Rest day - no extra calories needed",
+  light: "Light training - modest calorie and electrolyte boost",
+  hard: "Hard training - significant calorie boost, enhanced electrolytes", 
+  hiit: "Intense training - major calorie boost, maximum electrolyte support"
+};
+
+// =========================
+// UTILITY FUNCTIONS
+// =========================
 
 /**
- * Helper function to get the user-defined fat minimum, with a fallback to the default.
- * @returns {number} The minimum fat target in grams.
+ * Logs debug information for banking calculations
+ * @param {string} operation - The operation being performed
+ * @param {*} data - Data to log
  */
-const getFatMinimum = () => parseFloat(state.baselineTargets.fatMinimum) || CONFIG.DEFAULT_FAT_MINIMUM;
-
-/**
- * Calculates all metrics for the dashboard based on daily entries and targets.
- * @returns {object} An object containing the calculated metrics.
- */
-export function calculateDashboardMetrics() {
-  const todayStr = state.dom.dateInput.value;
-  const today = new Date(`${todayStr}T00:00:00`);
-  const yesterday = getPastDate(today, 1);
-
-  const todayEntry = state.dailyEntries.get(formatDate(today)) || {};
-  const yesterdayEntry = state.dailyEntries.get(formatDate(yesterday)) || {};
-
-  // Helper to get a baseline target value.
-  const T = (name) => parseFloat(state.baselineTargets[name] || 0);
-
-  // Calculates the adjusted target for "averaged" nutrients.
-  const calcAdjusted = (nutrient) => {
-    const baselineTarget = T(nutrient);
-    // If yesterday's data is missing, assume they hit the target to avoid wild swings.
-    const yActual = parseFloat(yesterdayEntry[nutrient]) || baselineTarget;
-    const variance = baselineTarget - yActual;
-    // Today's target is adjusted by yesterday's variance.
-    return Math.max(0, baselineTarget + variance);
-  };
-
-  const metrics = {};
-  allNutrients.forEach(n => {
-    const base = T(n);
-    // "Daily" nutrients have a fixed target; others are adjusted.
-    const isDaily = dailyTrackedNutrients.includes(n) || n === 'calories' || n === 'protein';
-    const adjustedTarget = isDaily ? base : calcAdjusted(n);
-    metrics[n] = {
-      name: n,
-      baselineTarget: base,
-      adjustedTarget,
-      actualToday: parseFloat(todayEntry[n]) || 0,
-    };
-  });
-
-  // Dynamically calculate the carb target based on the remaining calorie budget.
-  const adjustedCalorieTarget = metrics['calories'].adjustedTarget;
-  const proteinGrams = metrics['protein'].adjustedTarget;
-  const proteinCalories = proteinGrams * 4;
-
-  let adjustedFatGrams = metrics['fat'].adjustedTarget;
-  const fatMin = getFatMinimum();
-  if (adjustedFatGrams < fatMin) {
-    adjustedFatGrams = fatMin; // Ensure fat doesn't drop below the minimum.
+function debugLog(operation, data) {
+  if (DASHBOARD_CONFIG.ENABLE_BANKING_DEBUG && CONFIG.DEBUG_MODE) {
+    console.log(`🏦 [BANKING][${operation}]`, data);
   }
-  const fatCalories = adjustedFatGrams * 9;
-
-  const carbCalories = adjustedCalorieTarget - proteinCalories - fatCalories;
-  const adjustedCarbGrams = Math.max(0, carbCalories / 4);
-
-  // Update the fat and carb metrics with the newly calculated adjusted targets.
-  metrics['fat'].adjustedTarget = adjustedFatGrams;
-  metrics['carbs'].adjustedTarget = adjustedCarbGrams;
-
-  // Final pass to calculate percentage and difference for each nutrient.
-  for (const n in metrics) {
-    const m = metrics[n];
-    m.percentage = m.adjustedTarget > 0 ? (m.actualToday / m.adjustedTarget) * 100 : 0;
-    m.diff = m.actualToday - m.adjustedTarget;
-  }
-  return { metrics };
 }
 
 /**
- * Renders the entire dashboard UI, including info boxes, charts, and nutrient cards.
+ * Handles dashboard errors with user-friendly display
+ * @param {string} operation - The operation that failed
+ * @param {Error} error - The error object
+ * @param {string} userMessage - User-friendly error message
+ */
+function handleError(operation, error, userMessage) {
+  console.error(`❌ [DASHBOARD-ERROR][${operation}]`, error);
+  
+  if (DASHBOARD_CONFIG.SHOW_ERRORS_IN_UI) {
+    const errorContainer = document.getElementById('dashboard-errors');
+    if (errorContainer) {
+      errorContainer.innerHTML = `
+        <div class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <div class="flex items-center">
+            <i class="fas fa-exclamation-triangle text-red-500 mr-2"></i>
+            <span class="font-medium text-red-800">${userMessage}</span>
+          </div>
+          ${DASHBOARD_CONFIG.ENABLE_BANKING_DEBUG ? `
+            <details class="mt-2">
+              <summary class="text-sm text-red-600 cursor-pointer">Technical Details</summary>
+              <pre class="mt-1 text-xs text-red-700 bg-red-100 p-2 rounded overflow-x-auto">${error.stack || error.message}</pre>
+            </details>
+          ` : ''}
+        </div>
+      `;
+    }
+  }
+}
+
+/**
+ * Get training intensity category from training bump calories
+ * @param {number} trainingBump - Training bump calories
+ * @returns {string} Training intensity category
+ */
+function getTrainingIntensity(trainingBump) {
+  if (trainingBump >= 400) return 'hiit';
+  if (trainingBump >= 280) return 'hard';
+  if (trainingBump >= 100) return 'light';
+  return 'rest';
+}
+
+/**
+ * Calculate scaled micronutrient target for training days
+ * @param {string} nutrient - Nutrient name
+ * @param {number} baseTarget - Base target value
+ * @param {number} trainingBump - Training bump calories
+ * @returns {number} Scaled target value
+ */
+function getScaledNutrientTarget(nutrient, baseTarget, trainingBump) {
+  const intensity = getTrainingIntensity(trainingBump);
+  if (intensity === 'rest') return baseTarget;
+  
+  const scaling = TRAINING_SCALING[nutrient];
+  if (scaling && scaling[intensity]) {
+    return baseTarget * scaling[intensity];
+  }
+  
+  return baseTarget; // No scaling for this nutrient
+}
+
+// =========================
+// MAIN BANKING CALCULATION
+// =========================
+
+/**
+ * Calculate banking data with consistent math and configurable parameters
+ * @param {string} targetDateStr - Target date in YYYY-MM-DD format
+ * @returns {Object} Banking calculation results
+ */
+export function calculateBankingData(targetDateStr) {
+  try {
+    debugLog('calc-start', { targetDateStr, userId: state.userId });
+    
+    const targetDate = new Date(`${targetDateStr}T00:00:00`);
+    
+    // Get base parameters with proper fallbacks
+    const baseKcal = parseFloat(state.baselineTargets.calories) || BANKING_CONFIG.BASE_KCAL;
+    const proteinG = parseFloat(state.baselineTargets.protein) || BANKING_CONFIG.PROTEIN_G;
+    
+    // FIXED: Proper fat minimum handling with hierarchy
+    let fatFloorG;
+    if (state.baselineTargets.fatMinimum !== undefined && state.baselineTargets.fatMinimum !== null) {
+      fatFloorG = parseFloat(state.baselineTargets.fatMinimum);
+      debugLog('fat-selection', 'Using fatMinimum from settings');
+    } else if (state.baselineTargets.fat !== undefined && state.baselineTargets.fat !== null) {
+      fatFloorG = parseFloat(state.baselineTargets.fat);
+      debugLog('fat-selection', 'Using fat from settings');
+    } else {
+      fatFloorG = BANKING_CONFIG.FAT_FLOOR_G;
+      debugLog('fat-selection', 'Using default fat floor');
+    }
+    
+    // Get configurable banking parameters
+    const decayHalfLife = BankingHelpers.getDecayHalfLife(state.baselineTargets);
+    const correctionDivisor = BankingHelpers.getCorrectionDivisor(state.baselineTargets);
+    const dynamicDecayFactor = BankingHelpers.calculateDecayFactor(decayHalfLife);
+    
+    debugLog('banking-config', {
+      baseKcal,
+      proteinG,
+      fatFloorG,
+      decayHalfLife,
+      correctionDivisor,
+      dynamicDecayFactor: dynamicDecayFactor.toFixed(4)
+    });
+    
+    // FIXED: Calculate bank with consistent tracking
+    const bankContributions = [];
+    let totalBankBalance = 0;
+    let olderContributions = 0;
+    let recentContributions = 0;
+    
+    // Track all contributions for debugging
+    const allContributions = [];
+    
+    for (let i = DASHBOARD_CONFIG.MAX_BANK_HISTORY_DAYS - 1; i >= 0; i--) {
+      const pastDate = getPastDate(targetDate, i);
+      const pastDateStr = formatDate(pastDate);
+      const entry = state.dailyEntries.get(pastDateStr) || {};
+      
+      const actualKcal = parseFloat(entry.calories) || 0;
+      const trainingBump = parseFloat(entry.trainingBump) || 0;
+      const dailyTarget = baseKcal + trainingBump;
+      const deltaKcal = actualKcal - dailyTarget;
+      
+      const ageInDays = i;
+      const decayWeight = Math.pow(dynamicDecayFactor, ageInDays);
+      const contribution = deltaKcal * decayWeight;
+      
+      // Add to total bank
+      totalBankBalance += contribution;
+      
+      // Store all for debugging
+      if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS) {
+        allContributions.push({
+          date: pastDateStr,
+          actualKcal,
+          trainingBump,
+          dailyTarget,
+          deltaKcal,
+          ageInDays,
+          decayWeight: decayWeight.toFixed(4),
+          contribution: contribution.toFixed(2)
+        });
+      }
+      
+      // Only store last 5 days for display (not including today)
+      if (i <= 5 && i > 0) {
+        const contributionData = {
+          date: pastDate,
+          dateStr: pastDateStr,
+          deltaKcal,
+          ageInDays,
+          decayWeight,
+          contribution,
+          dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
+        };
+        bankContributions.push(contributionData);
+        recentContributions += contribution;
+      } else if (i > 5) {
+        // Accumulate older contributions
+        olderContributions += contribution;
+      }
+    }
+    
+    // Reverse so yesterday is first
+    bankContributions.reverse();
+    
+    // FIXED: Use consistent bank balance for all calculations
+    const bankToday = totalBankBalance;
+    
+    // Calculate correction using configurable parameters
+    const rawCorrection = -bankToday / correctionDivisor;
+    const capPct = BankingHelpers.getCorrectionCap(bankToday, baseKcal, state.baselineTargets);
+    const capValue = capPct * baseKcal;
+    const correction = BankingHelpers.clamp(rawCorrection, -capValue, capValue);
+    
+    // Today's targets
+    const todaysEntry = state.dailyEntries.get(targetDateStr) || {};
+    const todaysTrainingBump = parseFloat(todaysEntry.trainingBump) || 0;
+    const todayKcalTarget = BankingHelpers.roundToNearest25(baseKcal + todaysTrainingBump + correction);
+    
+    // Calculate macros with training scaling
+    const scaledProteinG = getScaledNutrientTarget('protein', proteinG, todaysTrainingBump);
+    const proteinKcal = scaledProteinG * 4;
+    const fatKcal = fatFloorG * 9;
+    const remainingKcal = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
+    const carbsG = Math.round(remainingKcal / 4);
+    
+    // Math verification
+    const calculatedTotal = Math.round(recentContributions + olderContributions);
+    const mathIsConsistent = Math.abs(calculatedTotal - Math.round(bankToday)) <= 1;
+    
+    // DEBUGGING: Comprehensive calculation logging
+    if (DASHBOARD_CONFIG.ENABLE_BANKING_DEBUG) {
+      debugLog('calculation-summary', {
+        totalBankBalance: Math.round(totalBankBalance),
+        recentContributions: Math.round(recentContributions),
+        olderContributions: Math.round(olderContributions),
+        mathVerification: { calculatedTotal, bankToday: Math.round(bankToday), consistent: mathIsConsistent },
+        rawCorrection: Math.round(rawCorrection),
+        capPct: (capPct * 100).toFixed(1) + '%',
+        appliedCorrection: Math.round(correction),
+        todayTarget: todayKcalTarget
+      });
+      
+      if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS && allContributions.length > 0) {
+        console.table(allContributions.slice(-10)); // Show last 10 days
+      }
+      
+      if (!mathIsConsistent) {
+        console.warn('🚨 BANKING MATH INCONSISTENCY:', {
+          expected: Math.round(bankToday),
+          calculated: calculatedTotal,
+          difference: calculatedTotal - Math.round(bankToday)
+        });
+      }
+    }
+    
+    return {
+      // Core banking values
+      bankToday: Math.round(bankToday),
+      bankContributions,
+      olderContributions: Math.round(olderContributions),
+      recentContributions: Math.round(recentContributions),
+      
+      // Base parameters
+      baseKcal,
+      todaysTrainingBump,
+      
+      // Correction calculation
+      rawCorrection: Math.round(rawCorrection),
+      capPct,
+      correction: Math.round(correction),
+      
+      // Target results
+      todayKcalTarget,
+      proteinG: Math.round(scaledProteinG),
+      fatG: Math.round(fatFloorG),
+      carbsG,
+      trainingIntensity: getTrainingIntensity(todaysTrainingBump),
+      
+      // Configuration details for display
+      config: {
+        decayHalfLife,
+        correctionDivisor,
+        decayFactor: dynamicDecayFactor,
+        smallBankCap: state.baselineTargets.smallBankCap || DEFAULT_TARGETS.smallBankCap,
+        mediumBankCap: state.baselineTargets.mediumBankCap || DEFAULT_TARGETS.mediumBankCap,
+        largeBankCap: state.baselineTargets.largeBankCap || DEFAULT_TARGETS.largeBankCap
+      },
+      
+      // Debug information
+      debug: {
+        mathIsConsistent,
+        calculatedTotal,
+        allContributionsCount: allContributions.length
+      }
+    };
+    
+  } catch (error) {
+    handleError('calculate-banking', error, 'Failed to calculate banking data');
+    
+    // Return safe fallback values
+    return {
+      bankToday: 0,
+      bankContributions: [],
+      olderContributions: 0,
+      recentContributions: 0,
+      baseKcal: BANKING_CONFIG.BASE_KCAL,
+      todaysTrainingBump: 0,
+      rawCorrection: 0,
+      capPct: 0.15,
+      correction: 0,
+      todayKcalTarget: BANKING_CONFIG.BASE_KCAL,
+      proteinG: BANKING_CONFIG.PROTEIN_G,
+      fatG: BANKING_CONFIG.FAT_FLOOR_G,
+      carbsG: 0,
+      trainingIntensity: 'rest',
+      config: {
+        decayHalfLife: BANKING_CONFIG.DECAY_HALF_LIFE_DAYS,
+        correctionDivisor: BANKING_CONFIG.CORRECTION_DIVISOR,
+        decayFactor: DAILY_DECAY_FACTOR,
+        smallBankCap: DEFAULT_TARGETS.smallBankCap,
+        mediumBankCap: DEFAULT_TARGETS.mediumBankCap,
+        largeBankCap: DEFAULT_TARGETS.largeBankCap
+      },
+      debug: {
+        mathIsConsistent: false,
+        calculatedTotal: 0,
+        allContributionsCount: 0
+      }
+    };
+  }
+}
+
+// =========================
+// MICRONUTRIENT CALCULATIONS
+// =========================
+
+/**
+ * Calculate micronutrients with training day scaling
+ * @param {string} dateStr - Date string in YYYY-MM-DD format
+ * @returns {Object} Micronutrient metrics
+ */
+export function calculateMicronutrientMetrics(dateStr) {
+  try {
+    const targetDate = new Date(`${dateStr}T00:00:00`);
+    const todayEntry = state.dailyEntries.get(dateStr) || {};
+    const todaysTrainingBump = parseFloat(todayEntry.trainingBump) || 0;
+    
+    const metrics = {};
+    
+    allNutrients.forEach(nutrient => {
+      if (nutrients.macros.includes(nutrient)) return; // Skip macros
+      
+      const baseTarget = parseFloat(state.baselineTargets[nutrient]) || DEFAULT_TARGETS[nutrient] || 0;
+      const scaledTarget = getScaledNutrientTarget(nutrient, baseTarget, todaysTrainingBump);
+      const todaysIntake = parseFloat(todayEntry[nutrient]) || 0;
+      
+      let avgIntake = todaysIntake;
+      let status = 'red';
+      
+      // Calculate 7-day average for averaged nutrients
+      if (averagedNutrients.includes(nutrient)) {
+        let sum = 0;
+        let count = 0;
+        
+        for (let i = 0; i < 7; i++) {
+          const pastDate = getPastDate(targetDate, i);
+          const pastDateStr = formatDate(pastDate);
+          const entry = state.dailyEntries.get(pastDateStr) || {};
+          const intake = parseFloat(entry[nutrient]) || 0;
+          sum += intake;
+          count++;
+        }
+        
+        avgIntake = count > 0 ? sum / count : 0;
+        
+        // Status based on 7-day average vs base target (not scaled)
+        if (avgIntake >= baseTarget * 0.9) status = 'green';
+        else if (avgIntake >= baseTarget * 0.7) status = 'amber';
+        else status = 'red';
+      } else {
+        // Daily nutrients - status based on today's intake vs scaled target
+        if (todaysIntake >= scaledTarget) status = 'green';
+        else if (todaysIntake >= scaledTarget * 0.8) status = 'amber';
+        else status = 'red';
+      }
+      
+      metrics[nutrient] = {
+        name: nutrient,
+        baseTarget,
+        scaledTarget,
+        todaysIntake,
+        avgIntake,
+        status,
+        isDailyFloor: dailyTrackedNutrients.includes(nutrient),
+        isAveraged: averagedNutrients.includes(nutrient),
+        isScaled: scaledTarget !== baseTarget
+      };
+    });
+    
+    return metrics;
+    
+  } catch (error) {
+    handleError('calculate-micronutrients', error, 'Failed to calculate micronutrient metrics');
+    return {};
+  }
+}
+
+// =========================
+// MAIN DASHBOARD UPDATE
+// =========================
+
+/**
+ * Main dashboard update function
  */
 export function updateDashboard() {
-  const { dashboard } = state.dom;
+  try {
+    debugLog('update-start', 'Starting dashboard update');
+    
+    const { dashboard } = state.dom;
 
-  // If user is not logged in or has no targets, show a welcome/setup message.
-  if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
+    if (!dashboard) {
+      throw new Error('Dashboard container not found');
+    }
+
+    // Clear any previous errors
+    const errorContainer = document.getElementById('dashboard-errors');
+    if (errorContainer) {
+      errorContainer.innerHTML = '';
+    }
+
+    if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
+      dashboard.innerHTML = `
+        <div id="dashboard-errors"></div>
+        <div class="text-center p-8 bg-white rounded-lg shadow-md">
+          <h3 class="text-xl font-semibold text-gray-700">Welcome to Adaptive Nutrition Tracker!</h3>
+          <p class="mt-2 text-gray-500">Please log in and set your baseline targets to get started.</p>
+          <button onclick="document.getElementById('open-settings-btn').click()"
+            class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Set Targets</button>
+        </div>`;
+      return;
+    }
+
+    const dateStr = state.dom.dateInput.value;
+    const bankingData = calculateBankingData(dateStr);
+    const micronutrientMetrics = calculateMicronutrientMetrics(dateStr);
+
     dashboard.innerHTML = `
-      <div class="text-center p-8 bg-white rounded-lg shadow-md">
-        <h3 class="text-xl font-semibold text-gray-700">Welcome!</h3>
-        <p class="mt-2 text-gray-500">Please log in and set your baseline targets to get started.</p>
-        <button onclick="document.getElementById('open-settings-btn').click()"
-          class="mt-4 px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700">Set Targets</button>
-      </div>`;
-    return;
+      <div id="dashboard-errors"></div>
+      ${renderInfoBox()}
+      ${renderBankingPanel(bankingData)}
+      ${renderTodaysPlanPanel(bankingData)}
+      ${renderChartSection()}
+      ${renderMicronutrientSections(micronutrientMetrics)}
+    `;
+
+    initializeChartControls();
+    
+    // Set up event handlers for collapsible sections
+    setupCollapsibleHandlers();
+
+    debugLog('update-complete', 'Dashboard update completed successfully');
+
+  } catch (error) {
+    handleError('update-dashboard', error, 'Failed to update dashboard');
   }
+}
 
-  const { metrics } = calculateDashboardMetrics();
+/**
+ * Set up event handlers for collapsible sections
+ */
+function setupCollapsibleHandlers() {
+  try {
+    const bankDetailsToggle = document.getElementById('bank-details-toggle');
+    const bankDetailsContent = document.getElementById('bank-details-content');
+    
+    if (bankDetailsToggle && bankDetailsContent) {
+      bankDetailsToggle.addEventListener('click', () => {
+        const isHidden = bankDetailsContent.classList.contains('hidden');
+        bankDetailsContent.classList.toggle('hidden', !isHidden);
+        
+        // Update button text and icon
+        const icon = bankDetailsToggle.querySelector('.fa-chevron-down, .fa-chevron-up');
+        const text = bankDetailsToggle.querySelector('.toggle-text');
+        
+        if (icon && text) {
+          if (isHidden) {
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+            text.textContent = 'Hide Calculation Details';
+          } else {
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+            text.textContent = 'Show How We Calculated This';
+          }
+        }
+      });
+    }
+  } catch (error) {
+    handleError('setup-collapsible', error, 'Failed to set up collapsible handlers');
+  }
+}
 
-  // Template for a single nutrient card.
-  const card = (m) => {
-    const pct = m.percentage;
-    let color = 'bg-red-500';
-    if (pct >= 90 && pct <= 110) color = 'bg-green-500';
-    else if (pct >= 75 || pct > 110) color = 'bg-yellow-500';
+// =========================
+// RENDERING FUNCTIONS
+// =========================
 
-    const diffText = m.diff > 0 ? `+${m.diff.toFixed(1)}` : m.diff.toFixed(1);
-    const diffColor = m.diff >= 0 ? 'text-green-600' : 'text-red-600';
-
-    return `
-      <div class="bg-white p-4 rounded-lg shadow-md nutrient-card">
-        <h4 class="font-bold capitalize text-gray-800">${formatNutrientName(m.name)}</h4>
-        <p class="text-sm text-gray-500">${m.actualToday.toFixed(1)} / ${m.adjustedTarget.toFixed(1)}</p>
-        <div class="w-full progress-bar-bg rounded-full h-2.5 mt-2">
-          <div class="progress-bar-fill h-2.5 rounded-full ${color}" style="width:${Math.min(100, pct)}%"></div>
-        </div>
-        <p class="text-sm font-medium text-gray-600 mt-2">Status: <span class="font-bold ${diffColor}">${diffText}</span></p>
-      </div>`;
-  };
-
-  // Template for a group of nutrient cards.
-  const group = (title, keys) => `
-    <div class="mb-8">
-      <h3 class="text-2xl font-bold text-gray-700 mb-4">${title}</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        ${keys.map(k => metrics[k] ? card(metrics[k]) : '').join('')}
-      </div>
-    </div>`;
-
-  // Template for the informational box explaining the logic.
-  const infoBox = `
+/**
+ * Render info box with explanations
+ */
+function renderInfoBox() {
+  return `
     <div class="mb-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
       <h3 class="font-semibold text-blue-900 mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
-      <ul class="text-sm text-blue-800 space-y-1 list-disc list-inside">
-        <li><strong>Daily Nutrients:</strong> Targets for these nutrients (like Protein) are fixed each day.</li>
-        <li><strong>Averaged Nutrients:</strong> Today's targets adjust based on yesterday's intake to get you back to baseline tomorrow.</li>
-        <li><strong>Carbs:</strong> The carb target is dynamic, filling the remainder of your adjusted calorie budget.</li>
-      </ul>
-    </div>`;
+      <div class="text-sm text-blue-800 space-y-1">
+        <p><strong>Smart Banking:</strong> Your "bank" tracks when you eat more (+) or less (-) than planned. Recent days matter most.</p>
+        <p><strong>Auto-Adjust:</strong> Tomorrow's calories adjust to balance your bank, with safety limits (15-40% max change).</p>
+        <p><strong>Training Days:</strong> Select your workout type above - this adds calories and scales electrolytes appropriately.</p>
+      </div>
+    </div>
+  `;
+}
 
-  // Template for the chart section, including controls.
-  const chartSection = `
+/**
+ * FIXED: Render banking panel with consistent math verification
+ */
+function renderBankingPanel(bankingData) {
+  const { bankToday, bankContributions, olderContributions, recentContributions, debug } = bankingData;
+  
+  // Calculate decay percentages for user understanding
+  const dayDecayPcts = [1, 2, 3, 4, 5].map(days => {
+    const pct = Math.pow(DAILY_DECAY_FACTOR, days) * 100;
+    return Math.round(pct);
+  });
+  
+  const contributionRows = bankContributions.map((c, index) => `
+    <tr class="hover:bg-gray-50">
+      <td class="px-3 py-2 text-sm font-medium">${c.dayName}</td>
+      <td class="px-3 py-2 text-sm text-center">${c.deltaKcal > 0 ? '+' : ''}${Math.round(c.deltaKcal)}</td>
+      <td class="px-3 py-2 text-sm text-center text-gray-500">${dayDecayPcts[index]}%</td>
+      <td class="px-3 py-2 text-sm text-center font-medium ${c.contribution > 0 ? 'text-red-600' : 'text-green-600'}">
+        ${c.contribution > 0 ? '+' : ''}${Math.round(c.contribution)}
+      </td>
+    </tr>
+  `).join('');
+  
+  const bankExplanation = bankToday > 0 
+    ? "You've been eating more than planned - tomorrow's calories will be reduced to balance this out."
+    : bankToday < 0 
+    ? "You've been eating less than planned - tomorrow's calories will be increased to balance this out."
+    : "You're perfectly balanced - no adjustment needed!";
+  
+  return `
+    <div class="mb-6 bg-white p-6 rounded-lg shadow-lg">
+      <h3 class="text-xl font-bold text-gray-700 mb-2">🏦 Your Calorie Bank</h3>
+      
+      <!-- FIXED: Main bank display matches calculations -->
+      <div class="mb-4 p-3 rounded-lg ${bankToday > 0 ? 'bg-red-50 border border-red-200' : bankToday < 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
+        <div class="text-center">
+          <div class="text-2xl font-bold ${bankToday > 0 ? 'text-red-600' : bankToday < 0 ? 'text-green-600' : 'text-gray-600'}">
+            ${bankToday > 0 ? '+' : ''}${bankToday} kcal
+          </div>
+          <p class="text-sm text-gray-700 mt-1">${bankExplanation}</p>
+          ${!debug.mathIsConsistent && DASHBOARD_CONFIG.SHOW_MATH_VERIFICATION ? `
+            <div class="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded text-xs text-yellow-800">
+              ⚠️ Math verification: Expected ${bankToday}, calculated ${debug.calculatedTotal} (difference: ${debug.calculatedTotal - bankToday})
+            </div>
+          ` : ''}
+        </div>
+      </div>
+      
+      <h4 class="font-semibold text-gray-800 mb-3">Recent Days (most recent first):</h4>
+      <div class="overflow-x-auto">
+        <table class="w-full border border-gray-200 rounded-lg">
+          <thead class="bg-gray-50">
+            <tr>
+              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Day</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Over/Under</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Weight</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Impact Today</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${contributionRows}
+          </tbody>
+        </table>
+      </div>
+      
+      <!-- FIXED: Clean formatting for older contributions -->
+      <div class="mt-3 pt-3 border-t border-gray-200">
+        <div class="text-sm text-gray-600 italic">
+          Days 6+ ago contribute ${olderContributions > 0 ? '+' : ''}${Math.round(olderContributions)} kcal (weighted &lt;18% each)
+        </div>
+        <div class="text-sm font-medium mt-2 flex justify-between items-center">
+          <span>Total Bank Balance:</span>
+          <span class="${bankToday > 0 ? 'text-red-600' : bankToday < 0 ? 'text-green-600' : 'text-gray-600'} font-bold">
+            ${bankToday > 0 ? '+' : ''}${bankToday} kcal
+          </span>
+        </div>
+      </div>
+      
+      <p class="mt-3 text-xs text-gray-600">
+        <strong>How it works:</strong> Recent days have more impact (yesterday = 82%, 2 days = 67%, etc.). 
+        After 7-10 days, the impact is nearly zero (≤25%).
+      </p>
+    </div>
+  `;
+}
+
+/**
+ * FIXED: Render today's plan with collapsible calculation details
+ */
+function renderTodaysPlanPanel(bankingData) {
+  const {
+    baseKcal,
+    todaysTrainingBump,
+    bankToday,
+    rawCorrection,
+    capPct,
+    correction,
+    todayKcalTarget,
+    proteinG,
+    fatG,
+    carbsG,
+    trainingIntensity
+  } = bankingData;
+  
+  // User-friendly explanations
+  const correctionExplanation = correction === rawCorrection 
+    ? "Full bank correction applied"
+    : `Bank correction was ${rawCorrection > 0 ? 'increased' : 'reduced'} to stay within safe limits (${Math.round(capPct * 100)}% max)`;
+  
+  return `
+    <div class="mb-6 bg-white p-6 rounded-lg shadow-lg">
+      <h3 class="text-xl font-bold text-gray-700 mb-4">🍽️ Today's Nutrition Plan</h3>
+      
+      <!-- Summary Section -->
+      <div class="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+        <div class="flex justify-between items-center text-lg font-semibold">
+          <span>Today's Calorie Target:</span>
+          <span class="text-blue-600">${todayKcalTarget} kcal</span>
+        </div>
+        
+        <!-- Collapsible Details Button -->
+        <button id="bank-details-toggle" class="mt-3 text-sm text-blue-700 hover:text-blue-900 font-medium flex items-center gap-2">
+          <i class="fas fa-chevron-down"></i>
+          <span class="toggle-text">Show How We Calculated This</span>
+        </button>
+        
+        <!-- Collapsible Calculation Details -->
+        <div id="bank-details-content" class="${DASHBOARD_CONFIG.DEFAULT_COLLAPSED_DETAILS ? 'hidden' : ''} mt-4 space-y-2 text-sm">
+          <div class="grid grid-cols-1 gap-2">
+            <div class="flex justify-between items-center p-2 bg-white rounded border">
+              <span>Your base daily calories:</span>
+              <span class="font-medium">${baseKcal} kcal</span>
+            </div>
+            <div class="flex justify-between items-center p-2 ${todaysTrainingBump > 0 ? 'bg-blue-50 border-blue-200' : 'bg-white'} rounded border">
+              <span>Training fuel today:</span>
+              <span class="font-medium">${todaysTrainingBump > 0 ? '+' : ''}${todaysTrainingBump} kcal</span>
+            </div>
+            ${todaysTrainingBump > 0 ? `
+              <p class="text-xs text-blue-600 px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]}</p>
+            ` : ''}
+            <div class="flex justify-between items-center p-2 ${bankToday !== 0 ? (correction > 0 ? 'bg-green-50 border-green-200' : 'bg-yellow-50 border-yellow-200') : 'bg-white'} rounded border">
+              <span>Bank balance adjustment:</span>
+              <span class="font-medium">${correction > 0 ? '+' : ''}${correction} kcal</span>
+            </div>
+            ${correction !== rawCorrection ? `
+              <p class="text-xs text-gray-600 px-2 italic">${correctionExplanation}</p>
+            ` : ''}
+            <div class="mt-2 pt-2 border-t border-gray-300">
+              <div class="text-xs text-gray-600 space-y-1">
+                <div>Raw bank correction: ${rawCorrection > 0 ? '+' : ''}${rawCorrection} kcal (bank ÷ ${bankingData.config.correctionDivisor})</div>
+                <div>Safety cap: ±${Math.round(capPct * 100)}% of base (±${Math.round(capPct * baseKcal)} kcal max)</div>
+                <div>Final calculation: ${baseKcal} + ${todaysTrainingBump} + ${correction} = <strong>${todayKcalTarget} kcal</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <!-- Macro Breakdown -->
+        <div class="md:col-span-3">
+          <h4 class="font-semibold text-gray-800 mb-3">Your Macro Targets</h4>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="p-3 bg-green-50 rounded border border-green-200">
+              <div class="flex justify-between items-center">
+                <span class="font-medium text-green-800">Protein</span>
+                <span class="font-bold text-green-800">${proteinG}g</span>
+              </div>
+              <div class="text-xs text-green-600">${proteinG * 4} kcal • ${trainingIntensity !== 'rest' && proteinG > BANKING_CONFIG.PROTEIN_G ? 'Training boost applied' : 'Standard target'}</div>
+            </div>
+            
+            <div class="p-3 bg-blue-50 rounded border border-blue-200">
+              <div class="flex justify-between items-center">
+                <span class="font-medium text-blue-800">Fat (minimum)</span>
+                <span class="font-bold text-blue-800">${fatG}g</span>
+              </div>
+              <div class="text-xs text-blue-600">${fatG * 9} kcal • Essential for hormone production</div>
+            </div>
+            
+            <div class="p-3 bg-orange-50 rounded border border-orange-200">
+              <div class="flex justify-between items-center">
+                <span class="font-medium text-orange-800">Carbs (flexible)</span>
+                <span class="font-bold text-orange-800">${carbsG}g</span>
+              </div>
+              <div class="text-xs text-orange-600">${carbsG * 4} kcal • Fills remaining calories</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render chart section
+ */
+function renderChartSection() {
+  return `
     <div class="mb-8 bg-white p-6 rounded-lg shadow-lg">
-      <h3 class="text-2xl font-bold text-gray-700 mb-4">Nutrition Progress Chart</h3>
+      <h3 class="text-2xl font-bold text-gray-700 mb-4">📊 Nutrition Progress Chart</h3>
       <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
-          <label for="chart-nutrients" class="block text-sm font-medium text-gray-700 mb-1">Select Nutrients (hold Ctrl/Cmd for multiple)</label>
+          <label for="chart-nutrients" class="block text-sm font-medium text-gray-700 mb-1">Select Nutrients</label>
           <select id="chart-nutrients" multiple class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" size="4"></select>
         </div>
         <div>
@@ -159,46 +781,212 @@ export function updateDashboard() {
             <option value="3days">Last 3 Days</option>
             <option value="week">Last Week</option>
             <option value="month">Last Month</option>
-            <option value="year">Last Year</option>
           </select>
         </div>
         <div>
-          <label class="block text-sm font-medium text-gray-700 mb-1">Options</label>
-          <div class="flex items-center mt-2">
-            <input type="checkbox" id="show-3day-avg" class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-            <label for="show-3day-avg" class="text-sm text-gray-700">Show 3-day average</label>
+          <label class="block text-sm font-medium text-gray-700 mb-1">Trend Lines</label>
+          <div class="space-y-2 mt-2">
+            <div class="flex items-center">
+              <input type="checkbox" id="show-3day-avg" class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+              <label for="show-3day-avg" class="text-sm text-gray-700">3-day average</label>
+            </div>
+            <div class="flex items-center">
+              <input type="checkbox" id="show-7day-avg" class="mr-2 h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+              <label for="show-7day-avg" class="text-sm text-gray-700">7-day average</label>
+            </div>
           </div>
         </div>
       </div>
       <div class="chart-container"><canvas id="nutrition-chart"></canvas></div>
       <div id="chart-table" class="mt-6"></div>
-    </div>`;
-
-  // Assemble the final HTML for the dashboard.
-  state.dom.dashboard.innerHTML =
-    infoBox +
-    chartSection +
-    group('Macronutrients', nutrients.macros) +
-    group('Daily Vitamins (Fixed Target)', nutrients.vitaminsDaily) +
-    group('Daily Minerals (Fixed Target)', nutrients.mineralsDaily) +
-    group('Averaged Vitamins (Adjusted Target)', nutrients.vitaminsAvg) +
-    group('Averaged Minerals (Adjusted Target)', nutrients.mineralsAvg) +
-    group('Optional Nutrients (Adjusted Target)', nutrients.optional);
-
-  // Initialize the chart controls now that they are in the DOM.
-  initializeChartControls();
+    </div>
+  `;
 }
 
 /**
- * Populates the settings form with the user's currently saved baseline targets.
+ * Render micronutrient sections with training day scaling
+ */
+function renderMicronutrientSections(metrics) {
+  const renderNutrientCard = (nutrient, data) => {
+    const { baseTarget, scaledTarget, todaysIntake, avgIntake, status, isDailyFloor, isAveraged, isScaled } = data;
+    
+    const statusColors = {
+      green: 'bg-green-500',
+      amber: 'bg-yellow-500', 
+      red: 'bg-red-500'
+    };
+    
+    const displayValue = isAveraged ? avgIntake : todaysIntake;
+    const targetValue = isDailyFloor ? scaledTarget : baseTarget;
+    const percentage = targetValue > 0 ? (displayValue / targetValue) * 100 : 0;
+    
+    return `
+      <div class="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition-shadow">
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="font-bold text-gray-800">${formatNutrientName(nutrient)}</h4>
+          <div class="flex items-center gap-2">
+            ${isScaled && DASHBOARD_CONFIG.SHOW_TRAINING_SCALING_BADGES ? '<span class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">Training+</span>' : ''}
+            <div class="w-3 h-3 rounded-full ${statusColors[status]}"></div>
+          </div>
+        </div>
+        
+        <div class="space-y-1 text-sm">
+          <div class="flex justify-between">
+            <span>Today:</span>
+            <span class="font-medium">${todaysIntake.toFixed(1)}</span>
+          </div>
+          ${isAveraged ? `
+            <div class="flex justify-between">
+              <span>7-day avg:</span>
+              <span class="font-medium">${avgIntake.toFixed(1)}</span>
+            </div>
+          ` : ''}
+          <div class="flex justify-between">
+            <span>Target:</span>
+            <span class="font-medium">${targetValue.toFixed(1)}${isScaled ? ` (${baseTarget.toFixed(1)})` : ''}</span>
+          </div>
+          ${isDailyFloor ? `
+            <div class="flex justify-between text-xs">
+              <span>Daily goal:</span>
+              <span class="${todaysIntake >= scaledTarget ? 'text-green-600' : 'text-red-600'} font-medium">
+                ${todaysIntake >= scaledTarget ? '✅ Met' : '❌ Short'}
+              </span>
+            </div>
+          ` : ''}
+        </div>
+        
+        ${DASHBOARD_CONFIG.SHOW_PERCENTAGE_PROGRESS ? `
+          <div class="mt-3">
+            <div class="w-full bg-gray-200 rounded-full h-2">
+              <div class="h-2 rounded-full ${statusColors[status]}" style="width: ${Math.min(100, percentage)}%"></div>
+            </div>
+            <p class="text-xs text-gray-600 mt-1">${percentage.toFixed(0)}% of target</p>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  };
+  
+  const renderSection = (title, nutrientKeys, description) => {
+    const cards = nutrientKeys
+      .filter(nutrient => metrics[nutrient])
+      .map(nutrient => renderNutrientCard(nutrient, metrics[nutrient]))
+      .join('');
+    
+    if (!cards) return '';
+    
+    return `
+      <div class="mb-8">
+        <div class="mb-4">
+          <h3 class="text-2xl font-bold text-gray-700">${title}</h3>
+          <p class="text-sm text-gray-600">${description}</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          ${cards}
+        </div>
+      </div>
+    `;
+  };
+  
+  return [
+    renderSection(
+      '💧 Daily Electrolytes & Essentials',
+      nutrients.dailyFloors,
+      'Scale with training intensity - must meet daily targets'
+    ),
+    renderSection(
+      '🧪 Daily Vitamins', 
+      nutrients.dailyVitamins,
+      'Water-soluble - daily targets, some scale with intense training'
+    ),
+    renderSection(
+      '🟡 Fat-Soluble Vitamins',
+      nutrients.avgVitamins, 
+      '7-day rolling average - stored in body fat, no training scaling'
+    ),
+    renderSection(
+      '⚡ Stored Minerals',
+      nutrients.avgMinerals,
+      '7-day rolling average - stored in tissues, no training scaling'
+    ),
+    renderSection(
+      '🔄 Optional Nutrients',
+      nutrients.optional,
+      '7-day rolling average targets'
+    )
+  ].join('');
+}
+
+// =========================
+// SETTINGS FORM POPULATION
+// =========================
+
+/**
+ * Populate settings form with proper defaults and banking configuration
  */
 export function populateSettingsForm() {
-  allNutrients.forEach(n => {
-    const input = document.getElementById(`target-${n}`);
-    if (input) input.value = state.baselineTargets[n] || '';
-  });
-  const fatMinInput = document.getElementById('target-fatMinimum');
-  if (fatMinInput) {
-    fatMinInput.value = state.baselineTargets.fatMinimum || CONFIG.DEFAULT_FAT_MINIMUM;
+  try {
+    debugLog('populate-settings', 'Starting settings form population');
+    
+    // Handle banking/macro parameters with proper defaults
+    const macroFields = [
+      { id: 'target-calories', key: 'calories', default: BANKING_CONFIG.BASE_KCAL },
+      { id: 'target-protein', key: 'protein', default: BANKING_CONFIG.PROTEIN_G },
+      { id: 'target-fat', key: 'fat', default: BANKING_CONFIG.FAT_FLOOR_G }
+    ];
+    
+    macroFields.forEach(({ id, key, default: defaultValue }) => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.value = state.baselineTargets[key] || defaultValue;
+      }
+    });
+    
+    // Handle fat minimum separately with proper precedence
+    const fatMinInput = document.getElementById('target-fatMinimum');
+    if (fatMinInput) {
+      const userFatMin = state.baselineTargets.fatMinimum;
+      const userFat = state.baselineTargets.fat;
+      
+      // Use fatMinimum if set, otherwise use fat value, otherwise default
+      if (userFatMin !== undefined) {
+        fatMinInput.value = userFatMin;
+      } else if (userFat !== undefined) {
+        fatMinInput.value = userFat;
+      } else {
+        fatMinInput.value = BANKING_CONFIG.FAT_FLOOR_G;
+      }
+    }
+    
+    // Handle banking configuration parameters
+    const bankingFields = [
+      { id: 'target-smallBankCap', key: 'smallBankCap', default: DEFAULT_TARGETS.smallBankCap },
+      { id: 'target-mediumBankCap', key: 'mediumBankCap', default: DEFAULT_TARGETS.mediumBankCap },
+      { id: 'target-largeBankCap', key: 'largeBankCap', default: DEFAULT_TARGETS.largeBankCap },
+      { id: 'target-correctionDivisor', key: 'correctionDivisor', default: DEFAULT_TARGETS.correctionDivisor },
+      { id: 'target-decayHalfLife', key: 'decayHalfLife', default: DEFAULT_TARGETS.decayHalfLife }
+    ];
+    
+    bankingFields.forEach(({ id, key, default: defaultValue }) => {
+      const input = document.getElementById(id);
+      if (input) {
+        input.value = state.baselineTargets[key] || defaultValue;
+      }
+    });
+    
+    // Handle all other micronutrients
+    allNutrients.forEach(nutrient => {
+      if (!['calories', 'protein', 'fat'].includes(nutrient)) {
+        const input = document.getElementById(`target-${nutrient}`);
+        if (input) {
+          input.value = state.baselineTargets[nutrient] || DEFAULT_TARGETS[nutrient] || '';
+        }
+      }
+    });
+
+    debugLog('populate-settings-complete', 'Settings form populated successfully');
+    
+  } catch (error) {
+    handleError('populate-settings', error, 'Failed to populate settings form');
   }
 }
