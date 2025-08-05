@@ -163,7 +163,7 @@ export function calculateBankingData(targetDateStr) {
     const baseKcal = parseFloat(state.baselineTargets.calories) || BANKING_CONFIG.BASE_KCAL;
     const proteinG = parseFloat(state.baselineTargets.protein) || BANKING_CONFIG.PROTEIN_G;
     
-    // FIXED: Proper fat minimum handling with hierarchy
+    // Proper fat minimum handling with hierarchy
     let fatFloorG;
     if (state.baselineTargets.fatMinimum !== undefined && state.baselineTargets.fatMinimum !== null) {
       fatFloorG = parseFloat(state.baselineTargets.fatMinimum);
@@ -190,7 +190,7 @@ export function calculateBankingData(targetDateStr) {
       dynamicDecayFactor: dynamicDecayFactor.toFixed(4)
     });
     
-    // FIXED: Calculate bank with consistent tracking
+    // Calculate bank with consistent tracking
     const bankContributions = [];
     let totalBankBalance = 0;
     let olderContributions = 0;
@@ -199,7 +199,9 @@ export function calculateBankingData(targetDateStr) {
     // Track all contributions for debugging
     const allContributions = [];
     
-    for (let i = DASHBOARD_CONFIG.MAX_BANK_HISTORY_DAYS - 1; i >= 0; i--) {
+    // *** FIX: Loop from 1 to MAX_BANK_HISTORY_DAYS to calculate the bank based on *past* days only.
+    // This excludes the current day (ageInDays = 0) from the calculation.
+    for (let i = 1; i <= DASHBOARD_CONFIG.MAX_BANK_HISTORY_DAYS; i++) {
       const pastDate = getPastDate(targetDate, i);
       const pastDateStr = formatDate(pastDate);
       const entry = state.dailyEntries.get(pastDateStr) || {};
@@ -230,8 +232,8 @@ export function calculateBankingData(targetDateStr) {
         });
       }
       
-      // Only store last 5 days for display (not including today)
-      if (i <= 5 && i > 0) {
+      // Only store last 5 days for display
+      if (i <= 5) {
         const contributionData = {
           date: pastDate,
           dateStr: pastDateStr,
@@ -243,16 +245,16 @@ export function calculateBankingData(targetDateStr) {
         };
         bankContributions.push(contributionData);
         recentContributions += contribution;
-      } else if (i > 5) {
+      } else {
         // Accumulate older contributions
         olderContributions += contribution;
       }
     }
     
-    // Reverse so yesterday is first
+    // Reverse so yesterday is first for display
     bankContributions.reverse();
     
-    // FIXED: Use consistent bank balance for all calculations
+    // Use consistent bank balance for all calculations
     const bankToday = totalBankBalance;
     
     // Calculate correction using configurable parameters
@@ -291,7 +293,7 @@ export function calculateBankingData(targetDateStr) {
       });
       
       if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS && allContributions.length > 0) {
-        console.table(allContributions.slice(-10)); // Show last 10 days
+        console.table(allContributions.slice(0, 10)); // Show most recent 10 days of contributions
       }
       
       if (!mathIsConsistent) {
@@ -571,7 +573,7 @@ function renderInfoBox() {
 }
 
 /**
- * FIXED: Render banking panel with consistent math verification
+ * Render banking panel with consistent math verification
  */
 function renderBankingPanel(bankingData) {
   const { bankToday, bankContributions, olderContributions, recentContributions, debug } = bankingData;
@@ -603,7 +605,7 @@ function renderBankingPanel(bankingData) {
     <div class="mb-6 bg-white p-6 rounded-lg shadow-lg">
       <h3 class="text-xl font-bold text-gray-700 mb-2">🏦 Your Calorie Bank</h3>
       
-      <!-- FIXED: Main bank display matches calculations -->
+      <!-- Main bank display matches calculations -->
       <div class="mb-4 p-3 rounded-lg ${bankToday > 0 ? 'bg-red-50 border border-red-200' : bankToday < 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
         <div class="text-center">
           <div class="text-2xl font-bold ${bankToday > 0 ? 'text-red-600' : bankToday < 0 ? 'text-green-600' : 'text-gray-600'}">
@@ -635,7 +637,7 @@ function renderBankingPanel(bankingData) {
         </table>
       </div>
       
-      <!-- FIXED: Clean formatting for older contributions -->
+      <!-- Clean formatting for older contributions -->
       <div class="mt-3 pt-3 border-t border-gray-200">
         <div class="text-sm text-gray-600 italic">
           Days 6+ ago contribute ${olderContributions > 0 ? '+' : ''}${Math.round(olderContributions)} kcal (weighted &lt;18% each)
@@ -657,7 +659,7 @@ function renderBankingPanel(bankingData) {
 }
 
 /**
- * FIXED: Render today's plan with collapsible calculation details
+ * Render today's plan with collapsible calculation details
  */
 function renderTodaysPlanPanel(bankingData) {
   const {
