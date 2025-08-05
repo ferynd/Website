@@ -1,73 +1,247 @@
-My Website & Digital Garden
+# My Website & Digital Garden
 
-Welcome to my personal website project! This is a monorepo for all of my creative and technical projects, including games, tools, and travel logs. It's built with Next.js and Tailwind CSS for a modern, fast, and scalable experience.
-Tech Stack
+Welcome to my personal website project! This repository is a monorepo containing all of my creative and technical projects – including interactive games, handy tools, and travel trip logs. The site is built with Next.js (App Router) and Tailwind CSS for a modern, fast, and scalable user experience[1]. It serves as a hub (a "digital garden") where I curate projects, ideas, and adventures in one place.
 
-    Framework: Next.js (using the App Router)
+## Tech Stack
 
-    Language: TypeScript
+- **Framework:** Next.js (using the App Router)[2]
+- **Language:** TypeScript[2]  
+- **Styling:** Tailwind CSS[2]
+- **Deployment:** Cloudflare Pages[3]
+- **Backend Services:** Firebase (Authentication & Firestore, used in certain tools)
 
-    Styling: Tailwind CSS
+This stack means the site is primarily a static front-end (deployed on Cloudflare Pages) with some dynamic client-side features. Firebase is used as a backend for data-heavy features (e.g. saving user data for the calorie tracker tool).
 
-    Deployment: Cloudflare Pages
+## Project Structure
 
-Project Structure
+The project uses a flat, intuitive structure to organize content[4][5]. The main directories are:
 
-This project uses a flat and organized structure to make finding and adding content intuitive.
+### `/app` – Next.js application pages and routes
+Each folder under `/app` represents a URL path segment[6]. Key pages include:
+- `app/page.tsx` – The home page (landing hub)[7]
+- `app/games/page.tsx` – The Games listing page (shows all games)[8]
+- `app/tools/page.tsx` – The Tools listing page (shows all tools)[9]
+- `app/trips/page.tsx` – The Trips listing page (shows all travel logs/itineraries)
 
-    /app: Core Application & Pages. This is where all your website's routes and pages live. Each folder inside /app represents a URL segment.
+### `/components` – Reusable React components
+Common UI elements (buttons, layout components, navbars, etc.) would reside here, especially if used in multiple pages[10]. (Currently, many pages have their UI defined inline, but this folder is available for factoring out shared components as the site grows.)
 
-        /app/page.tsx: The main landing page.
+### `/content` – Markdown content
+This is intended for any long-form content such as blog posts, articles, or trip write-ups in Markdown/MDX format[10]. For example, travel journals or blog entries can be written as `.md` files here. (The site can be configured to read these files and generate pages from them[10], making it easy to add written content.)
 
-        /app/games/page.tsx: The main landing page for all your games.
+### `/lib` – Libraries and utilities
+Helper functions, configuration files, and utilities live here[11]. (For instance, if we externalized Firebase config or wrote utility scripts, they would go in `/lib`.)
 
-        /app/tools/page.tsx: The main landing page for all your tools.
+### `/public` – Static assets and standalone content
+This houses all static files that are served as-is. It's the home for self-contained HTML/JS games and tools, as well as images, fonts, and other static files[12]. Any folder you put here is accessible directly via URL. For example, a game placed in `public/games/my-game/` would be accessible at `your-domain.com/games/my-game/index.html`[13].
 
-    /components: Reusable React Components. Any component used in more than one place (like buttons, cards, or navbars) should be stored here.
+Inside `/public`, content is further organized into subfolders:
+- `public/games/` – contains standalone game projects (each in its own subfolder with an `index.html` entry point)
+- `public/tools/` – contains standalone tools or apps (each in its own subfolder, e.g. a tool with `index.html`)
+- `public/trips/` – contains static trip itineraries or travel pages
 
-    /content: Markdown Content. This folder is for blog posts, articles, or any long-form content written in Markdown (.md or .mdx). The app can read these files to dynamically generate pages.
+**Note:** Because the site uses Next.js App Router, any route that doesn't have a specific Next.js page falls back to static assets. The Next.js pages (in `/app`) handle the main sections and their listings, while the actual game/tool content might be pure static files in `/public` (especially for projects that don't need React or Next.js features).
 
-    /lib: Library & Helper Functions. A place for utility functions, helper scripts, and configurations (like your firebaseConfig.js).
+## Home Page (Hub)
 
-    /public: Static Assets. This folder is the home for any file that needs to be accessed directly via a URL. This is the perfect place for:
+The home page (`/app/page.tsx`) is the central hub of the site. It introduces the website as a "Digital Garden" and provides an overview of what you can find here[14]. The home page displays three main categories – Games, Tools, and Trips – each with a brief description and an icon[15][16]. For example, on the homepage you will see cards for:
 
-        Your self-contained HTML/JS games and tools.
+- **Games** – "Interactive projects and games built with code."[17] Clicking this takes you to the Games section.
+- **Tools** – "Useful utilities and apps to solve problems."[18] Links to the Tools section.
+- **Trips** – "A collection of travel logs, photos, and stories."[19] Links to the Trips section.
 
-        Images, fonts, videos, and other static files.
+Each category card on the home page has a distinctive icon (gamepad for Games, wrench for Tools, plane for Trips) and a colored hover effect. The cards are implemented in a responsive grid, so they look good on both mobile and desktop[20]. The home page simply helps visitors navigate into the specific area they're interested in.
 
-        Example: A game in public/games/my-cool-game/ can be accessed at yourdomain.com/games/my-cool-game/index.html.
+## Games Section
 
-Getting Started
-1. Install Dependencies
+The Games section is for interactive projects, prototypes, or storytelling games. The main Games page (`/games`) is generated by `app/games/page.tsx`, which lists all available games with a title, description, and link[21][22]. Each game in the list is displayed as a card with an icon and short description.
 
-If you've just cloned the repo, you need to install all the required packages.
+Currently, the games listed are:
 
+### Noir Detective Idea
+"An interactive detective story concept (Static HTML)."[21]
+
+This is a noir-themed detective story prototype. It is a static web project contained in `public/games/noir_detective_idea/`. To play or view it, the Games page links to `/games/noir_detective_idea/index.html`, which loads the game's HTML. This project likely presents a narrative or interactive story in a noir detective style (e.g. might include dynamic text or simple choices, all handled in its own HTML/JS).
+
+### Emeril: A World Divided
+"An interactive lore page for a world of lost magic and warring factions."[23]
+
+This is an interactive world-building lore page, also served as static content. Its files reside in `public/games/Emeril_A_World_Divided/`. The Games page links to `/games/Emeril_A_World_Divided/index.html` to open it. This project is a rich webpage with custom styling (it uses Tailwind via CDN) and interactive elements like expandable sections or tabs for different factions. It's essentially a mini website that presents the backstory and details of a fictional world (Emeril). For example, it defines custom CSS for faction colors and includes scripts for interactive tabs and scroll reveal animations[24][25]. (There are likely sections for factions such as "Tide's Reach," "Iron Citadel," "High Sanctum," etc., with the ability to toggle between them, as suggested by the CSS classes in the HTML source[26][27].)
+
+Both game projects are static HTML/JS content. They do not require the Next.js framework to run; Next.js simply provides the hub and navigation. When adding new games, you would follow the same pattern: build the game as an HTML/JS project, place it under `public/games/<GameName>/`, and then add an entry to the `app/games/page.tsx` list so it appears in the Games section.
+
+**Navigation:** Each static game page typically includes a link back to the main site (for example, a "Back to Hub" link) so that users can easily return to the main site after playing[28]. This ensures the static projects feel integrated with the overall site.
+
+## Tools & Utilities Section
+
+The Tools section contains practical apps and utilities. Its main page (`/tools`) is generated by `app/tools/page.tsx` and lists all tools with a name, description, and link[29][30]. The tools can be either static web apps (in `public/tools`) or full React applications integrated into the Next.js app. Currently, the Tools section includes:
+
+### Trip Cost Calculator
+"Split expenses and calculate balances for a group trip."[31]
+
+This is an interactive React application built as part of the Next.js app (not a static file). It helps a group of people track shared expenses on a trip and determine who owes whom in the end. The tool's code resides in the `app/tools/trip-cost/` directory and is composed of a few parts:
+
+- `app/tools/trip-cost/page.tsx` – the Next.js page component (server-side) which simply renders the client component loader[32]
+- `app/tools/trip-cost/trip-cost-loader.tsx` – a small client-side wrapper that dynamically imports the main app component with `ssr: false` (disables server-side rendering for this part)[33]. This ensures the tool runs entirely on the client.
+- `app/tools/trip-cost/trip-cost-client.tsx` – the main React component implementing the calculator's UI and logic. This is a large file containing state management and interactive functionality for the tool.
+
+**Features:** The Trip Cost Calculator lets you add a list of people and then add expenses. For each expense, you can specify the total amount, who paid how much, and choose a split method (evenly among participants or a custom split)[34][35]. You can also record direct payments between people (for example, if one person paid another outside of expenses)[36][37]. The tool then calculates net balances for each person. In the end, it will tell you how much each person spent vs. how much they benefited and who owes money to whom. For example, after inputting all data, the tool might display lines like "Person A Owes $X" or "Person B Is Owed $Y", color-coded in red/green[38]. This gives a clear settlement plan for the group.
+
+The Trip Cost app runs entirely in the browser; all data is in-memory (no backend persistence). It uses React state to manage the list of people, expenses, and payments. When the page is closed or reloaded, the data resets (future enhancements might include saving to local storage, but currently it's session-based). Because it's integrated in Next.js, navigation to this tool is seamless (it's a regular page at `/tools/trip-cost`).
+
+### Calorie Tracker
+"A simple tool to track daily calorie intake (Static HTML)."[30]
+
+This is a full-featured nutrition and calorie tracking web app, implemented as a static client-side project in `public/tools/CalorieTracker/`. Despite being static files, it's quite powerful and uses Firebase as a backend to store data. The main interface is accessed via `/tools/CalorieTracker/index.html`. Key aspects of the Calorie Tracker:
+
+**HTML/CSS/Layout:** The interface is defined in `index.html`[39][40] and styled with Tailwind CSS (included via CDN) and custom CSS. It provides a Daily Log section (where you can input what you ate for a given date), a Staging Area to parse and prepare entries from text, and a dashboard with charts and summary statistics[40][41].
+
+**Firebase Integration:** The app connects to Firebase for authentication and Firestore database. The configuration (API keys, etc.) is in `firebaseConfig.js`[42]. It initializes Firebase in `services/firebase.js` and provides functions to log in/out and to save/fetch data. Users can either sign up with email or use anonymous guest login[43][44]. When logged in, their data (like daily entries, saved foods, targets) is stored in Cloud Firestore under a structured path (e.g., `artifacts/{appId}/users/{userId}/...`)[45][46]. This allows persistent storage of your nutrition data across sessions/devices.
+
+**Tracking & Features:** You can log daily nutrition information. The app allows setting a baseline nutrient target (daily goals) which can be saved[47], and then logging daily entries of foods consumed. Each entry might include macros (carbs, protein, fat, etc.) and calories; the tracker computes totals and can display a 3-day rolling average of your intake via a chart. In fact, the interface includes a chart that can show trends (by week or month) and toggles for 3-day and 7-day average lines[48][49]. The chart is implemented with Chart.js and is updated dynamically as you input data[50][51].
+
+**Food Management:** The app provides a way to save custom food items. It has a food search dropdown (with typeahead) and a "saved foods" list. You can add items to your daily log from saved foods or parse a bulk log. There is a Paste Log to Stage feature[41] – you can paste a chunk of text (for example, from another calorie tracking app or a spreadsheet) and click "Parse to Staging Area." The script (in `staging/parser.js`) will parse that text into recognizable food entries in the staging area, which you can then add to your daily log, making data entry faster.
+
+**State & Modules:** The code is split into modules for maintainability. For example:
+- `state/store.js` manages application state (like current user ID, the DOM elements, and in-memory caches of entries and food items)
+- `utils/ui.js` has helper functions for UI, such as showing messages or handling errors in a user-friendly way
+- `events/wire.js` attaches event listeners to all interactive elements (buttons, form inputs) to wire up the UI functionality
+- `services/data.js` contains routines for loading initial data (e.g., ensuring a default date is selected, loading user's saved food items and entries from Firestore)[52][53]
+- `ui/chart.js` and `ui/dashboard.js` handle rendering the charts and the summary dashboard in the UI. For instance, `chart.js` prepares the dataset for Chart.js based on the user's logged entries and the selected timeframe/nutrients[51], and it updates the chart when the user changes options (nutrient type, timeframe, toggle averages)
+- There are also modules like `food/manager.js` and `food/save.js` that handle creation or editing of food items, and `exports/exporters.js` that might handle exporting your data
+
+In summary, Calorie Tracker is a self-contained single-page application (SPA) that loads when you visit its URL. It leverages Firebase for data storage so that your entries and preferences persist. It's integrated into the site as a tool: the Tools listing page describes it and links to it, but internally it operates outside of Next.js (no Next.js page was needed aside from the link, since it's purely client-side in the public directory).
+
+When deploying or forking this project, note that the Firebase config is included in the repository. If you wanted to use your own Firebase project, you should update the keys in `public/tools/CalorieTracker/firebaseConfig.js`. Also, security rules in Firestore should be configured appropriately (e.g., to restrict data access to each authenticated user).
+
+The Tools section is designed to be extensible. Some tools might be better suited as static HTML/JS (like Calorie Tracker, which was developed outside Next for flexibility), while others can be built directly with React in the Next.js app (like Trip Cost). The site supports both approaches.
+
+## Trips Section (Travel Logs)
+
+The Trips section is where travel-related content lives – for example, travel itineraries, photo journals, or trip blog posts. The main Trips page (`/trips`) is generated by `app/trips/page.tsx` and lists available trip write-ups or itineraries[54][55]. Currently it includes:
+
+### Chicago Trip Itinerary
+"An itinerary for a trip to Chicago (Static HTML)."[54]
+
+This is a detailed visual itinerary for a weekend trip to Chicago. It's a static page located at `public/trips/ChicagoTripItinerary/index.html`. The page outlines each day's schedule, activities, and possibly includes a timeline visualization. For example, the HTML defines a timeline/schedule grid with time slots and categories (food, activity) color-coded[56][57]. It likely uses some JavaScript (it includes Chart.js in the header) to display a schedule chart or diagram. From the code, we can see it has an interactive schedule view with a timeline of hours and highlights for activities, and a tabbed interface (perhaps to toggle days or categories)[58][59]. The itinerary is enriched with styling (using Tailwind and custom CSS) to be visually engaging – for instance, it has a timeline with dots and connecting lines, and uses a sticky header for the days of the week[60][61].
+
+The Trips listing page links directly to this itinerary at `/trips/ChicagoTripItinerary/index.html` so users can read the travel plan. Like the games, this static page includes a navigation link back to the main hub (e.g., a "Back to Hub" link at the top)[28].
+
+In the future, the Trips section could include multiple types of content:
+- Interactive itinerary pages (like the Chicago one) as static projects under `public/trips/<TripName>/`
+- Narrative travel logs or photo journals written in Markdown (placed in `/content/trips` and potentially rendered via Next.js)
+
+The site is prepared to handle Markdown if configured – for instance, you could write a file `content/trips/2024-Italy.mdx` and have the Next.js app generate a page for it. (At the moment, such functionality would require adding an MDX plugin or some code to read that content, which can be implemented as needed.)
+
+As with other sections, to add a new trip entry you would add the content (static or markdown) and then update the `app/trips/page.tsx` list to include it, so it appears on the Trips index page.
+
+## Adding New Content and Sections
+
+One of the goals of this project is to make it easy to extend with new content. Here's how you can add various types of content:
+
+### Add a New Top-Level Section
+If you want to introduce a new main category (similar to Games/Tools/Trips – for example, a "Blog" section), you can do so easily. Create a new folder under `app/` (for example, `app/blog/`) and add a `page.tsx` file inside it[62]. This new page should list or display the contents of that section. Also, update the home page (`app/page.tsx`) to include a new entry in the categories array for your new section (with an icon, name, description, and link). By doing these steps, you'll have a new section accessible at `/<sectionName>` and linked from the homepage.
+
+### Add a New Game or Tool (Static)
+To add a standalone game or tool, build it as a self-contained front-end project (HTML, CSS, JS). Then place its entire folder in the appropriate subdirectory of public – for a game, use `public/games/`, for a tool, use `public/tools/`[63]. Ensure the entry point is `index.html`. Once the files are in place, edit the corresponding listing page:
+
+**For a game:** Update `app/games/page.tsx`. Add a new object to the `gameList` array with the game's name, a short description, and the href path to its `index.html` (e.g., `href: '/games/your_game_name/index.html'`). You can copy the format used by existing games. Also choose an appropriate icon from lucide-react for the game (see how other games use icons like `<Drama/>` or `<Swords/>` for inspiration[21]).
+
+**For a tool:** If it's static (for example, an HTML/JS app that doesn't need React), do the same but in `app/tools/page.tsx` (add an entry to `toolList` with name, description, and link to `/tools/your_tool_name/index.html`[30]). Provide an icon as well.
+
+After this, the new game/tool will be listed on the site and users can click through to the static content. 
+
+**Advanced:** If your tool is not static and you prefer to build it with React, you can create a new folder under `app/tools/` and build it similar to trip-cost – with a page component and a dynamic client component. This requires more setup, but the structure of trip-cost can be a template.
+
+### Add a New Trip Log or Blog Post
+For travel logs or blog-like content, you have two approaches:
+
+**Static HTML route:** If you want a highly customized page (like including interactive maps or charts), you can create a static page similar to the Chicago itinerary. Make a new subfolder under `public/trips/` (or `public/blog/` if it's a blog post with custom HTML), and put an `index.html` and supporting files there. Then update `app/trips/page.tsx` to add it to the `tripList` (or create a similar listing page for blog posts) with a name, description, and link (e.g. `/trips/YourTripName/index.html`).
+
+**Markdown/MDX:** If you prefer writing in Markdown, create a new `.md` or `.mdx` file in the `content/trips` directory (or `content/blog` for a blog post)[64]. Give it a descriptive filename (for example, `2025-Paris.md`). In the future, the Next.js app can be configured to automatically generate pages for each Markdown file in content – the README notes that this is possible[64]. You would also likely create a page (or use a dynamic route) to render these markdown files. (If not already set up, you might need to integrate next-mdx-remote or a similar library to handle MDX files.) Once configured, the Markdown content would be converted to HTML and displayed as a page on the site. Don't forget to list the new entry on a section page or homepage so that it's discoverable.
+
+### Organizing & Linking
+Whenever you add new content, ensure that navigation is in place. This means updating the relevant listing page (Games/Tools/Trips or a new one) and providing a link back to the main hub or parent section from the new content. Static pages should have a "Back" link (as seen in other static pages) so users don't get stuck. If adding a new top-level category, also insert a card for it on the home page. Consistency in naming and URL paths is important (folder names in public should ideally be lowercase and use underscores or hyphens consistently, and the links in the React pages should match exactly).
+
+By following the above, the site remains organized and scalable. New sections and content will seamlessly integrate into the navigation structure.
+
+## Development Setup (Getting Started)
+
+If you want to run the project locally or develop further:
+
+### 1. Install Dependencies
+After cloning the repository, install NPM packages:
+
+```bash
 npm install
+```
 
-2. Run the Development Server
+This will fetch all required dependencies.
 
-To start the local development server and see your site in action:
+### 2. Run the Development Server
+Start the Next.js development server:
 
+```bash
 npm run dev
+```
 
-Open http://localhost:3000 with your browser to see the result.
-How to Add Content
-Adding a New Page or Category
+This will launch the app on a local server (by default `http://localhost:3000`)[65]. Open that URL in your browser to view the site locally. The site will auto-reload as you make changes to the code.
 
-    To create a new top-level category (e.g., /blog), simply create a new folder inside /app named blog and add a page.tsx file inside it.
+While developing, you can modify pages or static content and see updates immediately. For changes in the Next.js pages (under `/app`), the dev server hot-reloads them. For changes in static files in `/public`, you may need to refresh the page. Ensure you have a Node.js version compatible with Next.js 15 (Node 18+ is recommended).
 
-Adding a New Standalone Game/Tool
+## Deployment
 
-    Place the entire folder for your game/tool (e.g., my-new-game) into the appropriate subfolder within /public (e.g., public/games/).
+The project is configured for deployment on Cloudflare Pages[66]. Cloudflare Pages supports Next.js projects out-of-the-box:
 
-    You can then link to it directly from any page: <a href="/games/my-new-game/index.html">Play My New Game</a>.
+- Connect this GitHub repository to Cloudflare Pages
+- When prompted for a build configuration, choose the Next.js preset. This will set the appropriate build command (`npm run build`) and publish directory (the default Next.js output)
+- Cloudflare will handle installing dependencies, building the app (including prerendering any pages), and deploying the static files
 
-Adding a New Blog Post / Trip Log
+Because our app uses the Next.js App Router and mostly static assets, the entire site will be served efficiently via Cloudflare's CDN.
 
-    Create a new .md or .mdx file in the /content/trips directory.
+After deployment, the site will be live on your Cloudflare Pages domain (or a custom domain if configured). Whenever you push updates to the repository, Cloudflare Pages will automatically rebuild and deploy the new version.
 
-    The application can be configured to read these files and automatically create a page for each one.
+**Note:** Since the Calorie Tracker relies on Firebase, ensure that the Firebase config keys are valid on production. Cloudflare Pages will simply serve the files; the Firebase interactions happen client-side. You may want to restrict API keys or set up appropriate Firebase security rules for the deployed domain.
 
-Deployment
+## Guide for AI and Automated Contributors
 
-This project is configured for deployment on Cloudflare Pages. Simply connect your GitHub repository and select "Next.js" as the framework preset. Cloudflare will handle the build and deployment process automatically.
+This section is meant for any AI bots or coding agents that might be tasked with extending or maintaining the site. It provides guidelines to ensure they interact with the codebase correctly and maintain consistency.
+
+If using an AI assistant or script to modify the site, please follow these rules:
+
+### Understand the Structure
+The site has distinct areas for Next.js pages (`/app`) versus static content (`/public`). Determine where your change fits. For example, if asked to create a new interactive page that can be server-rendered or needs React, work under `/app`. If adding a self-contained tool or document, add it under `/public` and link it appropriately. Use the Project Structure above as a map of where things belong.
+
+### Adding a New Section
+When creating a new top-level section, remember to do all of the required steps:
+- Create a new folder in `app/` with a `page.tsx` that lists or renders that section's content
+- Add the section to the home page categories list (in `app/page.tsx`) so it's accessible from the hub
+- Use a similar format to existing sections (e.g., include an icon from lucide-react, use a gradient border hover effect consistent with the others, etc.). Copy the style of code from sections like Games/Tools for a uniform look
+- Optionally, prepare a subdirectory in `public/` or `content/` if the section will contain static files or markdown posts (for instance, set up `public/<sectionName>/` or `content/<sectionName>/` as needed)
+
+### Adding Items to a List
+For adding a new game/tool/trip entry:
+- Insert the static files in the correct public subfolder
+- Open the corresponding Next.js page file (`app/games/page.tsx`, `app/tools/page.tsx`, or `app/trips/page.tsx`) and add a new object to the array (`gameList`, `toolList`, or `tripList`). Follow the JSON structure already there (name, description, href, icon)[21][29]
+- Ensure the href is correct (pointing to the `index.html` of your new content) and the icon is imported and used similarly to others
+- Maintain alphabetic or logical ordering if applicable, or place the new item in a sensible position (currently, order is just the array order)
+- Double-check that the link you added works (the file path must match exactly, including case sensitivity)
+
+### Maintain Navigation
+If an AI creates a new HTML page (e.g., a new game or trip itinerary), it should include a navigation link back to the main site (like a "Back to Hub" link or a link to the section page). This ensures users (and crawlers) can navigate easily. Usually, a simple `<a href="/">Back to Home</a>` or similar at the top of the page is sufficient, as seen in other static pages[39][28].
+
+### Coding Style and Consistency
+Adhere to the conventions used in this codebase:
+- Use TypeScript for any new React components or Next pages
+- Follow the existing React component structure. For example, if adding a new client component, include `'use client';` at the top of the file as done in other interactive pages (the listing pages use it because they utilize client-side dynamic icons and effects[67][68])
+- Use Tailwind CSS utility classes for styling in React components, consistent with the rest of the site's design (dark background, text colors, gradients, etc.)
+- When creating static HTML, you can use Tailwind via the CDN (as the current static pages do) for consistency in styling. Avoid writing large inline styles when a Tailwind class exists
+- Keep file and identifier naming consistent (e.g., use similar naming conventions for state variables, follow the casing and format of existing code)
+
+### Testing Changes
+After an AI makes changes, it's important to verify the site still builds and functions:
+- Run `npm run build` (for Next.js) or at least `npm run dev` to ensure there are no build errors or runtime errors
+- Visit the modified or added pages in a browser (or via automated test if available) to confirm that links are correct, styles load, and interactive features work
+- Particularly test navigation to any new section and the integration between Next.js pages and any new static content
+
+By following these guidelines, automated contributions will fit neatly into the site without breaking existing functionality. In essence, any AI agent should mimic the patterns already present in the repository. For example, if tasked to "add a new calculator tool," the bot should either create it as a static tool under `public/tools/` with an entry in `app/tools/page.tsx`, or if more complex, scaffold a new React tool under `app/tools/new-tool/` similar to Trip Cost. When uncertain, the AI should search within the repository for examples (such as how "CalorieTracker" or "trip-cost" are implemented) and mirror those approaches.
