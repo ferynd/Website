@@ -493,6 +493,7 @@ export function updateDashboard() {
     }
 
     const dateStr = state.dom.dateInput.value;
+    const todaysEntry = state.dailyEntries.get(dateStr) || {};
     const bankingData = calculateBankingData(dateStr);
     const micronutrientMetrics = calculateMicronutrientMetrics(dateStr);
 
@@ -500,7 +501,7 @@ export function updateDashboard() {
       <div id="dashboard-errors"></div>
       ${renderInfoBox()}
       ${renderBankingPanel(bankingData)}
-      ${renderTodaysPlanPanel(bankingData)}
+      ${renderTodaysPlanPanel(bankingData, todaysEntry)}
       ${renderChartSection()}
       ${renderMicronutrientSections(micronutrientMetrics)}
     `;
@@ -522,31 +523,44 @@ export function updateDashboard() {
  */
 function setupCollapsibleHandlers() {
   try {
-    const bankDetailsToggle = document.getElementById('bank-details-toggle');
-    const bankDetailsContent = document.getElementById('bank-details-content');
-    
-    if (bankDetailsToggle && bankDetailsContent) {
-      bankDetailsToggle.addEventListener('click', () => {
-        const isHidden = bankDetailsContent.classList.contains('hidden');
-        bankDetailsContent.classList.toggle('hidden', !isHidden);
-        
-        // Update button text and icon
-        const icon = bankDetailsToggle.querySelector('.fa-chevron-down, .fa-chevron-up');
-        const text = bankDetailsToggle.querySelector('.toggle-text');
-        
-        if (icon && text) {
-          if (isHidden) {
-            icon.classList.remove('fa-chevron-down');
-            icon.classList.add('fa-chevron-up');
-            text.textContent = 'Hide Calculation Details';
-          } else {
-            icon.classList.remove('fa-chevron-up');
-            icon.classList.add('fa-chevron-down');
-            text.textContent = 'Show How We Calculated This';
+    const setupToggle = (toggleId, contentId, showText, hideText) => {
+      const toggle = document.getElementById(toggleId);
+      const content = document.getElementById(contentId);
+      if (toggle && content) {
+        toggle.addEventListener('click', () => {
+          const isHidden = content.classList.contains('hidden');
+          content.classList.toggle('hidden', !isHidden);
+          const icon = toggle.querySelector('.fa-chevron-down, .fa-chevron-up');
+          const text = toggle.querySelector('.toggle-text');
+          if (icon && text) {
+            if (isHidden) {
+              icon.classList.remove('fa-chevron-down');
+              icon.classList.add('fa-chevron-up');
+              text.textContent = hideText;
+            } else {
+              icon.classList.remove('fa-chevron-up');
+              icon.classList.add('fa-chevron-down');
+              text.textContent = showText;
+            }
           }
-        }
-      });
-    }
+        });
+      }
+    };
+
+    setupToggle(
+      'bank-details-toggle', 
+      'bank-details-content', 
+      'Show How We Calculated This', 
+      'Hide Calculation Details'
+    );
+
+    setupToggle(
+      'recent-days-toggle',
+      'recent-days-content',
+      'Show Recent Days Breakdown',
+      'Hide Recent Days Breakdown'
+    );
+
   } catch (error) {
     handleError('setup-collapsible', error, 'Failed to set up collapsible handlers');
   }
@@ -578,7 +592,6 @@ function renderInfoBox() {
 function renderBankingPanel(bankingData) {
   const { bankToday, bankContributions, olderContributions, recentContributions, debug } = bankingData;
   
-  // Calculate decay percentages for user understanding
   const dayDecayPcts = [1, 2, 3, 4, 5].map(days => {
     const pct = Math.pow(DAILY_DECAY_FACTOR, days) * 100;
     return Math.round(pct);
@@ -605,7 +618,6 @@ function renderBankingPanel(bankingData) {
     <div class="mb-6 bg-white p-6 rounded-lg shadow-lg">
       <h3 class="text-xl font-bold text-gray-700 mb-2">🏦 Your Calorie Bank</h3>
       
-      <!-- Main bank display matches calculations -->
       <div class="mb-4 p-3 rounded-lg ${bankToday > 0 ? 'bg-red-50 border border-red-200' : bankToday < 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
         <div class="text-center">
           <div class="text-2xl font-bold ${bankToday > 0 ? 'text-red-600' : bankToday < 0 ? 'text-green-600' : 'text-gray-600'}">
@@ -620,48 +632,54 @@ function renderBankingPanel(bankingData) {
         </div>
       </div>
       
-      <h4 class="font-semibold text-gray-800 mb-3">Recent Days (most recent first):</h4>
-      <div class="overflow-x-auto">
-        <table class="w-full border border-gray-200 rounded-lg">
-          <thead class="bg-gray-50">
-            <tr>
-              <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Day</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Over/Under</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Weight</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Impact Today</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${contributionRows}
-          </tbody>
-        </table>
-      </div>
-      
-      <!-- Clean formatting for older contributions -->
-      <div class="mt-3 pt-3 border-t border-gray-200">
-        <div class="text-sm text-gray-600 italic">
-          Days 6+ ago contribute ${olderContributions > 0 ? '+' : ''}${Math.round(olderContributions)} kcal (weighted &lt;18% each)
+      <button id="recent-days-toggle" class="w-full text-left mb-3 text-sm text-blue-700 hover:text-blue-900 font-medium flex items-center gap-2">
+        <i class="fas fa-chevron-down"></i>
+        <span class="toggle-text">Show Recent Days Breakdown</span>
+      </button>
+
+      <div id="recent-days-content" class="hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full border border-gray-200 rounded-lg">
+            <thead class="bg-gray-50">
+              <tr>
+                <th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Day</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Over/Under</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Weight</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Impact Today</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${contributionRows}
+              <tr class="border-t-2 border-gray-200">
+                <td colspan="3" class="px-3 py-2 text-sm font-medium text-gray-600 italic">Days 6+ ago contribution</td>
+                <td class="px-3 py-2 text-sm text-center font-medium text-gray-600 italic">
+                  ${olderContributions > 0 ? '+' : ''}${Math.round(olderContributions)}
+                </td>
+              </tr>
+              <tr class="bg-gray-50 border-t-2 border-gray-200">
+                <td colspan="3" class="px-3 py-2 text-sm font-medium">Total Bank Balance:</td>
+                <td class="px-3 py-2 text-lg text-center ${bankToday > 0 ? 'text-red-600' : bankToday < 0 ? 'text-green-600' : 'text-gray-600'} font-bold">
+                  ${bankToday > 0 ? '+' : ''}${bankToday} kcal
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="text-sm font-medium mt-2 flex justify-between items-center">
-          <span>Total Bank Balance:</span>
-          <span class="${bankToday > 0 ? 'text-red-600' : bankToday < 0 ? 'text-green-600' : 'text-gray-600'} font-bold">
-            ${bankToday > 0 ? '+' : ''}${bankToday} kcal
-          </span>
-        </div>
+        
+        <p class="mt-3 text-xs text-gray-600">
+          <strong>How it works:</strong> Recent days have more impact (yesterday = 82%, 2 days = 67%, etc.). 
+          After 7-10 days, the impact is nearly zero (≤25%).
+        </p>
       </div>
-      
-      <p class="mt-3 text-xs text-gray-600">
-        <strong>How it works:</strong> Recent days have more impact (yesterday = 82%, 2 days = 67%, etc.). 
-        After 7-10 days, the impact is nearly zero (≤25%).
-      </p>
     </div>
   `;
 }
 
+
 /**
  * Render today's plan with collapsible calculation details
  */
-function renderTodaysPlanPanel(bankingData) {
+function renderTodaysPlanPanel(bankingData, todaysEntry) {
   const {
     baseKcal,
     todaysTrainingBump,
@@ -675,6 +693,21 @@ function renderTodaysPlanPanel(bankingData) {
     carbsG,
     trainingIntensity
   } = bankingData;
+
+  const todaysCalories = parseFloat(todaysEntry.calories) || 0;
+  const todaysProtein = parseFloat(todaysEntry.protein) || 0;
+  const todaysFat = parseFloat(todaysEntry.fat) || 0;
+  const todaysCarbs = parseFloat(todaysEntry.carbs) || 0;
+
+  const remainingCalories = todayKcalTarget - todaysCalories;
+  const remainingProtein = proteinG - todaysProtein;
+  const remainingFat = fatG - todaysFat;
+  const remainingCarbs = carbsG - todaysCarbs;
+
+  const remainingCaloriesColor = remainingCalories >= 0 ? 'text-gray-500' : 'text-red-500';
+  const remainingProteinColor = remainingProtein >= 0 ? 'text-green-700' : 'text-red-700';
+  const remainingFatColor = remainingFat >= 0 ? 'text-blue-700' : 'text-red-700';
+  const remainingCarbsColor = remainingCarbs >= 0 ? 'text-orange-700' : 'text-red-700';
   
   // User-friendly explanations
   const correctionExplanation = correction === rawCorrection 
@@ -690,6 +723,10 @@ function renderTodaysPlanPanel(bankingData) {
         <div class="flex justify-between items-center text-lg font-semibold">
           <span>Today's Calorie Target:</span>
           <span class="text-blue-600">${todayKcalTarget} kcal</span>
+        </div>
+        <div class="flex justify-between items-center text-sm mt-1">
+          <span class="text-gray-600">Remaining:</span>
+          <span class="font-medium ${remainingCaloriesColor}">${remainingCalories.toFixed(0)} kcal</span>
         </div>
         
         <!-- Collapsible Details Button -->
@@ -740,6 +777,10 @@ function renderTodaysPlanPanel(bankingData) {
                 <span class="font-medium text-green-800">Protein</span>
                 <span class="font-bold text-green-800">${proteinG}g</span>
               </div>
+              <div class="flex justify-between items-center text-xs ${remainingProteinColor} mb-1">
+                <span>Remaining:</span>
+                <span class="font-bold">${remainingProtein.toFixed(0)}g</span>
+              </div>
               <div class="text-xs text-green-600">${proteinG * 4} kcal • ${trainingIntensity !== 'rest' && proteinG > BANKING_CONFIG.PROTEIN_G ? 'Training boost applied' : 'Standard target'}</div>
             </div>
             
@@ -748,6 +789,10 @@ function renderTodaysPlanPanel(bankingData) {
                 <span class="font-medium text-blue-800">Fat (minimum)</span>
                 <span class="font-bold text-blue-800">${fatG}g</span>
               </div>
+              <div class="flex justify-between items-center text-xs ${remainingFatColor} mb-1">
+                <span>Remaining:</span>
+                <span class="font-bold">${remainingFat.toFixed(0)}g</span>
+              </div>
               <div class="text-xs text-blue-600">${fatG * 9} kcal • Essential for hormone production</div>
             </div>
             
@@ -755,6 +800,10 @@ function renderTodaysPlanPanel(bankingData) {
               <div class="flex justify-between items-center">
                 <span class="font-medium text-orange-800">Carbs (flexible)</span>
                 <span class="font-bold text-orange-800">${carbsG}g</span>
+              </div>
+              <div class="flex justify-between items-center text-xs ${remainingCarbsColor} mb-1">
+                <span>Remaining:</span>
+                <span class="font-bold">${remainingCarbs.toFixed(0)}g</span>
               </div>
               <div class="text-xs text-orange-600">${carbsG * 4} kcal • Fills remaining calories</div>
             </div>

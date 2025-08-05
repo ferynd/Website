@@ -35,7 +35,9 @@ const CHART_CONFIG = {
     borderColor: 'rgba(255,255,255,0.3)',
     borderWidth: 1,
     cornerRadius: 8,
-    displayColors: true
+    displayColors: true,
+    bodySpacing: 4,
+    padding: 10,
   },
   
   // Chart behavior
@@ -433,6 +435,7 @@ export function updateChart() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
+        animation: false,
         interaction: {
           intersect: false,
           mode: 'index'
@@ -457,6 +460,12 @@ export function updateChart() {
             },
             grid: {
               display: false
+            },
+            ticks: {
+              callback: function(value, index, values) {
+                const date = new Date(`${this.getLabelForValue(value)}T00:00:00`);
+                return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+              }
             }
           }
         },
@@ -464,115 +473,75 @@ export function updateChart() {
           tooltip: {
             ...CHART_CONFIG.TOOLTIP_CONFIG,
             filter: function(tooltipItem) {
-              // Hide the target line from tooltips
-              return !tooltipItem.dataset._isTargetLine;
+              return !tooltipItem.dataset._isTargetLine && !tooltipItem.dataset._isAverage;
             },
             callbacks: {
               title: function(tooltipItems) {
                 if (tooltipItems.length > 0) {
-                  const date = new Date(tooltipItems[0].label);
+                  const date = new Date(`${tooltipItems[0].label}T00:00:00`);
                   return date.toLocaleDateString('en-US', { 
-                    weekday: 'short', 
+                    weekday: 'long', 
                     month: 'short', 
-                    day: 'numeric' 
+                    day: 'numeric',
+                    year: 'numeric'
                   });
                 }
                 return '';
               },
-              
               label: function(context) {
                 try {
-                  // Skip if this is the target line
-                  if (context.dataset._isTargetLine) return null;
-                  
                   const dataset = context.dataset;
                   const dataIndex = context.dataIndex;
-                  
-                  // Get metadata from dataset
                   const nutrient = dataset._nutrient;
                   const target = dataset._target;
-                  const actualValues = dataset._actualValues;
-                  const isAverage = dataset._isAverage;
-                  const avgType = dataset._avgType;
+                  const actual = dataset._actualValues[dataIndex];
                   
-                  if (!nutrient || target === undefined || !actualValues) {
-                    return `${dataset.label}: ${context.parsed.y.toFixed(1)}%`;
-                  }
-                  
-                  const actual = actualValues[dataIndex];
-                  
-                  // Skip if no actual value (null for insufficient data points)
-                  if (actual === null || actual === undefined) {
-                    return null;
-                  }
-                  
+                  if (actual === null || actual === undefined) return null;
+
                   const delta = actual - target;
                   const deltaText = delta >= 0 
-                    ? `over by +${delta.toFixed(1)}` 
-                    : `under by ${Math.abs(delta).toFixed(1)}`;
+                    ? `+${Math.round(delta)}` 
+                    : `${Math.round(delta)}`;
                   
-                  // Format nutrient name and type
                   const nutrientName = formatNutrientName(nutrient);
-                  const typeLabel = isAverage ? ` (${avgType})` : '';
                   
-                  // Return in exact format: "Field: Target | Actual | Delta"
-                  return `${nutrientName}${typeLabel}: ${target.toFixed(1)} target | ${actual.toFixed(1)} actual | ${deltaText}`;
+                  return `${nutrientName}: ${Math.round(actual)} (${deltaText})`;
                   
                 } catch (error) {
                   handleChartError('tooltip-label', error);
-                  return 'Error displaying data';
+                  return 'Error';
                 }
               },
-              
-              afterBody: function(tooltipItems) {
+              afterLabel: function(context) {
                 try {
-                  // Group nutrients to show averages inline
-                  const nutrientData = new Map();
+                  const dataIndex = context.dataIndex;
+                  const chart = context.chart;
+                  const currentNutrient = context.dataset._nutrient;
+                  const avgLines = [];
+
+                  const avg3DayDataset = chart.data.datasets.find(ds => ds._nutrient === currentNutrient && ds._avgType === '3-day');
+                  if (avg3DayDataset) {
+                      const avgValue = avg3DayDataset._actualValues[dataIndex];
+                      if (avgValue !== null && avgValue !== undefined) {
+                          avgLines.push(`    3-Day Avg: ${Math.round(avgValue)}`);
+                      }
+                  }
+
+                  const avg7DayDataset = chart.data.datasets.find(ds => ds._nutrient === currentNutrient && ds._avgType === '7-day');
+                  if (avg7DayDataset) {
+                      const avgValue = avg7DayDataset._actualValues[dataIndex];
+                      if (avgValue !== null && avgValue !== undefined) {
+                          avgLines.push(`    7-Day Avg: ${Math.round(avgValue)}`);
+                      }
+                  }
+
+                  if (context.chart.tooltip.dataPoints.length > 1 && context.datasetIndex < context.chart.tooltip.dataPoints.length - 1) {
+                    avgLines.push('');
+                  }
                   
-                  tooltipItems.forEach(item => {
-                    if (item.dataset._isTargetLine) return;
-                    
-                    const nutrient = item.dataset._nutrient;
-                    const isAverage = item.dataset._isAverage;
-                    const avgType = item.dataset._avgType;
-                    
-                    if (!nutrient) return;
-                    
-                    if (!nutrientData.has(nutrient)) {
-                      nutrientData.set(nutrient, {
-                        main: null,
-                        averages: []
-                      });
-                    }
-                    
-                    if (isAverage) {
-                      nutrientData.get(nutrient).averages.push({
-                        type: avgType,
-                        item: item
-                      });
-                    } else {
-                      nutrientData.get(nutrient).main = item;
-                    }
-                  });
-                  
-                  // Build additional lines for averages
-                  const additionalLines = [];
-                  
-                  nutrientData.forEach((data, nutrient) => {
-                    if (data.averages.length > 0) {
-                      data.averages.forEach(avg => {
-                        const actual = avg.item.dataset._actualValues[avg.item.dataIndex];
-                        if (actual !== null && actual !== undefined) {
-                          additionalLines.push(`  ↳ ${avg.type} average: ${actual.toFixed(1)}`);
-                        }
-                      });
-                    }
-                  });
-                  
-                  return additionalLines;
-                  
+                  return avgLines;
                 } catch (error) {
-                  handleChartError('tooltip-afterbody', error);
+                  handleChartError('tooltip-afterLabel', error);
                   return [];
                 }
               }
@@ -585,8 +554,7 @@ export function updateChart() {
               usePointStyle: true,
               padding: 15,
               filter: function(item, chart) {
-                // Hide the target line from legend
-                return !item.text.includes('Target (100%)');
+                return !item.text.includes('Target (100%)') && !item.text.includes('avg');
               }
             }
           }
@@ -596,7 +564,6 @@ export function updateChart() {
 
     debugLog('update-chart-success', 'Chart updated successfully');
 
-    // Update accompanying table
     updateChartTable(tableData, selectedNutrients, labels);
 
   } catch (error) {
@@ -635,8 +602,8 @@ function updateChartTable(tableData, nutrientKeys, labels) {
               <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Nutrient</th>`;
     
     labels.forEach(dateStr => {
-      const date = new Date(dateStr);
-      const shortDate = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      const date = new Date(`${dateStr}T00:00:00`);
+      const shortDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       html += `<th class="px-3 py-3 text-center text-sm font-semibold text-gray-700">${shortDate}</th>`;
     });
     
