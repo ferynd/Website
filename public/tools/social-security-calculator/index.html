@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Social Security Financial Planner — Fixed</title>
+
+  <!-- Tailwind (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Chart.js v4 and compatible Annotation plugin v3 -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3"></script>
+
+  <!-- 2.1-a: Register the annotation plugin with Chart.js -->
+  <script>
+    Chart.register(window['chartjs-plugin-annotation']);
+  </script>
+
+  <!-- Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    
+    /* Base styles for custom toggle switch. Colors are now injected by JavaScript. */
+    .toggle-checkbox {
+      right: 0;
+    }
+    .toggle-checkbox:checked {
+      right: 0;
+    }
+
+    /* Styles for advanced input fields, kept here as they don't depend on the dynamic theme. */
+    .advanced-input {
+      width: 4rem; /* ~w-16 */
+      background: #F9FAFB; /* bg-gray-50 */
+      border: 1px solid #E5E7EB; /* border-gray-200 */
+      border-radius: 0.375rem; /* rounded-md */
+      padding: 0.25rem; /* p-1 */
+      font-size: 0.875rem; /* text-sm */
+    }
+    .advanced-input:focus { 
+      outline: none; 
+      box-shadow: 0 0 0 3px rgba(79,70,229,0.3); 
+      border-color: #6366F1; 
+    }
+
+    /* Styles for summary boxes. Border color is now set via JavaScript. */
+    .summary-box {
+      background: #F9FAFB; /* bg-gray-50 */
+      padding: 1rem; /* p-4 */
+      border-radius: 0.5rem; /* rounded-lg */
+      text-align: left; /* text-left */
+      border-left-width: 4px; /* border-l-4 */
+      border-left-style: solid;
+    }
+    
+    /* For accessibility: hides text visually but keeps it available for screen readers */
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+    }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-800">
+  <div class="container mx-auto p-4 sm:p-6 md:p-8">
+    <!-- CONFIGURATION: Update href if /tools path changes -->
+    <a href="/tools" class="block text-sky-600 mb-4">&larr; Back to Tools</a>
+    <header class="text-center mb-10">
+      <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Social Security Financial Planner</h1>
+      <p class="mt-2 text-lg text-gray-600">Visualize the financial impact of different claiming strategies and assumptions.</p>
+    </header>
+
+    <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- Input Controls Column -->
+      <div class="lg:col-span-1 space-y-6">
+        <!-- Core Assumptions -->
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+          <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">Core Assumptions</h2>
+          <div class="space-y-4 pt-4">
+            <div>
+              <label for="maxAge" class="block text-sm font-medium text-gray-700">Project Until Age</label>
+              <!-- 2.3-c: Add validation -->
+              <input type="number" id="maxAge" value="85" min="65" max="120" class="mt-1 block w-full bg-gray-100 border-gray-300 rounded-md shadow-sm p-2" />
+            </div>
+            <div>
+              <label for="inflationRate" class="block text-sm font-medium text-gray-700">General Inflation Rate (%)</label>
+              <!-- 2.3-c: Add validation -->
+              <input type="number" id="inflationRate" value="3.0" step="0.1" min="0" max="20" class="mt-1 block w-full bg-gray-100 border-gray-300 rounded-md p-2" />
+            </div>
+            <div>
+              <label for="colaRate" class="block text-sm font-medium text-gray-700">Annual SS COLA (%)</label>
+              <!-- 2.3-c: Add validation -->
+              <input type="number" id="colaRate" value="3.0" step="0.1" min="0" max="20" class="mt-1 block w-full bg-gray-100 border-gray-300 rounded-md p-2" />
+            </div>
+            <div class="pt-2">
+              <h3 class="text-sm font-medium text-gray-700 mb-2">Monthly Benefit Amounts ($)</h3>
+              <div class="grid grid-cols-3 gap-2">
+                <div>
+                  <label for="benefit65" class="block text-xs text-gray-500">Age 65</label>
+                  <!-- 2.3-c: Add validation -->
+                  <input type="number" id="benefit65" value="1300" min="0" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                </div>
+                <div>
+                  <label for="benefit66" class="block text-xs text-gray-500">Age 66</label>
+                  <!-- 2.3-c: Add validation -->
+                  <input type="number" id="benefit66" value="1412" min="0" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                </div>
+                <div>
+                  <label for="benefit67" class="block text-xs text-gray-500">Age 67</label>
+                  <!-- 2.3-c: Add validation -->
+                  <input type="number" id="benefit67" value="1526" min="0" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Financial Events -->
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+          <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">Financial Events</h2>
+          <div class="space-y-6 pt-4">
+            <!-- Simple Inputs -->
+            <div id="simpleInputsContainer">
+              <div class="flex items-center justify-between mb-4">
+                <span class="font-medium text-gray-700">Inflate Spending & Income</span>
+                <div class="relative inline-block w-10 align-middle select-none">
+                  <!-- 2.4-a: Add ARIA roles for accessibility -->
+                  <input type="checkbox" id="toggleInflateCashflows" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" role="switch" aria-checked="false" />
+                  <label for="toggleInflateCashflows" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"><span class="sr-only">Toggle inflation for cashflows</span></label>
+                </div>
+              </div>
+              <!-- Spending -->
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-gray-700">Annual Spending</span>
+                  <div class="relative inline-block w-10 align-middle select-none">
+                    <input type="checkbox" id="toggleSpending" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" role="switch" aria-checked="false" />
+                    <label for="toggleSpending" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"><span class="sr-only">Toggle annual spending</span></label>
+                  </div>
+                </div>
+                <div id="spendingInputContainer" class="hidden grid grid-cols-2 gap-2 items-end">
+                  <div>
+                    <label for="annualSpending" class="block text-xs font-medium text-gray-500">Amount ($)</label>
+                    <input type="number" id="annualSpending" value="20000" step="1000" min="0" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                  </div>
+                  <div>
+                    <label for="spendingStartAge" class="block text-xs font-medium text-gray-500">Start Age</label>
+                    <input type="number" id="spendingStartAge" value="67" min="65" max="120" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                  </div>
+                </div>
+              </div>
+              <hr class="my-4" />
+              <!-- Extra Income -->
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-gray-700">Extra Annual Income</span>
+                  <div class="relative inline-block w-10 align-middle select-none">
+                    <input type="checkbox" id="toggleExtraIncome" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" role="switch" aria-checked="false" />
+                    <label for="toggleExtraIncome" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"><span class="sr-only">Toggle extra annual income</span></label>
+                  </div>
+                </div>
+                <div id="extraIncomeInputContainer" class="hidden grid grid-cols-2 gap-2 items-end">
+                  <div>
+                    <label for="extraIncome" class="block text-xs font-medium text-gray-500">Amount ($)</label>
+                    <input type="number" id="extraIncome" value="10000" step="500" min="0" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                  </div>
+                  <div>
+                    <label for="incomeEndAge" class="block text-xs font-medium text-gray-500">End Age</label>
+                    <input type="number" id="incomeEndAge" value="72" min="65" max="120" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                  </div>
+                </div>
+              </div>
+              <hr class="my-4" />
+              <!-- Investment Return -->
+              <div class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <span class="font-medium text-gray-700">Investment Return</span>
+                  <div class="relative inline-block w-10 align-middle select-none">
+                    <input type="checkbox" id="toggleEarnRate" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" role="switch" aria-checked="false" />
+                    <label for="toggleEarnRate" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"><span class="sr-only">Toggle investment return</span></label>
+                  </div>
+                </div>
+                <div id="earnRateInputContainer" class="hidden">
+                  <label for="earnRate" class="block text-xs font-medium text-gray-500">Annual Return Rate (%)</label>
+                  <input type="number" id="earnRate" value="5.0" step="0.1" min="-20" max="50" class="mt-1 block w-full bg-gray-100 rounded-md p-2 text-sm" />
+                </div>
+              </div>
+            </div>
+            <hr class="my-4" />
+            <!-- Advanced Toggle -->
+            <div class="flex items-center justify-between pt-4">
+              <span class="font-medium text-gray-700">Advanced Yearly Inputs</span>
+              <div class="relative inline-block w-10 align-middle select-none">
+                <input type="checkbox" id="toggleAdvanced" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" role="switch" aria-checked="false" />
+                <label for="toggleAdvanced" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"><span class="sr-only">Toggle advanced yearly inputs</span></label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced Inputs -->
+        <div id="advancedInputsContainer" class="hidden bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+          <h2 class="text-xl font-semibold mb-4 text-gray-800 border-b pb-2">Yearly Advanced Inputs</h2>
+          <div class="space-y-4 mt-4">
+            <div class="flex items-center justify-between">
+              <span class="text-sm font-medium text-gray-700">Treat inputs as today's dollars</span>
+              <div class="relative inline-block w-10 align-middle select-none">
+                <input type="checkbox" id="toggleAdvancedInflation" class="toggle-checkbox absolute block w-6 h-6 rounded-full bg-white border-4 appearance-none cursor-pointer" role="switch" aria-checked="false" />
+                <label for="toggleAdvancedInflation" class="toggle-label block overflow-hidden h-6 rounded-full bg-gray-300 cursor-pointer"><span class="sr-only">Toggle treating advanced inputs as today's dollars</span></label>
+              </div>
+            </div>
+            <div class="max-h-80 overflow-y-auto">
+              <table class="w-full text-sm text-left">
+                <thead class="text-xs text-gray-700 uppercase bg-gray-100 sticky top-0">
+                  <tr>
+                    <th class="px-2 py-2">Age</th>
+                    <th class="px-2 py-2">Spend ($)</th>
+                    <th class="px-2 py-2">Income ($)</th>
+                    <th class="px-2 py-2">Return (%)</th>
+                  </tr>
+                </thead>
+                <tbody id="advancedInputsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Charts Column -->
+      <div class="lg:col-span-2 space-y-8">
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+          <h2 class="text-2xl font-semibold text-gray-800 mb-1">Chart 1: Total Account Balance (Nominal)</h2>
+          <p class="text-gray-600 mb-4">Shows the projected account balance over time in future dollars.</p>
+          <!-- 2.4-b: Add accessible label for screen readers -->
+          <div class="relative h-96"><canvas id="nominalChart" aria-label="Projected nominal balance line chart"></canvas></div>
+          <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div id="nominalCrossover66" class="summary-box"></div>
+            <div id="nominalCrossover67" class="summary-box"></div>
+          </div>
+        </div>
+        <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
+          <h2 class="text-2xl font-semibold text-gray-800 mb-1">Chart 2: Account Balance (Inflation-Adjusted)</h2>
+          <p class="text-gray-600 mb-2">Shows the purchasing power of the account balance in today's dollars (age 65 dollars).</p>
+          <p class="text-sm text-gray-500 mb-4 italic">Note: Break-even points differ from nominal when investment returns or spending/income are enabled.</p>
+          <!-- 2.4-b: Add accessible label for screen readers -->
+          <div class="relative h-96"><canvas id="inflationChart" aria-label="Projected inflation-adjusted balance line chart"></canvas></div>
+          <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div id="inflationCrossover66" class="summary-box"></div>
+            <div id="inflationCrossover67" class="summary-box"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // 2.5-a: Wrap all logic in an IIFE to avoid polluting the global scope.
+    (function () {
+      'use strict';
+      // --- Configuration & Theming ---
+
+      // 2.5-b: Centralize colors and other theme properties.
+      const theme = {
+        colors: {
+          65: '#36A2EB', // Chart.js default blue
+          66: '#FF9F40', // A vibrant orange
+          67: '#4BC0C0', // Chart.js default teal
+          crossover66: 'rgba(255, 159, 64, 0.7)',
+          crossover67: 'rgba(75, 192, 192, 0.7)',
+          toggle: '#4f46e5',      // Tailwind's indigo-600
+          toggleHover: '#6366F1', // Tailwind's indigo-500
+          toggleFocusOutline: '#4f46e5',
+          toggleBg: '#E5E7EB',    // Tailwind's gray-200
+          toggleBgHover: '#D1D5DB',// Tailwind's gray-300
+          toggleBgDisabled: '#d1d5db',
+        },
+        borderColors: {
+            66: '#F97316', // Tailwind's orange-500
+            67: '#14B8A6', // Tailwind's teal-500
+            default: '#E5E7EB', // Tailwind's gray-200
+        }
+      };
+      
+      // --- DOM Elements ---
+      const elements = {
+        maxAge: document.getElementById('maxAge'),
+        inflationRate: document.getElementById('inflationRate'),
+        colaRate: document.getElementById('colaRate'),
+        benefit65: document.getElementById('benefit65'),
+        benefit66: document.getElementById('benefit66'),
+        benefit67: document.getElementById('benefit67'),
+        annualSpending: document.getElementById('annualSpending'),
+        spendingStartAge: document.getElementById('spendingStartAge'),
+        extraIncome: document.getElementById('extraIncome'),
+        incomeEndAge: document.getElementById('incomeEndAge'),
+        earnRate: document.getElementById('earnRate'),
+        toggleSpending: document.getElementById('toggleSpending'),
+        toggleExtraIncome: document.getElementById('toggleExtraIncome'),
+        toggleEarnRate: document.getElementById('toggleEarnRate'),
+        toggleAdvanced: document.getElementById('toggleAdvanced'),
+        toggleInflateCashflows: document.getElementById('toggleInflateCashflows'),
+        toggleAdvancedInflation: document.getElementById('toggleAdvancedInflation'),
+        spendingInputContainer: document.getElementById('spendingInputContainer'),
+        extraIncomeInputContainer: document.getElementById('extraIncomeInputContainer'),
+        earnRateInputContainer: document.getElementById('earnRateInputContainer'),
+        simpleInputsContainer: document.getElementById('simpleInputsContainer'),
+        advancedInputsContainer: document.getElementById('advancedInputsContainer'),
+        advancedInputsTableBody: document.getElementById('advancedInputsTableBody'),
+        nominalCtx: document.getElementById('nominalChart').getContext('2d'),
+        inflationCtx: document.getElementById('inflationChart').getContext('2d'),
+        nominalCrossover66: document.getElementById('nominalCrossover66'),
+        nominalCrossover67: document.getElementById('nominalCrossover67'),
+        inflationCrossover66: document.getElementById('inflationCrossover66'),
+        inflationCrossover67: document.getElementById('inflationCrossover67'),
+      };
+
+      // --- State Variables ---
+      let nominalChart, inflationChart;
+      const startAges = [65, 66, 67];
+      // 2.3-a: Cache for advanced inputs to persist data between mode switches.
+      const advancedCache = {};
+      // 2.3-b: ID for debouncing recalculations.
+      let recalcId;
+
+      // --- Core Functions ---
+
+      /**
+       * Injects dynamic styles into the document head based on the theme object.
+       * 2.1-b & 2.5-b: Fixes CDN issues with @apply and centralizes colors.
+       */
+      function applyThemeStyles() {
+        const style = document.createElement('style');
+        style.textContent = `
+          .toggle-checkbox:checked { border-color: ${theme.colors.toggle}; }
+          .toggle-checkbox:checked + .toggle-label { background-color: ${theme.colors.toggle}; }
+          .toggle-label { background-color: ${theme.colors.toggleBg}; }
+          .toggle-label:hover { background-color: ${theme.colors.toggleBgHover}; }
+          .toggle-checkbox:checked + .toggle-label:hover { background-color: ${theme.colors.toggleHover}; }
+          .toggle-checkbox:focus + .toggle-label { outline: 2px solid ${theme.colors.toggleFocusOutline}; }
+          .toggle-checkbox:disabled + .toggle-label { background: ${theme.colors.toggleBgDisabled}; cursor: not-allowed; }
+        `;
+        document.head.appendChild(style);
+      }
+
+      /**
+       * Sets the left border color of a summary box.
+       * 2.5-b: Uses centralized theme colors.
+       */
+      function setBorderColor(el, colorKey) {
+        el.style.borderLeftColor = theme.borderColors[colorKey] || theme.borderColors.default;
+      }
+
+      /**
+       * Calculates all financial data based on current inputs.
+       */
+      function calculateData(inputs) {
+        const labels = Array.from({ length: inputs.maxAge - 64 }, (_, i) => 65 + i);
+        const nominalDatasets = [];
+        const inflationDatasets = [];
+
+        startAges.forEach(startAge => {
+          const nominalData = [];
+          const inflationData = [];
+          let nominalBalance = 0;
+          let realBalance = 0;
+
+          for (let i = 0; i < labels.length; i++) {
+            const currentAge = labels[i];
+            const yearsFromStart = currentAge - 65;
+            
+            let currentAnnualBenefit = 0;
+            if (currentAge >= startAge) {
+              const initialBenefit = inputs.benefitsByStartAge[startAge] * 12;
+              const yearsOfCola = currentAge - startAge;
+              currentAnnualBenefit = initialBenefit * Math.pow(1 + inputs.colaRate, yearsOfCola);
+            }
+
+            let yearlyData;
+            if (inputs.useAdvanced) {
+              const adv = inputs.advancedData[currentAge] || { spend: 0, income: 0, earnRate: inputs.useEarnRate ? inputs.earnRate : 0 };
+              if (inputs.advancedInflation) {
+                const cumulativeInflation = Math.pow(1 + inputs.inflationRate, yearsFromStart);
+                yearlyData = {
+                  spend: adv.spend * cumulativeInflation,
+                  income: adv.income * cumulativeInflation,
+                  earnRate: adv.earnRate,
+                };
+              } else {
+                yearlyData = adv;
+              }
+            } else {
+              let baseSpending = inputs.useSpending && currentAge >= inputs.spendingStartAge ? inputs.annualSpending : 0;
+              let baseIncome = inputs.useExtraIncome && currentAge <= inputs.incomeEndAge ? inputs.extraIncome : 0;
+              
+              if (inputs.inflateCashflows) {
+                  if (baseSpending > 0 && currentAge > inputs.spendingStartAge) {
+                      const spendingInflationYears = currentAge - inputs.spendingStartAge;
+                      baseSpending = inputs.annualSpending * Math.pow(1 + inputs.inflationRate, spendingInflationYears);
+                  }
+                   if (baseIncome > 0 && currentAge > 65) {
+                      const incomeInflationYears = currentAge - 65;
+                      baseIncome = inputs.extraIncome * Math.pow(1 + inputs.inflationRate, incomeInflationYears);
+                  }
+              }
+              
+              yearlyData = {
+                spend: baseSpending,
+                income: baseIncome,
+                earnRate: inputs.useEarnRate ? inputs.earnRate : 0,
+              };
+            }
+
+            // --- Nominal Calculation ---
+            // 2.2-b: Always compound, even if balance is negative.
+            nominalBalance *= (1 + yearlyData.earnRate);
+            nominalBalance += currentAnnualBenefit + yearlyData.income - yearlyData.spend;
+            nominalData.push(nominalBalance);
+
+            // --- Real (Inflation-Adjusted) Calculation ---
+            // 2.2-a: Use the exact formula for real earn rate.
+            const realEarnRate = (1 + yearlyData.earnRate) / (1 + inputs.inflationRate) - 1;
+            
+            // 2.2-b: Always compound, even if balance is negative.
+            realBalance *= (1 + realEarnRate);
+            
+            const deflator = Math.pow(1 + inputs.inflationRate, yearsFromStart);
+            const realBenefit = currentAnnualBenefit / deflator;
+            const realIncome = yearlyData.income / deflator;
+            const realSpend = yearlyData.spend / deflator;
+            
+            realBalance += realBenefit + realIncome - realSpend;
+            inflationData.push(realBalance);
+          }
+
+          const datasetOptions = {
+            label: `Start at Age ${startAge}`,
+            borderColor: theme.colors[startAge],
+            borderWidth: 2.5,
+            pointRadius: 0,
+            tension: 0.1,
+          };
+          nominalDatasets.push({ ...datasetOptions, data: nominalData });
+          inflationDatasets.push({ ...datasetOptions, data: inflationData });
+        });
+
+        return { labels, nominalDatasets, inflationDatasets };
+      }
+
+      /**
+       * Finds the intersection point between two datasets.
+       */
+      function findIntersection(labels, data1, data2) {
+        if (!data1 || !data2) return null;
+        for (let i = 1; i < labels.length; i++) {
+          if (data2[i] > data1[i] && data2[i - 1] <= data1[i - 1]) {
+            const prevDiff = data1[i - 1] - data2[i - 1];
+            const gainPerYear = (data2[i] - data2[i-1]) - (data1[i] - data1[i-1]);
+            if (gainPerYear <= 0) continue;
+            
+            const yearsToCrossover = prevDiff / gainPerYear;
+            const crossoverAge = labels[i-1] + yearsToCrossover;
+
+            let year = Math.floor(crossoverAge);
+            let month = Math.round((crossoverAge - year) * 12);
+            if (month === 12) {
+                year += 1;
+                month = 0;
+            }
+            
+            return { age: crossoverAge, label: `Age ${year}y ${month}m` };
+          }
+        }
+        return null;
+      }
+
+      /**
+       * Convert arrays to {x,y} for linear x-scale rendering.
+       */
+      function toXY(labels, series) {
+        return labels.map((age, idx) => ({ x: age, y: series[idx] }));
+      }
+
+      /**
+       * Renders or updates a chart with data and annotations.
+       */
+      function renderChart(chartInstance, context, data, title, annotations) {
+        const options = {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 0 },
+          scales: {
+            x: { type: 'linear', title: { display: true, text: 'Age', font: { size: 14 } }, ticks: { stepSize: 1 } },
+            y: { title: { display: true, text: title, font: { size: 14 } }, ticks: { callback: value => '$' + value.toLocaleString() } }
+          },
+          plugins: {
+            tooltip: { mode: 'index', intersect: false, callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}` } },
+            legend: { position: 'top' },
+            annotation: { annotations: annotations }
+          },
+          interaction: { mode: 'index', intersect: false }
+        };
+
+        const xyDatasets = data.datasets.map(ds => ({ ...ds, data: toXY(data.labels, ds.data) }));
+
+        if (chartInstance) {
+          chartInstance.data.datasets = xyDatasets;
+          chartInstance.options.plugins.annotation.annotations = annotations;
+          chartInstance.update();
+          return chartInstance;
+        }
+        return new Chart(context, { type: 'line', data: { datasets: xyDatasets }, options });
+      }
+
+      /**
+       * Generates the table for advanced yearly inputs.
+       * 2.3-a: Reads from the cache to pre-fill values.
+       */
+      function generateAdvancedTable() {
+        const inputs = getInputs();
+        elements.advancedInputsTableBody.innerHTML = '';
+        for (let age = 65; age <= inputs.maxAge; age++) {
+          const cached = advancedCache[age] || {};
+          
+          const defaultSpend = inputs.useSpending && age >= inputs.spendingStartAge ? inputs.annualSpending : 0;
+          const defaultIncome = inputs.useExtraIncome && age <= inputs.incomeEndAge ? inputs.extraIncome : 0;
+          const defaultEarnRate = inputs.useEarnRate ? inputs.earnRate : 0;
+
+          const spendVal = cached.spend ?? defaultSpend;
+          const incomeVal = cached.income ?? defaultIncome;
+          const earnRateVal = (cached.earnRate ?? defaultEarnRate) * 100;
+
+          const row = `
+            <tr class="border-b">
+              <td class="px-2 py-1 font-medium">${age}</td>
+              <td><input type="number" class="advanced-input" data-age="${age}" data-type="spend" value="${spendVal}" min="0"></td>
+              <td><input type="number" class="advanced-input" data-age="${age}" data-type="income" value="${incomeVal}" min="0"></td>
+              <td><input type="number" class="advanced-input" data-age="${age}" data-type="earnRate" step="0.1" value="${earnRateVal.toFixed(1)}" min="-20" max="50"></td>
+            </tr>`;
+          elements.advancedInputsTableBody.insertAdjacentHTML('beforeend', row);
+        }
+        // Add event listeners to the newly created inputs
+        document.querySelectorAll('.advanced-input').forEach(input => input.addEventListener('change', handleAdvancedInputChange));
+      }
+
+      /**
+       * Gathers all user inputs from the DOM.
+       */
+      function getInputs() {
+        const inputs = {
+          maxAge: parseInt(elements.maxAge.value) || 85,
+          inflationRate: parseFloat(elements.inflationRate.value) / 100 || 0,
+          colaRate: parseFloat(elements.colaRate.value) / 100 || 0,
+          benefitsByStartAge: {
+            65: parseFloat(elements.benefit65.value) || 0,
+            66: parseFloat(elements.benefit66.value) || 0,
+            67: parseFloat(elements.benefit67.value) || 0,
+          },
+          annualSpending: parseFloat(elements.annualSpending.value) || 0,
+          spendingStartAge: parseInt(elements.spendingStartAge.value) || 65,
+          extraIncome: parseFloat(elements.extraIncome.value) || 0,
+          incomeEndAge: parseInt(elements.incomeEndAge.value) || 95,
+          earnRate: parseFloat(elements.earnRate.value) / 100 || 0,
+          useSpending: elements.toggleSpending.checked,
+          useExtraIncome: elements.toggleExtraIncome.checked,
+          useEarnRate: elements.toggleEarnRate.checked,
+          useAdvanced: elements.toggleAdvanced.checked,
+          inflateCashflows: elements.toggleInflateCashflows.checked,
+          advancedInflation: elements.toggleAdvancedInflation.checked,
+          advancedData: {}
+        };
+
+        if (inputs.useAdvanced) {
+          document.querySelectorAll('.advanced-input').forEach(input => {
+            const age = parseInt(input.dataset.age, 10);
+            const type = input.dataset.type;
+            if (!inputs.advancedData[age]) inputs.advancedData[age] = {};
+            let value = parseFloat(input.value) || 0;
+            if (type === 'earnRate') value /= 100;
+            inputs.advancedData[age][type] = value;
+          });
+        }
+        return inputs;
+      }
+      
+      /**
+       * The actual logic for updating the UI, wrapped by the debounced updateUI function.
+       */
+      function realUpdate() {
+        const useAdvanced = elements.toggleAdvanced.checked;
+        elements.simpleInputsContainer.style.display = useAdvanced ? 'none' : 'block';
+        elements.advancedInputsContainer.style.display = useAdvanced ? 'block' : 'none';
+        elements.spendingInputContainer.style.display = elements.toggleSpending.checked ? 'grid' : 'none';
+        elements.extraIncomeInputContainer.style.display = elements.toggleExtraIncome.checked ? 'grid' : 'none';
+        elements.earnRateInputContainer.style.display = elements.toggleEarnRate.checked ? 'block' : 'none';
+
+        const inputs = getInputs();
+        const { labels, nominalDatasets, inflationDatasets } = calculateData(inputs);
+
+        function createAnnotationsAndSummaries(datasets, prefix) {
+          const annotations = {};
+          const d65 = datasets[0].data;
+          const d66 = datasets[1].data;
+          const d67 = datasets[2].data;
+
+          const crossover66vs65 = findIntersection(labels, d65, d66);
+          const crossover67vs66 = findIntersection(labels, d66, d67);
+
+          const summary66El = document.getElementById(`${prefix}Crossover66`);
+          const summary67El = document.getElementById(`${prefix}Crossover67`);
+
+          if (crossover66vs65) {
+            annotations['line66vs65'] = {
+              type: 'line', xMin: crossover66vs65.age, xMax: crossover66vs65.age,
+              borderColor: theme.colors.crossover66, borderWidth: 2, borderDash: [6, 6],
+              label: { content: `${crossover66vs65.label}: 66 > 65`, enabled: true, position: 'start', yAdjust: -15, backgroundColor: theme.colors.crossover66, font: { size: 10 } }
+            };
+            summary66El.innerHTML = `<span class="block text-xs font-medium text-gray-500">Wait for Age 66: Break-Even</span><strong class="block text-xl font-semibold text-gray-800 mt-1">${crossover66vs65.label}</strong>`;
+            setBorderColor(summary66El, 66);
+          } else {
+            summary66El.innerHTML = `<span class="block text-xs font-medium text-gray-500">Wait for Age 66: Break-Even</span><strong class="block text-lg font-semibold text-gray-600 mt-1">Not realized by age ${inputs.maxAge}</strong>`;
+            setBorderColor(summary66El, 'default');
+          }
+
+          if (crossover67vs66) {
+            annotations['line67vs66'] = {
+              type: 'line', xMin: crossover67vs66.age, xMax: crossover67vs66.age,
+              borderColor: theme.colors.crossover67, borderWidth: 2, borderDash: [6, 6],
+              label: { content: `${crossover67vs66.label}: 67 > 66`, enabled: true, position: 'start', yAdjust: 15, backgroundColor: theme.colors.crossover67, font: { size: 10 } }
+            };
+            summary67El.innerHTML = `<span class="block text-xs font-medium text-gray-500">Wait for Age 67: Break-Even</span><strong class="block text-xl font-semibold text-gray-800 mt-1">${crossover67vs66.label}</strong>`;
+            setBorderColor(summary67El, 67);
+          } else {
+            summary67El.innerHTML = `<span class="block text-xs font-medium text-gray-500">Wait for Age 67: Break-Even</span><strong class="block text-lg font-semibold text-gray-600 mt-1">Not realized by age ${inputs.maxAge}</strong>`;
+            setBorderColor(summary67El, 'default');
+          }
+          return annotations;
+        }
+
+        const nominalAnnotations = createAnnotationsAndSummaries(nominalDatasets, 'nominal');
+        const inflationAnnotations = createAnnotationsAndSummaries(inflationDatasets, 'inflation');
+
+        nominalChart = renderChart(nominalChart, elements.nominalCtx, { labels, datasets: nominalDatasets }, 'Account Balance (USD)', nominalAnnotations);
+        inflationChart = renderChart(inflationChart, elements.inflationCtx, { labels, datasets: inflationDatasets }, "Balance in Today's Dollars", inflationAnnotations);
+      }
+      
+      /**
+       * Debounced wrapper for UI updates to prevent excessive recalculations.
+       * 2.3-b: Improves performance on rapid input changes.
+       */
+      function updateUIDebounced() {
+        clearTimeout(recalcId);
+        recalcId = setTimeout(realUpdate, 150);
+      }
+
+      // --- Event Handlers ---
+      
+      /**
+       * Handles changes to advanced input fields.
+       * 2.3-a: Writes the new value to the cache before triggering a UI update.
+       */
+      function handleAdvancedInputChange(event) {
+        const input = event.target;
+        const age = parseInt(input.dataset.age, 10);
+        const type = input.dataset.type;
+        if (!advancedCache[age]) advancedCache[age] = {};
+
+        let value = parseFloat(input.value) || 0;
+        // Store earn rate as a decimal (e.g., 5% as 0.05)
+        if (type === 'earnRate') value /= 100;
+        advancedCache[age][type] = value;
+
+        updateUIDebounced();
+      }
+
+      function handleToggleChange(event) {
+        const toggle = event.target;
+        toggle.setAttribute('aria-checked', toggle.checked);
+        updateUIDebounced();
+      }
+
+      // --- Event Listeners Setup ---
+      const inputsToDebounce = [
+        'maxAge', 'inflationRate', 'colaRate', 'benefit65', 'benefit66', 'benefit67',
+        'annualSpending', 'spendingStartAge', 'extraIncome', 'incomeEndAge', 'earnRate'
+      ];
+      inputsToDebounce.forEach(id => elements[id].addEventListener('input', updateUIDebounced));
+
+      const toggles = [
+        'toggleSpending', 'toggleExtraIncome', 'toggleEarnRate', 'toggleInflateCashflows',
+        'toggleAdvancedInflation'
+      ];
+      toggles.forEach(id => elements[id].addEventListener('change', handleToggleChange));
+
+      elements.toggleAdvanced.addEventListener('change', (event) => {
+        if (elements.toggleAdvanced.checked) {
+          generateAdvancedTable();
+        }
+        handleToggleChange(event);
+      });
+
+      elements.maxAge.addEventListener('change', () => {
+        if (elements.toggleAdvanced.checked) {
+          generateAdvancedTable();
+        }
+        // The 'input' listener already calls the debounced update,
+        // so this 'change' listener only needs to handle table regeneration.
+      });
+
+      // --- Initial Load ---
+      window.onload = () => {
+        applyThemeStyles();
+        // Set initial aria-checked states
+        document.querySelectorAll('input[type="checkbox"][role="switch"]').forEach(toggle => {
+            toggle.setAttribute('aria-checked', toggle.checked);
+        });
+        realUpdate(); // Run the first update immediately without debounce
+      };
+    })();
+  </script>
+</body>
+</html>
