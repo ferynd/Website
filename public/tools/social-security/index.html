@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>An Interactive Guide to Your Social Security</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <!-- Chosen Palette: Warm Neutrals (Slate, Stone, Sky) -->
+    <!-- Application Structure Plan: A multi-section, single-page application. The structure is designed to guide the user from general concepts to specific, interactive scenarios. It starts with "The Basics" for foundational knowledge, then moves to interactive "Simulators" (2025, 2026, 2027) to allow hands-on learning about the most complex topics. A "Tax Calculator" section addresses the next logical question. Finally, a "Key Reminders" section provides a static summary. This thematic, task-oriented structure is more user-friendly than a linear document, allowing users to focus on one concept at a time and directly engage with the rules that affect them. -->
+    <!-- Visualization & Content Choices: 
+        - Report Info: 2025 Monthly Earnings Rule. Goal: Allow user to test different monthly earnings. Viz/Method: Four interactive input fields with real-time text feedback. Interaction: User enters earnings, text updates to show "Paid" or "Withheld". Justification: Direct, immediate feedback is clearer than a chart for this simple binary outcome. Method: Vanilla JS.
+        - Report Info: 2026 Annual Earnings Rule. Goal: Show the impact of annual earnings on total benefits. Viz/Method: A stacked bar chart. Interaction: User adjusts an earnings slider/input, the chart updates to show benefits received vs. withheld. Justification: A bar chart visually quantifies the reduction in benefits, making the "$1 for $2" rule easy to grasp. Library: Chart.js.
+        - Report Info: 2027 Adjustment of Reduction Factor (ARF). Goal: Explain how withheld benefits are returned. Viz/Method: Interactive text display showing total withheld amounts from other tabs and the resulting permanent monthly benefit increase using an accurate ARF formula. Interaction: Automatically updates when other simulators are used. Justification: Connects the short-term withholding to the long-term benefit, making the concept tangible. Method: Vanilla JS.
+        - Report Info: Taxability of Benefits & Tax Estimate. Goal: Help user estimate if benefits are taxed and what the final tax bill might be. Viz/Method: Simple input fields and a multi-part, color-coded result display. Interaction: User enters income, a clear summary shows the taxability tier and a rough tax calculation. Justification: A simple, non-chart visual is best for conveying distinct states (taxability tier) and a final calculated number (tax estimate). Method: Vanilla JS.
+        - CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .tab {
+            transition: all 0.3s ease;
+        }
+        .tab.active {
+            background-color: #0284c7; /* sky-600 */
+            color: white;
+            border-color: #0284c7; /* sky-600 */
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+        @media (min-width: 768px) {
+            .chart-container {
+                height: 350px;
+            }
+        }
+    </style>
+</head>
+<body class="text-slate-700">
+
+    <main class="max-w-4xl mx-auto p-4 md:p-8">
+        <!-- CONFIGURATION: Update href if /tools path changes -->
+        <a href="/tools" class="block text-sky-600 mb-4">&larr; Back to Tools</a>
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-slate-800">A Guide to Your Social Security</h1>
+            <p class="mt-2 text-lg text-slate-600">An interactive tool to help you understand your benefits and earnings.</p>
+        </header>
+
+        <!-- Tabs Navigation -->
+        <div class="mb-8 border-b border-slate-200">
+            <nav class="flex flex-wrap -mb-px" aria-label="Tabs">
+                <button class="tab active text-slate-600 hover:text-sky-600 hover:border-sky-300 whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm md:text-base" data-tab="basics">The Basics</button>
+                <button class="tab text-slate-600 hover:text-sky-600 hover:border-sky-300 whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm md:text-base" data-tab="2025">2025 Simulator</button>
+                <button class="tab text-slate-600 hover:text-sky-600 hover:border-sky-300 whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm md:text-base" data-tab="2026">2026 Simulator</button>
+                <button class="tab text-slate-600 hover:text-sky-600 hover:border-sky-300 whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm md:text-base" data-tab="2027">2027 & Beyond</button>
+                <button class="tab text-slate-600 hover:text-sky-600 hover:border-sky-300 whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm md:text-base" data-tab="tax">Tax Calculator</button>
+                <button class="tab text-slate-600 hover:text-sky-600 hover:border-sky-300 whitespace-nowrap py-4 px-4 border-b-2 font-medium text-sm md:text-base" data-tab="reminders">Key Reminders</button>
+            </nav>
+        </div>
+
+        <!-- Tab Content -->
+        <div id="tab-content-container">
+            <!-- The Basics -->
+            <section id="basics" class="tab-content active">
+                <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-4">The Big Picture: Three Key Things to Know</h2>
+                    <div class="space-y-6">
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0 h-10 w-10 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center text-xl font-bold">1</div>
+                            <div class="ml-4">
+                                <h3 class="text-lg font-semibold">Your Full Retirement Age (FRA) is 67</h3>
+                                <p class="text-slate-600">This is the age you can receive your full benefit with no limits on what you can earn. Since you're starting before age 67, special earnings rules apply.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0 h-10 w-10 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center text-xl font-bold">2</div>
+                            <div class="ml-4">
+                                <h3 class="text-lg font-semibold">The Earnings Test Isn't a Tax</h3>
+                                <p class="text-slate-600">If you earn over the limit, some benefits are temporarily withheld. This money is <span class="font-bold text-green-600">not lost forever</span>. It's credited back to you as a higher monthly payment after you reach your FRA.</p>
+                            </div>
+                        </div>
+                        <div class="flex items-start">
+                            <div class="flex-shrink-0 h-10 w-10 rounded-full bg-sky-100 text-sky-700 flex items-center justify-center text-xl font-bold">3</div>
+                            <div class="ml-4">
+                                <h3 class="text-lg font-semibold">How Payments Work</h3>
+                                <p class="text-slate-600">Social Security pays one month behind. A benefit for September arrives in October.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2025 Simulator -->
+            <section id="2025" class="tab-content">
+                <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-2">2025 Simulator: The "Monthly Rule"</h2>
+                    <p class="text-slate-600 mb-6">In your first year, you get a check for any month your earnings are **$1,950 or less**. Enter your estimated monthly earnings (wages + tips) below to see what happens.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4 p-4 border rounded-lg">
+                            <div>
+                                <label for="sept_earnings" class="block text-sm font-medium text-slate-700">September Earnings</label>
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span class="text-gray-500 sm:text-sm">$</span></div>
+                                    <input type="number" id="sept_earnings" class="block w-full rounded-md border-gray-300 pl-7 pr-2 py-2 focus:border-sky-500 focus:ring-sky-500" placeholder="0">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="oct_earnings" class="block text-sm font-medium text-slate-700">October Earnings</label>
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span class="text-gray-500 sm:text-sm">$</span></div>
+                                    <input type="number" id="oct_earnings" class="block w-full rounded-md border-gray-300 pl-7 pr-2 py-2 focus:border-sky-500 focus:ring-sky-500" placeholder="0">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="nov_earnings" class="block text-sm font-medium text-slate-700">November Earnings</label>
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span class="text-gray-500 sm:text-sm">$</span></div>
+                                    <input type="number" id="nov_earnings" class="block w-full rounded-md border-gray-300 pl-7 pr-2 py-2 focus:border-sky-500 focus:ring-sky-500" placeholder="0">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="dec_earnings" class="block text-sm font-medium text-slate-700">December Earnings</label>
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span class="text-gray-500 sm:text-sm">$</span></div>
+                                    <input type="number" id="dec_earnings" class="block w-full rounded-md border-gray-300 pl-7 pr-2 py-2 focus:border-sky-500 focus:ring-sky-500" placeholder="0">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-slate-50 p-6 rounded-lg flex flex-col justify-center">
+                            <h3 class="text-lg font-semibold mb-4 text-slate-800">Your 2025 Benefit Status:</h3>
+                            <ul class="space-y-3 text-slate-700">
+                                <li class="flex justify-between items-center"><span>September Check:</span> <span id="sept_status" class="font-bold text-green-600">Paid</span></li>
+                                <li class="flex justify-between items-center"><span>October Check:</span> <span id="oct_status" class="font-bold text-green-600">Paid</span></li>
+                                <li class="flex justify-between items-center"><span>November Check:</span> <span id="nov_status" class="font-bold text-green-600">Paid</span></li>
+                                <li class="flex justify-between items-center"><span>December Check:</span> <span id="dec_status" class="font-bold text-green-600">Paid</span></li>
+                            </ul>
+                            <hr class="my-4">
+                            <div class="text-center">
+                                <p class="text-slate-600">Total 2025 Benefits Received:</p>
+                                <p class="text-3xl font-bold text-sky-600" id="total_2025_benefits">$5,200</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2026 Simulator -->
+            <section id="2026" class="tab-content">
+                <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-2">2026 Simulator: The "Annual Rule"</h2>
+                    <p class="text-slate-600 mb-6">After your first year, an annual limit applies (est. **$23,400** for 2026). For every $2 you earn over this limit, $1 in benefits is withheld. Use the slider to see the impact.</p>
+                    <div class="mb-6">
+                        <label for="annual_earnings_2026" class="block font-medium text-slate-700">Your Estimated 2026 Annual Earnings:</label>
+                        <p class="text-3xl font-bold text-sky-600" id="annual_earnings_display">$23,400</p>
+                        <input type="range" id="annual_earnings_2026" min="0" max="50000" step="100" value="23400" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="benefitsChart2026"></canvas>
+                    </div>
+                    <div id="2026_summary" class="mt-6 text-center bg-slate-50 p-4 rounded-lg">
+                        <p class="text-slate-700">With earnings of <span class="font-bold" id="summary_earnings">$23,400</span>, you are not over the limit. You would receive your full <span class="font-bold text-green-600" id="summary_received">$15,600</span> in benefits.</p>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- 2027 & Beyond -->
+            <section id="2027" class="tab-content">
+                <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-4">2027 & Beyond: Getting Your Money Back</h2>
+                    <p class="text-slate-600 mb-6">When you reach your Full Retirement Age (FRA) in September 2027, the earnings limit disappears for good. More importantly, Social Security permanently increases your monthly check to give you credit for any benefits withheld earlier. This is called an "Adjustment of the Reduction Factor" (ARF).</p>
+                    
+                    <div class="bg-slate-50 p-6 rounded-lg text-center">
+                        <h3 class="text-lg font-semibold text-slate-800">Your Payback Calculation (ARF)</h3>
+                        <p class="text-slate-600 mt-2">Based on the simulators, here's your estimated adjustment:</p>
+                        <div class="flex flex-col md:flex-row justify-center items-center gap-4 md:gap-8 my-4">
+                            <div>
+                                <p class="text-sm text-slate-500">2025 Withheld</p>
+                                <p class="text-2xl font-bold text-red-600" id="withheld_2025_display">$0</p>
+                            </div>
+                            <div class="text-2xl font-bold text-slate-400">+</div>
+                            <div>
+                                <p class="text-sm text-slate-500">2026 Withheld</p>
+                                <p class="text-2xl font-bold text-red-600" id="withheld_2026_display">$0</p>
+                            </div>
+                            <div class="text-2xl font-bold text-slate-400">=</div>
+                            <div>
+                                <p class="text-sm text-slate-500">Total Withheld</p>
+                                <p class="text-2xl font-bold text-red-600" id="total_withheld_display">$0</p>
+                            </div>
+                        </div>
+                        <div class="mt-4 pt-4 border-t">
+                             <p class="text-slate-600">This results in a permanent monthly increase of:</p>
+                             <p class="text-4xl font-bold text-green-600 my-2" id="monthly_increase_display">+$0.00</p>
+                             <p class="text-slate-600">Your new estimated monthly benefit starting at FRA will be:</p>
+                             <p class="text-2xl font-bold text-sky-700" id="new_fra_benefit_display">$1,300.00</p>
+                        </div>
+                    </div>
+
+                    <div class="mt-8 pt-6 border-t">
+                         <h3 class="text-xl font-semibold mb-3 text-sky-700">What Happens in 2027 Before Your Birthday?</h3>
+                         <p class="text-slate-600 mb-4">In the year you reach FRA, a much higher earnings limit applies to the months <span class="font-bold">before</span> your birthday month. For Jan-Aug 2027, you can earn up to an estimated **$62,160** without benefits being withheld. If you go over that, they only withhold $1 for every $3 earned.</p>
+                         <h3 class="text-xl font-semibold mb-3 text-sky-700">What About Cost-of-Living Adjustments (COLA)?</h3>
+                         <p class="text-slate-600">Each year, Social Security benefits usually increase to keep up with inflation. This is the COLA. Your new benefit amount calculated above will <span class="font-bold">also</span> increase by any COLAs announced for 2026 and 2027, making your final check even higher.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Tax Calculator -->
+            <section id="tax" class="tab-content">
+                 <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-2">Will My Benefits Be Taxed?</h2>
+                    <p class="text-slate-600 mb-6">Federal tax on benefits depends on your "Combined Income." Enter your annual income details below to estimate if your benefits will be taxable and what your rough tax bill might be.</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="space-y-4 p-4 border rounded-lg">
+                            <div>
+                                <label for="tax_earnings" class="block text-sm font-medium text-slate-700">Annual Work Earnings (Wages + Tips)</label>
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span class="text-gray-500 sm:text-sm">$</span></div>
+                                    <input type="number" id="tax_earnings" class="block w-full rounded-md border-gray-300 pl-7 py-2" placeholder="25000">
+                                </div>
+                            </div>
+                            <div>
+                                <label for="tax_ss" class="block text-sm font-medium text-slate-700">Annual Social Security Benefits</label>
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span class="text-gray-500 sm:text-sm">$</span></div>
+                                    <input type="number" id="tax_ss" class="block w-full rounded-md border-gray-300 pl-7 py-2" placeholder="15600">
+                                </div>
+                            </div>
+                             <div>
+                                <label for="tax_other" class="block text-sm font-medium text-slate-700">Other Taxable Income (Pensions, etc.)</label>
+                                <div class="mt-1 relative rounded-md shadow-sm">
+                                    <div class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3"><span class="text-gray-500 sm:text-sm">$</span></div>
+                                    <input type="number" id="tax_other" class="block w-full rounded-md border-gray-300 pl-7 py-2" placeholder="0">
+                                </div>
+                            </div>
+                        </div>
+                        <div id="tax_result_container" class="bg-green-50 text-green-800 p-6 rounded-lg flex flex-col justify-center items-center text-center">
+                            <div id="taxability_section">
+                                <h3 class="text-lg font-semibold mb-2">Not Likely Taxable</h3>
+                                <p id="tax_result_text">Your estimated Combined Income of $0 is below the $25,000 threshold for a single filer. Your Social Security benefits are likely not subject to federal income tax.</p>
+                            </div>
+                            <hr class="w-full my-4 border-slate-300">
+                            <div id="tax_estimate_section">
+                                <h3 class="text-lg font-semibold mb-2">Estimated Federal Tax</h3>
+                                <p id="tax_estimate_text">Your total taxable income is low enough that after the standard deduction, you likely owe no federal income tax.</p>
+                                <p class="text-4xl font-bold my-2" id="tax_bill_display">$0</p>
+                            </div>
+                            <p class="text-xs mt-4">*This is a rough estimate for informational purposes only. Consult a tax professional for advice. Does not include state taxes.</p>
+                        </div>
+                    </div>
+                 </div>
+            </section>
+
+            <!-- Key Reminders -->
+            <section id="reminders" class="tab-content">
+                <div class="bg-white p-6 rounded-lg shadow-sm">
+                    <h2 class="text-2xl font-bold text-slate-800 mb-4">Key Reminders</h2>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <h3 class="text-xl font-semibold mb-3 text-sky-700">What Counts as "Earnings"?</h3>
+                            <p class="mb-4">This is very important for the earnings test.</p>
+                            <ul class="space-y-2">
+                                <li class="flex items-start"><span class="text-green-500 mr-2 font-bold">✔</span> <div><strong class="text-slate-800">Wages from a job</strong><br>Money you are paid for working.</div></li>
+                                <li class="flex items-start"><span class="text-green-500 mr-2 font-bold">✔</span> <div><strong class="text-slate-800">Reported tips</strong><br>Must be reported to your employer to count for Social Security and taxes.</div></li>
+                                <li class="flex items-start"><span class="text-green-500 mr-2 font-bold">✔</span> <div><strong class="text-slate-800">Net self-employment earnings</strong><br>Profit from your own business.</div></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-semibold mb-3 text-sky-700">What Does NOT Count?</h3>
+                             <p class="mb-4">This income does not affect the earnings test.</p>
+                            <ul class="space-y-2">
+                                <li class="flex items-start"><span class="text-red-500 mr-2 font-bold">✖</span> <div><strong class="text-slate-800">Pension payments</strong></div></li>
+                                <li class="flex items-start"><span class="text-red-500 mr-2 font-bold">✖</span> <div><strong class="text-slate-800">IRA or 401(k) withdrawals</strong></div></li>
+                                <li class="flex items-start"><span class="text-red-500 mr-2 font-bold">✖</span> <div><strong class="text-slate-800">Investment income</strong><br>(Interest, dividends, capital gains)</div></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="mt-8 pt-6 border-t">
+                        <h3 class="text-xl font-semibold mb-3 text-sky-700">Your To-Do List</h3>
+                        <ul class="list-disc list-inside space-y-2 text-slate-600">
+                            <li><strong>Keep Good Records:</strong> As a server, keep a daily log of your tips and report them accurately.</li>
+                            <li><strong>Plan for 2026:</strong> Keep an eye out for the official 2026 annual limit, which will be announced in October 2025.</li>
+                            <li><strong>Don't Worry:</strong> Remember, any withheld benefits come back to you later as a higher monthly payment.</li>
+                        </ul>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <script>
+        /* ------------------------------------------------------------- */
+        /* CONFIGURATION: Social Security calculation constants          */
+        /* ------------------------------------------------------------- */
+        const SS_CONSTANTS = {
+            MONTHLY_BENEFIT_START: 1300,
+            MONTHLY_LIMIT_2025: 1950,
+            ANNUAL_LIMIT_2026: 23400,
+            YEAR_OF_FRA_LIMIT_2027: 62160,
+            FRA_AGE: 67,
+            START_AGE: 65,
+            PRIMARY_INSURANCE_AMOUNT: 1500,
+            REDUCTION_RATE_PER_MONTH: 5 / 9 / 100,
+            STANDARD_DEDUCTION_2025: 15000,
+            COMBINED_INCOME_THRESHOLDS: {
+                TIER1: 25000,
+                TIER2: 34000
+            }
+        };
+
+        let withheld2025 = 0;
+        let withheld2026 = 0;
+
+        // Tab functionality
+        const tabs = document.querySelectorAll('.tab');
+        const tabContents = document.querySelectorAll('.tab-content');
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                const targetId = tab.getAttribute('data-tab');
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                tabContents.forEach(content => {
+                    content.style.display = content.id === targetId ? 'block' : 'none';
+                });
+            });
+        });
+        
+        document.querySelector('.tab-content.active').style.display = 'block';
+
+        // 2025 Simulator Logic
+        const earningsInputs2025 = {
+            sept: document.getElementById('sept_earnings'),
+            oct: document.getElementById('oct_earnings'),
+            nov: document.getElementById('nov_earnings'),
+            dec: document.getElementById('dec_earnings'),
+        };
+        const statusSpans2025 = {
+            sept: document.getElementById('sept_status'),
+            oct: document.getElementById('oct_status'),
+            nov: document.getElementById('nov_status'),
+            dec: document.getElementById('dec_status'),
+        };
+        const totalBenefitsSpan2025 = document.getElementById('total_2025_benefits');
+
+        function update2025Simulator() {
+            let totalBenefits = 0;
+            withheld2025 = 0;
+            for (const month in earningsInputs2025) {
+                const earnings = parseFloat(earningsInputs2025[month].value) || 0;
+                if (earnings > SS_CONSTANTS.MONTHLY_LIMIT_2025) {
+                    statusSpans2025[month].textContent = 'Withheld';
+                    statusSpans2025[month].classList.remove('text-green-600');
+                    statusSpans2025[month].classList.add('text-red-600');
+                    withheld2025 += SS_CONSTANTS.MONTHLY_BENEFIT_START;
+                } else {
+                    statusSpans2025[month].textContent = 'Paid';
+                    statusSpans2025[month].classList.remove('text-red-600');
+                    statusSpans2025[month].classList.add('text-green-600');
+                    totalBenefits += SS_CONSTANTS.MONTHLY_BENEFIT_START;
+                }
+            }
+            totalBenefitsSpan2025.textContent = `$${totalBenefits.toLocaleString()}`;
+            update2027Simulator();
+        }
+
+        Object.values(earningsInputs2025).forEach(input => input.addEventListener('input', update2025Simulator));
+        
+        // 2026 Simulator Logic
+        const earningsSlider2026 = document.getElementById('annual_earnings_2026');
+        const earningsDisplay2026 = document.getElementById('annual_earnings_display');
+        const summary2026 = document.getElementById('2026_summary');
+        
+        const annualBenefit2026 = SS_CONSTANTS.MONTHLY_BENEFIT_START * 12;
+        const ctx2026 = document.getElementById('benefitsChart2026').getContext('2d');
+        let benefitsChart2026 = new Chart(ctx2026, {
+            type: 'bar', data: { labels: ['Your 2026 Social Security'], datasets: [{ label: 'Benefits Received', data: [annualBenefit2026], backgroundColor: 'rgba(56, 189, 248, 0.7)' }, { label: 'Benefits Withheld', data: [0], backgroundColor: 'rgba(248, 113, 113, 0.7)' }] },
+            options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: $${c.parsed.x.toLocaleString()}` } } }, scales: { x: { stacked: true, title: { display: true, text: 'Total Annual Benefits' }, ticks: { callback: (v) => '$' + v.toLocaleString() } }, y: { stacked: true } } }
+        });
+
+        function update2026Simulator() {
+            const earnings = parseFloat(earningsSlider2026.value);
+            earningsDisplay2026.textContent = `$${earnings.toLocaleString()}`;
+
+            let withheld = 0;
+            if (earnings > SS_CONSTANTS.ANNUAL_LIMIT_2026) {
+                withheld = (earnings - SS_CONSTANTS.ANNUAL_LIMIT_2026) / 2;
+            }
+            withheld = Math.min(withheld, annualBenefit2026);
+            withheld2026 = withheld;
+            const received = annualBenefit2026 - withheld;
+
+            benefitsChart2026.data.datasets[0].data[0] = received;
+            benefitsChart2026.data.datasets[1].data[0] = withheld;
+            benefitsChart2026.update();
+
+            if (withheld > 0) {
+                summary2026.innerHTML = `<p class="text-slate-700">With earnings of <span class="font-bold">$${earnings.toLocaleString()}</span>, you are <span class="font-bold text-red-600">$${(earnings - SS_CONSTANTS.ANNUAL_LIMIT_2026).toLocaleString()}</span> over the limit. Social Security would withhold <span class="font-bold text-red-600">$${withheld.toLocaleString()}</span>, and you would receive <span class="font-bold text-green-600">$${received.toLocaleString()}</span>.</p>`;
+            } else {
+                summary2026.innerHTML = `<p class="text-slate-700">With earnings of <span class="font-bold">$${earnings.toLocaleString()}</span>, you are not over the limit. You would receive your full <span class="font-bold text-green-600">$${received.toLocaleString()}</span> in benefits.</p>`;
+            }
+            update2027Simulator();
+        }
+        
+        earningsSlider2026.addEventListener('input', update2026Simulator);
+
+        // 2027 Simulator Logic
+        const withheld2025Display = document.getElementById('withheld_2025_display');
+        const withheld2026Display = document.getElementById('withheld_2026_display');
+        const totalWithheldDisplay = document.getElementById('total_withheld_display');
+        const monthlyIncreaseDisplay = document.getElementById('monthly_increase_display');
+        const newFraBenefitDisplay = document.getElementById('new_fra_benefit_display');
+
+        function calculateARF(startAge, withheldMonths, primaryInsuranceAmount) {
+            const monthsEarly = (SS_CONSTANTS.FRA_AGE - startAge) * 12;
+            const reductionRate = SS_CONSTANTS.REDUCTION_RATE_PER_MONTH;
+            
+            const originalReductionMonths = Math.min(monthsEarly, 36);
+            const originalReduction = originalReductionMonths * reductionRate;
+            const originalBenefit = primaryInsuranceAmount * (1 - originalReduction);
+
+            const adjustedReductionMonths = Math.max(0, originalReductionMonths - withheldMonths);
+            const newReduction = adjustedReductionMonths * reductionRate;
+            const newBenefit = primaryInsuranceAmount * (1 - newReduction);
+            
+            return {
+                monthlyIncrease: newBenefit - originalBenefit,
+                newMonthlyBenefit: newBenefit
+            };
+        }
+
+        function update2027Simulator() {
+            const totalWithheld = withheld2025 + withheld2026;
+            const monthsWithheld = Math.round(totalWithheld / SS_CONSTANTS.MONTHLY_BENEFIT_START);
+            
+            const arfResult = calculateARF(SS_CONSTANTS.START_AGE, monthsWithheld, SS_CONSTANTS.PRIMARY_INSURANCE_AMOUNT);
+
+            withheld2025Display.textContent = `$${withheld2025.toLocaleString()}`;
+            withheld2026Display.textContent = `$${withheld2026.toLocaleString({maximumFractionDigits: 0})}`;
+            totalWithheldDisplay.textContent = `$${totalWithheld.toLocaleString({maximumFractionDigits: 0})}`;
+            monthlyIncreaseDisplay.textContent = `+$${arfResult.monthlyIncrease.toFixed(2)}`;
+            newFraBenefitDisplay.textContent = `$${arfResult.newMonthlyBenefit.toFixed(2)}`;
+        }
+
+        // Tax Calculator Logic
+        const taxEarningsInput = document.getElementById('tax_earnings');
+        const taxSsInput = document.getElementById('tax_ss');
+        const taxOtherInput = document.getElementById('tax_other');
+        const taxResultContainer = document.getElementById('tax_result_container');
+        const taxabilitySection = document.getElementById('taxability_section');
+        const taxEstimateText = document.getElementById('tax_estimate_text');
+        const taxBillDisplay = document.getElementById('tax_bill_display');
+
+        function updateTaxCalculator() {
+            const workEarnings = parseFloat(taxEarningsInput.value) || 0;
+            const ssBenefits = parseFloat(taxSsInput.value) || 0;
+            const otherIncome = parseFloat(taxOtherInput.value) || 0;
+            
+            const agi = workEarnings + otherIncome;
+            const halfSS = ssBenefits / 2;
+            const combinedIncome = agi + halfSS;
+
+            let taxableSS = 0;
+            let resultClass = 'bg-green-50 text-green-800';
+            let title = 'Not Likely Taxable';
+            let text = `Your estimated Combined Income of $${combinedIncome.toLocaleString()} is below the $${SS_CONSTANTS.COMBINED_INCOME_THRESHOLDS.TIER1.toLocaleString()} threshold.`;
+
+            if (combinedIncome > SS_CONSTANTS.COMBINED_INCOME_THRESHOLDS.TIER2) {
+                resultClass = 'bg-red-50 text-red-800';
+                title = 'Potentially 85% Taxable';
+                const base50Amount = Math.min(ssBenefits * 0.5, 4500);
+                taxableSS = Math.min(ssBenefits * 0.85, base50Amount + (combinedIncome - SS_CONSTANTS.COMBINED_INCOME_THRESHOLDS.TIER2) * 0.85);
+                text = `Your Combined Income of $${combinedIncome.toLocaleString()} is over the $${SS_CONSTANTS.COMBINED_INCOME_THRESHOLDS.TIER2.toLocaleString()} threshold.`;
+            } else if (combinedIncome > SS_CONSTANTS.COMBINED_INCOME_THRESHOLDS.TIER1) {
+                resultClass = 'bg-yellow-50 text-yellow-800';
+                title = 'Potentially 50% Taxable';
+                taxableSS = Math.min(ssBenefits * 0.5, (combinedIncome - SS_CONSTANTS.COMBINED_INCOME_THRESHOLDS.TIER1) * 0.5);
+                text = `Your Combined Income of $${combinedIncome.toLocaleString()} is between the taxability thresholds.`;
+            }
+            
+            taxabilitySection.innerHTML = `<h3 class="text-lg font-semibold mb-2">${title}</h3><p>${text}</p>`;
+            taxResultContainer.className = `p-6 rounded-lg flex flex-col justify-center items-center text-center transition-colors duration-300 ${resultClass}`;
+
+            const totalTaxableIncome = agi + taxableSS;
+            const finalTaxableIncome = Math.max(0, totalTaxableIncome - SS_CONSTANTS.STANDARD_DEDUCTION_2025);
+            
+            let taxBill = 0;
+            if (finalTaxableIncome > 0) {
+                if (finalTaxableIncome <= 11925) taxBill = finalTaxableIncome * 0.10;
+                else if (finalTaxableIncome <= 48475) taxBill = 1192.50 + (finalTaxableIncome - 11925) * 0.12;
+                else if (finalTaxableIncome <= 103350) taxBill = 5578.50 + (finalTaxableIncome - 48475) * 0.22;
+                else taxBill = 17651 + (finalTaxableIncome - 103350) * 0.24;
+            }
+
+            taxEstimateText.innerHTML = `After adding taxable benefits ($${taxableSS.toFixed(0)}) and applying the ~$${SS_CONSTANTS.STANDARD_DEDUCTION_2025.toLocaleString()} standard deduction, your final taxable income is about <span class="font-bold">$${finalTaxableIncome.toLocaleString({maximumFractionDigits: 0})}</span>.`;
+            taxBillDisplay.textContent = `$${taxBill.toLocaleString({maximumFractionDigits: 0})}`;
+        }
+
+        [taxEarningsInput, taxSsInput, taxOtherInput].forEach(input => input.addEventListener('input', updateTaxCalculator));
+
+        // Initial calls to populate data
+        update2025Simulator();
+        update2026Simulator();
+        updateTaxCalculator();
+    </script>
+</body>
+</html>

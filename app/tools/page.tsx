@@ -1,9 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowRight, Calculator, HeartPulse } from 'lucide-react';
+import { ArrowRight, Calculator, HeartPulse, BarChart } from 'lucide-react';
 
-// You can add more tools to this list as you create them
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: list of available tools                       */
+/* ------------------------------------------------------------ */
 const toolList = [
   {
     name: 'Trip Cost Calculator',
@@ -16,6 +18,12 @@ const toolList = [
     description: 'A simple tool to track daily calorie intake (Static HTML).',
     href: '/tools/CalorieTracker/index.html',
     icon: <HeartPulse size={24} className="text-red-500" />,
+  },
+  {
+    name: 'Social Security (interactive guide)',
+    description: 'Learn how benefits and earnings interact through simulations.',
+    href: '/tools/social-security/index.html',
+    icon: <BarChart size={24} className="text-sky-500" />,
   },
 ];
 
