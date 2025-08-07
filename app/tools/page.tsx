@@ -25,6 +25,12 @@ const toolList = [
     href: '/tools/social-security/index.html',
     icon: <BarChart size={24} className="text-sky-500" />,
   },
+  {
+    name: 'Social Security (calculator)',
+    description: 'Visualize the financial impact of different claiming strategies.',
+    href: '/tools/social-security-calculator/index.html',
+    icon: <BarChart size={24} className="text-emerald-500" />,
+  },
 ];
 
 export default function ToolsPage() {

@@ -114,6 +114,16 @@ In summary, Calorie Tracker is a self-contained single-page application (SPA) th
 
 When deploying or forking this project, note that the Firebase config is included in the repository. If you wanted to use your own Firebase project, you should update the keys in `public/tools/CalorieTracker/firebaseConfig.js`. Also, security rules in Firestore should be configured appropriately (e.g., to restrict data access to each authenticated user).
 
+### Social Security (interactive guide)
+"Learn how benefits and earnings interact through simulations."
+
+This static guide lives at `public/tools/social-security/` and is accessed via `/tools/social-security/index.html`. It uses Tailwind CSS and Chart.js to walk through Social Security basics and provides simulators for upcoming years, letting users explore how earnings affect benefits.
+
+### Social Security (calculator)
+"Visualize the financial impact of different claiming strategies."
+
+Located at `public/tools/social-security-calculator/`, this planner models claiming ages with configurable assumptions. Users can toggle spending, extra income, and investment returns, or enter yearly values. Charts display nominal and inflation-adjusted balances, highlighting break-even ages between strategies.
+
 The Tools section is designed to be extensible. Some tools might be better suited as static HTML/JS (like Calorie Tracker, which was developed outside Next for flexibility), while others can be built directly with React in the Next.js app (like Trip Cost). The site supports both approaches.
 
 ## Trips Section (Travel Logs)
