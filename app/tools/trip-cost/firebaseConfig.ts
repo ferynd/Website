@@ -4,7 +4,7 @@
 // They are publicly accessible identifiers and are safe to commit.
 
 export const firebaseConfig = {
-  apiKey: "AIzaSyBH...ZDss",
+  apiKey: "AIzaSyBHdodVoGI962K1MWeyAp519duJX22ZDss",
   authDomain: "jlb-calorietracker.firebaseapp.com",
   projectId: "jlb-calorietracker",
   storageBucket: "jlb-calorietracker.firebasestorage.app",
