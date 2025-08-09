@@ -87,12 +87,15 @@ This is an interactive React application built as part of the Next.js app (not a
 
 **Features:** The Trip Cost Calculator lets you add a list of people and then add expenses. For each expense, you can specify the total amount, who paid how much, and choose a split method (evenly among participants or a custom split)[34][35]. You can also record direct payments between people (for example, if one person paid another outside of expenses)[36][37]. The tool then calculates net balances for each person. In the end, it will tell you how much each person spent vs. how much they benefited and who owes money to whom. For example, after inputting all data, the tool might display lines like "Person A Owes $X" or "Person B Is Owed $Y", color-coded in red/green[38]. This gives a clear settlement plan for the group.
 
-The Trip Cost app runs entirely in the browser; all data is in-memory (no backend persistence). It uses React state to manage the list of people, expenses, and payments. When the page is closed or reloaded, the data resets (future enhancements might include saving to local storage, but currently it's session-based). Because it's integrated in Next.js, navigation to this tool is seamless (it's a regular page at `/tools/trip-cost`).
+
+
+**Update (2025):** The Trip Cost tool has been upgraded to support multiple users and trips via Firebase Authentication and Cloud Firestore. Users must sign up or log in with email; the tool persists all trip data (participants, expenses, and payments) in Firestore, so information is saved across sessions and devices. The page now lives entirely in `app/tools/trip-cost/page.tsx` (a client component) and uses `firebaseConfig.ts` for configuration. The old loader and client files are retained for reference but are no longer used. Features now include creating multiple trips (admins only), adding registered users or custom participants, editing and deleting expenses/payments with permissions, and real‑time updates via Firestore listeners.
+e Tr~~ip Cost app runs entirely in the browser; all data is in-memory (no backend persistence). It uses React state to manage the list of people, expenses, and payments. When the page is closed or reloaded, the data resets (future enhancements might include saving to local storage, but currently it's session-based). Because it's integrated in Next.js, navigation to this tool is seamless (it's a regular page at `/tools/trip-cost`).
 
 ### Calorie Tracker
 "A simple tool to track daily calorie intake (Static HTML)."[30]
 
-This is a full-featured nutrition and calorie tracking web app, implemented as a static client-side project in `public/tools/CalorieTracker/`. Despite being static files, it's quite powerful and uses Firebase as a backend to store data. The main interface is accessed via `/tools/CalorieTracker/index.html`. Key aspects of the Calorie Tracker:
+This is a full-featured nutrition and calorie tracking web app, implemented as a static client-side project in `public/tools/ (This statement applied to the original client-only version; the 2025 upgrade uses Firestore for persistence.)CalorieTracker/`. Despite being static files, it's quite powerful and uses Firebase as a backend to store data. The main interface is accessed via `/tools/CalorieTracker/index.html`. Key aspects of the Calorie Tracker:
 
 **HTML/CSS/Layout:** The interface is defined in `index.html`[39][40] and styled with Tailwind CSS (included via CDN) and custom CSS. It provides a Daily Log section (where you can input what you ate for a given date), a Staging Area to parse and prepare entries from text, and a dashboard with charts and summary statistics[40][41].
 
@@ -113,6 +116,16 @@ This is a full-featured nutrition and calorie tracking web app, implemented as a
 In summary, Calorie Tracker is a self-contained single-page application (SPA) that loads when you visit its URL. It leverages Firebase for data storage so that your entries and preferences persist. It's integrated into the site as a tool: the Tools listing page describes it and links to it, but internally it operates outside of Next.js (no Next.js page was needed aside from the link, since it's purely client-side in the public directory).
 
 When deploying or forking this project, note that the Firebase config is included in the repository. If you wanted to use your own Firebase project, you should update the keys in `public/tools/CalorieTracker/firebaseConfig.js`. Also, security rules in Firestore should be configured appropriately (e.g., to restrict data access to each authenticated user).
+
+### Social Security (interactive guide)
+"Learn how benefits and earnings interact through simulations."
+
+This static guide lives at `public/tools/social-security/` and is accessed via `/tools/social-security/index.html`. It uses Tailwind CSS and Chart.js to walk through Social Security basics and provides simulators for upcoming years, letting users explore how earnings affect benefits.
+
+### Social Security (calculator)
+"Visualize the financial impact of different claiming strategies."
+
+Located at `public/tools/social-security-calculator/`, this planner models claiming ages with configurable assumptions. Users can toggle spending, extra income, and investment returns, or enter yearly values. Charts display nominal and inflation-adjusted balances, highlighting break-even ages between strategies.
 
 The Tools section is designed to be extensible. Some tools might be better suited as static HTML/JS (like Calorie Tracker, which was developed outside Next for flexibility), while others can be built directly with React in the Next.js app (like Trip Cost). The site supports both approaches.
 
