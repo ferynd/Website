@@ -123,32 +123,73 @@ export const DEFAULT_TARGETS = {
   omega3: 1.6
 };
 
-// A map to normalize various text inputs into standardized nutrient keys
+// FIXED: A map to normalize various text inputs into standardized nutrient keys
+// Ordered from most specific to least specific to avoid conflicts
 export const nutrientMap = {
-  'calories': 'calories', 'cal': 'calories', 'kcal': 'calories',
-  'protein': 'protein', 'prot': 'protein',
-  'carbs': 'carbs', 'carbohydrate': 'carbs', 'carbohydrates': 'carbs',
-  'fat': 'fat', 'fats': 'fat',
-  'fiber': 'fiber', 'fibre': 'fiber',
-  'potassium': 'potassium', 'k': 'potassium',
-  'magnesium': 'magnesium', 'mg': 'magnesium',
-  'sodium': 'sodium', 'na': 'sodium',
-  'calcium': 'calcium', 'ca': 'calcium',
+  // Multi-word vitamin names (most specific first)
+  'vitamin b12': 'vitaminB12',
+  'vit b12': 'vitaminB12', 
+  'vitamin b6': 'vitaminB6',
+  'vit b6': 'vitaminB6',
+  'vitamin a': 'vitaminA',
+  'vit a': 'vitaminA',
+  'vitamin c': 'vitaminC', 
+  'vit c': 'vitaminC',
+  'vitamin d': 'vitaminD',
+  'vit d': 'vitaminD',
+  'vitamin e': 'vitaminE',
+  'vit e': 'vitaminE', 
+  'vitamin k': 'vitaminK',
+  'vit k': 'vitaminK',
+  
+  // Multi-word omega names
+  'omega-3': 'omega3',
+  'omega 3': 'omega3',
+  'omega-3 fatty acids': 'omega3',
+  'omega 3 fatty acids': 'omega3',
+  
+  // Full nutrient names
+  'calories': 'calories',
+  'protein': 'protein', 
+  'carbohydrate': 'carbs',
+  'carbohydrates': 'carbs',
+  'carbs': 'carbs',
+  'fat': 'fat',
+  'fats': 'fat',
+  'fiber': 'fiber',
+  'fibre': 'fiber',
+  'dietary fiber': 'fiber',
+  'potassium': 'potassium',
+  'magnesium': 'magnesium',
+  'sodium': 'sodium',
+  'calcium': 'calcium',
   'choline': 'choline',
-  'vitamin d': 'vitaminD', 'vit d': 'vitaminD', 'd': 'vitaminD',
-  'vitamin b12': 'vitaminB12', 'vit b12': 'vitaminB12', 'b12': 'vitaminB12',
-  'folate': 'folate', 'b9': 'folate', 'folic acid': 'folate',
-  'vitamin c': 'vitaminC', 'vit c': 'vitaminC', 'c': 'vitaminC',
-  'vitamin b6': 'vitaminB6', 'vit b6': 'vitaminB6', 'b6': 'vitaminB6',
-  'vitamin a': 'vitaminA', 'vit a': 'vitaminA', 'a': 'vitaminA',
-  'vitamin e': 'vitaminE', 'vit e': 'vitaminE', 'e': 'vitaminE',
-  'vitamin k': 'vitaminK', 'vit k': 'vitaminK', 'k': 'vitaminK',
-  'iron': 'iron', 'fe': 'iron',
-  'zinc': 'zinc', 'zn': 'zinc',
-  'selenium': 'selenium', 'se': 'selenium',
-  'iodine': 'iodine', 'i': 'iodine',
-  'phosphorus': 'phosphorus', 'p': 'phosphorus',
-  'omega-3': 'omega3', 'omega 3': 'omega3', 'dha': 'omega3', 'epa': 'omega3'
+  'folate': 'folate',
+  'folic acid': 'folate',
+  'iron': 'iron',
+  'zinc': 'zinc',
+  'selenium': 'selenium',
+  'iodine': 'iodine',
+  'phosphorus': 'phosphorus',
+  
+  // Common abbreviations (avoid conflicts with units)
+  'cal': 'calories',
+  'kcal': 'calories',
+  'prot': 'protein',
+  'cho': 'carbs',
+  'b12': 'vitaminB12',
+  'b6': 'vitaminB6', 
+  'b9': 'folate',
+  'dha': 'omega3',
+  'epa': 'omega3',
+  
+  // Chemical symbols (last to avoid conflicts)
+  'fe': 'iron',
+  'zn': 'zinc',
+  'se': 'selenium',
+  'na': 'sodium',
+  'ca': 'calcium'
+  
 };
 
 // Helper functions for banking calculations
