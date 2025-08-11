@@ -1,28 +1,8 @@
-/*
- * Trip Cost Tool – Next.js Page Component
- *
- * This component implements authentication, trip management and a scaffold for
- * the multi‑user Trip Cost calculator.  Users must sign up or log in via
- * Firebase Auth before they can view their trips.  Trips are persisted to
- * Cloud Firestore under the `tripCostApp/trips` collection.  Each trip
- * document contains a list of participants, expenses and payments.  Admin
- * users (defined by the ADMIN_EMAIL constant in firebaseConfig.ts) can
- * create and delete trips and manage participants.  Regular users can view
- * and contribute to trips they are part of.
- *
- * NOTE: This file currently scaffolds the authentication flow and trip
- * dashboard.  The detailed expense calculator UI from the original
- * trip‑cost‑client has not yet been integrated.  A future revision will
- * embed the calculator component and synchronize its state with Firestore.
- */
-
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
 import type { Timestamp } from 'firebase/firestore';
 import {
-  getAuth,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   onAuthStateChanged,
@@ -30,36 +10,49 @@ import {
   type User,
 } from 'firebase/auth';
 import {
-  getFirestore,
+  addDoc,
   collection,
+  deleteDoc,
   doc,
-  setDoc,
   getDoc,
   getDocs,
   onSnapshot,
+  orderBy,
   query,
-  where,
   serverTimestamp,
-  deleteDoc,
+  setDoc,
+  where,
 } from 'firebase/firestore';
-import { firebaseConfig, ADMIN_EMAIL } from './firebaseConfig';
+import { ADMIN_EMAIL } from './firebaseConfig';
+import {
+  auth,
+  db,
+  usersCol,
+  userDoc,
+  tripsCol,
+  tripDoc,
+  tripAuditCol,
+} from './db';
 
-// Initialize Firebase app, auth and firestore once per module.
-const firebaseApp = initializeApp(firebaseConfig);
-const auth = getAuth(firebaseApp);
-const db = getFirestore(firebaseApp);
+/*
+ * Trip Cost Tool – Next.js Client Page
+ *
+ * Namespaced data model (isolated from your Calorie Tracker):
+ *   artifacts/trip-cost/users/{uid}
+ *   artifacts/trip-cost/trips/{tripId}
+ *   artifacts/trip-cost/trips/{tripId}/audit/{logId}
+ *
+ * This replaces the previous ad-hoc paths like 'tripCostApp/users' and
+ * 'tripCostApp/trips', which caused invalid segment errors. :contentReference[oaicite:2]{index=2}
+ */
 
 // ---- Type Definitions ----
 
-// Basic person used by the calculator UI.  Separate from TripParticipant; this
-// type only includes id and name for display.
 interface Person {
   id: string;
   name: string;
 }
 
-// User profile stored under tripCostApp/users/{uid}.  Each document holds
-// metadata about a user and whether they are an admin.
 interface UserProfile {
   uid: string;
   email: string;
@@ -70,8 +63,6 @@ interface UserProfile {
   createdAt?: Timestamp;
 }
 
-// Participant entry stored in trip documents.  If the participant is a
-// registered user, userId holds their UID and isRegistered is true.
 interface TripParticipant {
   id: string;
   name: string;
@@ -80,9 +71,6 @@ interface TripParticipant {
   addedBy: string;
 }
 
-// Expense record within a trip.  paidBy is a map of participantId to amount
-// contributed.  manualSplit holds per‑participant split overrides when
-// splitType is 'manual'.  createdBy indicates the UID of the creator.
 interface Expense {
   id: string;
   category: string;
@@ -96,8 +84,6 @@ interface Expense {
   createdAt?: Timestamp;
 }
 
-// Payment record between two participants.  createdBy indicates the UID of
-// whoever recorded the payment.
 interface Payment {
   id: string;
   payerId: string;
@@ -109,8 +95,6 @@ interface Payment {
   createdAt?: Timestamp;
 }
 
-// Trip document stored in Firestore.  participantIds is a derived array of
-// registered participants' UIDs used for efficient queries.
 interface Trip {
   id: string;
   name: string;
@@ -123,16 +107,25 @@ interface Trip {
   payments: Payment[];
 }
 
-// ---- Main Page Component ----
+interface AuditEntry {
+  id: string;
+  type: string;
+  actorUid: string | null;
+  actorEmail: string | null;
+  ts?: Timestamp;
+  details?: unknown;
+}
+
+// ---- Page Component ----
 
 export default function TripCostPage() {
-  // --- Authentication state ---
+  // Authentication
   const [user, setUser] = useState<User | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showAuth, setShowAuth] = useState(false);
 
-  // --- Auth form state ---
+  // Auth form
   const [isLogin, setIsLogin] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -140,30 +133,29 @@ export default function TripCostPage() {
   const [lastInitial, setLastInitial] = useState('');
   const [authError, setAuthError] = useState('');
 
-  // --- Data collections ---
+  // Data
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [people, setPeople] = useState<Person[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
+  const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
 
-  // --- Dashboard & participant add form state ---
+  // UI state
   const [selectedUserIdToAdd, setSelectedUserIdToAdd] = useState('');
   const [customParticipantName, setCustomParticipantName] = useState('');
   const [newTripName, setNewTripName] = useState('');
 
-  // --- Debounced saving timer ---
-  const [saveTimer, setSaveTimer] = useState<NodeJS.Timeout | null>(null);
+  const [saveTimer, setSaveTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  // Listen for Firebase auth state changes and load the user's profile.
+
+  // Listen for auth and load profile
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
-        // Fetch the user profile from Firestore
-        const profileRef = doc(db, 'tripCostApp/users', firebaseUser.uid);
-        const profileSnap = await getDoc(profileRef);
+        const profileSnap = await getDoc(userDoc(firebaseUser.uid));
         if (profileSnap.exists()) {
           const data = profileSnap.data() as Omit<UserProfile, 'uid'>;
           setUserProfile({ uid: profileSnap.id, ...data });
@@ -181,11 +173,11 @@ export default function TripCostPage() {
     return () => unsub();
   }, []);
 
-  // Load all registered users when the current user is an admin.
+  // Admin: load all registered users
   useEffect(() => {
     if (!userProfile?.isAdmin) return;
-    const loadUsers = async () => {
-      const snap = await getDocs(collection(db, 'tripCostApp/users'));
+    const load = async () => {
+      const snap = await getDocs(usersCol());
       const list: UserProfile[] = [];
       snap.forEach((d) => {
         const data = d.data() as Omit<UserProfile, 'uid'>;
@@ -193,19 +185,14 @@ export default function TripCostPage() {
       });
       setAllUsers(list);
     };
-    loadUsers().catch(() => {
-      // ignore errors; they will surface in UI when used
-    });
+    load().catch(() => {});
   }, [userProfile]);
 
-  // Subscribe to trips collection for the current user.  Admins see all trips;
-  // regular users only see trips where their UID appears in participantIds.
+  // Trips for current user
   useEffect(() => {
     if (!user) return;
-    const tripsRef = collection(db, 'tripCostApp/trips');
-    const q = userProfile?.isAdmin
-      ? tripsRef
-      : query(tripsRef, where('participantIds', 'array-contains', user.uid));
+    const base = tripsCol();
+    const q = userProfile?.isAdmin ? base : query(base, where('participantIds', 'array-contains', user.uid));
     const unsub = onSnapshot(q, (snap) => {
       const list: Trip[] = [];
       snap.forEach((d) => {
@@ -217,11 +204,10 @@ export default function TripCostPage() {
     return () => unsub();
   }, [user, userProfile]);
 
-  // Listen for changes on the currently selected trip to enable live updates.
+  // Active trip snapshot
   useEffect(() => {
     if (!selectedTrip) return;
-    const ref = doc(db, 'tripCostApp/trips', selectedTrip.id);
-    const unsub = onSnapshot(ref, (d) => {
+    const unsub = onSnapshot(tripDoc(selectedTrip.id), (d) => {
       if (!d.exists()) return;
       const data = d.data() as Omit<Trip, 'id'>;
       setSelectedTrip({ id: d.id, ...data });
@@ -232,48 +218,74 @@ export default function TripCostPage() {
     return () => unsub();
   }, [selectedTrip]);
 
-  // Debounce saving the current trip when its local data changes.
+  // Admin-only: audit log for the active trip
+  useEffect(() => {
+    if (!selectedTrip || !userProfile?.isAdmin) return;
+    const q = query(tripAuditCol(selectedTrip.id), orderBy('ts', 'desc'));
+    const unsub = onSnapshot(q, (snap) => {
+      const items: AuditEntry[] = [];
+      snap.forEach((d) => items.push({ id: d.id, ...(d.data() as Omit<AuditEntry, 'id'>) }));
+      setAuditEntries(items);
+    });
+    return () => unsub();
+  }, [selectedTrip, userProfile]);
+
+  // Audit helper
+  const writeAudit = useCallback(
+    async (tripId: string, type: string, details?: unknown) => {
+      try {
+        await addDoc(tripAuditCol(tripId), {
+          type,
+          details: details ?? null,
+          actorUid: user?.uid ?? null,
+          actorEmail: user?.email ?? null,
+          ts: serverTimestamp(),
+        });
+      } catch (e) {
+        console.error('audit write failed', e);
+      }
+    },
+    [user]
+  );
+
+  // Admin save for trip
   const saveTrip = useCallback(async () => {
-    if (!selectedTrip || !user) return;
-    // Derive participantIds from participants with userId
+    if (!selectedTrip || !user || !userProfile?.isAdmin) return;
     const participantIds = Array.from(
-      new Set((selectedTrip.participants || [])
-        .map((p) => p.userId)
-        .filter(Boolean) as string[]),
+      new Set((selectedTrip.participants || []).map((p) => p.userId).filter(Boolean) as string[])
     );
     const updated: Trip = {
       ...selectedTrip,
-      expenses: expenses,
+      expenses,
       payments: allPayments,
-      participantIds: participantIds,
+      participantIds,
       updatedAt: serverTimestamp() as unknown as Timestamp,
     };
     try {
-      await setDoc(doc(db, 'tripCostApp/trips', selectedTrip.id), updated, { merge: true });
+      await setDoc(tripDoc(selectedTrip.id), updated, { merge: true });
+      await writeAudit(selectedTrip.id, 'trip_autosave', {
+        participants: updated.participants.length,
+        expenses: updated.expenses.length,
+        payments: updated.payments.length,
+      });
     } catch (err: unknown) {
       console.error('Failed to save trip', err);
     }
-  }, [selectedTrip, expenses, allPayments, user]);
+  }, [selectedTrip, expenses, allPayments, user, userProfile, writeAudit]);
 
-  // Persist local changes to Firestore after a short debounce.  We disable
-  // exhaustive-deps here because saveTimer is intentionally omitted to avoid
-  // infinite loops.
+  // Debounced autosave (admin only)
   useEffect(() => {
-    if (!selectedTrip) return;
+    if (!selectedTrip || !userProfile?.isAdmin) return;
     if (saveTimer) clearTimeout(saveTimer);
-    const timer = setTimeout(() => {
-      saveTrip();
-    }, 1500);
+    const timer = setTimeout(() => saveTrip(), 1500);
     setSaveTimer(timer);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [people, expenses, allPayments, selectedTrip, saveTrip]);
+  }, [people, expenses, allPayments, selectedTrip, userProfile, saveTrip, saveTimer]);
 
-  // Handle signup/login form submission
+  // Auth submit
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLogin) {
-      // Log in
       try {
         await signInWithEmailAndPassword(auth, authEmail, authPassword);
         setAuthError('');
@@ -282,7 +294,6 @@ export default function TripCostPage() {
         setAuthError(msg);
       }
     } else {
-      // Sign up
       if (!firstName.trim() || !lastInitial.trim()) {
         setAuthError('Please provide your first name and last initial.');
         return;
@@ -291,7 +302,7 @@ export default function TripCostPage() {
         const cred = await createUserWithEmailAndPassword(auth, authEmail, authPassword);
         const uid = cred.user.uid;
         const displayName = `${firstName.trim()} ${lastInitial.trim().toUpperCase()}`;
-        await setDoc(doc(db, 'tripCostApp/users', uid), {
+        await setDoc(userDoc(uid), {
           email: authEmail.toLowerCase(),
           firstName: firstName.trim(),
           lastInitial: lastInitial.trim().toUpperCase(),
@@ -311,12 +322,12 @@ export default function TripCostPage() {
     await signOut(auth);
   };
 
-  // Create a new trip (admin only)
+  // Admin: create trip
   const handleCreateTrip = async () => {
     const name = newTripName.trim();
     if (!name || !user || !userProfile?.isAdmin) return;
     const tripId = crypto.randomUUID();
-    const newTrip: Omit<Trip, 'id'> = {
+    const docData: Omit<Trip, 'id'> = {
       name,
       createdBy: user.uid,
       createdAt: serverTimestamp() as unknown as Timestamp,
@@ -327,27 +338,28 @@ export default function TripCostPage() {
       payments: [],
     };
     try {
-      await setDoc(doc(db, 'tripCostApp/trips', tripId), newTrip);
+      await setDoc(tripDoc(tripId), docData);
+      await writeAudit(tripId, 'trip_created', { name });
       setNewTripName('');
     } catch (err: unknown) {
       console.error('Failed to create trip', err);
     }
   };
 
-  // Delete a trip (admin only)
+  // Admin: delete trip
   const handleDeleteTrip = async (trip: Trip) => {
     if (!userProfile?.isAdmin) return;
-    if (!window.confirm(`Are you sure you want to delete the trip "${trip.name}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete the trip "${trip.name}"? This cannot be undone.`)) return;
     try {
-      await deleteDoc(doc(db, 'tripCostApp/trips', trip.id));
-      // If the current trip was deleted, return to dashboard
+      await writeAudit(trip.id, 'trip_deleted', { name: trip.name });
+      await deleteDoc(tripDoc(trip.id));
       if (selectedTrip?.id === trip.id) setSelectedTrip(null);
     } catch (err: unknown) {
       console.error('Failed to delete trip', err);
     }
   };
 
-  // Open a trip and load its data into local state
+  // Admin: open trip and add participant
   const handleOpenTrip = (trip: Trip) => {
     setSelectedTrip(trip);
     setPeople((trip.participants || []).map((p) => ({ id: p.id, name: p.name })));
@@ -355,8 +367,7 @@ export default function TripCostPage() {
     setAllPayments(trip.payments || []);
   };
 
-  // Add a participant to the current trip (admin only)
-  const handleAddParticipant = () => {
+  const handleAddParticipant = async () => {
     if (!userProfile?.isAdmin || !user || !selectedTrip) return;
     let participant: TripParticipant | null = null;
     if (selectedUserIdToAdd) {
@@ -378,29 +389,27 @@ export default function TripCostPage() {
       } as TripParticipant;
     }
     if (!participant) return;
-    // Update local people list
+
+    // Update local state; autosave will persist
     setPeople((prev) => [...prev, { id: participant!.id, name: participant!.name }]);
-    // Update trip participants and participantIds in memory; auto‑save effect will persist
     setSelectedTrip((prev) =>
       prev
         ? {
             ...prev,
             participants: [...prev.participants, participant!],
             participantIds: [
-              ...new Set([
-                ...prev.participantIds,
-                ...(participant!.userId ? [participant!.userId] : []),
-              ]),
+              ...new Set([...prev.participantIds, ...(participant!.userId ? [participant!.userId] : [])]),
             ],
           }
-        : prev,
+        : prev
     );
-    // Reset form
     setSelectedUserIdToAdd('');
     setCustomParticipantName('');
+    await writeAudit(selectedTrip.id, 'participant_added', { participant });
   };
 
-  // Render the login/signup form
+  // --- Renderers ---
+
   const renderAuthForm = () => (
     <div className="flex justify-center items-center mt-10">
       <div className="w-full max-w-md bg-white p-6 border rounded shadow">
@@ -454,10 +463,7 @@ export default function TripCostPage() {
               </div>
             </div>
           )}
-          <button
-            type="submit"
-            className="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700"
-          >
+          <button type="submit" className="w-full bg-purple-600 text-white py-2 rounded hover:bg-purple-700">
             {isLogin ? 'Log In' : 'Sign Up'}
           </button>
         </form>
@@ -494,17 +500,13 @@ export default function TripCostPage() {
     </div>
   );
 
-  // Render the list of trips for the logged in user
   const renderTripList = () => (
     <div className="max-w-5xl mx-auto p-4">
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-2xl font-bold">My Trips</h1>
         <div className="flex items-center gap-4">
           <span className="text-gray-600">{userProfile?.displayName}</span>
-          <button
-            onClick={handleLogout}
-            className="bg-gray-200 px-3 py-1 rounded text-sm hover:bg-gray-300"
-          >
+          <button onClick={handleLogout} className="bg-gray-200 px-3 py-1 rounded text-sm hover:bg-gray-300">
             Log out
           </button>
         </div>
@@ -518,20 +520,14 @@ export default function TripCostPage() {
             placeholder="New trip name"
             className="flex-1 p-2 border rounded"
           />
-          <button
-            onClick={handleCreateTrip}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-          >
+          <button onClick={handleCreateTrip} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
             Create Trip
           </button>
         </div>
       )}
       <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         {trips.map((trip) => (
-          <div
-            key={trip.id}
-            className="p-4 border rounded shadow flex flex-col justify-between"
-          >
+          <div key={trip.id} className="p-4 border rounded shadow flex flex-col justify-between">
             <div>
               <h2 className="text-lg font-semibold mb-1">{trip.name}</h2>
               <p className="text-sm text-gray-600">
@@ -559,41 +555,31 @@ export default function TripCostPage() {
             </div>
           </div>
         ))}
-        {trips.length === 0 && (
-          <p className="text-gray-600">No trips yet.</p>
-        )}
+        {trips.length === 0 && <p className="text-gray-600">No trips yet.</p>}
       </div>
     </div>
   );
 
-  // Render the trip detail view.  This is a placeholder while the calculator
-  // integration is implemented.
   const renderTripDetail = () => (
     <div className="max-w-4xl mx-auto p-4">
-      <button
-        onClick={() => setSelectedTrip(null)}
-        className="mb-4 text-blue-600 hover:underline"
-      >
+      <button onClick={() => setSelectedTrip(null)} className="mb-4 text-blue-600 hover:underline">
         ← Back to trips
       </button>
       <h1 className="text-2xl font-bold mb-2">{selectedTrip?.name}</h1>
-      <p className="mb-4 text-sm text-gray-600">
-        Participants: {selectedTrip?.participants.length}
-      </p>
+      <p className="mb-4 text-sm text-gray-600">Participants: {selectedTrip?.participants.length}</p>
+
       {userProfile?.isAdmin && (
         <div className="mb-6 border p-4 rounded">
           <h2 className="font-semibold mb-2">Add Participant</h2>
           <div className="flex flex-col gap-2 md:flex-row md:items-end">
             <div className="flex-1">
-              <label className="block text-sm text-gray-600 mb-1">
-                Registered user
-              </label>
+              <label className="block text-sm text-gray-600 mb-1">Registered user</label>
               <select
                 value={selectedUserIdToAdd}
                 onChange={(e) => setSelectedUserIdToAdd(e.target.value)}
                 className="w-full p-2 border rounded"
               >
-                <option value="">— Select a user —</option>
+                <option value="">Select a user</option>
                 {allUsers.map((u) => (
                   <option key={u.uid} value={u.uid}>
                     {u.displayName} ({u.email})
@@ -611,32 +597,46 @@ export default function TripCostPage() {
                 className="w-full p-2 border rounded"
               />
             </div>
-            <button
-              onClick={handleAddParticipant}
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-            >
+            <button onClick={handleAddParticipant} className="bg-blue-600 text-white px-4 py-2 rounded">
               Add
             </button>
           </div>
         </div>
       )}
-      {/* Placeholder for calculator UI */}
+
       <div className="p-6 border rounded bg-gray-50 text-gray-600">
         <p className="mb-2">Trip calculator coming soon.</p>
         <p className="text-sm">The full expense and payment editor will live here.</p>
       </div>
+
+      {userProfile?.isAdmin && (
+        <div className="mt-6">
+          <h3 className="font-semibold mb-2">Audit Log</h3>
+          {auditEntries.length === 0 ? (
+            <p className="text-sm text-gray-600">No activity yet.</p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {auditEntries.map((a) => (
+                <li key={a.id} className="border p-2 rounded bg-white">
+                  <div className="flex justify-between">
+                    <span className="font-medium">{a.type}</span>
+                    <span className="text-gray-500">
+                      {a.ts ? new Date((a.ts as unknown as { seconds: number }).seconds * 1000).toLocaleString() : ''}
+                    </span>
+                  </div>
+                  <div className="text-gray-700">
+                    by {a.actorEmail || a.actorUid || 'unknown'}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 
-  if (authLoading) {
-    return <div className="p-8 text-center">Loading…</div>;
-  }
-
-  // Render auth form if no user is logged in
-  if (showAuth) {
-    return renderAuthForm();
-  }
-
-  // If a trip is selected, render its details; otherwise, show the list
+  if (authLoading) return <div className="p-8 text-center">Loading…</div>;
+  if (showAuth) return renderAuthForm();
   return selectedTrip ? renderTripDetail() : renderTripList();
 }
