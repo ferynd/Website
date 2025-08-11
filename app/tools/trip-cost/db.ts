@@ -19,7 +19,7 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Collection/doc builders
+// Collection/doc builders (always-valid segment counts)
 export const usersCol = (): CollectionReference =>
   collection(db, APP_COLLECTION, APP_ID, 'users');
 
