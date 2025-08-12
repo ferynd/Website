@@ -5,7 +5,7 @@
 // ===============================
 // None
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useTrip } from '../../TripContext';
 import { EXPENSE_CATEGORIES } from '../../constants';
 import type { UserProfile } from '../../pageTypes';
@@ -16,27 +16,17 @@ export default function ExpenseForm({
   userProfile: UserProfile | null;
 }) {
   const { participants, newExpense, setNewExpense, addExpense } = useTrip();
+  const [error, setError] = useState('');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     if (!userProfile) return;
-    if (!newExpense.description || !newExpense.totalAmount) return;
-    const draft = {
-      ...newExpense,
-      splitParticipants: newExpense.splitParticipants.length
-        ? newExpense.splitParticipants
-        : participants.map((p) => p.id),
-    };
-    await addExpense(draft, userProfile.uid);
-    setNewExpense({
-      category: EXPENSE_CATEGORIES[0],
-      description: '',
-      totalAmount: '',
-      paidBy: {},
-      splitType: 'even',
-      splitParticipants: [],
-      manualSplit: {},
-    });
+    try {
+      await addExpense(newExpense);
+    } catch (err: unknown) {
+      if (err instanceof Error) setError(err.message);
+    }
   };
 
   return (
@@ -162,6 +152,7 @@ export default function ExpenseForm({
           })}
         </div>
       </div>
+      {error && <p className="text-red-600 text-sm">{error}</p>}
       <button
         type="submit"
         className="bg-green-600 text-white px-3 py-1 rounded disabled:opacity-50"

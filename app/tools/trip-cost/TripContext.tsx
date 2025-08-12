@@ -51,7 +51,7 @@ interface TripContextValue {
   ) => Promise<void>;
   updateParticipant: (id: string, name: string) => Promise<void>;
   deleteParticipant: (id: string) => Promise<void>;
-  addExpense: (draft: ExpenseDraft, authorUid: string) => Promise<void>;
+  addExpense: (draft: ExpenseDraft) => Promise<void>;
   updateExpense: (
     id: string,
     draft: ExpenseDraft
@@ -82,7 +82,7 @@ export const TripProvider = ({
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
-  const [newExpense, setNewExpense] = useState<ExpenseDraft>({
+  const emptyExpenseDraft: ExpenseDraft = {
     category: EXPENSE_CATEGORIES[0],
     description: '',
     totalAmount: '',
@@ -90,7 +90,8 @@ export const TripProvider = ({
     splitType: 'even',
     splitParticipants: [],
     manualSplit: {},
-  });
+  };
+  const [newExpense, setNewExpense] = useState<ExpenseDraft>(emptyExpenseDraft);
 
   useEffect(() => {
     setTrip(null);
@@ -115,7 +116,7 @@ export const TripProvider = ({
     const q = query(tripAuditCol(selectedTripId), orderBy('ts', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setAuditEntries(
-        snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AuditEntry, 'id'>) }))
+        snap.docs.map(d => ({ id: d.id, ...(d.data() as Omit<AuditEntry, 'id'>) }))
       );
     });
     return () => unsub();
@@ -180,58 +181,118 @@ export const TripProvider = ({
     );
   };
 
-  const addExpense = async (draft: ExpenseDraft, authorUid: string) => {
+  const addExpense = async (draft: ExpenseDraft) => {
     if (!trip) return;
-    const exp: Expense = {
+    const totalAmount = Math.max(
+      0,
+      parseFloat(String(draft.totalAmount || ''))
+    );
+    const paidBy: Record<string, number> = {};
+    for (const [pid, val] of Object.entries(draft.paidBy || {})) {
+      const n = parseFloat(String(val));
+      if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
+    }
+    const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
+    let splitParticipants = Array.isArray(draft.splitParticipants)
+      ? draft.splitParticipants.slice()
+      : [];
+    if (!splitParticipants.length)
+      splitParticipants = (trip?.participants || []).map((p) => p.id);
+    const manualSplit: Expense['manualSplit'] = {};
+    if (splitType === 'manual') {
+      for (const pid of splitParticipants) {
+        const v = draft.manualSplit?.[pid]?.value;
+        const n = parseFloat(String(v));
+        if (!Number.isNaN(n) && n >= 0) {
+          manualSplit[pid] = { type: 'amount', value: n };
+        }
+      }
+    }
+    if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
+    const currentUserId = userProfile?.uid ?? 'unknown';
+    if (Object.keys(paidBy).length === 0) {
+      paidBy[currentUserId] = totalAmount;
+    }
+    if (splitType === 'manual') {
+      const sum = Object.values(manualSplit).reduce(
+        (a, s) => a + s.value,
+        0
+      );
+      if (Math.abs(sum - totalAmount) > 0.01) {
+        throw new Error('Manual split must sum to total amount.');
+      }
+    }
+    const expense: Expense = {
       id: crypto.randomUUID(),
-      category: draft.category || EXPENSE_CATEGORIES[0],
-      description: draft.description,
-      totalAmount: Number(draft.totalAmount) || 0,
-      paidBy: Object.fromEntries(
-        Object.entries(draft.paidBy).map(([k, v]) => [k, Number(v) || 0])
-      ),
-      splitType: draft.splitType,
-      splitParticipants: draft.splitParticipants,
-      manualSplit: Object.fromEntries(
-        Object.entries(draft.manualSplit).map(([k, v]) => [
-          k,
-          { type: v.type, value: Number(v.value) || 0 },
-        ])
-      ),
-      createdBy: authorUid,
+      category: draft.category,
+      description: draft.description.trim(),
+      totalAmount,
+      paidBy,
+      splitType,
+      splitParticipants,
+      manualSplit,
+      createdBy: userProfile?.uid || 'unknown',
       createdAt: serverTimestamp() as Timestamp,
     };
-    const updated = [...expenses, exp];
+    const updated = [...expenses, expense];
     await setDoc(
       tripDoc(trip.id),
       { expenses: updated, updatedAt: serverTimestamp() },
       { merge: true }
     );
+    setNewExpense(emptyExpenseDraft);
   };
 
   const updateExpense = async (id: string, draft: ExpenseDraft) => {
     if (!trip) return;
+    const totalAmount = Math.max(
+      0,
+      parseFloat(String(draft.totalAmount || ''))
+    );
+    const paidBy: Record<string, number> = {};
+    for (const [pid, val] of Object.entries(draft.paidBy || {})) {
+      const n = parseFloat(String(val));
+      if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
+    }
+    const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
+    let splitParticipants = Array.isArray(draft.splitParticipants)
+      ? draft.splitParticipants.slice()
+      : [];
+    if (!splitParticipants.length)
+      splitParticipants = (trip.participants || []).map((p) => p.id);
+    const manualSplit: Expense['manualSplit'] = {};
+    if (splitType === 'manual') {
+      for (const pid of splitParticipants) {
+        const v = draft.manualSplit?.[pid]?.value;
+        const n = parseFloat(String(v));
+        if (!Number.isNaN(n) && n >= 0) {
+          manualSplit[pid] = { type: 'amount', value: n };
+        }
+      }
+      const sum = Object.values(manualSplit).reduce(
+        (a, s) => a + s.value,
+        0
+      );
+      if (Math.abs(sum - totalAmount) > 0.01) {
+        throw new Error('Manual split must sum to total amount.');
+      }
+    }
+    if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
+    const currentUserId = userProfile?.uid ?? 'unknown';
+    if (Object.keys(paidBy).length === 0) {
+      paidBy[currentUserId] = totalAmount;
+    }
     const updated = expenses.map((e) =>
       e.id === id
         ? {
             ...e,
-            category: draft.category || EXPENSE_CATEGORIES[0],
-            description: draft.description,
-            totalAmount: Number(draft.totalAmount) || 0,
-            paidBy: Object.fromEntries(
-              Object.entries(draft.paidBy).map(([k, v]) => [
-                k,
-                Number(v) || 0,
-              ])
-            ),
-            splitType: draft.splitType,
-            splitParticipants: draft.splitParticipants,
-            manualSplit: Object.fromEntries(
-              Object.entries(draft.manualSplit).map(([k, v]) => [
-                k,
-                { type: v.type, value: Number(v.value) || 0 },
-              ])
-            ),
+            category: draft.category,
+            description: draft.description.trim(),
+            totalAmount,
+            paidBy,
+            splitType,
+            splitParticipants,
+            manualSplit,
           }
         : e
     );
