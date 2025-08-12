@@ -24,3 +24,46 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* In your global CSS file or add to page.tsx */
+.text-gray-600 { color: #374151 !important; }
+.text-gray-700 { color: #1f2937 !important; }
+.text-gray-800 { color: #111827 !important; }
+input, select, textarea { color: #111827 !important; }
+
+/* Override light gray text with darker colors for better readability */
+.trip-cost-app {
+  /* Make gray-600 text darker */
+  .text-gray-600 {
+    color: #374151 !important; /* gray-700 equivalent */
+  }
+  
+  /* Make gray-700 text darker */
+  .text-gray-700 {
+    color: #1f2937 !important; /* gray-800 equivalent */
+  }
+  
+  /* Make gray-800 text fully dark */
+  .text-gray-800 {
+    color: #111827 !important; /* gray-900 equivalent */
+  }
+  
+  /* Ensure form inputs have dark text */
+  input, select, textarea {
+    color: #111827 !important; /* gray-900 */
+  }
+  
+  /* Make sure table text is dark */
+  table {
+    color: #111827 !important; /* gray-900 */
+  }
+  
+  /* Dark text for list items */
+  li {
+    color: #1f2937 !important; /* gray-800 */
+  }
+  
+  /* Exception: Keep muted text somewhat gray but still readable */
+  .text-muted {
+    color: #4b5563 !important; /* gray-600 but darker than default */
+  }
+}

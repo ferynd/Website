@@ -35,9 +35,9 @@ export default function TripList({
         {/* Header */}
         <div className="bg-white rounded-lg shadow mb-6 p-4">
           <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-gray-800">Trip Cost Calculator</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Trip Cost Calculator</h1>
             <div className="flex items-center gap-4">
-              <span className="text-gray-700">
+              <span className="text-gray-900">
                 {userProfile?.displayName}
                 {userProfile?.isAdmin && (
                   <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Admin</span>
@@ -45,7 +45,7 @@ export default function TripList({
               </span>
               <button
                 onClick={onLogout}
-                className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 transition-colors text-sm"
+                className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 transition-colors text-sm text-gray-900"
               >
                 Log out
               </button>
@@ -62,7 +62,7 @@ export default function TripList({
                 value={newTripName}
                 onChange={(e) => setNewTripName(e.target.value)}
                 placeholder="Enter trip name..."
-                className="flex-1 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="flex-1 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900"
               />
               <button
                 onClick={onCreateTrip}
@@ -80,8 +80,8 @@ export default function TripList({
           {trips.map((trip) => (
             <div key={trip.id} className="bg-white rounded-lg shadow hover:shadow-lg transition-shadow">
               <div className="p-4">
-                <h2 className="text-lg font-semibold text-gray-800 mb-2">{trip.name}</h2>
-                <div className="space-y-1 text-sm text-gray-700 mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">{trip.name}</h2>
+                <div className="space-y-1 text-sm text-gray-800 mb-4">
                   <p>{trip.participants.length} participant{trip.participants.length !== 1 && 's'}</p>
                   <p>{trip.expenses.length} expense{trip.expenses.length !== 1 && 's'}</p>
                   <p>{trip.payments.length} payment{trip.payments.length !== 1 && 's'}</p>
@@ -107,7 +107,7 @@ export default function TripList({
           ))}
 
           {trips.length === 0 && (
-            <div className="col-span-full text-center py-12 text-gray-700">
+            <div className="col-span-full text-center py-12 text-gray-800">
               {userProfile?.isAdmin
                 ? 'No trips yet. Create your first trip above!'
                 : 'No trips available. Ask an admin to add you to a trip.'}
@@ -118,4 +118,3 @@ export default function TripList({
     </div>
   );
 }
-
