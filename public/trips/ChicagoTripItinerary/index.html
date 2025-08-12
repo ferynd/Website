@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Chicago Weekend Itinerary!</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/shared-styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -15,7 +15,6 @@
         }
         body {
             font-family: 'Poppins', sans-serif;
-            background-color: #f0f2f5;
         }
         .timeline-item::before {
             content: '';
@@ -26,11 +25,11 @@
             width: 20px;
             height: 20px;
             border-radius: 50%;
-            background-color: #FC913A;
-            border: 4px solid #E1F5C4;
+            background-color: hsl(var(--accent));
+            border: 4px solid hsl(var(--surface-1));
         }
         .day-card {
-            border-left: 4px solid #FC913A;
+            border-left: 4px solid hsl(var(--accent));
         }
         .schedule-grid {
             position: relative;
@@ -45,21 +44,21 @@
             justify-content: flex-end;
             padding-right: 10px;
             font-size: 12px;
-            color: #6b7280;
+            color: hsl(var(--text-2));
             position: relative;
             transform: translateY(-50%);
             z-index: 15;
         }
         .time-label-hour {
             font-weight: 600;
-            color: #374151;
+            color: hsl(var(--text));
         }
         .time-label-hour span {
-            background-color: #fff;
+            background-color: hsl(var(--surface-1));
             padding: 0 4px;
         }
          .time-label-half {
-            color: #9ca3af;
+            color: hsl(var(--text-3));
         }
         .day-header {
             text-align: center;
@@ -67,12 +66,12 @@
             padding: 8px 0;
             position: sticky;
             top: 0;
-            background-color: #f0f2f5;
+            background-color: hsl(var(--surface-2));
             z-index: 20;
         }
         .activity-block {
             border-radius: 8px;
-            color: #374151;
+            color: hsl(var(--text));
             padding: 4px 8px;
             font-size: 12px;
             line-height: 1.2;
@@ -84,7 +83,7 @@
             position: relative;
         }
         .grid-line {
-            border-top: 1px solid #e5e7eb;
+            border-top: 1px solid hsl(var(--border));
             grid-column: 2 / -1;
             z-index: 1;
         }
@@ -102,24 +101,24 @@
             transition: all 0.3s ease;
         }
         .tab-button.active {
-            border-color: #FF4E50;
-            background-color: #FF4E50;
+            border-color: hsl(var(--accent));
+            background-color: hsl(var(--accent));
             color: white;
         }
     </style>
 </head>
-<body class="text-gray-800">
-    <nav class="p-2 text-sm"><a href="/" class="text-blue-600 hover:underline">Back to Hub</a></nav>
+<body class="text-primary">
+    <nav class="p-2 text-sm"><a href="/" class="text-accent underline-on-hover">Back to Hub</a></nav>
 
-    <div class="p-4 md:p-8 w-full">
+    <div class="p-4 w-full">
 
         <header class="text-center mb-12">
-            <h1 class="text-4xl md:text-5xl font-bold text-[#FF4E50]">Welcome to Chicago!</h1>
-            <p class="text-lg text-gray-600 mt-2">A Visual Itinerary for Your July 4th Weekend Visit</p>
+            <h1 class="text-4xl font-bold text-accent">Welcome to Chicago!</h1>
+            <p class="text-lg text-secondary mt-2">A Visual Itinerary for Your July 4th Weekend Visit</p>
         </header>
 
-        <section class="mb-12 bg-white rounded-xl shadow-lg p-4 md:p-6">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">Weekend at a Glance</h2>
+        <section class="mb-12 bg-surface rounded-xl shadow-lg p-4">
+            <h2 class="text-2xl font-bold text-primary mb-4 text-center">Weekend at a Glance</h2>
             
             <!-- This container will scroll horizontally on smaller screens -->
             <div class="overflow-x-auto">
