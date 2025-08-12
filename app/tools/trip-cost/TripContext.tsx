@@ -182,72 +182,101 @@ export const TripProvider = ({
   };
 
   const addExpense = async (draft: ExpenseDraft) => {
-    if (!trip) return;
-    const totalAmount = Math.max(
-      0,
-      parseFloat(String(draft.totalAmount || ''))
-    );
-    const paidBy: Record<string, number> = {};
-    for (const [pid, val] of Object.entries(draft.paidBy || {})) {
-      const n = parseFloat(String(val));
-      if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
-    }
-    const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
-    if (sumPaid === 0) {
-      // already handled below by defaulting to current user
-    } else if (Math.abs(sumPaid - totalAmount) > 0.01) {
-      throw new Error('Payer amounts must sum to the total amount.');
-    }
-    const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
-    let splitParticipants = Array.isArray(draft.splitParticipants)
-      ? draft.splitParticipants.slice()
-      : [];
-    if (!splitParticipants.length)
-      splitParticipants = (trip?.participants || []).map((p) => p.id);
-    const manualSplit: Expense['manualSplit'] = {};
-    if (splitType === 'manual') {
-      for (const pid of splitParticipants) {
-        const v = draft.manualSplit?.[pid]?.value;
-        const n = parseFloat(String(v));
-        if (!Number.isNaN(n) && n >= 0) {
-          manualSplit[pid] = { type: 'amount', value: n };
-        }
+  if (!trip) return;
+  
+  // Parse and validate the total amount
+  const totalAmount = Math.max(
+    0,
+    parseFloat(String(draft.totalAmount || ''))
+  );
+  
+  // Process who paid
+  const paidBy: Record<string, number> = {};
+  for (const [pid, val] of Object.entries(draft.paidBy || {})) {
+    const n = parseFloat(String(val));
+    if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
+  }
+  
+  // Validate payer amounts
+  const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
+  if (sumPaid === 0) {
+    // Will be handled below by defaulting to current user
+  } else if (Math.abs(sumPaid - totalAmount) > 0.01) {
+    throw new Error('Payer amounts must sum to the total amount.');
+  }
+  
+  // Process split type
+  const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
+  let splitParticipants = Array.isArray(draft.splitParticipants)
+    ? draft.splitParticipants.slice()
+    : [];
+  if (!splitParticipants.length)
+    splitParticipants = (trip?.participants || []).map((p) => p.id);
+  
+  // Process manual split amounts
+  const manualSplit: Expense['manualSplit'] = {};
+  if (splitType === 'manual') {
+    for (const pid of splitParticipants) {
+      const v = draft.manualSplit?.[pid]?.value;
+      const n = parseFloat(String(v));
+      if (!Number.isNaN(n) && n >= 0) {
+        manualSplit[pid] = { type: 'amount', value: n };
       }
     }
-    if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
-    const currentUserId = userProfile?.uid ?? 'unknown';
-    if (Object.keys(paidBy).length === 0) {
-      paidBy[currentUserId] = totalAmount;
-    }
-    if (splitType === 'manual') {
-      const sum = Object.values(manualSplit).reduce(
-        (a, s) => a + s.value,
-        0
-      );
-      if (Math.abs(sum - totalAmount) > 0.01) {
-        throw new Error('Manual split must sum to total amount.');
-      }
-    }
-    const expense: Expense = {
-      id: crypto.randomUUID(),
-      category: draft.category,
-      description: draft.description.trim(),
-      totalAmount,
-      paidBy,
-      splitType,
-      splitParticipants,
-      manualSplit,
-      createdBy: userProfile?.uid || 'unknown',
-      createdAt: serverTimestamp() as Timestamp,
-    };
-    const updated = [...expenses, expense];
-    await setDoc(
-      tripDoc(trip.id),
-      { expenses: updated, updatedAt: serverTimestamp() },
-      { merge: true }
+  }
+  
+  // Validate total amount
+  if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
+  
+  // ===== FIX APPLIED HERE =====
+  // Find the current user's participant ID (not their Firebase UID)
+  const currentParticipant = participants.find(
+    p => p.userId === userProfile?.uid || p.addedBy === userProfile?.uid
+  );
+  const currentParticipantId = currentParticipant?.id || userProfile?.uid || 'unknown';
+  
+  // If no one specified as payer, default to current user's participant ID
+  if (Object.keys(paidBy).length === 0) {
+    paidBy[currentParticipantId] = totalAmount;
+  }
+  // ===== END OF FIX =====
+  
+  // Validate manual split sums to total
+  if (splitType === 'manual') {
+    const sum = Object.values(manualSplit).reduce(
+      (a, s) => a + s.value,
+      0
     );
-    setNewExpense(emptyExpenseDraft);
+    if (Math.abs(sum - totalAmount) > 0.01) {
+      throw new Error('Manual split must sum to total amount.');
+    }
+  }
+  
+  // Create the expense object
+  const expense: Expense = {
+    id: crypto.randomUUID(),
+    category: draft.category,
+    description: draft.description.trim(),
+    totalAmount,
+    paidBy,
+    splitType,
+    splitParticipants,
+    manualSplit,
+    createdBy: userProfile?.uid || 'unknown',
+    createdAt: serverTimestamp() as Timestamp,
   };
+  
+  // Save to Firebase
+  const updated = [...expenses, expense];
+  await setDoc(
+    tripDoc(trip.id),
+    { expenses: updated, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+  
+  // Reset the form
+  setNewExpense(emptyExpenseDraft);
+};
 
   const updateExpense = async (id: string, draft: ExpenseDraft) => {
     if (!trip) return;
