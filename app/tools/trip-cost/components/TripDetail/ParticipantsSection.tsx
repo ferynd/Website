@@ -8,7 +8,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTrip } from '../../TripContext';
 import type { UserProfile } from '../../pageTypes';
-import { collection, query, getDocs, limit } from 'firebase/firestore';
+import { query, getDocs, limit } from 'firebase/firestore';
 import { usersCol } from '../../db';
 
 interface RegisteredUser {
@@ -275,7 +275,7 @@ export default function ParticipantsSection({
                       </button>
                     ))
                   ) : searchQuery.trim() ? (
-                    <div className="p-3 text-gray-600">No users found matching "{searchQuery}"</div>
+                      <div className="p-3 text-gray-600">No users found matching &quot;{searchQuery}&quot;</div>
                   ) : (
                     <div className="p-3 text-gray-600">Start typing to search users...</div>
                   )}
