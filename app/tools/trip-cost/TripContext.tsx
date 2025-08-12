@@ -100,7 +100,7 @@ export const TripProvider = ({
     if (!selectedTripId) return;
     const unsub = onSnapshot(tripDoc(selectedTripId), (snap) => {
       if (snap.exists()) {
-        const data = snap.data() as Trip;
+        const data = snap.data() as Omit<Trip, 'id'>;
         setTrip({ id: snap.id, ...data });
         setExpenses(data.expenses || []);
         setPayments(data.payments || []);
@@ -115,7 +115,7 @@ export const TripProvider = ({
     const q = query(tripAuditCol(selectedTripId), orderBy('ts', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setAuditEntries(
-        snap.docs.map((d) => ({ id: d.id, ...(d.data() as AuditEntry) }))
+        snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<AuditEntry, 'id'>) }))
       );
     });
     return () => unsub();
