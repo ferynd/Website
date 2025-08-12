@@ -12,6 +12,7 @@ const navLinks = [
   { label: 'Games', href: '/games' },
   { label: 'Tools', href: '/tools' },
   { label: 'Trips', href: '/trips' },
+  { label: 'Style Guide', href: '/style-guide' },
 ];
 
 const linkBaseClass = 'transition-all duration-200 ease-in-out hover:text-text focus-ring';
