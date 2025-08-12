@@ -54,46 +54,57 @@ export default function ExpensesList({
         .join(', ')
     );
   };
+  
   return (
-    <section className="bg-white rounded shadow p-4">
-      <h2 className="text-lg font-semibold mb-2">Expenses</h2>
-      <table className="w-full text-left text-gray-800">
-        <thead>
-          <tr className="border-b">
-            <th className="py-1">Category</th>
-            <th className="py-1">Description</th>
-            <th className="py-1 text-right">Amount</th>
-            <th className="py-1"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {expenses.map((e) => (
-            <tr key={e.id} className="border-b last:border-b-0">
-              <td className="py-1 align-top">{e.category}</td>
-              <td className="py-1">
-                <div>{e.description}</div>
-                <div className="text-xs italic text-gray-600">
-                  Paid by {payersText(e)}; {splitText(e)}
-                </div>
-              </td>
-              <td className="py-1 text-right align-top">
-                {CURRENCY_SYMBOL}
-                {e.totalAmount.toFixed(2)}
-              </td>
-              <td className="py-1 text-right align-top">
-                {(userProfile?.isAdmin || e.createdBy === userProfile?.uid) && (
-                  <button
-                    onClick={() => onDeleteExpense(e.id)}
-                    className="text-red-600 text-xs"
-                  >
-                    Delete
-                  </button>
-                )}
-              </td>
+    <section className="bg-white rounded-lg shadow p-4">
+      <h2 className="text-xl font-semibold mb-3 text-gray-900">Expenses</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b-2 border-gray-200">
+              <th className="py-2 px-1 text-sm font-semibold text-gray-900">Category</th>
+              <th className="py-2 px-1 text-sm font-semibold text-gray-900">Description</th>
+              <th className="py-2 px-1 text-sm font-semibold text-gray-900 text-right">Amount</th>
+              <th className="py-2 px-1"></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {expenses.map((e) => (
+              <tr key={e.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                <td className="py-3 px-1 align-top">
+                  <span className="inline-block px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
+                    {e.category}
+                  </span>
+                </td>
+                <td className="py-3 px-1">
+                  <div className="text-gray-900 font-medium">{e.description}</div>
+                  <div className="text-xs text-gray-600 mt-1">
+                    <span className="font-medium">Paid by:</span> {payersText(e)}
+                  </div>
+                  <div className="text-xs text-gray-600">
+                    {splitText(e)}
+                  </div>
+                </td>
+                <td className="py-3 px-1 text-right align-top">
+                  <span className="text-gray-900 font-semibold">
+                    {CURRENCY_SYMBOL}{e.totalAmount.toFixed(2)}
+                  </span>
+                </td>
+                <td className="py-3 px-1 text-right align-top">
+                  {(userProfile?.isAdmin || e.createdBy === userProfile?.uid) && (
+                    <button
+                      onClick={() => onDeleteExpense(e.id)}
+                      className="text-red-600 hover:text-red-700 text-sm font-medium hover:underline"
+                    >
+                      Delete
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
