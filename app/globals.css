@@ -74,3 +74,24 @@ html, body {
   li { color: #1f2937 !important; }
   .text-muted { color: #4b5563 !important; }
 }
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION-INDEPENDENT CONTAINER UTILITIES                */
+/* ------------------------------------------------------------ */
+@layer utilities {
+  .container-tight { @apply mx-auto max-w-[72rem] px-4; }
+  @screen sm { .container-tight { @apply px-6; } }
+  @screen lg { .container-tight { @apply px-8; } }
+
+  .section { @apply py-16; }
+  @screen sm { .section { @apply py-20; } }
+
+  .section-xl { @apply py-24; }
+  @screen sm { .section-xl { @apply py-28; } }
+}
+
+/* Neon progress bar animation for the loading screen */
+@keyframes progress {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(100%); }
+}
