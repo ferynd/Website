@@ -20,7 +20,7 @@ export default function TripsPage() {
   return (
     <main className="bg-bg text-text min-h-dvh">
       <Nav />
-      <section className="max-w-content mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
+      <section className="container-tight py-16 sm:py-24">
         <div className="text-center mb-12">
           <h1 className="text-4xl sm:text-5xl font-semibold bg-gradient-to-r from-accent to-purple text-transparent bg-clip-text">Trips</h1>
           <p className="mt-4 max-w-2xl mx-auto text-lg text-text-2">A collection of travel logs and itineraries.</p>
