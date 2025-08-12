@@ -11,15 +11,12 @@ import type { UserProfile } from '../../pageTypes';
 
 export default function ParticipantsSection({
   userProfile,
+  onDeleteParticipant,
 }: {
   userProfile: UserProfile | null;
+  onDeleteParticipant: (id: string) => void;
 }) {
-  const {
-    participants,
-    addParticipant,
-    deleteParticipant,
-    updateParticipant,
-  } = useTrip();
+  const { participants, addParticipant, updateParticipant } = useTrip();
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -95,7 +92,7 @@ export default function ParticipantsSection({
                 </span>
                 {userProfile?.isAdmin && (
                   <button
-                    onClick={() => deleteParticipant(p.id)}
+                    onClick={() => onDeleteParticipant(p.id)}
                     className="text-red-600 px-2"
                     aria-label="Remove participant"
                   >

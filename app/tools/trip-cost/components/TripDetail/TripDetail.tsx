@@ -24,7 +24,15 @@ export default function TripDetail({
   onBack: () => void;
   userProfile: UserProfile | null;
 }) {
-  const { trip, expenses, payments, auditEntries } = useTrip();
+  const {
+    trip,
+    expenses,
+    payments,
+    auditEntries,
+    deleteExpense,
+    deletePayment,
+    deleteParticipant,
+  } = useTrip();
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<{
     type: string;
@@ -47,25 +55,46 @@ export default function TripDetail({
           {expenses.length} expenses · {payments.length} payments
         </div>
       </header>
-      <ParticipantsSection userProfile={userProfile} />
+      <ParticipantsSection
+        userProfile={userProfile}
+        onDeleteParticipant={(id) =>
+          setConfirmDelete({ type: 'participant', id })
+        }
+      />
       <ExpenseForm userProfile={userProfile} />
-      <ExpensesList />
+      <ExpensesList
+        userProfile={userProfile}
+        onDeleteExpense={(id) => setConfirmDelete({ type: 'expense', id })}
+      />
       <BalanceSummary userProfile={userProfile} />
       <SettlementSuggestions />
-      <PaymentHistory />
+      <PaymentHistory
+        userProfile={userProfile}
+        onDeletePayment={(id) => setConfirmDelete({ type: 'payment', id })}
+      />
       {userProfile?.isAdmin && (
-        <AuditLog
-          entries={auditEntries}
-          show={showAuditLog}
-          onToggle={() => setShowAuditLog((s) => !s)}
-        />
+        <>
+          <button
+            onClick={() => setShowAuditLog((s) => !s)}
+            className="text-sm text-blue-600 underline"
+          >
+            {showAuditLog ? 'Hide Audit Log' : 'Show Audit Log'}
+          </button>
+          <AuditLog entries={auditEntries} show={showAuditLog} />
+        </>
       )}
       {confirmDelete && (
         <ConfirmDeleteModal
           itemType={confirmDelete.type}
           onCancel={() => setConfirmDelete(null)}
           onConfirm={() => {
-            // deletion handled externally
+            if (confirmDelete.type === 'expense') {
+              deleteExpense(confirmDelete.id);
+            } else if (confirmDelete.type === 'payment') {
+              deletePayment(confirmDelete.id);
+            } else if (confirmDelete.type === 'participant') {
+              deleteParticipant(confirmDelete.id);
+            }
             setConfirmDelete(null);
           }}
         />

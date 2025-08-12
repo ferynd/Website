@@ -32,6 +32,7 @@ import {
   tripsCol,
   tripDoc,
 } from './db';
+import ConfirmDeleteModal from './components/TripDetail/ConfirmDeleteModal';
 import type {
   UserProfile,
   Trip,
@@ -90,9 +91,9 @@ export default function TripCostPage() {
       return;
     }
     const q = userProfile.isAdmin
-      ? query(tripsCol, orderBy('createdAt', 'asc'))
+      ? query(tripsCol(), orderBy('createdAt', 'asc'))
       : query(
-          tripsCol,
+          tripsCol(),
           where('participantIds', 'array-contains', user.uid),
           orderBy('createdAt', 'asc')
         );
@@ -139,7 +140,7 @@ export default function TripCostPage() {
 
   const handleCreateTrip = async () => {
     if (!userProfile || !newTripName.trim()) return;
-    await addDoc(tripsCol, {
+    await addDoc(tripsCol(), {
       name: newTripName,
       createdBy: userProfile.uid,
       createdAt: serverTimestamp(),
@@ -151,10 +152,17 @@ export default function TripCostPage() {
     setNewTripName('');
   };
 
-  const handleDeleteTrip = async (trip: Trip) => {
-    if (!window.confirm(`Delete the trip "${trip.name}"?`)) return;
-    await deleteDoc(tripDoc(trip.id));
-    if (selectedTripId === trip.id) setSelectedTripId(null);
+  const [confirmDeleteTrip, setConfirmDeleteTrip] = useState<Trip | null>(
+    null
+  );
+  const handleDeleteTrip = (trip: Trip) => {
+    setConfirmDeleteTrip(trip);
+  };
+  const confirmTripDeletion = async () => {
+    if (!confirmDeleteTrip) return;
+    await deleteDoc(tripDoc(confirmDeleteTrip.id));
+    if (selectedTripId === confirmDeleteTrip.id) setSelectedTripId(null);
+    setConfirmDeleteTrip(null);
   };
 
   if (authLoading) return <p>Loading...</p>;
@@ -193,15 +201,24 @@ export default function TripCostPage() {
   }
 
   return (
-    <TripList
-      userProfile={userProfile}
-      trips={trips}
-      newTripName={newTripName}
-      setNewTripName={setNewTripName}
-      onCreateTrip={handleCreateTrip}
-      onOpenTrip={(trip) => setSelectedTripId(trip.id)}
-      onDeleteTrip={handleDeleteTrip}
-      onLogout={handleLogout}
-    />
+    <>
+      <TripList
+        userProfile={userProfile}
+        trips={trips}
+        newTripName={newTripName}
+        setNewTripName={setNewTripName}
+        onCreateTrip={handleCreateTrip}
+        onOpenTrip={(trip) => setSelectedTripId(trip.id)}
+        onDeleteTrip={handleDeleteTrip}
+        onLogout={handleLogout}
+      />
+      {confirmDeleteTrip && (
+        <ConfirmDeleteModal
+          itemType={`trip "${confirmDeleteTrip.name}"`}
+          onConfirm={confirmTripDeletion}
+          onCancel={() => setConfirmDeleteTrip(null)}
+        />
+      )}
+    </>
   );
 }
