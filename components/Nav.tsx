@@ -5,25 +5,31 @@ import { useState } from 'react';
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: navigation labels                             */
 /* ------------------------------------------------------------ */
-const navLinks = ['Projects','Games','About','Contact'];
+const navLinks = ['Projects', 'Games', 'About', 'Contact'];
 
 export default function Nav() {
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter]:bg-surface-2/80 border-b border-border">
+    <header className="sticky top-0 z-50 backdrop-blur supports-[backdrop-filter:blur(0)]:bg-surface-2/80 border-b border-border">
       <nav className="mx-auto max-w-content flex items-center justify-between px-4 py-3">
-        <Link href="/" className="text-lg font-semibold focus-ring">JB</Link>
+        <Link href="/" className="text-lg font-semibold focus-ring">
+          JB
+        </Link>
         <button
           aria-label="Toggle menu"
           className="md:hidden p-2 rounded-lg border border-border hover:border-accent transition focus-ring"
           onClick={() => setOpen(!open)}
         >
+          {/* A more accessible and scalable approach would be to use an SVG icon here */}
           ☰
         </button>
         <ul className="hidden md:flex gap-6 text-text-2">
           {navLinks.map((label) => (
             <li key={label}>
-              <Link className="hover:text-text transition focus-ring" href={`/#${label.toLowerCase()}`}>
+              <Link
+                className="hover:text-text transition focus-ring"
+                href={`/#${label.toLowerCase()}`}
+              >
                 {label}
               </Link>
             </li>
@@ -35,7 +41,11 @@ export default function Nav() {
           <ul className="px-4 py-2 space-y-2">
             {navLinks.map((label) => (
               <li key={label}>
-                <Link className="block py-2 text-text-2 hover:text-text focus-ring" href={`/#${label.toLowerCase()}`}>
+                <Link
+                  className="block py-2 text-text-2 hover:text-text focus-ring"
+                  href={`/#${label.toLowerCase()}`}
+                  onClick={() => setOpen(false)} // Close menu on link click
+                >
                   {label}
                 </Link>
               </li>
