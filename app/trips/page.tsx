@@ -5,14 +5,16 @@ import Nav from '@/components/Nav';
 import { ArrowRight, Map } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
-/* CONFIGURATION: list of trips                                 */
+/* CONFIGURATION: icon size and list of trips                    */
 /* ------------------------------------------------------------ */
+const cardIconSize = 24;
+
 const tripList = [
   {
     name: 'Chicago Trip Itinerary',
     description: 'An itinerary for a trip to Chicago (Static HTML).',
     href: '/trips/ChicagoTripItinerary/index.html',
-    icon: <Map size={24} className="text-accent" />,
+    icon: <Map size={cardIconSize} className="text-accent" />,
   },
 ];
 
@@ -31,10 +33,10 @@ export default function TripsPage() {
             <Link
               href={trip.href}
               key={trip.name}
-              className="group block rounded-xl3 border border-border bg-surface-1 p-6 shadow-1 transition duration-200 ease-linear hover:shadow-2 hover:shadow-glow focus-ring"
+              className="group block rounded-xl border border-border bg-surface-1 p-6 shadow-md transition-shadow transition-transform duration-200 hover:shadow-xl hover:scale-[1.02] focus-ring"
             >
               <div className="flex items-start">
-                <div className="mr-6 flex-shrink-0">{trip.icon}</div>
+                <div className="mr-6 flex-shrink-0 text-accent">{trip.icon}</div>
                 <div>
                   <h2 className="text-xl font-semibold">{trip.name}</h2>
                   <p className="mt-1 text-text-2">{trip.description}</p>

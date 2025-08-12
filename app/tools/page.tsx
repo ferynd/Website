@@ -5,32 +5,34 @@ import Nav from '@/components/Nav';
 import { ArrowRight, Calculator, HeartPulse, BarChart } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
-/* CONFIGURATION: list of available tools                       */
+/* CONFIGURATION: icon size and list of available tools          */
 /* ------------------------------------------------------------ */
+const cardIconSize = 24;
+
 const toolList = [
   {
     name: 'Trip Cost Calculator',
     description: 'Split expenses and calculate balances for a group trip.',
     href: '/tools/trip-cost',
-    icon: <Calculator size={24} className="text-purple" />,
+    icon: <Calculator size={cardIconSize} className="text-accent" />,
   },
   {
     name: 'Calorie Tracker',
     description: 'A simple tool to track daily calorie intake (Static HTML).',
     href: '/tools/CalorieTracker/index.html',
-    icon: <HeartPulse size={24} className="text-error" />,
+    icon: <HeartPulse size={cardIconSize} className="text-accent" />,
   },
   {
     name: 'Social Security (interactive guide)',
     description: 'Learn how benefits and earnings interact through simulations.',
     href: '/tools/social-security/index.html',
-    icon: <BarChart size={24} className="text-info" />,
+    icon: <BarChart size={cardIconSize} className="text-accent" />,
   },
   {
     name: 'Social Security (calculator)',
     description: 'Visualize the financial impact of different claiming strategies.',
     href: '/tools/social-security-calculator/index.html',
-    icon: <BarChart size={24} className="text-success" />,
+    icon: <BarChart size={cardIconSize} className="text-accent" />,
   },
 ];
 
@@ -49,10 +51,10 @@ export default function ToolsPage() {
             <Link
               href={tool.href}
               key={tool.name}
-              className="group block rounded-xl3 border border-border bg-surface-1 p-6 shadow-1 transition duration-200 ease-linear hover:shadow-2 hover:shadow-glow focus-ring"
+              className="group block rounded-xl border border-border bg-surface-1 p-6 shadow-md transition-shadow transition-transform duration-200 hover:shadow-xl hover:scale-[1.02] focus-ring"
             >
               <div className="flex items-start">
-                <div className="mr-6 flex-shrink-0">{tool.icon}</div>
+                <div className="mr-6 flex-shrink-0 text-accent">{tool.icon}</div>
                 <div>
                   <h2 className="text-xl font-semibold">{tool.name}</h2>
                   <p className="mt-1 text-text-2">{tool.description}</p>
