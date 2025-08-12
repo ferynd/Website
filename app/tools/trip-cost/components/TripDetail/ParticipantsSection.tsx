@@ -6,6 +6,7 @@
 // None
 
 import React, { useState, useEffect, useRef } from 'react';
+import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import type { UserProfile } from '../../pageTypes';
 import { query, getDocs, limit } from 'firebase/firestore';
@@ -187,26 +188,30 @@ export default function ParticipantsSection({
         <div className="space-y-3 mb-4">
           {/* Mode Toggle */}
           <div className="flex gap-2">
-            <button
+            <Button
               onClick={() => setIsSearchMode(false)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                !isSearchMode 
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+              variant="ghost"
+              size="sm"
+              className={`px-3 py-1 text-sm ${
+                !isSearchMode
+                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
                   : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
               }`}
             >
               Add by Name
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={() => setIsSearchMode(true)}
-              className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-                isSearchMode 
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200' 
+              variant="ghost"
+              size="sm"
+              className={`px-3 py-1 text-sm ${
+                isSearchMode
+                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
                   : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
               }`}
             >
               Add Registered User
-            </button>
+            </Button>
           </div>
 
           {/* Add by Name Mode */}
@@ -219,13 +224,14 @@ export default function ParticipantsSection({
                 className="border border-gray-300 p-2 flex-1 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                 placeholder="Enter participant name"
               />
-              <button
+              <Button
                 onClick={addManualParticipant}
-                className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                variant="success"
+                className="px-4 py-2"
                 disabled={!name.trim()}
               >
                 Add
-              </button>
+              </Button>
             </div>
           )}
 
@@ -245,13 +251,14 @@ export default function ParticipantsSection({
                   className="border border-gray-300 p-2 flex-1 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                   placeholder="Search by email or name..."
                 />
-                <button
+                <Button
                   onClick={() => selectedUser && addRegisteredUser(selectedUser)}
-                  className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  variant="success"
+                  className="px-4 py-2"
                   disabled={!selectedUser}
                 >
                   Add User
-                </button>
+                </Button>
               </div>
 
               {/* Dropdown */}
@@ -261,18 +268,20 @@ export default function ParticipantsSection({
                     <div className="p-3 text-gray-600">Loading users...</div>
                   ) : filteredUsers.length > 0 ? (
                     filteredUsers.map((user) => (
-                      <button
+                      <Button
                         key={user.uid}
                         onClick={() => {
                           setSelectedUser(user);
                           setSearchQuery(user.displayName);
                           setShowDropdown(false);
                         }}
-                        className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 focus:bg-blue-50 focus:outline-none"
+                        variant="ghost"
+                        size="sm"
+                        className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 focus:bg-blue-50"
                       >
                         <div className="font-medium text-gray-900">{user.displayName}</div>
                         <div className="text-sm text-gray-600">{user.email}</div>
-                      </button>
+                      </Button>
                     ))
                   ) : searchQuery.trim() ? (
                       <div className="p-3 text-gray-600">No users found matching &quot;{searchQuery}&quot;</div>
@@ -307,15 +316,22 @@ export default function ParticipantsSection({
                     className="border border-gray-300 p-1 flex-1 rounded text-gray-900"
                     autoFocus
                   />
-                  <button onClick={saveEdit} className="text-blue-600 hover:text-blue-700 px-2">
+                  <Button
+                    onClick={saveEdit}
+                    variant="ghost"
+                    size="sm"
+                    className="text-blue-600 hover:text-blue-700 px-2 h-auto"
+                  >
                     Save
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => setEditingId(null)}
-                    className="text-gray-600 hover:text-gray-700 px-2"
+                    variant="ghost"
+                    size="sm"
+                    className="text-gray-600 hover:text-gray-700 px-2 h-auto"
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </>
               ) : (
                 <>
@@ -333,13 +349,15 @@ export default function ParticipantsSection({
                     )}
                   </span>
                   {userProfile?.isAdmin && (
-                    <button
+                    <Button
                       onClick={() => onDeleteParticipant(p.id)}
-                      className="text-red-600 hover:text-red-700 px-2 text-xl font-bold"
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 px-2 text-xl font-bold h-auto"
                       aria-label={`Remove ${p.name}`}
                     >
                       ×
-                    </button>
+                    </Button>
                   )}
                 </>
               )}

@@ -6,6 +6,7 @@
 // None
 
 import React from 'react';
+import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import { CURRENCY_SYMBOL } from '../../constants';
 import type { UserProfile, Expense } from '../../pageTypes';
@@ -92,12 +93,14 @@ export default function ExpensesList({
                 </td>
                 <td className="py-3 px-1 text-right align-top">
                   {(userProfile?.isAdmin || e.createdBy === userProfile?.uid) && (
-                    <button
+                    <Button
                       onClick={() => onDeleteExpense(e.id)}
-                      className="text-red-600 hover:text-red-700 text-sm font-medium hover:underline"
+                      variant="ghost"
+                      size="sm"
+                      className="text-red-600 hover:text-red-700 hover:underline p-0 h-auto"
                     >
                       Delete
-                    </button>
+                    </Button>
                   )}
                 </td>
               </tr>

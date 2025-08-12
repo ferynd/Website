@@ -6,6 +6,7 @@
 // None
 
 import React from 'react';
+import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import { CURRENCY_SYMBOL } from '../../constants';
 import type { UserProfile } from '../../pageTypes';
@@ -35,12 +36,14 @@ export default function PaymentHistory({
               </span>
             </span>
             {userProfile?.isAdmin && (
-              <button
+              <Button
                 onClick={() => onDeletePayment(p.id)}
-                className="text-red-600 text-xs ml-2"
+                variant="ghost"
+                size="sm"
+                className="text-red-600 text-xs ml-2 p-0 h-auto"
               >
                 Delete
-              </button>
+              </Button>
             )}
           </li>
         ))}

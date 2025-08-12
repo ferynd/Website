@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Trip, UserProfile } from '../pageTypes';
+import Button from '@/components/Button';
 
 // ===============================
 // CONFIGURATION (manual inputs)
@@ -43,12 +44,14 @@ export default function TripList({
                   <span className="ml-2 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded">Admin</span>
                 )}
               </span>
-              <button
+              <Button
                 onClick={onLogout}
-                className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300 transition-colors text-sm text-gray-900"
+                variant="secondary"
+                size="sm"
+                className="px-4 py-2 text-sm text-gray-900"
               >
                 Log out
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -64,13 +67,14 @@ export default function TripList({
                 placeholder="Enter trip name..."
                 className="flex-1 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900"
               />
-              <button
+              <Button
                 onClick={onCreateTrip}
                 disabled={!newTripName.trim()}
-                className="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition-colors font-medium disabled:opacity-50"
+                variant="success"
+                className="px-6 py-3"
               >
                 Create Trip
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -87,19 +91,20 @@ export default function TripList({
                   <p>{trip.payments.length} payment{trip.payments.length !== 1 && 's'}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  <Button
                     onClick={() => onOpenTrip(trip)}
-                    className="flex-1 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+                    className="flex-1"
                   >
                     Open
-                  </button>
+                  </Button>
                   {userProfile?.isAdmin && (
-                    <button
+                    <Button
                       onClick={() => onDeleteTrip(trip)}
-                      className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors"
+                      variant="danger"
+                      className="px-4 py-2"
                     >
                       Delete
-                    </button>
+                    </Button>
                   )}
                 </div>
               </div>
