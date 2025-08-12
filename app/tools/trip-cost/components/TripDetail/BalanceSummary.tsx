@@ -7,6 +7,8 @@
 
 import React, { useState } from 'react';
 import Button from '@/components/Button';
+import Input from '@/components/Input';
+import Select from '@/components/Select';
 import { useTrip } from '../../TripContext';
 import { CURRENCY_SYMBOL } from '../../constants';
 import type { UserProfile } from '../../pageTypes';
@@ -78,12 +80,12 @@ export default function BalanceSummary({
               
               {!isNeutral && (
                 <div className="flex gap-2 mt-2">
-                  <select
+                  <Select
                     value={forms[b.personId]?.payeeId || ''}
                     onChange={(e) =>
                       handleChange(b.personId, 'payeeId', e.target.value)
                     }
-                    className="border border-gray-300 rounded px-2 py-1 flex-1 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="flex-1 px-2 py-1"
                   >
                     <option value="">Select recipient...</option>
                     {participants
@@ -93,15 +95,15 @@ export default function BalanceSummary({
                           {p.name}
                         </option>
                       ))}
-                  </select>
-                  <input
+                  </Select>
+                  <Input
                     value={forms[b.personId]?.amount || ''}
                     onChange={(e) =>
                       handleChange(b.personId, 'amount', e.target.value)
                     }
                     type="number"
                     step="0.01"
-                    className="border border-gray-300 rounded px-2 py-1 w-24 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="px-2 py-1 w-24"
                     placeholder="Amount"
                   />
                   <Button

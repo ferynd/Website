@@ -3,6 +3,7 @@
 import React from 'react';
 import { Trip, UserProfile } from '../pageTypes';
 import Button from '@/components/Button';
+import Input from '@/components/Input';
 
 // ===============================
 // CONFIGURATION (manual inputs)
@@ -60,12 +61,12 @@ export default function TripList({
         {userProfile?.isAdmin && (
           <div className="bg-white rounded-lg shadow mb-6 p-4">
             <div className="flex gap-3">
-              <input
+              <Input
                 type="text"
                 value={newTripName}
                 onChange={(e) => setNewTripName(e.target.value)}
                 placeholder="Enter trip name..."
-                className="flex-1 p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-green-500 focus:border-transparent text-gray-900"
+                className="flex-1"
               />
               <Button
                 onClick={onCreateTrip}

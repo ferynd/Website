@@ -2,6 +2,7 @@
 
 import React from 'react';
 import Button from '@/components/Button';
+import Input from '@/components/Input';
 
 // ===============================
 // CONFIGURATION (manual inputs)
@@ -51,55 +52,47 @@ export default function AuthForm({
         )}
 
         <form onSubmit={onSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              autoComplete="email"
-              value={authEmail}
-              onChange={(e) => setAuthEmail(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              required
-            />
-          </div>
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={authEmail}
+            onChange={(e) => setAuthEmail(e.target.value)}
+            required
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-            <input
-              type="password"
-              autoComplete={isLogin ? 'current-password' : 'new-password'}
-              value={authPassword}
-              onChange={(e) => setAuthPassword(e.target.value)}
-              className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              required
-            />
-          </div>
+          <Input
+            label="Password"
+            type="password"
+            autoComplete={isLogin ? 'current-password' : 'new-password'}
+            value={authPassword}
+            onChange={(e) => setAuthPassword(e.target.value)}
+            required
+          />
 
           {!isLogin && (
             <div className="flex gap-3">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-gray-700 mb-1">First Name</label>
-                <input
-                  type="text"
-                  autoComplete="given-name"
-                  value={firstName}
-                  onChange={(e) => setFirstName(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  required
-                />
-              </div>
-              <div className="w-24">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Initial</label>
-                <input
-                  type="text"
-                  autoComplete="family-name"
-                  value={lastInitial}
-                  onChange={(e) => setLastInitial(e.target.value.slice(0, 1))}
-                  className="w-full p-3 border border-gray-300 rounded-md focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  maxLength={1}
-                  required
-                />
-              </div>
+              <Input
+                label="First Name"
+                type="text"
+                autoComplete="given-name"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                className="w-full"
+                wrapperClassName="flex-1"
+                required
+              />
+              <Input
+                label="Initial"
+                type="text"
+                autoComplete="family-name"
+                value={lastInitial}
+                onChange={(e) => setLastInitial(e.target.value.slice(0, 1))}
+                className="w-full"
+                wrapperClassName="w-24"
+                maxLength={1}
+                required
+              />
             </div>
           )}
 

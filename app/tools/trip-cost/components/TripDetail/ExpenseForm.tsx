@@ -7,6 +7,8 @@
 
 import React, { useState, useEffect } from 'react';
 import Button from '@/components/Button';
+import Input from '@/components/Input';
+import Select from '@/components/Select';
 import { useTrip } from '../../TripContext';
 import { EXPENSE_CATEGORIES, CURRENCY_SYMBOL } from '../../constants';
 
@@ -65,29 +67,27 @@ export default function ExpenseForm() {
       {/* Main inputs */}
       <div className="space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          <select
+          <Select
             value={newExpense.category}
             onChange={(e) =>
               setNewExpense({ ...newExpense, category: e.target.value })
             }
-            className="border border-gray-300 p-2 rounded-md focus:ring-2 focus:ring-blue-500"
           >
             {EXPENSE_CATEGORIES.map((c) => (
               <option key={c} value={c}>{c}</option>
             ))}
-          </select>
-          
-          <input
+          </Select>
+
+          <Input
             value={newExpense.description}
             onChange={(e) =>
               setNewExpense({ ...newExpense, description: e.target.value })
             }
-            className="border border-gray-300 p-2 rounded-md focus:ring-2 focus:ring-blue-500"
             placeholder="Description"
             required
           />
-          
-          <input
+
+          <Input
             value={newExpense.totalAmount}
             onChange={(e) =>
               setNewExpense({ ...newExpense, totalAmount: e.target.value })
@@ -95,7 +95,6 @@ export default function ExpenseForm() {
             type="number"
             step="0.01"
             min="0.01"
-            className="border border-gray-300 p-2 rounded-md focus:ring-2 focus:ring-blue-500"
             placeholder="Total Amount"
             required
           />
@@ -114,11 +113,11 @@ export default function ExpenseForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {participants.map((p) => (
               <div key={p.id} className="flex items-center gap-2">
-                <input
+                <Input
                   type="number"
                   step="0.01"
                   min="0"
-                  className="border border-gray-300 p-1 w-24 rounded"
+                  className="p-1 w-24"
                   value={newExpense.paidBy[p.id] || ''}
                   onChange={(e) =>
                     setNewExpense({
@@ -139,7 +138,7 @@ export default function ExpenseForm() {
           <p className="font-medium text-gray-700 mb-2">How to split?</p>
           <div className="flex gap-4 mb-3">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
+              <Input
                 type="radio"
                 checked={newExpense.splitType === 'even'}
                 onChange={() =>
@@ -150,7 +149,7 @@ export default function ExpenseForm() {
               <span>Split Evenly</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
+              <Input
                 type="radio"
                 checked={newExpense.splitType === 'manual'}
                 onChange={() =>
@@ -173,7 +172,7 @@ export default function ExpenseForm() {
               const included = newExpense.splitParticipants.includes(p.id);
               return (
                 <div key={p.id} className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="checkbox"
                     checked={included}
                     onChange={() => {
@@ -189,11 +188,11 @@ export default function ExpenseForm() {
                   />
                   <span className="flex-1 text-gray-700">{p.name}</span>
                   {newExpense.splitType === 'manual' && included && (
-                    <input
+                    <Input
                       type="number"
                       step="0.01"
                       min="0"
-                      className="border border-gray-300 p-1 w-24 rounded"
+                      className="p-1 w-24"
                       value={
                         newExpense.manualSplit[p.id]?.value || ''
                       }

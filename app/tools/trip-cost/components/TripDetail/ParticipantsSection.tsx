@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Button from '@/components/Button';
+import Input from '@/components/Input';
 import { useTrip } from '../../TripContext';
 import type { UserProfile } from '../../pageTypes';
 import { query, getDocs, limit } from 'firebase/firestore';
@@ -217,12 +218,12 @@ export default function ParticipantsSection({
           {/* Add by Name Mode */}
           {!isSearchMode && (
             <div className="flex gap-2">
-              <input
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyPress={handleKeyPress}
-                className="border border-gray-300 p-2 flex-1 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                 placeholder="Enter participant name"
+                className="flex-1"
               />
               <Button
                 onClick={addManualParticipant}
@@ -239,7 +240,7 @@ export default function ParticipantsSection({
           {isSearchMode && (
             <div className="relative" ref={dropdownRef}>
               <div className="flex gap-2">
-                <input
+                <Input
                   ref={searchInputRef}
                   value={searchQuery}
                   onChange={(e) => {
@@ -248,8 +249,8 @@ export default function ParticipantsSection({
                   }}
                   onKeyPress={handleSearchKeyPress}
                   onFocus={() => setShowDropdown(true)}
-                  className="border border-gray-300 p-2 flex-1 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
                   placeholder="Search by email or name..."
+                  className="flex-1"
                 />
                 <Button
                   onClick={() => selectedUser && addRegisteredUser(selectedUser)}
@@ -310,10 +311,10 @@ export default function ParticipantsSection({
             <li key={p.id} className="flex items-center gap-2 py-2">
               {editingId === p.id ? (
                 <>
-                  <input
+                  <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="border border-gray-300 p-1 flex-1 rounded text-gray-900"
+                    className="p-1 flex-1"
                     autoFocus
                   />
                   <Button
