@@ -1,127 +1,76 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* Dark theme default (HSL parts for flexibility) */
 :root {
-  /* Dark mode by default */
-  color-scheme: dark;
-}
+  --bg: 220 43% 8%;
+  --surface-1: 222 47% 13%;
+  --surface-2: 220 28% 12%;
+  --surface-3: 215 28% 17%;
+  --border: 214 30% 20%;
 
-/* Tailwind v4 semantic tokens */
-@theme inline {
-  /* Colors (HSL) */
-  --color-bg:            hsl(220 43% 8%);   /* #0A0F1E */
-  --color-surface-1:     hsl(222 47% 13%);  /* #0F172A */
-  --color-surface-2:     hsl(220 28% 12%);  /* #111827 */
-  --color-surface-3:     hsl(215 28% 17%);  /* #1F2937 */
-  --color-border:        hsl(214 30% 20%);  /* #243244 */
+  --text: 210 20% 92%;
+  --text-2: 215 14% 63%;
+  --text-3: 220 9% 46%;
 
-  --color-text:          hsl(210 20% 92%);  /* #E5E7EB */
-  --color-text-2:        hsl(215 14% 63%);  /* #9CA3AF */
-  --color-text-3:        hsl(220 9% 46%);   /* #6B7280 */
+  --accent: 186 100% 50%;     /* neon teal */
+  --accent-600: 186 100% 42%;
+  --magenta: 334 100% 55%;
+  --purple: 278 100% 57%;
 
-  --color-accent:        hsl(186 100% 50%); /* #00F5FF */
-  --color-accent-600:    hsl(186 100% 42%); /* #00C7D9 */
-  --color-magenta:       hsl(334 100% 55%); /* #FF1A8C */
-  --color-purple:        hsl(278 100% 57%); /* #B026FF */
+  --success: 142 72% 45%;
+  --warning: 42 96% 50%;
+  --error: 0 84% 60%;
+  --info: 199 92% 60%;
 
-  --color-success:       hsl(142 72% 45%);
-  --color-warning:       hsl(42 96% 50%);
-  --color-error:         hsl(0 84% 60%);
-  --color-info:          hsl(199 92% 60%);
-
-  /* Shadows, radii, durations, easing */
-  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / 0.30);
-  --shadow-2: 0 6px 24px hsl(0 0% 0% / 0.50);
-  --shadow-glow: 0 0 0 2px hsl(186 100% 50% / 0.35), 0 0 24px 4px hsl(186 100% 50% / 0.35);
+  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / .30);
+  --shadow-2: 0 6px 24px hsl(0 0% 0% / .50);
+  --shadow-glow: 0 0 0 2px hsl(var(--accent) / .35), 0 0 24px 4px hsl(var(--accent) / .35);
 
   --radius-xl2: 1rem;
   --radius-xl3: 1.5rem;
-
-  --duration-fast: 150ms;
-  --duration-base: 220ms;
-  --duration-slow: 320ms;
-
-  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
-
-  /* Fonts: will map Poppins in layout */
-  --font-sans: var(--font-poppins, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif);
 }
 
-/* Optional light theme toggle support if you ever add one */
 :root[data-theme="light"] {
-  color-scheme: light;
+  --bg: 210 40% 98%;
+  --surface-1: 0 0% 100%;
+  --surface-2: 210 40% 96%;
+  --surface-3: 210 40% 94%;
+  --border: 214 32% 91%;
 
-  --color-bg:            hsl(210 40% 98%);
-  --color-surface-1:     hsl(0 0% 100%);
-  --color-surface-2:     hsl(210 40% 96%);
-  --color-surface-3:     hsl(210 40% 94%);
-  --color-border:        hsl(214 32% 91%);
+  --text: 222 47% 11%;
+  --text-2: 215 25% 27%;
+  --text-3: 215 16% 47%;
 
-  --color-text:          hsl(222 47% 11%);
-  --color-text-2:        hsl(215 25% 27%);
-  --color-text-3:        hsl(215 16% 47%);
+  --accent: 186 100% 40%;
+  --accent-600: 186 100% 30%;
+  --magenta: 334 100% 45%;
+  --purple: 278 100% 47%;
 
-  --color-accent:        hsl(186 100% 40%);
-  --color-accent-600:    hsl(186 100% 30%);
-  --color-magenta:       hsl(334 100% 45%);
-  --color-purple:        hsl(278 100% 47%);
-
-  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / 0.08);
-  --shadow-2: 0 6px 24px hsl(0 0% 0% / 0.16);
+  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / .08);
+  --shadow-2: 0 6px 24px hsl(0 0% 0% / .16);
 }
 
-/* Global base */
 html, body {
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
+  background: hsl(var(--bg));
+  color: hsl(var(--text));
 }
 
 /* Utilities */
-.focus-ring:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 3px;
-}
-/* In your global CSS file or add to page.tsx */
-.text-gray-600 { color: #374151 !important; }
-.text-gray-700 { color: #1f2937 !important; }
-.text-gray-800 { color: #111827 !important; }
-input, select, textarea { color: #111827 !important; }
+.focus-ring:focus-visible { outline: 2px solid hsl(var(--accent)); outline-offset: 3px; }
 
-/* Override light gray text with darker colors for better readability */
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+}
+
+/* Trip Cost Calculator overrides */
 .trip-cost-app {
-  /* Make gray-600 text darker */
-  .text-gray-600 {
-    color: #374151 !important; /* gray-700 equivalent */
-  }
-  
-  /* Make gray-700 text darker */
-  .text-gray-700 {
-    color: #1f2937 !important; /* gray-800 equivalent */
-  }
-  
-  /* Make gray-800 text fully dark */
-  .text-gray-800 {
-    color: #111827 !important; /* gray-900 equivalent */
-  }
-  
-  /* Ensure form inputs have dark text */
-  input, select, textarea {
-    color: #111827 !important; /* gray-900 */
-  }
-  
-  /* Make sure table text is dark */
-  table {
-    color: #111827 !important; /* gray-900 */
-  }
-  
-  /* Dark text for list items */
-  li {
-    color: #1f2937 !important; /* gray-800 */
-  }
-  
-  /* Exception: Keep muted text somewhat gray but still readable */
-  .text-muted {
-    color: #4b5563 !important; /* gray-600 but darker than default */
-  }
+  .text-gray-600 { color: #374151 !important; }
+  .text-gray-700 { color: #1f2937 !important; }
+  .text-gray-800 { color: #111827 !important; }
+  input, select, textarea { color: #111827 !important; }
+  table { color: #111827 !important; }
+  li { color: #1f2937 !important; }
+  .text-muted { color: #4b5563 !important; }
 }

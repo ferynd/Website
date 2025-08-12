@@ -1,22 +1,19 @@
-import "./globals.css";
-import { Poppins } from "next/font/google";
+import './globals.css';
+import { Poppins } from 'next/font/google';
 
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: site metadata and font settings               */
+/* ------------------------------------------------------------ */
 const poppins = Poppins({
-  subsets: ["latin"],
-  weight: ["300","400","500","600","700"],
-  variable: "--font-poppins",
+  subsets: ['latin'],
+  weight: ['300','400','500','600','700'],
+  variable: '--font-poppins',
+  display: 'swap',
 });
 
 export const metadata = {
-  title: "James Berto • Projects & Games",
-  description: "A polished playground for projects, games, and experiments.",
-  metadataBase: new URL("https://YOUR-DOMAIN.tld"),
-  openGraph: {
-    title: "James Berto • Projects & Games",
-    description: "Projects, games, and experiments.",
-    type: "website",
-    url: "https://YOUR-DOMAIN.tld",
-  },
+  title: 'James Berto • Projects & Games',
+  description: 'Projects, games, and experiments.',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
