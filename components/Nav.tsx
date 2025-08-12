@@ -14,18 +14,18 @@ const navLinks = [
   { label: 'Trips', href: '/trips' },
 ];
 
-const linkBaseClass = 'transition hover:text-text focus-ring';
+const linkBaseClass = 'transition-all duration-200 ease-in-out hover:text-text focus-ring';
 const activeLinkClass = 'text-text font-medium';
 const inactiveLinkClass = 'text-text-2';
 const mobileMenuTransition =
-  'transition-all duration-300 ease-in-out origin-top transform';
+  'transition-all duration-200 ease-in-out origin-top transform';
 
 export default function Nav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   return (
     <header className="sticky top-0 z-50 backdrop-blur-md bg-surface-2/80 border-b border-border shadow-sm">
-      <nav className="container-tight flex items-center justify-between py-3">
+      <nav className="container-tight flex items-center justify-between py-4">
         <Link href="/" className={`text-lg font-semibold ${linkBaseClass}`}>
           JB
         </Link>
@@ -34,7 +34,7 @@ export default function Nav() {
           aria-expanded={open}
           variant="ghost"
           size="sm"
-          className="md:hidden p-2 border border-border hover:border-accent"
+          className="md:hidden p-4 border border-border hover:border-accent"
           onClick={() => setOpen(!open)}
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -62,13 +62,13 @@ export default function Nav() {
             : 'scale-y-0 opacity-0 pointer-events-none'
         }`}
       >
-        <ul className="px-4 py-2 space-y-2">
+        <ul className="px-4 py-4 space-y-4">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
             return (
               <li key={link.href}>
                 <Link
-                  className={`block py-2 ${linkBaseClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}
+                  className={`block py-4 ${linkBaseClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}
                   href={link.href}
                   onClick={() => setOpen(false)}
                 >
