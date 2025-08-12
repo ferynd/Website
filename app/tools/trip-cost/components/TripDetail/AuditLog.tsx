@@ -6,6 +6,7 @@
 // None
 
 import React from 'react';
+import Button from '@/components/Button';
 import type { AuditEntry } from '../../pageTypes';
 
 export default function AuditLog({
@@ -21,9 +22,14 @@ export default function AuditLog({
     <section className="bg-white rounded shadow p-4">
       <header className="flex justify-between items-center mb-2">
         <h2 className="text-lg font-semibold">Audit Log</h2>
-        <button onClick={onToggle} className="text-blue-600">
+        <Button
+          onClick={onToggle}
+          variant="ghost"
+          size="sm"
+          className="text-blue-600 p-0 h-auto"
+        >
           {show ? 'Hide' : 'Show'}
-        </button>
+        </Button>
       </header>
       {show ? (
         <ul className="max-h-40 overflow-y-auto text-gray-800 text-sm">

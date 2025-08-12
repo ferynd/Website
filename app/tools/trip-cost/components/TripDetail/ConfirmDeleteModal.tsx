@@ -6,6 +6,7 @@
 // None
 
 import React, { useEffect, useRef } from 'react';
+import Button from '@/components/Button';
 
 export default function ConfirmDeleteModal({
   itemType,
@@ -33,19 +34,23 @@ export default function ConfirmDeleteModal({
       <div className="bg-white p-4 rounded shadow space-y-4">
         <p id="confirm-title">Are you sure you want to delete this {itemType}?</p>
         <div className="flex gap-2 justify-end">
-          <button
+          <Button
             ref={btnRef}
             onClick={onConfirm}
-            className="bg-red-600 text-white px-3 py-1 rounded"
+            variant="danger"
+            size="sm"
+            className="px-3 py-1"
           >
             Delete
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={onCancel}
-            className="px-3 py-1 border rounded"
+            variant="ghost"
+            size="sm"
+            className="px-3 py-1 border"
           >
             Cancel
-          </button>
+          </Button>
         </div>
       </div>
     </div>

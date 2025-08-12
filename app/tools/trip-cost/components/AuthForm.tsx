@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Button from '@/components/Button';
 
 // ===============================
 // CONFIGURATION (manual inputs)
@@ -102,28 +103,35 @@ export default function AuthForm({
             </div>
           )}
 
-          <button
-            type="submit"
-            className="w-full bg-purple-600 text-white py-3 rounded-md hover:bg-purple-700 transition-colors font-medium"
-          >
+          <Button type="submit" className="w-full">
             {isLogin ? 'Log In' : 'Sign Up'}
-          </button>
+          </Button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-700">
           {isLogin ? (
             <>
               Don&apos;t have an account?{' '}
-              <button onClick={toggleMode} className="text-purple-600 hover:underline font-medium">
+              <Button
+                onClick={toggleMode}
+                variant="ghost"
+                size="sm"
+                className="text-purple-600 hover:underline p-0 h-auto"
+              >
                 Sign up
-              </button>
+              </Button>
             </>
           ) : (
             <>
               Already have an account?{' '}
-              <button onClick={toggleMode} className="text-purple-600 hover:underline font-medium">
+              <Button
+                onClick={toggleMode}
+                variant="ghost"
+                size="sm"
+                className="text-purple-600 hover:underline p-0 h-auto"
+              >
                 Log in
-              </button>
+              </Button>
             </>
           )}
         </div>

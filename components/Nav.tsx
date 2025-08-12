@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
+import Button from '@/components/Button';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: navigation links                              */
@@ -19,14 +20,16 @@ export default function Nav() {
         <Link href="/" className="text-lg font-semibold focus-ring">
           JB
         </Link>
-        <button
+        <Button
           aria-label="Toggle menu"
-          className="md:hidden p-2 rounded-lg border border-border hover:border-accent transition focus-ring"
+          variant="ghost"
+          size="sm"
+          className="md:hidden p-2 border border-border hover:border-accent"
           onClick={() => setOpen(!open)}
         >
           {/* A more accessible and scalable approach would be to use an SVG icon here */}
           ☰
-        </button>
+        </Button>
         <ul className="hidden md:flex gap-6 text-text-2">
           {navLinks.map((link) => (
             <li key={link.href}>

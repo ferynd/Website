@@ -6,6 +6,7 @@
 // None
 
 import React, { useState, useEffect } from 'react';
+import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import { EXPENSE_CATEGORIES, CURRENCY_SYMBOL } from '../../constants';
 
@@ -223,20 +224,21 @@ export default function ExpenseForm() {
       )}
 
       {/* Submit button */}
-      <button
+      <Button
         type="submit"
-        className="mt-4 w-full bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        variant="success"
+        className="mt-4 w-full"
+        loading={isSubmitting}
         disabled={
-          !newExpense.description || 
-          !newExpense.totalAmount || 
-          isSubmitting ||
+          !newExpense.description ||
+          !newExpense.totalAmount ||
           payerMismatch ||
           manualMismatch ||
           newExpense.splitParticipants.length === 0
         }
       >
         {isSubmitting ? 'Adding...' : 'Add Expense'}
-      </button>
+      </Button>
     </form>
   );
 }

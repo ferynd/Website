@@ -6,6 +6,7 @@
 // None
 
 import React, { useState } from 'react';
+import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import { CURRENCY_SYMBOL } from '../../constants';
 import type { UserProfile } from '../../pageTypes';
@@ -103,13 +104,15 @@ export default function BalanceSummary({
                     className="border border-gray-300 rounded px-2 py-1 w-24 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     placeholder="Amount"
                   />
-                  <button
+                  <Button
                     onClick={() => submit(b.personId)}
-                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded transition-colors font-medium"
+                    variant="success"
+                    size="sm"
+                    className="px-3 py-1"
                     aria-label="Record payment"
                   >
                     Pay
-                  </button>
+                  </Button>
                 </div>
               )}
             </li>

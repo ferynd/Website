@@ -16,6 +16,7 @@ import PaymentHistory from './PaymentHistory';
 import AuditLog from './AuditLog';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import type { UserProfile } from '../../pageTypes';
+import Button from '@/components/Button';
 
 export default function TripDetail({
   onBack,
@@ -54,12 +55,14 @@ export default function TripDetail({
           {/* Header */}
           <header className="bg-white rounded-lg shadow p-4">
             <div className="flex items-center justify-between">
-              <button
+              <Button
                 onClick={onBack}
-                className="text-blue-600 hover:underline"
+                variant="ghost"
+                size="sm"
+                className="text-blue-600 hover:underline p-0 h-auto"
               >
                 ← Back to trips
-              </button>
+              </Button>
               <h1 className="text-2xl font-bold text-gray-800">{trip.name}</h1>
               <div className="text-gray-600 text-sm">
                 {expenses.length} expense{expenses.length !== 1 ? 's' : ''} · {payments.length} payment{payments.length !== 1 ? 's' : ''}
