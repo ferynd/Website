@@ -8,20 +8,13 @@
 import React, { useState } from 'react';
 import { useTrip } from '../../TripContext';
 import { EXPENSE_CATEGORIES } from '../../constants';
-import type { UserProfile } from '../../pageTypes';
-
-export default function ExpenseForm({
-  userProfile,
-}: {
-  userProfile: UserProfile | null;
-}) {
+export default function ExpenseForm() {
   const { participants, newExpense, setNewExpense, addExpense } = useTrip();
   const [error, setError] = useState('');
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!userProfile) return;
     try {
       await addExpense(newExpense);
     } catch (err: unknown) {
@@ -152,7 +145,11 @@ export default function ExpenseForm({
           })}
         </div>
       </div>
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && (
+        <p className="text-red-600 text-sm" aria-live="polite">
+          {error}
+        </p>
+      )}
       <button
         type="submit"
         className="bg-green-600 text-white px-3 py-1 rounded disabled:opacity-50"

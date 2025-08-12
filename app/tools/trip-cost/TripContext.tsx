@@ -192,6 +192,12 @@ export const TripProvider = ({
       const n = parseFloat(String(val));
       if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
     }
+    const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
+    if (sumPaid === 0) {
+      // already handled below by defaulting to current user
+    } else if (Math.abs(sumPaid - totalAmount) > 0.01) {
+      throw new Error('Payer amounts must sum to the total amount.');
+    }
     const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
     let splitParticipants = Array.isArray(draft.splitParticipants)
       ? draft.splitParticipants.slice()
@@ -253,6 +259,12 @@ export const TripProvider = ({
     for (const [pid, val] of Object.entries(draft.paidBy || {})) {
       const n = parseFloat(String(val));
       if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
+    }
+    const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
+    if (sumPaid === 0) {
+      // already handled below by defaulting to current user
+    } else if (Math.abs(sumPaid - totalAmount) > 0.01) {
+      throw new Error('Payer amounts must sum to the total amount.');
     }
     const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
     let splitParticipants = Array.isArray(draft.splitParticipants)

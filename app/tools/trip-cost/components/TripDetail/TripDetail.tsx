@@ -61,7 +61,7 @@ export default function TripDetail({
           setConfirmDelete({ type: 'participant', id })
         }
       />
-      <ExpenseForm userProfile={userProfile} />
+      <ExpenseForm />
       <ExpensesList
         userProfile={userProfile}
         onDeleteExpense={(id) => setConfirmDelete({ type: 'expense', id })}

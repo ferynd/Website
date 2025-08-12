@@ -36,12 +36,10 @@ export default function ExpensesList({
 
   const splitText = (e: Expense) => {
     if (e.splitType === 'even') {
-      if (e.splitParticipants.length === 0) {
-        return 'Split evenly among everyone';
-      }
-      return `Split evenly among ${e.splitParticipants
-        .map((id: string) => name(id))
-        .join(', ')}`;
+      const ids = e.splitParticipants.length
+        ? e.splitParticipants
+        : participants.map((p) => p.id);
+      return `Split evenly among ${ids.map((id) => name(id)).join(', ')}`;
     }
     return (
       'Split: ' +
