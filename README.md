@@ -101,6 +101,7 @@ The Tools section contains practical apps and utilities. Its main page (`/tools`
 - **Admin (Site Owner):** Full control - create/delete trips, manage all participants, edit all expenses
 - **Regular Users:** Can view trips they're part of, add expenses/payments, edit only their own entries
 - **Guest Participants:** Can be added by name without accounts (for tracking non-users)
+- **Expense Ownership:** Each expense stores its creator; only admins or the creator can delete an expense
 
 #### Technical Implementation
 
@@ -174,6 +175,7 @@ To set up the Trip Cost Calculator:
 3. Choose split type (even or manual)
 4. Select participants to split between
 5. For manual splits, enter percentages or fixed amounts
+6. The form validates positive amounts, defaults to the current user as payer if none are specified, and requires manual splits to match the total
 
 **Viewing Balances:**
 - See each person's total paid vs. what they should have paid
@@ -194,7 +196,7 @@ To set up the Trip Cost Calculator:
 - Client: Conditional rendering based on user role and ownership
 - Server: Security rules validate all database operations
 
-**Audit Trail:** All significant actions are logged to a subcollection for admin review, including who made changes and when.
+**Audit Trail:** All significant actions are logged to a subcollection for admin review, including who made changes and when. Admins can toggle the Audit Log open or closed in the trip detail view.
 
 **Data Persistence:** Unlike the original version which was session-based, all data now persists in Cloud Firestore, accessible from any device after login.
 

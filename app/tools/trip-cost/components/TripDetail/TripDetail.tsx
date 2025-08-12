@@ -73,15 +73,11 @@ export default function TripDetail({
         onDeletePayment={(id) => setConfirmDelete({ type: 'payment', id })}
       />
       {userProfile?.isAdmin && (
-        <>
-          <button
-            onClick={() => setShowAuditLog((s) => !s)}
-            className="text-sm text-blue-600 underline"
-          >
-            {showAuditLog ? 'Hide Audit Log' : 'Show Audit Log'}
-          </button>
-          <AuditLog entries={auditEntries} show={showAuditLog} />
-        </>
+        <AuditLog
+          entries={auditEntries}
+          show={showAuditLog}
+          onToggle={() => setShowAuditLog((s) => !s)}
+        />
       )}
       {confirmDelete && (
         <ConfirmDeleteModal

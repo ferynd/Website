@@ -36,20 +36,25 @@ export default function ExpensesList({
 
   const splitText = (e: Expense) => {
     if (e.splitType === 'even') {
+      if (e.splitParticipants.length === 0) {
+        return 'Split evenly among everyone';
+      }
       return `Split evenly among ${e.splitParticipants
         .map((id: string) => name(id))
         .join(', ')}`;
     }
-    return 'Split: ' +
+    return (
+      'Split: ' +
       e.splitParticipants
         .map((id: string) => {
           const share = e.manualSplit[id];
           if (!share) return name(id);
           return share.type === 'percent'
             ? `${name(id)} ${share.value}%`
-            : `${name(id)} ${CURRENCY_SYMBOL}${share.value.toFixed(2)}`;
+            : `${name(id)} ${CURRENCY_SYMBOL}${Number(share.value).toFixed(2)}`;
         })
-        .join(', ');
+        .join(', ')
+    );
   };
   return (
     <section className="bg-white rounded shadow p-4">

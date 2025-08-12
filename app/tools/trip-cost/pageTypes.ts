@@ -36,8 +36,10 @@ export interface Expense {
   paidBy: { [personId: string]: number };
   splitType: 'even' | 'manual';
   splitParticipants: string[];
-  manualSplit: { [personId: string]: { type: 'percent' | 'amount'; value: number } };
-  createdBy?: string;
+  manualSplit: {
+    [personId: string]: { type: 'percent' | 'amount'; value: number };
+  };
+  createdBy: string;
   createdAt?: Timestamp;
 }
 
@@ -65,11 +67,14 @@ export interface Trip {
 }
 
 // Draft types for form state
-export type ExpenseDraft = Omit<Expense, 'id' | 'totalAmount' | 'paidBy' | 'manualSplit'> & {
-  id?: string;
+export type ExpenseDraft = {
+  category: string;
+  description: string;
   totalAmount: string;
-  paidBy: { [personId: string]: string };
-  manualSplit: { [personId: string]: { type: 'percent' | 'amount'; value: string } };
+  paidBy: Record<string, string>;
+  splitType: 'even' | 'manual';
+  splitParticipants: string[];
+  manualSplit: Record<string, { type: 'amount' | 'percent'; value: string }>;
 };
 
 export interface AuditEntry {
