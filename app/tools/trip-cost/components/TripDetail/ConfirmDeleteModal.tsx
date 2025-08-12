@@ -31,7 +31,7 @@ export default function ConfirmDeleteModal({
       onKeyDown={(e) => e.key === 'Escape' && onCancel()}
       tabIndex={-1}
     >
-      <div className="bg-white p-4 rounded shadow space-y-4">
+      <div className="bg-surface-1 p-4 rounded shadow space-y-4">
         <p id="confirm-title">Are you sure you want to delete this {itemType}?</p>
         <div className="flex gap-2 justify-end">
           <Button
@@ -47,7 +47,7 @@ export default function ConfirmDeleteModal({
             onClick={onCancel}
             variant="ghost"
             size="sm"
-            className="px-3 py-1 border"
+            className="px-3 py-1 border border-border"
           >
             Cancel
           </Button>

@@ -16,7 +16,7 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
     const autoId = React.useId();
     const inputId = id ?? autoId;
 
-    const baseClasses = `bg-surface-1 border ${error ? 'border-error' : 'border-border'} text-text placeholder:text-text-3 rounded-lg px-3 py-2 focus:border-accent focus:ring-2 focus:ring-accent`;
+    const baseClasses = `bg-surface-1 border ${error ? 'border-error' : 'border-border'} text-text placeholder:text-text-3 rounded-lg px-3 py-2 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2`;
 
     const inputElement = (
       <input

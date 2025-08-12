@@ -42,29 +42,29 @@ export default function TripDetail({
 
   if (!trip) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-gray-600">Loading trip details...</div>
+      <div className="min-h-screen bg-surface-2 flex items-center justify-center">
+        <div className="text-text-3">Loading trip details...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-surface-2">
       <div className="max-w-7xl mx-auto p-4">
         <div className="space-y-4">
           {/* Header */}
-          <header className="bg-white rounded-lg shadow p-4">
+          <header className="bg-surface-1 rounded-lg shadow p-4">
             <div className="flex items-center justify-between">
               <Button
                 onClick={onBack}
                 variant="ghost"
                 size="sm"
-                className="text-blue-600 hover:underline p-0 h-auto"
+                className="text-accent hover:underline p-0 h-auto"
               >
                 ← Back to trips
               </Button>
-              <h1 className="text-2xl font-bold text-gray-800">{trip.name}</h1>
-              <div className="text-gray-600 text-sm">
+              <h1 className="text-2xl font-bold text-text">{trip.name}</h1>
+              <div className="text-text-3 text-sm">
                 {expenses.length} expense{expenses.length !== 1 ? 's' : ''} · {payments.length} payment{payments.length !== 1 ? 's' : ''}
               </div>
             </div>

@@ -14,28 +14,28 @@ export default function SettlementSuggestions() {
   
   if (!settlements.length) {
     return (
-      <section className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-xl font-semibold mb-3 text-gray-900">Settlement Suggestions</h2>
-        <p className="text-gray-600 italic">All balances are settled!</p>
+      <section className="bg-surface-1 rounded-lg shadow p-4">
+        <h2 className="text-xl font-semibold mb-3 text-text">Settlement Suggestions</h2>
+        <p className="text-text-3 italic">All balances are settled!</p>
       </section>
     );
   }
-  
+
   return (
-    <section className="bg-white rounded-lg shadow p-4">
-      <h2 className="text-xl font-semibold mb-3 text-gray-900">Settlement Suggestions</h2>
-      <p className="text-sm text-gray-600 mb-3">
+    <section className="bg-surface-1 rounded-lg shadow p-4">
+      <h2 className="text-xl font-semibold mb-3 text-text">Settlement Suggestions</h2>
+      <p className="text-sm text-text-3 mb-3">
         Optimal payments to settle all balances:
       </p>
       <ul className="space-y-2">
         {settlements.map((s, idx) => (
-          <li key={idx} className="flex items-center p-2 bg-amber-50 rounded-lg border border-amber-200">
+          <li key={idx} className="flex items-center p-2 bg-warning/10 rounded-lg border border-warning/20">
             <div className="flex-1">
-              <span className="font-medium text-gray-900">{s.from}</span>
-              <span className="text-gray-600 mx-2">→</span>
-              <span className="font-medium text-gray-900">{s.to}</span>
+              <span className="font-medium text-text">{s.from}</span>
+              <span className="text-text-3 mx-2">→</span>
+              <span className="font-medium text-text">{s.to}</span>
             </div>
-            <span className="font-semibold text-amber-700">
+            <span className="font-semibold text-warning">
               {CURRENCY_SYMBOL}{s.amount.toFixed(2)}
             </span>
           </li>

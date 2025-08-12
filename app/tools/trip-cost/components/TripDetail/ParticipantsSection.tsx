@@ -181,8 +181,8 @@ export default function ParticipantsSection({
   };
 
   return (
-    <section className="bg-white rounded-lg shadow p-4">
-      <h2 className="text-lg font-semibold mb-3 text-gray-900">Participants</h2>
+    <section className="bg-surface-1 rounded-lg shadow p-4">
+      <h2 className="text-lg font-semibold mb-3 text-text">Participants</h2>
       
       {/* Add Participant Section */}
       {userProfile && (
@@ -195,8 +195,8 @@ export default function ParticipantsSection({
               size="sm"
               className={`px-3 py-1 text-sm ${
                 !isSearchMode
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                  ? 'bg-accent/10 text-accent border border-accent/20'
+                  : 'bg-surface-3 text-text-2 border border-border hover:bg-surface-2'
               }`}
             >
               Add by Name
@@ -207,8 +207,8 @@ export default function ParticipantsSection({
               size="sm"
               className={`px-3 py-1 text-sm ${
                 isSearchMode
-                  ? 'bg-blue-100 text-blue-800 border border-blue-200'
-                  : 'bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200'
+                  ? 'bg-accent/10 text-accent border border-accent/20'
+                  : 'bg-surface-3 text-text-2 border border-border hover:bg-surface-2'
               }`}
             >
               Add Registered User
@@ -264,9 +264,9 @@ export default function ParticipantsSection({
 
               {/* Dropdown */}
               {showDropdown && (
-                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                <div className="absolute z-10 w-full mt-1 bg-surface-1 border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
                   {loadingUsers ? (
-                    <div className="p-3 text-gray-600">Loading users...</div>
+                    <div className="p-3 text-text-3">Loading users...</div>
                   ) : filteredUsers.length > 0 ? (
                     filteredUsers.map((user) => (
                       <Button
@@ -278,16 +278,16 @@ export default function ParticipantsSection({
                         }}
                         variant="ghost"
                         size="sm"
-                        className="w-full text-left p-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 focus:bg-blue-50"
+                        className="w-full text-left p-3 hover:bg-surface-2 border-b border-border last:border-b-0 focus:bg-accent/10"
                       >
-                        <div className="font-medium text-gray-900">{user.displayName}</div>
-                        <div className="text-sm text-gray-600">{user.email}</div>
+                        <div className="font-medium text-text">{user.displayName}</div>
+                        <div className="text-sm text-text-3">{user.email}</div>
                       </Button>
                     ))
                   ) : searchQuery.trim() ? (
-                      <div className="p-3 text-gray-600">No users found matching &quot;{searchQuery}&quot;</div>
+                      <div className="p-3 text-text-3">No users found matching &quot;{searchQuery}&quot;</div>
                   ) : (
-                    <div className="p-3 text-gray-600">Start typing to search users...</div>
+                    <div className="p-3 text-text-3">Start typing to search users...</div>
                   )}
                 </div>
               )}
@@ -297,7 +297,7 @@ export default function ParticipantsSection({
       )}
       
       {error && (
-        <div className="text-red-600 text-sm mb-3 bg-red-50 border border-red-200 rounded p-2">
+        <div className="text-error text-sm mb-3 bg-error/10 border border-error/20 rounded p-2">
           {error}
         </div>
       )}
@@ -305,7 +305,7 @@ export default function ParticipantsSection({
       {/* Participants List */}
       <ul className="space-y-2">
         {participants.length === 0 ? (
-          <li className="text-gray-700 italic py-2">No participants yet. Add someone above!</li>
+          <li className="text-text-2 italic py-2">No participants yet. Add someone above!</li>
         ) : (
           participants.map((p) => (
             <li key={p.id} className="flex items-center gap-2 py-2">
@@ -321,7 +321,7 @@ export default function ParticipantsSection({
                     onClick={saveEdit}
                     variant="ghost"
                     size="sm"
-                    className="text-blue-600 hover:text-blue-700 px-2 h-auto"
+                    className="text-accent hover:text-accent/80 px-2 h-auto"
                   >
                     Save
                   </Button>
@@ -329,7 +329,7 @@ export default function ParticipantsSection({
                     onClick={() => setEditingId(null)}
                     variant="ghost"
                     size="sm"
-                    className="text-gray-600 hover:text-gray-700 px-2 h-auto"
+                    className="text-text-3 hover:text-text-2 px-2 h-auto"
                   >
                     Cancel
                   </Button>
@@ -337,14 +337,14 @@ export default function ParticipantsSection({
               ) : (
                 <>
                   <span
-                    className={`flex-1 text-gray-900 ${userProfile?.isAdmin ? 'cursor-pointer hover:text-blue-600' : ''}`}
+                    className={`flex-1 text-text ${userProfile?.isAdmin ? 'cursor-pointer hover:text-accent' : ''}`}
                     onClick={() =>
                       userProfile?.isAdmin && startEdit(p.id, p.name)
                     }
                   >
                     {p.name}
                     {p.isRegistered && (
-                      <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded font-medium">
+                      <span className="ml-2 text-xs bg-success/10 text-success px-2 py-0.5 rounded font-medium">
                         Registered
                       </span>
                     )}
@@ -354,7 +354,7 @@ export default function ParticipantsSection({
                       onClick={() => onDeleteParticipant(p.id)}
                       variant="ghost"
                       size="sm"
-                      className="text-red-600 hover:text-red-700 px-2 text-xl font-bold h-auto"
+                      className="text-error hover:text-error/90 px-2 text-xl font-bold h-auto"
                       aria-label={`Remove ${p.name}`}
                     >
                       ×

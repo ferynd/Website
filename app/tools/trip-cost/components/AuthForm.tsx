@@ -39,14 +39,14 @@ export default function AuthForm({
   toggleMode,
 }: AuthFormProps) {
   return (
-    <div className="min-h-screen bg-gray-50 flex justify-center items-center p-4">
-      <div className="w-full max-w-md bg-white p-6 rounded-lg shadow-lg">
-        <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
+    <div className="min-h-screen bg-surface-2 flex justify-center items-center p-4">
+      <div className="w-full max-w-md bg-surface-1 p-6 rounded-lg shadow-lg">
+        <h2 className="text-2xl font-bold mb-6 text-center text-text">
           {isLogin ? 'Log in to Trip Cost' : 'Create Account'}
         </h2>
 
         {authError && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+          <div className="bg-error/10 border border-error/20 text-error px-4 py-3 rounded mb-4">
             {authError}
           </div>
         )}
@@ -101,7 +101,7 @@ export default function AuthForm({
           </Button>
         </form>
 
-        <div className="mt-6 text-center text-sm text-gray-700">
+        <div className="mt-6 text-center text-sm text-text-2">
           {isLogin ? (
             <>
               Don&apos;t have an account?{' '}
@@ -109,7 +109,7 @@ export default function AuthForm({
                 onClick={toggleMode}
                 variant="ghost"
                 size="sm"
-                className="text-purple-600 hover:underline p-0 h-auto"
+                className="text-purple hover:underline p-0 h-auto"
               >
                 Sign up
               </Button>
@@ -121,7 +121,7 @@ export default function AuthForm({
                 onClick={toggleMode}
                 variant="ghost"
                 size="sm"
-                className="text-purple-600 hover:underline p-0 h-auto"
+                className="text-purple hover:underline p-0 h-auto"
               >
                 Log in
               </Button>
