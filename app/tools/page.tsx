@@ -51,16 +51,16 @@ export default function ToolsPage() {
             <Link
               href={tool.href}
               key={tool.name}
-              className="group block rounded-xl border border-border bg-surface-1 p-6 shadow-md transition-shadow transition-transform duration-200 hover:shadow-xl hover:scale-[1.02] focus-ring"
+              className="group block rounded-xl border border-border bg-surface-1 p-6 shadow-md transition-all duration-200 ease-in-out hover:shadow-xl hover:scale-[1.02] focus-ring"
             >
               <div className="flex items-start">
                 <div className="mr-6 flex-shrink-0 text-accent">{tool.icon}</div>
                 <div>
                   <h2 className="text-xl font-semibold">{tool.name}</h2>
-                  <p className="mt-1 text-text-2">{tool.description}</p>
+                  <p className="mt-4 text-text-2">{tool.description}</p>
                 </div>
                 <div className="ml-auto pl-4 flex-shrink-0">
-                  <ArrowRight size={24} className="text-text-3 transition-transform duration-200 group-hover:translate-x-1 group-hover:text-accent" />
+                  <ArrowRight size={24} className="text-text-3 transition-all duration-200 ease-in-out group-hover:translate-x-1 group-hover:text-accent" />
                 </div>
               </div>
             </Link>

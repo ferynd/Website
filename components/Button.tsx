@@ -6,7 +6,7 @@ import { Loader2 } from 'lucide-react';
 /* CONFIGURATION: button variant and size classes               */
 /* ------------------------------------------------------------ */
 const buttonVariants = cva(
-  'inline-flex items-center justify-center font-medium rounded-lg transition focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none',
+  'inline-flex items-center justify-center font-medium rounded-lg transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none',
   {
     variants: {
       variant: {
@@ -17,9 +17,9 @@ const buttonVariants = cva(
         ghost: 'bg-transparent text-text hover:bg-surface-2',
       },
       size: {
-        sm: 'px-3 py-1.5 text-sm',
-        md: 'px-4 py-2',
-        lg: 'px-6 py-3 rounded-xl text-lg',
+        sm: 'px-4 py-4 text-sm',
+        md: 'px-6 py-6',
+        lg: 'px-8 py-8 rounded-xl text-lg',
       },
     },
     defaultVariants: {
@@ -45,7 +45,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {loading && (
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+          <Loader2 className="mr-4 h-4 w-4 animate-spin" aria-hidden="true" />
         )}
         {children}
       </button>

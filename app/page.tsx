@@ -28,8 +28,8 @@ export default function Home() {
                 href={link.href}
                 className={
                   link.href === '/games'
-                    ? 'rounded-xl3 bg-accent text-black px-6 py-3 font-medium shadow-glow transition hover:brightness-110 focus-ring'
-                    : 'rounded-xl3 border border-border text-text-2 px-6 py-3 transition hover:border-accent hover:text-text focus-ring'
+                    ? 'rounded-xl3 bg-accent text-black px-6 py-4 font-medium shadow-glow transition-all duration-200 ease-in-out hover:brightness-110 focus-ring'
+                    : 'rounded-xl3 border border-border text-text-2 px-6 py-4 transition-all duration-200 ease-in-out hover:border-accent hover:text-text focus-ring'
                 }
               >
                 {link.label}
