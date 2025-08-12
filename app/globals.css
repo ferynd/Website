@@ -1,28 +1,86 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Dark mode by default */
+  color-scheme: dark;
 }
 
+/* Tailwind v4 semantic tokens */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Colors (HSL) */
+  --color-bg:            hsl(220 43% 8%);   /* #0A0F1E */
+  --color-surface-1:     hsl(222 47% 13%);  /* #0F172A */
+  --color-surface-2:     hsl(220 28% 12%);  /* #111827 */
+  --color-surface-3:     hsl(215 28% 17%);  /* #1F2937 */
+  --color-border:        hsl(214 30% 20%);  /* #243244 */
+
+  --color-text:          hsl(210 20% 92%);  /* #E5E7EB */
+  --color-text-2:        hsl(215 14% 63%);  /* #9CA3AF */
+  --color-text-3:        hsl(220 9% 46%);   /* #6B7280 */
+
+  --color-accent:        hsl(186 100% 50%); /* #00F5FF */
+  --color-accent-600:    hsl(186 100% 42%); /* #00C7D9 */
+  --color-magenta:       hsl(334 100% 55%); /* #FF1A8C */
+  --color-purple:        hsl(278 100% 57%); /* #B026FF */
+
+  --color-success:       hsl(142 72% 45%);
+  --color-warning:       hsl(42 96% 50%);
+  --color-error:         hsl(0 84% 60%);
+  --color-info:          hsl(199 92% 60%);
+
+  /* Shadows, radii, durations, easing */
+  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / 0.30);
+  --shadow-2: 0 6px 24px hsl(0 0% 0% / 0.50);
+  --shadow-glow: 0 0 0 2px hsl(186 100% 50% / 0.35), 0 0 24px 4px hsl(186 100% 50% / 0.35);
+
+  --radius-xl2: 1rem;
+  --radius-xl3: 1.5rem;
+
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Fonts: will map Poppins in layout */
+  --font-sans: var(--font-poppins, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Optional light theme toggle support if you ever add one */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg:            hsl(210 40% 98%);
+  --color-surface-1:     hsl(0 0% 100%);
+  --color-surface-2:     hsl(210 40% 96%);
+  --color-surface-3:     hsl(210 40% 94%);
+  --color-border:        hsl(214 32% 91%);
+
+  --color-text:          hsl(222 47% 11%);
+  --color-text-2:        hsl(215 25% 27%);
+  --color-text-3:        hsl(215 16% 47%);
+
+  --color-accent:        hsl(186 100% 40%);
+  --color-accent-600:    hsl(186 100% 30%);
+  --color-magenta:       hsl(334 100% 45%);
+  --color-purple:        hsl(278 100% 47%);
+
+  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / 0.08);
+  --shadow-2: 0 6px 24px hsl(0 0% 0% / 0.16);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Global base */
+html, body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+}
+
+/* Utilities */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
 }
 /* In your global CSS file or add to page.tsx */
 .text-gray-600 { color: #374151 !important; }
