@@ -2,8 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark theme default (HSL parts for flexibility) */
+/* Light theme default (HSL parts for flexibility) */
 :root {
+  --bg: 210 40% 98%;
+  --surface-1: 0 0% 100%;
+  --surface-2: 210 40% 96%;
+  --surface-3: 210 40% 94%;
+  --border: 214 32% 91%;
+
+  --text: 222 47% 11%;
+  --text-2: 215 25% 27%;
+  --text-3: 215 16% 47%;
+
+  --accent: 186 100% 40%;
+  --accent-600: 186 100% 30%;
+  --magenta: 334 100% 45%;
+  --purple: 278 100% 47%;
+
+  --success: 142 72% 45%;
+  --warning: 42 96% 50%;
+  --error: 0 84% 60%;
+  --info: 199 92% 60%;
+
+  --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.08);
+  --shadow-2: 0 6px 24px rgb(0 0 0 / 0.16);
+  --shadow-glow: 0 0 0 2px hsl(var(--accent, 186 100% 40%) / 0.35), 0 0 24px 4px hsl(var(--accent, 186 100% 40%) / 0.35);
+
+  --radius-xl2: 1rem;
+  --radius-xl3: 1.5rem;
+}
+
+[data-theme="dark"] {
   --bg: 220 43% 8%;
   --surface-1: 222 47% 13%;
   --surface-2: 220 28% 12%;
@@ -24,55 +53,26 @@
   --error: 0 84% 60%;
   --info: 199 92% 60%;
 
-  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / .30);
-  --shadow-2: 0 6px 24px hsl(0 0% 0% / .50);
-  --shadow-glow: 0 0 0 2px hsl(var(--accent) / .35), 0 0 24px 4px hsl(var(--accent) / .35);
-
-  --radius-xl2: 1rem;
-  --radius-xl3: 1.5rem;
-}
-
-:root[data-theme="light"] {
-  --bg: 210 40% 98%;
-  --surface-1: 0 0% 100%;
-  --surface-2: 210 40% 96%;
-  --surface-3: 210 40% 94%;
-  --border: 214 32% 91%;
-
-  --text: 222 47% 11%;
-  --text-2: 215 25% 27%;
-  --text-3: 215 16% 47%;
-
-  --accent: 186 100% 40%;
-  --accent-600: 186 100% 30%;
-  --magenta: 334 100% 45%;
-  --purple: 278 100% 47%;
-
-  --shadow-1: 0 1px 2px 0 hsl(0 0% 0% / .08);
-  --shadow-2: 0 6px 24px hsl(0 0% 0% / .16);
+  --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.30);
+  --shadow-2: 0 6px 24px rgb(0 0 0 / 0.50);
 }
 
 html, body {
-  background: hsl(var(--bg));
-  color: hsl(var(--text));
+  min-height: 100vh;
+  background: hsl(var(--bg, 210 40% 98%) / 1);
+  color: hsl(var(--text, 222 47% 11%) / 1);
 }
 
 /* Utilities */
-.focus-ring:focus-visible { outline: 2px solid hsl(var(--accent)); outline-offset: 3px; }
+.focus-ring:focus-visible { outline: 2px solid hsl(var(--accent, 186 100% 40%) / 1); outline-offset: 3px; }
 
 @media (prefers-reduced-motion: reduce) {
-  * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
-}
-
-/* Trip Cost Calculator overrides */
-.trip-cost-app {
-  .text-gray-600 { color: #374151 !important; }
-  .text-gray-700 { color: #1f2937 !important; }
-  .text-gray-800 { color: #111827 !important; }
-  input, select, textarea { color: #111827 !important; }
-  table { color: #111827 !important; }
-  li { color: #1f2937 !important; }
-  .text-muted { color: #4b5563 !important; }
+  * {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+  * { transition: none; }
 }
 
 /* ------------------------------------------------------------ */
