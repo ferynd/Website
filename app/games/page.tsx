@@ -5,20 +5,22 @@ import Nav from '@/components/Nav';
 import { ArrowRight, Drama, Swords } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
-/* CONFIGURATION: list of available games                       */
+/* CONFIGURATION: icon size and list of available games          */
 /* ------------------------------------------------------------ */
+const cardIconSize = 24;
+
 const gameList = [
   {
     name: 'Noir Detective Idea',
     description: 'An interactive detective story concept (Static HTML).',
     href: '/games/noir_detective_idea/index.html',
-    icon: <Drama size={24} className="text-purple" />,
+    icon: <Drama size={cardIconSize} className="text-accent" />,
   },
   {
     name: 'Emeril: A World Divided',
     description: 'An interactive lore page for a world of lost magic and warring factions.',
     href: '/games/Emeril_A_World_Divided/index.html',
-    icon: <Swords size={24} className="text-accent" />,
+    icon: <Swords size={cardIconSize} className="text-accent" />,
   },
 ];
 
@@ -37,10 +39,10 @@ export default function GamesPage() {
             <Link
               href={game.href}
               key={game.name}
-              className="group block rounded-xl3 border border-border bg-surface-1 p-6 shadow-1 transition duration-200 ease-linear hover:shadow-2 hover:shadow-glow focus-ring"
+              className="group block rounded-xl border border-border bg-surface-1 p-6 shadow-md transition-shadow transition-transform duration-200 hover:shadow-xl hover:scale-[1.02] focus-ring"
             >
               <div className="flex items-start">
-                <div className="mr-6 flex-shrink-0">{game.icon}</div>
+                <div className="mr-6 flex-shrink-0 text-accent">{game.icon}</div>
                 <div>
                   <h2 className="text-xl font-semibold">{game.name}</h2>
                   <p className="mt-1 text-text-2">{game.description}</p>
