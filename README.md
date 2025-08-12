@@ -81,6 +81,8 @@ The Tools section contains practical apps and utilities. Its main page (`/tools`
 
 **Updated January 2025:** The Trip Cost Calculator has been completely rebuilt with Firebase Authentication and Cloud Firestore for persistent, multi-user functionality. This tool helps groups track shared expenses on trips and automatically calculates who owes whom.
 
+**Updated February 2025:** Refactored into modular components and resolved a state update loop for improved stability and maintainability.
+
 #### Features
 
 **Core Functionality:**
@@ -105,9 +107,16 @@ The Tools section contains practical apps and utilities. Its main page (`/tools`
 The Trip Cost Calculator is a Next.js React application integrated with Firebase:
 
 **File Structure:**
-- `app/tools/trip-cost/page.tsx` - Main application component (client-side)
+- `app/tools/trip-cost/page.tsx` - Main application component handling global state
+- `app/tools/trip-cost/components/AuthForm.tsx` - Authentication form module
+- `app/tools/trip-cost/components/TripList.tsx` - Trip listing module
+- `app/tools/trip-cost/components/TripDetail/` - Trip detail view split into modular sections
+- `app/tools/trip-cost/TripContext.tsx` - React context providing trip data and handlers
 - `app/tools/trip-cost/firebaseConfig.ts` - Firebase configuration and admin email
 - `app/tools/trip-cost/db.ts` - Database helper functions and collection references
+- `app/tools/trip-cost/constants.ts` - Shared configuration values
+- `app/tools/trip-cost/utils/calc.ts` - Pure calculation helpers for balances and settlements
+- `app/tools/trip-cost/pageTypes.ts` - Shared TypeScript interfaces
 
 **Data Architecture:**
 ```
@@ -120,7 +129,6 @@ artifacts/
       - participants[]   # Array of participant objects
       - expenses[]       # Array of expense records
       - payments[]       # Array of payment records
-      - participantIds[] # UIDs for efficient querying
     trips/{tripId}/audit/{logId}  # Audit log entries (admin-only)
 ```
 
