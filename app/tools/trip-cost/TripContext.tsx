@@ -266,6 +266,10 @@ export const TripProvider = ({
     } else if (Math.abs(sumPaid - totalAmount) > 0.01) {
       throw new Error('Payer amounts must sum to the total amount.');
     }
+    const currentUserId = userProfile?.uid ?? 'unknown';
+    if (Object.keys(paidBy).length === 0) {
+      paidBy[currentUserId] = totalAmount;
+    }
     const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
     let splitParticipants = Array.isArray(draft.splitParticipants)
       ? draft.splitParticipants.slice()
@@ -290,10 +294,6 @@ export const TripProvider = ({
       }
     }
     if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
-    const currentUserId = userProfile?.uid ?? 'unknown';
-    if (Object.keys(paidBy).length === 0) {
-      paidBy[currentUserId] = totalAmount;
-    }
     const updated = expenses.map((e) =>
       e.id === id
         ? {
