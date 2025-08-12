@@ -22,9 +22,9 @@ export default function ConfirmDeleteModal({
   }, []);
   return (
     <div
-      className="fixed inset-0 flex items-center justify-center bg-black/50"
       role="dialog"
       aria-modal="true"
+      className="fixed inset-0 flex items-center justify-center bg-black/50"
     >
       <div className="bg-white p-4 rounded shadow space-y-4">
         <p>Are you sure you want to delete this {itemType}?</p>
