@@ -1,10 +1,12 @@
 'use client';
 import Link from 'next/link';
 import { useState } from 'react';
+import { Menu, X } from 'lucide-react';
+import { usePathname } from 'next/navigation';
 import Button from '@/components/Button';
 
 /* ------------------------------------------------------------ */
-/* CONFIGURATION: navigation links                              */
+/* CONFIGURATION: navigation links & classes                    */
 /* ------------------------------------------------------------ */
 const navLinks = [
   { label: 'Games', href: '/games' },
@@ -12,54 +14,71 @@ const navLinks = [
   { label: 'Trips', href: '/trips' },
 ];
 
+const linkBaseClass = 'transition hover:text-text focus-ring';
+const activeLinkClass = 'text-text font-medium';
+const inactiveLinkClass = 'text-text-2';
+const mobileMenuTransition =
+  'transition-all duration-300 ease-in-out origin-top transform';
+
 export default function Nav() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-50 backdrop-blur bg-surface-2/80 border-b border-border">
+    <header className="sticky top-0 z-50 backdrop-blur-md bg-surface-2/80 border-b border-border shadow-sm">
       <nav className="container-tight flex items-center justify-between py-3">
-        <Link href="/" className="text-lg font-semibold focus-ring">
+        <Link href="/" className={`text-lg font-semibold ${linkBaseClass}`}>
           JB
         </Link>
         <Button
           aria-label="Toggle menu"
+          aria-expanded={open}
           variant="ghost"
           size="sm"
           className="md:hidden p-2 border border-border hover:border-accent"
           onClick={() => setOpen(!open)}
         >
-          {/* A more accessible and scalable approach would be to use an SVG icon here */}
-          ☰
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </Button>
-        <ul className="hidden md:flex gap-6 text-text-2">
-          {navLinks.map((link) => (
-            <li key={link.href}>
-              <Link
-                className="hover:text-text transition focus-ring"
-                href={link.href}
-              >
-                {link.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      {open && (
-        <div className="md:hidden border-t border-border bg-surface-2">
-          <ul className="px-4 py-2 space-y-2">
-            {navLinks.map((link) => (
+        <ul className="hidden md:flex gap-6">
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href;
+            return (
               <li key={link.href}>
                 <Link
-                  className="block py-2 text-text-2 hover:text-text focus-ring"
+                  className={`${linkBaseClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}
                   href={link.href}
-                  onClick={() => setOpen(false)} // Close menu on link click
                 >
                   {link.label}
                 </Link>
               </li>
-            ))}
-          </ul>
-        </div>
-      )}
+            );
+          })}
+        </ul>
+      </nav>
+      <div
+        className={`md:hidden border-t border-border bg-surface-2 overflow-hidden ${mobileMenuTransition} ${
+          open
+            ? 'scale-y-100 opacity-100'
+            : 'scale-y-0 opacity-0 pointer-events-none'
+        }`}
+      >
+        <ul className="px-4 py-2 space-y-2">
+          {navLinks.map((link) => {
+            const isActive = pathname === link.href;
+            return (
+              <li key={link.href}>
+                <Link
+                  className={`block py-2 ${linkBaseClass} ${isActive ? activeLinkClass : inactiveLinkClass}`}
+                  href={link.href}
+                  onClick={() => setOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
     </header>
   );
 }
