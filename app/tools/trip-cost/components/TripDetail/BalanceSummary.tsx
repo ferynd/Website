@@ -49,11 +49,11 @@ export default function BalanceSummary({
   };
 
   return (
-    <section className="bg-white rounded-lg shadow p-4">
-      <h2 className="text-xl font-semibold mb-3 text-gray-900">Balances</h2>
+    <section className="bg-surface-1 rounded-lg shadow p-4">
+      <h2 className="text-xl font-semibold mb-3 text-text">Balances</h2>
       
       {error && (
-        <div className="mb-3 p-2 bg-red-50 border border-red-200 text-red-700 rounded text-sm">
+        <div className="mb-3 p-2 bg-error/10 border border-error/20 text-error rounded text-sm">
           {error}
         </div>
       )}
@@ -65,13 +65,13 @@ export default function BalanceSummary({
           const isNeutral = Math.abs(b.balance) < 0.01;
           
           return (
-            <li key={b.personId} className="border-b border-gray-100 pb-3 last:border-0">
+            <li key={b.personId} className="border-b border-border pb-3 last:border-0">
               <div className="flex items-center justify-between mb-2">
-                <span className="text-gray-900 font-medium">{b.name}</span>
+                <span className="text-text font-medium">{b.name}</span>
                 <span className={`font-semibold ${
-                  isPositive ? 'text-green-600' : 
-                  isNegative ? 'text-red-600' : 
-                  'text-gray-600'
+                  isPositive ? 'text-success' :
+                  isNegative ? 'text-error' :
+                  'text-text-3'
                 }`}>
                   {isPositive && '+'}{CURRENCY_SYMBOL}{Math.abs(b.balance).toFixed(2)}
                   {isNeutral && ' (settled)'}

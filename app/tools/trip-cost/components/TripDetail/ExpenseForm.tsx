@@ -61,8 +61,8 @@ export default function ExpenseForm() {
     manualTotal > 0 && Math.abs(manualTotal - totalAmount) > 0.01;
 
   return (
-    <form onSubmit={submit} className="bg-white p-4 rounded-lg shadow">
-      <h2 className="text-lg font-semibold mb-3 text-gray-800">Add Expense</h2>
+    <form onSubmit={submit} className="bg-surface-1 p-4 rounded-lg shadow">
+      <h2 className="text-lg font-semibold mb-3 text-text">Add Expense</h2>
       
       {/* Main inputs */}
       <div className="space-y-3">
@@ -102,10 +102,10 @@ export default function ExpenseForm() {
 
         {/* Paid By Section */}
         <div className="border-t pt-3">
-          <p className="font-medium text-gray-700 mb-2">
+          <p className="font-medium text-text-2 mb-2">
             Who paid? (Leave blank to default to you)
             {payerMismatch && (
-              <span className="text-red-600 text-sm ml-2">
+              <span className="text-error text-sm ml-2">
                 Amounts must sum to {CURRENCY_SYMBOL}{totalAmount.toFixed(2)}
               </span>
             )}
@@ -127,7 +127,7 @@ export default function ExpenseForm() {
                   }
                   placeholder="0.00"
                 />
-                <span className="text-gray-700">{p.name}</span>
+                <span className="text-text-2">{p.name}</span>
               </div>
             ))}
           </div>
@@ -135,7 +135,7 @@ export default function ExpenseForm() {
 
         {/* Split Section */}
         <div className="border-t pt-3">
-          <p className="font-medium text-gray-700 mb-2">How to split?</p>
+          <p className="font-medium text-text-2 mb-2">How to split?</p>
           <div className="flex gap-4 mb-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <Input
@@ -144,7 +144,7 @@ export default function ExpenseForm() {
                 onChange={() =>
                   setNewExpense({ ...newExpense, splitType: 'even' })
                 }
-                className="text-blue-600"
+                className="text-accent"
               />
               <span>Split Evenly</span>
             </label>
@@ -155,14 +155,14 @@ export default function ExpenseForm() {
                 onChange={() =>
                   setNewExpense({ ...newExpense, splitType: 'manual' })
                 }
-                className="text-blue-600"
+                className="text-accent"
               />
               <span>Manual Split</span>
             </label>
           </div>
           
           {manualMismatch && (
-            <div className="text-red-600 text-sm mb-2">
+            <div className="text-error text-sm mb-2">
               Manual split must sum to {CURRENCY_SYMBOL}{totalAmount.toFixed(2)}
             </div>
           )}
@@ -184,9 +184,9 @@ export default function ExpenseForm() {
                         splitParticipants: Array.from(set),
                       });
                     }}
-                    className="text-blue-600"
+                    className="text-accent"
                   />
-                  <span className="flex-1 text-gray-700">{p.name}</span>
+                  <span className="flex-1 text-text-2">{p.name}</span>
                   {newExpense.splitType === 'manual' && included && (
                     <Input
                       type="number"
@@ -217,7 +217,7 @@ export default function ExpenseForm() {
 
       {/* Error display */}
       {error && (
-        <div className="mt-3 p-2 bg-red-50 border border-red-200 text-red-700 rounded text-sm" aria-live="polite">
+        <div className="mt-3 p-2 bg-error/10 border border-error/20 text-error rounded text-sm" aria-live="polite">
           {error}
         </div>
       )}
