@@ -1,65 +1,44 @@
-import Link from 'next/link';
-import { Gamepad2, Wrench, Plane, ArrowRight } from 'lucide-react';
+import Nav from '@/components/Nav';
+import ProjectCard from '@/components/ProjectCard';
 
-// You can define your categories here for easy management
-const categories = [
-  {
-    name: 'Games',
-    description: 'Interactive projects and games built with code.',
-    href: '/games',
-    icon: <Gamepad2 size={32} className="mb-4 text-indigo-400" />,
-    bgColor: 'from-gray-800 to-gray-900',
-    borderColor: 'hover:border-indigo-500',
-  },
-  {
-    name: 'Tools',
-    description: 'Useful utilities and apps to solve problems.',
-    href: '/tools',
-    icon: <Wrench size={32} className="mb-4 text-green-400" />,
-    bgColor: 'from-gray-800 to-gray-900',
-    borderColor: 'hover:border-green-500',
-  },
-  {
-    name: 'Trips',
-    description: 'A collection of travel logs, photos, and stories.',
-    href: '/trips',
-    icon: <Plane size={32} className="mb-4 text-sky-400" />,
-    bgColor: 'from-gray-800 to-gray-900',
-    borderColor: 'hover:border-sky-500',
-  },
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: featured projects shown on the home page      */
+/* ------------------------------------------------------------ */
+const featuredProjects = [
+  { title: 'Game Prototype', description: 'Fast-paced browser game built with React + Canvas.', tags: ['React','Game','WebGL'], imageUrl: '/images/game.jpg' },
+  { title: 'Automation Tool', description: 'CLI + dashboard to streamline workflows.', tags: ['Next.js','API','CLI'], imageUrl: '/images/tool.jpg' },
+  { title: 'Data Viz', description: 'Interactive charts with polished interactions.', tags: ['D3','Charts','UX'], imageUrl: '/images/viz.jpg' },
 ];
 
-export default function HomePage() {
+export default function Home() {
   return (
-    <div className="bg-gray-900 text-white min-h-screen">
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
-        <div className="text-center">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-indigo-600">
-            James Digital Garden
-          </h1>
-          <p className="mt-4 max-w-2xl mx-auto text-lg sm:text-xl text-gray-400">
-            A curated collection of projects, thoughts, and adventures. Explore what I&apos;ve been building and where I&apos;ve been.
-          </p>
-        </div>
+    <main>
+      <Nav />
 
-        <div className="mt-16 grid gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {categories.map((category) => (
-            <Link href={category.href} key={category.name}>
-              <div
-                className={`group relative p-8 rounded-2xl bg-gradient-to-br ${category.bgColor} border border-gray-700 transition-all duration-300 ease-in-out ${category.borderColor} hover:shadow-2xl hover:shadow-purple-500/10 hover:-translate-y-1 cursor-pointer h-full flex flex-col`}
-              >
-                {category.icon}
-                <h2 className="text-2xl font-bold text-gray-100">{category.name}</h2>
-                <p className="mt-2 text-gray-400 flex-grow">{category.description}</p>
-                <div className="mt-6 flex items-center text-indigo-400 font-semibold">
-                  <span>Explore</span>
-                  <ArrowRight size={20} className="ml-2 transition-transform duration-300 group-hover:translate-x-1" />
-                </div>
-              </div>
-            </Link>
-          ))}
+      {/* Hero */}
+      <section className="relative isolate">
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(40%_40%_at_60%_20%,_hsl(var(--accent)/0.25)_0%,_transparent_60%),radial-gradient(30%_30%_at_30%_70%,_hsl(var(--purple)/0.18)_0%,_transparent_60%)]" />
+        <div className="mx-auto max-w-content px-4 sm:px-6 lg:px-8 py-28 sm:py-36">
+          <h1 className="text-[clamp(2.5rem,6vw,4.25rem)] font-semibold tracking-tight">Projects, games, and experiments</h1>
+          <p className="mt-4 max-w-2xl text-text-2">A polished playground for things I am building and breaking. Clean UI, strong contrast, neon accents.</p>
+          <div className="mt-8 flex gap-4">
+            <a href="#projects" className="rounded-xl3 bg-accent text-black px-6 py-3 font-medium shadow-glow transition hover:brightness-110 focus-ring">View projects</a>
+            <a href="#about" className="rounded-xl3 border border-border text-text-2 px-6 py-3 transition hover:border-accent hover:text-text focus-ring">About me</a>
+          </div>
         </div>
-      </main>
-    </div>
+      </section>
+
+      {/* Featured projects */}
+      <section id="projects" className="py-16 sm:py-20">
+        <div className="mx-auto max-w-content px-4 sm:px-6 lg:px-8">
+          <h2 className="text-3xl font-semibold">Featured projects</h2>
+          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {featuredProjects.map((project) => (
+              <ProjectCard key={project.title} {...project} />
+            ))}
+          </div>
+        </div>
+      </section>
+    </main>
   );
 }
