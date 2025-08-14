@@ -251,9 +251,6 @@ export function calculateBankingData(targetDateStr) {
       }
     }
     
-    // Reverse so yesterday is first for display
-    bankContributions.reverse();
-    
     // Use consistent bank balance for all calculations
     const bankToday = totalBankBalance;
     
@@ -615,10 +612,16 @@ function renderBankingPanel(bankingData) {
     : "You're perfectly balanced - no adjustment needed!";
   
   return `
-    <div class="mb-6 bg-white p-6 rounded-lg shadow-lg">
-      <h3 class="text-xl font-bold text-gray-700 mb-2">🏦 Your Calorie Bank</h3>
+    <div class="section-card p-4">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-xl font-bold">🏦 Your Calorie Bank</h3>
+        <button id="recent-days-toggle" class="text-accent hover:text-accent-600 text-sm font-medium flex items-center gap-2">
+            <i class="fas fa-chevron-down"></i>
+            <span class="toggle-text">Show Recent Days Breakdown</span>
+        </button>
+      </div>
       
-      <div class="mb-4 p-3 rounded-lg ${bankToday > 0 ? 'bg-red-50 border border-red-200' : bankToday < 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
+      <div class="p-3 rounded-lg ${bankToday > 0 ? 'bg-red-50 border border-red-200' : bankToday < 0 ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'}">
         <div class="text-center">
           <div class="text-2xl font-bold ${bankToday > 0 ? 'text-red-600' : bankToday < 0 ? 'text-green-600' : 'text-gray-600'}">
             ${bankToday > 0 ? '+' : ''}${bankToday} kcal
@@ -631,11 +634,6 @@ function renderBankingPanel(bankingData) {
           ` : ''}
         </div>
       </div>
-      
-      <button id="recent-days-toggle" class="w-full text-left mb-3 text-sm text-blue-700 hover:text-blue-900 font-medium flex items-center gap-2">
-        <i class="fas fa-chevron-down"></i>
-        <span class="toggle-text">Show Recent Days Breakdown</span>
-      </button>
 
       <div id="recent-days-content" class="hidden">
         <div class="overflow-x-auto">
