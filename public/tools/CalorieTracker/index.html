@@ -1,6 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
-
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -9,128 +8,379 @@
   <!-- UI libs -->
   <link rel="stylesheet" href="/shared-styles.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <!-- Use Poppins to match main site -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
   <style>
+    /* ------------------------------------------------------------ */
+    /* CONFIGURATION: Dark theme colors matching main site          */
+    /* ------------------------------------------------------------ */
+    :root {
+      --bg: 220 43% 8%;
+      --surface-1: 222 47% 13%;
+      --surface-2: 220 28% 12%;
+      --surface-3: 215 28% 17%;
+      --border: 214 30% 20%;
+
+      --text: 210 20% 92%;
+      --text-2: 215 14% 63%;
+      --text-3: 220 9% 46%;
+
+      --accent: 186 100% 50%;
+      --accent-600: 186 100% 42%;
+      --magenta: 334 100% 55%;
+      --purple: 278 100% 57%;
+
+      --success: 142 72% 45%;
+      --warning: 42 96% 50%;
+      --error: 0 84% 60%;
+      --info: 199 92% 60%;
+
+      --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.30);
+      --shadow-2: 0 6px 24px rgb(0 0 0 / 0.50);
+      --shadow-glow: 0 0 0 2px hsl(var(--accent) / 0.35), 0 0 24px 4px hsl(var(--accent) / 0.35);
+    }
+
+    * { box-sizing: border-box; }
+
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: 'Poppins', sans-serif;
+      background: hsl(var(--bg));
+      color: hsl(var(--text));
+      margin: 0;
     }
-    .progress-bar-bg {
-      background-color: #e0e0e0;
+
+    /* Utilities used in markup without Tailwind */
+    .p-2 { padding: .5rem; }
+    .p-3 { padding: .75rem; }
+    .p-4 { padding: 1rem; }
+    .p-6 { padding: 1.5rem; }
+    .p-8 { padding: 2rem; }
+    .px-3 { padding-left: .75rem; padding-right: .75rem; }
+    .px-4 { padding-left: 1rem; padding-right: 1rem; }
+    .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
+    .py-2 { padding-top: .5rem; padding-bottom: .5rem; }
+    .py-3 { padding-top: .75rem; padding-bottom: .75rem; }
+    .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+    .pt-2 { padding-top: .5rem; }
+    .pt-3 { padding-top: .75rem; }
+    .pt-4 { padding-top: 1rem; }
+    .pt-6 { padding-top: 1.5rem; }
+    .pr-2 { padding-right: .5rem; }
+    .pr-4 { padding-right: 1rem; }
+
+    .m-0 { margin: 0; }
+    .mb-1 { margin-bottom: .25rem; }
+    .mb-2 { margin-bottom: .5rem; }
+    .mb-3 { margin-bottom: .75rem; }
+    .mb-4 { margin-bottom: 1rem; }
+    .mb-6 { margin-bottom: 1.5rem; }
+    .mb-8 { margin-bottom: 2rem; }
+    .mt-2 { margin-top: .5rem; }
+    .mt-3 { margin-top: .75rem; }
+    .mt-4 { margin-top: 1rem; }
+    .mt-6 { margin-top: 1.5rem; }
+    .mt-8 { margin-top: 2rem; }
+    .my-4 { margin-top: 1rem; margin-bottom: 1rem; }
+
+    .text-sm { font-size: .875rem; }
+    .text-md { font-size: 1rem; }
+    .text-lg { font-size: 1.125rem; }
+    .text-xl { font-size: 1.25rem; }
+    .text-2xl { font-size: 1.5rem; }
+    .text-3xl { font-size: 1.875rem; }
+    .font-medium { font-weight: 500; }
+    .font-semibold { font-weight: 600; }
+    .font-bold { font-weight: 700; }
+
+    .rounded-md { border-radius: .375rem; }
+    .rounded-lg { border-radius: .5rem; }
+    .rounded-xl { border-radius: .75rem; }
+    .rounded-2xl { border-radius: 1rem; }
+
+    .shadow-1 { box-shadow: var(--shadow-1); }
+    .shadow-2 { box-shadow: var(--shadow-2); }
+    .shadow-glow { box-shadow: var(--shadow-glow); }
+
+    .border { border: 1px solid hsl(var(--border)); }
+    .border-b { border-bottom: 1px solid hsl(var(--border)); }
+    .border-border { border-color: hsl(var(--border)); }
+
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .items-center { align-items: center; }
+    .justify-center { justify-content: center; }
+    .justify-between { justify-content: space-between; }
+    .justify-end { justify-content: flex-end; }
+    .flex-grow { flex: 1 1 auto; }
+    .flex-shrink-0 { flex-shrink: 0; }
+    .gap-2 { gap: .5rem; }
+    .gap-4 { gap: 1rem; }
+    .space-x-2 > * + * { margin-left: .5rem; }
+    .space-x-4 > * + * { margin-left: 1rem; }
+    .space-y-2 > * + * { margin-top: .5rem; }
+
+    .grid { display: grid; }
+    .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    .lg\:grid-cols-3 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    .lg\:col-span-1 { grid-column: span 1 / span 1; }
+    .lg\:col-span-2 { grid-column: span 1 / span 1; }
+    .gap-8 { gap: 2rem; }
+    @media (min-width: 1024px) {
+      .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .lg\:col-span-1 { grid-column: span 1 / span 1; }
+      .lg\:col-span-2 { grid-column: span 2 / span 2; }
     }
+
+    .hidden { display: none; }
+    .h-fit { height: fit-content; }
+    .h-screen { height: 100vh; }
+    .w-full { width: 100%; }
+    .w-10 { width: 2.5rem; }
+    .h-10 { height: 2.5rem; }
+
+    .relative { position: relative; }
+    .absolute { position: absolute; }
+    .fixed { position: fixed; }
+    .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+    .top-0 { top: 0; }
+    .top-2 { top: .5rem; }
+    .top-4 { top: 1rem; }
+    .right-4 { right: 1rem; }
+    .bottom-5 { bottom: 1.25rem; }
+    .right-5 { right: 1.25rem; }
+    .z-50 { z-index: 50; }
+
+    /* Custom scrollbar matching dark theme */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: hsl(var(--surface-2)); }
+    ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: hsl(var(--accent) / 0.5); }
+
+    /* Progress bar animation */
+    .progress-bar-bg { background-color: hsl(var(--surface-3)); }
     .progress-bar-fill {
       transition: width .5s ease-in-out;
+      background: linear-gradient(90deg, hsl(var(--accent)), hsl(var(--purple)));
+      height: 8px;
+      border-radius: 999px;
     }
+
+    /* Card hover effects */
     .nutrient-card {
+      background: hsl(var(--surface-1));
+      border: 1px solid hsl(var(--border));
       transition: all .3s ease-in-out;
+      border-radius: .75rem;
     }
     .nutrient-card:hover {
       transform: translateY(-5px);
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1), 0 4px 6px -2px rgba(0, 0, 0, .05);
+      box-shadow: var(--shadow-2);
+      border-color: hsl(var(--accent) / 0.5);
     }
-    ::-webkit-scrollbar {
-      width: 8px;
-    }
-    ::-webkit-scrollbar-track {
-      background: #f1f1f1;
-    }
-    ::-webkit-scrollbar-thumb {
-      background: #888;
-      border-radius: 10px;
-    }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #555;
-      border-radius: 10px;
-    }
-    .chart-container {
-      position: relative;
-      height: 400px;
-      margin: 20px 0;
-    }
-    .food-dropdown {
-      position: relative;
-    }
+
+    /* Chart container */
+    .chart-container { position: relative; height: 400px; margin: 20px 0; }
+
+    /* Food dropdown styling */
+    .food-dropdown { position: relative; }
     .food-dropdown-list {
       position: absolute;
-      top: 100%;
-      left: 0;
-      right: 0;
-      background: #fff;
-      border: 1px solid #d1d5db;
+      top: 100%; left: 0; right: 0;
+      background: hsl(var(--surface-2));
+      border: 1px solid hsl(var(--border));
       border-top: none;
       border-radius: 0 0 .375rem .375rem;
       max-height: 200px;
       overflow-y: auto;
       z-index: 10;
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1);
+      box-shadow: var(--shadow-2);
     }
     .food-dropdown-item {
       padding: 8px 12px;
       cursor: pointer;
-      border-bottom: 1px solid #f3f4f6;
+      border-bottom: 1px solid hsl(var(--border));
       transition: background-color .2s;
+      color: hsl(var(--text));
     }
-    .food-dropdown-item:hover {
-      background-color: #f3f4f6;
-    }
-    .food-dropdown-item:last-child {
-      border-bottom: none;
-    }
+    .food-dropdown-item:hover { background-color: hsl(var(--surface-3)); }
     .food-dropdown-item.highlighted {
-      background-color: #eff6ff;
+      background-color: hsl(var(--accent) / 0.1);
+      border-left: 2px solid hsl(var(--accent));
     }
-    /* UPDATED: New styles for improved layout */
+
+    /* Input styling for dark theme */
+    input[type="number"],
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="date"],
+    textarea,
+    select {
+      background: hsl(var(--surface-2));
+      border: 1px solid hsl(var(--border));
+      color: hsl(var(--text));
+      padding: 0.5rem;
+      border-radius: 0.5rem;
+      transition: all 0.2s;
+      width: 100%;
+    }
+    input::placeholder, textarea::placeholder { color: hsl(var(--text-3)); }
+    input:focus, textarea:focus, select:focus {
+      outline: none;
+      border-color: hsl(var(--accent));
+      box-shadow: 0 0 0 3px hsl(var(--accent) / 0.1);
+    }
+
+    /* Button styling matching main site */
+    .btn-primary {
+      background: hsl(var(--accent));
+      color: black;
+      font-weight: 600;
+      padding: 0.75rem 1.5rem;
+      border-radius: 1rem;
+      transition: all 0.2s;
+      box-shadow: var(--shadow-glow);
+      border: none;
+      cursor: pointer;
+    }
+    .btn-primary:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+    .btn-secondary {
+      background: hsl(var(--surface-2));
+      color: hsl(var(--text));
+      border: 1px solid hsl(var(--border));
+      padding: 0.75rem 1.5rem;
+      border-radius: 1rem;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+    .btn-secondary:hover { border-color: hsl(var(--accent)); color: hsl(var(--accent)); }
+
+    .btn-danger {
+      background: hsl(var(--error));
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 1rem;
+      cursor: pointer;
+      transition: filter .2s;
+    }
+    .btn-danger:hover { filter: brightness(1.05); }
+
+    .btn-muted {
+      background: hsl(var(--surface-3));
+      color: hsl(var(--text-2));
+      border: 1px solid hsl(var(--border));
+      padding: .5rem .75rem;
+      border-radius: .625rem;
+      cursor: pointer;
+    }
+
+    /* Modal styling */
+    .modal-backdrop {
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(4px);
+    }
+    .modal-content {
+      background: hsl(var(--surface-1));
+      border: 1px solid hsl(var(--border));
+      box-shadow: var(--shadow-2);
+    }
+
+    /* Section backgrounds */
+    .section-card {
+      background: hsl(var(--surface-1));
+      border: 1px solid hsl(var(--border));
+      border-radius: 1rem;
+      padding: 1.5rem;
+      box-shadow: var(--shadow-1);
+    }
+
+    /* Staging area styling */
+    .staging-section {
+      background: hsl(var(--surface-2) / 0.5);
+      border: 2px dashed hsl(var(--accent) / 0.3);
+      border-radius: 0.75rem;
+      padding: 1rem;
+    }
+
+    /* Food items container */
     .food-items-container {
       min-height: 120px;
-      max-height: none; /* Allow unlimited expansion */
+      background: hsl(var(--surface-2) / 0.3);
+      border: 1px solid hsl(var(--border));
+      border-radius: 0.5rem;
     }
-    .action-buttons-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
+
+    /* Status colors */
+    .text-success { color: hsl(var(--success)); }
+    .text-error { color: hsl(var(--error)); }
+    .text-warning { color: hsl(var(--warning)); }
+    .text-info { color: hsl(var(--info)); }
+    .text-accent { color: hsl(var(--accent)); }
+    .text-text-2 { color: hsl(var(--text-2)); }
+    .text-text-3 { color: hsl(var(--text-3)); }
+
+    /* Message box */
+    #message-box {
+      background: hsl(var(--surface-1));
+      border: 1px solid hsl(var(--accent));
+      box-shadow: var(--shadow-glow);
+      border-radius: .75rem;
     }
-    .food-input-container {
-      position: relative;
-      flex-grow: 1;
-    }
+
+    /* Sticky headings background fix */
+    .sticky { position: sticky; }
+    .top-0 { top: 0; }
+    .max-h-\[45vh\] { max-height: 45vh; }
+    .max-h-\[70vh\] { max-height: 70vh; }
+    .max-h-\[90vh\] { max-height: 90vh; }
+    .overflow-y-auto { overflow-y: auto; }
   </style>
 </head>
 
-<body class="bg-gray-50 text-gray-800">
-  <nav class="p-2 text-sm"><a href="/" class="text-blue-600 hover:underline">Back to Hub</a></nav>
+<body>
+  <nav class="p-4 border-b border-border">
+    <a href="/" class="text-accent" style="text-decoration:none;">
+      ← Back to Hub
+    </a>
+  </nav>
 
   <!-- Main Application Body -->
   <div id="loader" class="flex justify-center items-center h-screen">
-    <i class="fas fa-spinner fa-spin fa-3x text-blue-600"></i>
+    <i class="fas fa-spinner fa-spin fa-3x text-accent"></i>
   </div>
 
   <div id="main-content" class="hidden">
-    <header class="bg-white shadow-md p-4 flex justify-between items-center">
+    <header class="section-card p-6 mb-8 flex justify-between items-center">
       <div class="flex items-center">
-        <i class="fas fa-chart-pie text-3xl text-blue-600 mr-3"></i>
-        <h1 class="text-2xl font-bold text-gray-800">3-Day Rolling Nutrition Tracker</h1>
+        <i class="fas fa-chart-pie text-3xl text-accent" style="margin-right:.75rem;"></i>
+        <h1 class="text-2xl font-bold">3-Day Rolling Nutrition Tracker</h1>
       </div>
       <div class="flex items-center space-x-4">
-        <span id="user-status" class="text-gray-600 text-sm hidden"></span>
-        <button id="open-login-btn" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700">Login / Sign Up</button>
-        <button id="logout-btn" class="hidden px-4 py-2 bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700">Logout</button>
-        <button id="open-settings-btn" class="px-4 py-2 bg-gray-200 text-gray-700 font-semibold rounded-lg hover:bg-gray-300"><i class="fas fa-cog"></i></button>
+        <span id="user-status" class="text-text-2 text-sm hidden"></span>
+        <button id="open-login-btn" class="btn-primary">Login / Sign Up</button>
+        <button id="logout-btn" class="hidden btn-secondary">Logout</button>
+        <button id="open-settings-btn" class="btn-secondary" title="Settings"><i class="fas fa-cog"></i></button>
       </div>
     </header>
 
-    <main class="p-4 md:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-      <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-lg h-fit">
-        <h2 class="text-2xl font-bold mb-4 text-gray-800">Daily Log</h2>
+    <main class="p-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <!-- LEFT COLUMN -->
+      <div class="lg:col-span-1 section-card h-fit">
+        <h2 class="text-2xl font-bold mb-4 text-accent">Daily Log</h2>
 
         <div class="mb-4">
-          <label for="date-input" class="block text-sm font-medium text-gray-700 mb-1">Date</label>
-          <input type="date" id="date-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+          <label for="date-input" class="block text-sm font-medium text-text-2 mb-1">Date</label>
+          <input type="date" id="date-input">
         </div>
 
         <div class="mb-4">
-          <label for="training-bump" class="block text-sm font-medium text-gray-700 mb-1">Training Bump</label>
-          <select id="training-bump" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+          <label for="training-bump" class="block text-sm font-medium text-text-2 mb-1">Training Bump</label>
+          <select id="training-bump">
             <option value="0">Rest Day (0 kcal)</option>
             <option value="100">Light Lift ≤45min (+100 kcal)</option>
             <option value="280">Hard Lift 60-90min (+280 kcal)</option>
@@ -139,102 +389,99 @@
         </div>
 
         <div class="mb-4">
-          <label for="paste-area" class="block text-sm font-medium text-gray-700 mb-1">Paste Log to Stage</label>
-          <textarea id="paste-area" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" placeholder="Paste your log here..."></textarea>
-          <button type="button" id="parse-btn" class="w-full mt-2 bg-indigo-600 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:bg-indigo-700">
-            <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
+          <label for="paste-area" class="block text-sm font-medium text-text-2 mb-1">Paste Log to Stage</label>
+          <textarea id="paste-area" rows="4" placeholder="Paste your log here..."></textarea>
+          <button type="button" id="parse-btn" class="w-full mt-2 btn-primary">
+            <i class="fas fa-arrow-down" style="margin-right:.5rem;"></i>Parse to Staging Area
           </button>
         </div>
 
-        <hr class="my-4">
-        <h3 class="text-xl font-semibold text-gray-800 mb-2">Staging Area</h3>
+        <hr class="my-4 border-border">
+        <h3 class="text-xl font-semibold mb-2 text-accent">Staging Area</h3>
 
-        <!-- UPDATED: New button layout - staging actions moved up and repositioned -->
         <div class="flex justify-between items-center mb-4">
           <div class="flex gap-2">
-            <button type="button" id="replace-day-btn" class="px-3 py-1 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 text-xs" title="Replace today's entire log with staged values">Replace Day</button>
-            <button type="button" id="stage-to-targets-btn" class="px-3 py-1 bg-purple-600 text-white font-semibold rounded-lg shadow-md hover:bg-purple-700 text-xs" title="Update your baseline targets with staged values">Update Targets</button>
+            <button type="button" id="replace-day-btn" class="btn-secondary text-sm" title="Replace today's entire log with staged values">Replace Day</button>
+            <button type="button" id="stage-to-targets-btn" class="btn-secondary text-sm" title="Update your baseline targets with staged values">Update Targets</button>
           </div>
         </div>
 
-        <!-- UPDATED: Food Database section with improved layout -->
-        <div class="mb-4 p-3 bg-green-50 rounded-lg border border-green-200">
-          <!-- UPDATED: Header with repositioned buttons -->
+        <!-- Food Database -->
+        <div class="mb-4 p-3 staging-section">
           <div class="flex justify-between items-center mb-3">
-            <label class="block text-sm font-medium text-gray-700">Food Item Database</label>
+            <label class="block text-sm font-medium text-text-2">Food Item Database</label>
             <div class="flex gap-2">
-              <button type="button" id="save-food-item-btn" class="px-3 py-1 bg-blue-600 text-white font-semibold rounded hover:bg-blue-700 text-sm">
-                <i class="fas fa-save mr-1"></i>Save Food
+              <button type="button" id="save-food-item-btn" class="btn-secondary text-sm">
+                <i class="fas fa-save" style="margin-right:.375rem;"></i>Save Food
               </button>
-              <button type="button" id="open-food-manager-btn" class="px-3 py-1 bg-gray-500 text-white font-semibold rounded hover:bg-gray-600 text-sm">
-                <i class="fas fa-list mr-1"></i>Manage Foods
+              <button type="button" id="open-food-manager-btn" class="btn-secondary text-sm">
+                <i class="fas fa-list" style="margin-right:.375rem;"></i>Manage Foods
               </button>
             </div>
           </div>
-          
-          <!-- UPDATED: Food input with side-positioned action buttons -->
-          <div class="action-buttons-row mb-3">
-            <div class="food-input-container">
-              <div class="food-dropdown relative">
-                <input type="text" id="food-item-input" placeholder="Enter or select food name..." class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500">
+
+          <div class="action-buttons-row mb-3 flex gap-2">
+            <div class="food-input-container flex-grow">
+              <div class="food-dropdown">
+                <input type="text" id="food-item-input" placeholder="Enter or select food name...">
                 <div id="food-dropdown" class="food-dropdown-list hidden"></div>
               </div>
             </div>
-            <button type="button" id="add-day-btn" class="w-10 h-10 bg-green-600 text-white font-bold rounded-lg shadow-md hover:bg-green-700 flex items-center justify-center flex-shrink-0" title="Add staged nutrients to today's log">
+            <button type="button" id="add-day-btn" class="w-10 h-10 btn-primary rounded-lg flex items-center justify-center" title="Add staged nutrients to today's log">
               <i class="fas fa-plus"></i>
             </button>
-            <button type="button" id="subtract-day-btn" class="w-10 h-10 bg-yellow-500 text-white font-bold rounded-lg shadow-md hover:bg-yellow-600 flex items-center justify-center flex-shrink-0" title="Subtract staged nutrients from today's log">
+            <button type="button" id="subtract-day-btn" class="w-10 h-10 btn-secondary rounded-lg flex items-center justify-center" title="Subtract staged nutrients from today's log">
               <i class="fas fa-minus"></i>
             </button>
           </div>
 
-          <!-- UPDATED: Today's Food Items with expandable container -->
           <div class="mt-3">
-            <h4 class="text-sm font-semibold text-gray-700 mb-2">Today's Food Items:</h4>
-            <div id="food-items-list" class="food-items-container space-y-2 overflow-y-auto border border-gray-200 rounded-md p-2 bg-white"></div>
+            <h4 class="text-sm font-semibold text-text-2 mb-2">Today's Food Items:</h4>
+            <div id="food-items-list" class="food-items-container space-y-2 overflow-y-auto p-2"></div>
           </div>
         </div>
 
         <!-- Staging inputs -->
         <div class="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
-          <h4 class="text-lg font-semibold text-gray-700 pt-2 sticky top-0 bg-white">Macros</h4>
-          <div><label for="actual-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="actual-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="actual-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="actual-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="actual-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-accent pt-2 sticky top-0" style="background: hsl(var(--surface-1));">Macros</h4>
+          <div><label for="actual-calories" class="block text-sm font-medium text-text-2">Calories</label><input type="number" step="any" id="actual-calories"></div>
+          <div><label for="actual-protein" class="block text-sm font-medium text-text-2">Protein (g)</label><input type="number" step="any" id="actual-protein"></div>
+          <div><label for="actual-carbs" class="block text-sm font-medium text-text-2">Carbs (g)</label><input type="number" step="any" id="actual-carbs"></div>
+          <div><label for="actual-fat" class="block text-sm font-medium text-text-2">Fat (g)</label><input type="number" step="any" id="actual-fat"></div>
 
-          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Vitamins</h4>
-          <div><label for="actual-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="actual-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-accent pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Daily Vitamins</h4>
+          <div><label for="actual-vitaminB12" class="block text-sm font-medium text-text-2">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12"></div>
+          <div><label for="actual-folate" class="block text-sm font-medium text-text-2">Folate (mcg)</label><input type="number" step="any" id="actual-folate"></div>
+          <div><label for="actual-vitaminC" class="block text-sm font-medium text-text-2">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC"></div>
+          <div><label for="actual-vitaminB6" class="block text-sm font-medium text-text-2">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6"></div>
 
-          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Vitamins</h4>
-          <div><label for="actual-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-accent pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Averaged Vitamins</h4>
+          <div><label for="actual-vitaminA" class="block text-sm font-medium text-text-2">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA"></div>
+          <div><label for="actual-vitaminD" class="block text-sm font-medium text-text-2">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD"></div>
+          <div><label for="actual-vitaminE" class="block text-sm font-medium text-text-2">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE"></div>
+          <div><label for="actual-vitaminK" class="block text-sm font-medium text-text-2">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK"></div>
 
-          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Daily Minerals</h4>
-          <div><label for="actual-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="actual-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="actual-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="actual-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="actual-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="actual-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-accent pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Daily Minerals</h4>
+          <div><label for="actual-iron" class="block text-sm font-medium text-text-2">Iron (mg)</label><input type="number" step="any" id="actual-iron"></div>
+          <div><label for="actual-calcium" class="block text-sm font-medium text-text-2">Calcium (mg)</label><input type="number" step="any" id="actual-calcium"></div>
+          <div><label for="actual-magnesium" class="block text-sm font-medium text-text-2">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium"></div>
+          <div><label for="actual-zinc" class="block text-sm font-medium text-text-2">Zinc (mg)</label><input type="number" step="any" id="actual-zinc"></div>
+          <div><label for="actual-potassium" class="block text-sm font-medium text-text-2">Potassium (mg)</label><input type="number" step="any" id="actual-potassium"></div>
+          <div><label for="actual-sodium" class="block text-sm font-medium text-text-2">Sodium (mg)</label><input type="number" step="any" id="actual-sodium"></div>
 
-          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Averaged Minerals</h4>
-          <div><label for="actual-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-accent pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Averaged Minerals</h4>
+          <div><label for="actual-selenium" class="block text-sm font-medium text-text-2">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium"></div>
+          <div><label for="actual-iodine" class="block text-sm font-medium text-text-2">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine"></div>
+          <div><label for="actual-phosphorus" class="block text-sm font-medium text-text-2">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus"></div>
 
-          <h4 class="text-lg font-semibold text-gray-700 pt-4 sticky top-0 bg-white">Optional</h4>
-          <div><label for="actual-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="actual-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="actual-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="actual-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <h4 class="text-lg font-semibold text-accent pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Optional</h4>
+          <div><label for="actual-omega3" class="block text-sm font-medium text-text-2">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3"></div>
+          <div><label for="actual-fiber" class="block text-sm font-medium text-text-2">Fiber (g)</label><input type="number" step="any" id="actual-fiber"></div>
+          <div><label for="actual-choline" class="block text-sm font-medium text-text-2">Choline (mg)</label><input type="number" step="any" id="actual-choline"></div>
         </div>
       </div>
 
+      <!-- RIGHT COLUMN -->
       <div class="lg:col-span-2">
         <div id="dashboard"></div>
       </div>
@@ -242,106 +489,142 @@
   </div>
 
   <!-- Login Modal -->
-  <div id="login-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
-      <button id="close-login-btn" class="absolute top-2 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
-      <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Account Access</h2>
+  <div id="login-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
+    <div class="modal-content rounded-xl p-8 w-full max-w-sm relative">
+      <button id="close-login-btn" class="absolute top-2 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <h2 class="text-2xl font-bold mb-6 text-center text-accent">Account Access</h2>
 
       <form id="auth-form" class="space-y-4">
         <div>
-          <label for="email-input" class="block text-sm font-medium text-gray-700">Email</label>
-          <input type="email" id="email-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+          <label for="email-input" class="block text-sm font-medium text-text-2">Email</label>
+          <input type="email" id="email-input" required>
         </div>
         <div>
-          <label for="password-input" class="block text-sm font-medium text-gray-700">Password</label>
-          <input type="password" id="password-input" class="mt-1 w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" required>
+          <label for="password-input" class="block text-sm font-medium text-text-2">Password</label>
+          <input type="password" id="password-input" required>
         </div>
         <div class="flex space-x-2 pt-2">
-          <button type="button" id="login-btn" class="w-full bg-blue-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-blue-700">Login</button>
-          <button type="button" id="signup-btn" class="w-full bg-green-600 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-green-700">Sign Up</button>
+          <button type="button" id="login-btn" class="w-full btn-secondary">Login</button>
+          <button type="button" id="signup-btn" class="w-full btn-primary">Sign Up</button>
         </div>
       </form>
 
       <div class="my-4 flex items-center">
-        <hr class="flex-grow border-t border-gray-300">
-        <span class="mx-2 text-gray-500 text-sm">OR</span>
-        <hr class="flex-grow border-t border-gray-300">
+        <hr class="flex-grow border-b border-border">
+        <span class="mx-2 text-text-3 text-sm">OR</span>
+        <hr class="flex-grow border-b border-border">
       </div>
-      <button id="guest-btn" class="w-full bg-gray-500 text-white font-semibold py-2 px-3 rounded-lg shadow-md hover:bg-gray-600">Continue as Guest</button>
+      <button id="guest-btn" class="w-full btn-muted">Continue as Guest</button>
     </div>
   </div>
 
-  <!-- UPDATED: Settings Modal with Safety Cap Configuration -->
-  <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] relative">
-      <button id="close-settings-btn" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
-      <h2 class="text-2xl font-bold mb-6 text-gray-800">Set Baseline Targets & Configuration</h2>
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
+    <div class="modal-content rounded-xl p-8 w-full max-w-4xl max-h-[90vh] relative">
+      <button id="close-settings-btn" class="absolute top-4 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <h2 class="text-2xl font-bold mb-6 text-accent">Set Baseline Targets & Configuration</h2>
+
       <form id="settings-form" class="overflow-y-auto max-h-[70vh] pr-4">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-2 border-b pb-2 mb-2">Macros</h3></div>
-          <div><label for="target-calories" class="block text-sm font-medium text-gray-600">Calories</label><input type="number" step="any" id="target-calories" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-protein" class="block text-sm font-medium text-gray-600">Protein (g)</label><input type="number" step="any" id="target-protein" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-carbs" class="block text-sm font-medium text-gray-600">Carbs (g)</label><input type="number" step="any" id="target-carbs" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-fat" class="block text-sm font-medium text-gray-600">Fat (g)</label><input type="number" step="any" id="target-fat" class="w-full p-2 border border-gray-300 rounded-md"></div>
+        <div class="grid grid-cols-1 gap-4">
+          <!-- Macros -->
+          <div class="section-card">
+            <h3 class="text-lg font-semibold text-text-2 mb-2">Macros</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-calories" class="block text-sm font-medium text-text-2">Calories</label><input type="number" step="any" id="target-calories"></div>
+              <div><label for="target-protein" class="block text-sm font-medium text-text-2">Protein (g)</label><input type="number" step="any" id="target-protein"></div>
+              <div><label for="target-carbs" class="block text-sm font-medium text-text-2">Carbs (g)</label><input type="number" step="any" id="target-carbs"></div>
+              <div><label for="target-fat" class="block text-sm font-medium text-text-2">Fat (g)</label><input type="number" step="any" id="target-fat"></div>
+            </div>
+          </div>
 
-          <!-- UPDATED: Banking Configuration Section -->
-          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Banking System Configuration</h3></div>
-          <div><label for="target-fatMinimum" class="block text-sm font-medium text-gray-600">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-correctionDivisor" class="block text-sm font-medium text-gray-600">Correction Divisor</label><input type="number" step="0.1" id="target-correctionDivisor" class="w-full p-2 border border-gray-300 rounded-md" title="Bank divided by this number = raw correction (default: 3)"></div>
-          <div><label for="target-decayHalfLife" class="block text-sm font-medium text-gray-600">Decay Half-Life (days)</label><input type="number" step="0.1" id="target-decayHalfLife" class="w-full p-2 border border-gray-300 rounded-md" title="How quickly past days lose influence (default: 3.5)"></div>
-          
-          <!-- UPDATED: Safety Cap Settings -->
-          <div class="md:col-span-3"><h4 class="text-md font-medium text-gray-600 pt-3 mb-2">Safety Caps (% of base calories)</h4></div>
-          <div><label for="target-smallBankCap" class="block text-sm font-medium text-gray-600">Small Bank Cap (%)</label><input type="number" step="1" id="target-smallBankCap" class="w-full p-2 border border-gray-300 rounded-md" title="Max adjustment when |bank| < 1x base calories (default: 15%)"></div>
-          <div><label for="target-mediumBankCap" class="block text-sm font-medium text-gray-600">Medium Bank Cap (%)</label><input type="number" step="1" id="target-mediumBankCap" class="w-full p-2 border border-gray-300 rounded-md" title="Max adjustment when |bank| ≥ 1x base calories (default: 30%)"></div>
-          <div><label for="target-largeBankCap" class="block text-sm font-medium text-gray-600">Large Bank Cap (%)</label><input type="number" step="1" id="target-largeBankCap" class="w-full p-2 border border-gray-300 rounded-md" title="Max adjustment when |bank| ≥ 2x base calories (default: 40%)"></div>
+          <!-- Banking Config -->
+          <div class="section-card">
+            <h3 class="text-lg font-semibold text-text-2 mb-2">Banking System Configuration</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-fatMinimum" class="block text-sm font-medium text-text-2">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum"></div>
+              <div><label for="target-correctionDivisor" class="block text-sm font-medium text-text-2">Correction Divisor</label><input type="number" step="0.1" id="target-correctionDivisor" title="Bank divided by this number equals raw correction (default: 3)"></div>
+              <div><label for="target-decayHalfLife" class="block text-sm font-medium text-text-2">Decay Half-Life (days)</label><input type="number" step="0.1" id="target-decayHalfLife" title="How quickly past days lose influence (default: 3.5)"></div>
+              <div class="grid grid-cols-1 gap-4">
+                <h4 class="text-md font-medium text-text-2">Safety Caps (% of base calories)</h4>
+                <div><label for="target-smallBankCap" class="block text-sm font-medium text-text-2">Small Bank Cap (%)</label><input type="number" step="1" id="target-smallBankCap" title="Max adjustment when |bank| less than base calories (default: 15%)"></div>
+                <div><label for="target-mediumBankCap" class="block text-sm font-medium text-text-2">Medium Bank Cap (%)</label><input type="number" step="1" id="target-mediumBankCap" title="Max adjustment when |bank| at least base calories (default: 30%)"></div>
+                <div><label for="target-largeBankCap" class="block text-sm font-medium text-text-2">Large Bank Cap (%)</label><input type="number" step="1" id="target-largeBankCap" title="Max adjustment when |bank| at least two times base calories (default: 40%)"></div>
+              </div>
+            </div>
+          </div>
 
-          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Vitamins (Water-Soluble)</h3></div>
-          <div><label for="target-vitaminB12" class="block text-sm font-medium text-gray-600">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-folate" class="block text-sm font-medium text-gray-600">Folate (mcg)</label><input type="number" step="any" id="target-folate" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-vitaminC" class="block text-sm font-medium text-gray-600">Vitamin C (mg)</label><input type="number" step="any" id="target-vitaminC" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-vitaminB6" class="block text-sm font-medium text-gray-600">Vitamin B6 (mg)</label><input type="number" step="any" id="target-vitaminB6" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <!-- Daily Vitamins -->
+          <div class="section-card">
+            <h3 class="text-lg font-semibold text-text-2 mb-2">Daily Vitamins (Water-Soluble)</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-vitaminB12" class="block text-sm font-medium text-text-2">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12"></div>
+              <div><label for="target-folate" class="block text-sm font-medium text-text-2">Folate (mcg)</label><input type="number" step="any" id="target-folate"></div>
+              <div><label for="target-vitaminC" class="block text-sm font-medium text-text-2">Vitamin C (mg)</label><input type="number" step="any" id="target-vitaminC"></div>
+              <div><label for="target-vitaminB6" class="block text-sm font-medium text-text-2">Vitamin B6 (mg)</label><input type="number" step="any" id="target-vitaminB6"></div>
+            </div>
+          </div>
 
-          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Vitamins (Fat-Soluble)</h3></div>
-          <div><label for="target-vitaminA" class="block text-sm font-medium text-gray-600">Vitamin A (mcg)</label><input type="number" step="any" id="target-vitaminA" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-vitaminD" class="block text-sm font-medium text-gray-600">Vitamin D (mcg)</label><input type="number" step="any" id="target-vitaminD" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-vitaminE" class="block text-sm font-medium text-gray-600">Vitamin E (mg)</label><input type="number" step="any" id="target-vitaminE" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-vitaminK" class="block text-sm font-medium text-gray-600">Vitamin K (mcg)</label><input type="number" step="any" id="target-vitaminK" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <!-- Averaged Vitamins -->
+          <div class="section-card">
+            <h3 class="text-lg font-semibold text-text-2 mb-2">Averaged Vitamins (Fat-Soluble)</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-vitaminA" class="block text-sm font-medium text-text-2">Vitamin A (mcg)</label><input type="number" step="any" id="target-vitaminA"></div>
+              <div><label for="target-vitaminD" class="block text-sm font-medium text-text-2">Vitamin D (mcg)</label><input type="number" step="any" id="target-vitaminD"></div>
+              <div><label for="target-vitaminE" class="block text-sm font-medium text-text-2">Vitamin E (mg)</label><input type="number" step="any" id="target-vitaminE"></div>
+              <div><label for="target-vitaminK" class="block text-sm font-medium text-text-2">Vitamin K (mcg)</label><input type="number" step="any" id="target-vitaminK"></div>
+            </div>
+          </div>
 
-          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Daily Minerals</h3></div>
-          <div><label for="target-iron" class="block text-sm font-medium text-gray-600">Iron (mg)</label><input type="number" step="any" id="target-iron" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-calcium" class="block text-sm font-medium text-gray-600">Calcium (mg)</label><input type="number" step="any" id="target-calcium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-magnesium" class="block text-sm font-medium text-gray-600">Magnesium (mg)</label><input type="number" step="any" id="target-magnesium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-zinc" class="block text-sm font-medium text-gray-600">Zinc (mg)</label><input type="number" step="any" id="target-zinc" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-potassium" class="block text-sm font-medium text-gray-600">Potassium (mg)</label><input type="number" step="any" id="target-potassium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-sodium" class="block text-sm font-medium text-gray-600">Sodium (mg)</label><input type="number" step="any" id="target-sodium" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <!-- Daily Minerals -->
+          <div class="section-card">
+            <h3 class="text-lg font-semibold text-text-2 mb-2">Daily Minerals</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-iron" class="block text-sm font-medium text-text-2">Iron (mg)</label><input type="number" step="any" id="target-iron"></div>
+              <div><label for="target-calcium" class="block text-sm font-medium text-text-2">Calcium (mg)</label><input type="number" step="any" id="target-calcium"></div>
+              <div><label for="target-magnesium" class="block text-sm font-medium text-text-2">Magnesium (mg)</label><input type="number" step="any" id="target-magnesium"></div>
+              <div><label for="target-zinc" class="block text-sm font-medium text-text-2">Zinc (mg)</label><input type="number" step="any" id="target-zinc"></div>
+              <div><label for="target-potassium" class="block text-sm font-medium text-text-2">Potassium (mg)</label><input type="number" step="any" id="target-potassium"></div>
+              <div><label for="target-sodium" class="block text-sm font-medium text-text-2">Sodium (mg)</label><input type="number" step="any" id="target-sodium"></div>
+            </div>
+          </div>
 
-          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Averaged Minerals</h3></div>
-          <div><label for="target-selenium" class="block text-sm font-medium text-gray-600">Selenium (mcg)</label><input type="number" step="any" id="target-selenium" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-iodine" class="block text-sm font-medium text-gray-600">Iodine (mcg)</label><input type="number" step="any" id="target-iodine" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-phosphorus" class="block text-sm font-medium text-gray-600">Phosphorus (mg)</label><input type="number" step="any" id="target-phosphorus" class="w-full p-2 border border-gray-300 rounded-md"></div>
+          <!-- Averaged Minerals -->
+          <div class="section-card">
+            <h3 class="text-lg font-semibold text-text-2 mb-2">Averaged Minerals</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-selenium" class="block text-sm font-medium text-text-2">Selenium (mcg)</label><input type="number" step="any" id="target-selenium"></div>
+              <div><label for="target-iodine" class="block text-sm font-medium text-text-2">Iodine (mcg)</label><input type="number" step="any" id="target-iodine"></div>
+              <div><label for="target-phosphorus" class="block text-sm font-medium text-text-2">Phosphorus (mg)</label><input type="number" step="any" id="target-phosphorus"></div>
+            </div>
+          </div>
 
-          <div class="md:col-span-3"><h3 class="text-lg font-semibold text-gray-700 pt-4 border-b pb-2 mb-2">Optional Nutrients</h3></div>
-          <div><label for="target-omega3" class="block text-sm font-medium text-gray-600">Omega-3 (g)</label><input type="number" step="any" id="target-omega3" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-fiber" class="block text-sm font-medium text-gray-600">Fiber (g)</label><input type="number" step="any" id="target-fiber" class="w-full p-2 border border-gray-300 rounded-md"></div>
-          <div><label for="target-choline" class="block text-sm font-medium text-gray-600">Choline (mg)</label><input type="number" step="any" id="target-choline" class="w-full p-2 border border-gray-300 rounded-md"></div>
-        </div>
+          <!-- Optional Nutrients -->
+          <div class="section-card">
+            <h3 class="text-lg font-semibold text-text-2 mb-2">Optional Nutrients</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-omega3" class="block text-sm font-medium text-text-2">Omega-3 (g)</label><input type="number" step="any" id="target-omega3"></div>
+              <div><label for="target-fiber" class="block text-sm font-medium text-text-2">Fiber (g)</label><input type="number" step="any" id="target-fiber"></div>
+              <div><label for="target-choline" class="block text-sm font-medium text-text-2">Choline (mg)</label><input type="number" step="any" id="target-choline"></div>
+            </div>
+          </div>
 
-        <div class="mt-8 flex justify-between items-center">
-          <button type="button" id="export-targets-json-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700 text-sm">Export Targets (JSON)</button>
-          <button type="button" id="export-saved-foods-csv-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700 text-sm">Export Saved Foods (CSV)</button>
-          <button type="button" id="export-all-data-btn" class="px-6 py-2 bg-gray-600 text-white font-bold rounded-lg shadow-md hover:bg-gray-700 text-sm">Export Daily Log (CSV)</button>
-          <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700">Save Targets</button>
+          <!-- Actions -->
+          <div class="flex justify-between items-center">
+            <button type="button" id="export-targets-json-btn" class="btn-secondary text-sm">Export Targets (JSON)</button>
+            <button type="button" id="export-saved-foods-csv-btn" class="btn-secondary text-sm">Export Saved Foods (CSV)</button>
+            <button type="button" id="export-all-data-btn" class="btn-secondary text-sm">Export Daily Log (CSV)</button>
+            <button type="submit" class="btn-primary">Save Targets</button>
+          </div>
         </div>
       </form>
     </div>
   </div>
 
   <!-- Food Manager Modal -->
-  <div id="food-manager-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-4xl max-h-[90vh] relative">
-      <button onclick="closeFoodManager()" class="absolute top-4 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
-      <h2 class="text-2xl font-bold mb-6 text-gray-800">Manage Saved Foods</h2>
+  <div id="food-manager-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
+    <div class="modal-content rounded-xl p-8 w-full max-w-4xl max-h-[90vh] relative">
+      <button onclick="closeFoodManager()" class="absolute top-4 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <h2 class="text-2xl font-bold mb-6 text-accent">Manage Saved Foods</h2>
       <div class="overflow-y-auto max-h-[70vh] pr-4">
         <div id="food-manager-list"></div>
       </div>
@@ -349,60 +632,60 @@
   </div>
 
   <!-- Duplicate Food Modal -->
-  <div id="duplicate-food-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-3xl max-h-[90vh] relative">
+  <div id="duplicate-food-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
+    <div class="modal-content rounded-xl p-8 w-full max-w-3xl max-h-[90vh] relative">
+      <h2 class="text-xl font-bold mb-4 text-accent">Duplicate Food Detected</h2>
       <div id="duplicate-comparison" class="overflow-y-auto max-h-[70vh]"></div>
     </div>
   </div>
 
   <!-- Blank Food Name Modal -->
-  <div id="blank-food-name-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
-      <button onclick="closeBlankFoodNameModal()" class="absolute top-2 right-4 text-gray-500 hover:text-gray-800 text-2xl">&times;</button>
-      <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Food Name Required</h2>
+  <div id="blank-food-name-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
+    <div class="modal-content rounded-xl p-8 w-full max-w-sm relative">
+      <button onclick="closeBlankFoodNameModal()" class="absolute top-2 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <h2 class="text-2xl font-bold mb-6 text-center text-accent">Food Name Required</h2>
       <div id="blank-food-name-prompt" class="text-center">
         <p class="mb-4">The food name is blank. Would you like to save it as "(blank)" or enter a name?</p>
         <div class="flex justify-center gap-4">
-          <button id="confirm-blank-name-btn" class="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600">Save as (blank)</button>
-          <button id="enter-name-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Enter Name</button>
+          <button id="confirm-blank-name-btn" class="btn-secondary">Save as (blank)</button>
+          <button id="enter-name-btn" class="btn-primary">Enter Name</button>
         </div>
       </div>
       <div id="blank-food-name-input-container" class="hidden mt-4">
-        <label for="blank-food-name-input" class="block text-sm font-medium text-gray-700 mb-1">Enter New Food Name</label>
-        <input type="text" id="blank-food-name-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500" placeholder="e.g., Unlabeled Snack">
+        <label for="blank-food-name-input" class="block text-sm font-medium text-text-2 mb-1">Enter New Food Name</label>
+        <input type="text" id="blank-food-name-input" placeholder="e.g., Unlabeled Snack">
         <div class="flex justify-end gap-4 mt-4">
-          <button id="cancel-blank-name-btn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cancel</button>
-          <button id="submit-new-food-name-btn" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Submit</button>
+          <button id="cancel-blank-name-btn" class="btn-secondary">Cancel</button>
+          <button id="submit-new-food-name-btn" class="btn-primary">Submit</button>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Confirmation Modal -->
-  <div id="confirmation-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4 z-50">
-    <div class="bg-white rounded-lg shadow-2xl p-8 w-full max-w-sm relative">
-      <h2 class="text-xl font-bold mb-4 text-center text-gray-800">Confirm Action</h2>
-      <p id="confirmation-message" class="text-gray-700 text-center mb-6"></p>
+  <div id="confirmation-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
+    <div class="modal-content rounded-xl p-8 w-full max-w-sm relative">
+      <h2 class="text-xl font-bold mb-4 text-center text-accent">Confirm Action</h2>
+      <p id="confirmation-message" class="text-text-2 text-center mb-6"></p>
 
       <div id="prompt-input-container" class="mt-4 hidden">
-        <label for="prompt-input" class="block text-sm font-medium text-gray-700 mb-1">Enter Value:</label>
-        <input type="text" id="prompt-input" class="w-full p-2 border border-gray-300 rounded-md shadow-sm" />
+        <label for="prompt-input" class="block text-sm font-medium text-text-2 mb-1">Enter Value:</label>
+        <input type="text" id="prompt-input" />
       </div>
 
       <div class="flex justify-center gap-4 mt-6">
-        <button id="confirm-action-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">Confirm</button>
-        <button id="cancel-action-btn" class="px-4 py-2 bg-gray-400 text-white rounded-lg hover:bg-gray-500">Cancel</button>
+        <button id="confirm-action-btn" class="btn-primary">Confirm</button>
+        <button id="cancel-action-btn" class="btn-secondary">Cancel</button>
       </div>
     </div>
   </div>
 
   <!-- Toast / Message box -->
-  <div id="message-box" class="hidden fixed bottom-5 right-5 text-white px-6 py-3 rounded-lg shadow-lg z-50">
+  <div id="message-box" class="hidden fixed bottom-5 right-5 text-text px-6 py-3 rounded-xl shadow-glow z-50">
     <p id="message-text"></p>
   </div>
 
-  <!-- ✅ FIXED: Use relative path for main.js -->
+  <!-- Entry script -->
   <script type="module" src="./main.js"></script>
 </body>
-
 </html>
