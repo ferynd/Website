@@ -142,7 +142,7 @@ export function updateFoodItemsList() {
 function renderFoodItemsContent(container) {
   if (state.dailyFoodItems.length === 0) {
     container.innerHTML = `
-      <div class="text-center py-8 text-gray-500">
+      <div class="text-center py-8 text-muted">
         <i class="fas fa-utensils text-2xl mb-2 opacity-50"></i>
         <p class="text-sm">No food items logged for this day yet.</p>
         <p class="text-xs mt-1">Add nutrients above and hit the + button!</p>
@@ -178,28 +178,26 @@ function renderFoodItemsContent(container) {
     }
 
     return `
-      <div class="group flex justify-between items-center p-3 rounded-lg border ${isSubtraction ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'} hover:shadow-md transition-all duration-200">
+      <div class="group flex justify-between items-center p-3 rounded-lg border surface-2 ${isSubtraction ? 'text-negative' : ''} hover:shadow-md transition-all duration-200">
         <div class="flex-grow min-w-0">
           <div class="flex items-center justify-between mb-1">
-            <span class="font-medium text-gray-900 truncate">${name}</span>
-            ${timeStamp ? `<span class="text-xs text-gray-500 ml-2">${timeStamp}</span>` : ''}
+            <span class="font-medium text-primary truncate">${name}</span>
+            ${timeStamp ? `<span class="text-xs text-muted ml-2">${timeStamp}</span>` : ''}
           </div>
-          <div class="text-xs text-gray-600">${details}</div>
+          <div class="text-xs text-secondary">${details}</div>
         </div>
-        <button onclick="removeFoodItem(${index})" class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-red-500 hover:text-red-700 text-sm p-1" title="Remove Item">
-          <i class="fas fa-times"></i>
+        <button onclick="removeFoodItem(${index})" class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 btn btn-danger icon-btn" title="Remove Item" aria-label="Remove Item">
+          <span aria-hidden="true">&times;</span>
         </button>
       </div>`;
   }).join('');
 
   // Summary section
   const summaryHtml = `
-    <div class="mb-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+    <div class="kpi card mb-3">
       <div class="flex justify-between items-center">
-        <span class="text-sm font-medium text-blue-800">Today's Totals (${state.dailyFoodItems.length} items):</span>
-        <span class="text-sm font-bold text-blue-900">
-          ${Math.round(totals.calories)} cal | ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f
-        </span>
+        <span class="kpi-title">Today's Totals (${state.dailyFoodItems.length} items):</span>
+        <span class="kpi-value">${Math.round(totals.calories)} cal | ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f</span>
       </div>
     </div>
   `;

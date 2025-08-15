@@ -140,3 +140,63 @@ body {
 .kpi .kpi-value { font-weight:700; font-size:1.5rem; color:hsl(var(--text)); }
 .kpi .kpi-delta.positive { color:hsl(var(--success)); }
 .kpi .kpi-delta.negative { color:hsl(var(--error)); }
+/* ---------- Semantic text ---------- */
+.text-primary  { color: hsl(var(--text)); }
+.text-secondary{ color: hsl(var(--text-2)); }
+.text-muted    { color: hsl(var(--text-3)); }
+.text-accent   { color: hsl(var(--accent)); }
+
+/* Status text; switch --error to --magenta later if you want brand-fuchsia */
+.text-positive { color: hsl(var(--success)); }
+.text-warning  { color: hsl(var(--warning)); }
+.text-negative { color: hsl(var(--error)); }
+.text-fuchsia  { color: hsl(var(--magenta)); } /* optional brand variant */
+
+/* ---------- Surfaces & cards ---------- */
+.surface-1 { background-color: hsl(var(--surface-1)); }
+.surface-2 { background-color: hsl(var(--surface-2)); }
+.surface-3 { background-color: hsl(var(--surface-3)); }
+.card      { background: hsl(var(--surface-1)); border: 1px solid hsl(var(--border)); border-radius: 0.75rem; }
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  font-weight: 600; border-radius: 0.6rem; padding: 0.5rem 0.75rem;
+  transition: filter .2s; border: 1px solid transparent; line-height: 1;
+}
+.btn:focus { outline: 2px solid hsl(var(--accent-600)); outline-offset: 2px; }
+.btn:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Button semantics tied to tokens */
+.btn-primary  { background: hsl(var(--accent)); color: #000; }   /* accent typically readable on light */
+.btn-primary:hover { filter: brightness(.95); }
+.btn-danger   { background: hsl(var(--error)); color: #fff; }
+.btn-danger:hover { filter: brightness(.95); }
+.btn-success  { background: hsl(var(--success)); color: #fff; }
+.btn-warning  { background: hsl(var(--warning)); color: #000; }
+.btn-ghost    { background: transparent; color: hsl(var(--text)); border-color: hsl(var(--border)); }
+.icon-btn     { width: 2.25rem; height: 2.25rem; padding: 0; }
+
+/* ---------- Badges ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: .375rem;
+  font-weight: 600; font-size: .75rem; padding: .125rem .5rem; border-radius: 999px;
+  border: 1px solid transparent;
+}
+.badge-good { background: color-mix(in hsl, hsl(var(--success)) 15%, hsl(var(--surface-1))); color: hsl(var(--success)); border-color: color-mix(in hsl, hsl(var(--success)) 30%, hsl(var(--surface-1))); }
+.badge-warn { background: color-mix(in hsl, hsl(var(--warning)) 15%, hsl(var(--surface-1))); color: hsl(var(--warning)); border-color: color-mix(in hsl, hsl(var(--warning)) 30%, hsl(var(--surface-1))); }
+.badge-bad  { background: color-mix(in hsl, hsl(var(--error)) 15%, hsl(var(--surface-1))); color: hsl(var(--error)); border-color: color-mix(in hsl, hsl(var(--error)) 30%, hsl(var(--surface-1))); }
+
+/* ---------- KPI tile & progress ---------- */
+.kpi { padding: 1rem; }
+.kpi-title { color: hsl(var(--text-2)); font-weight: 600; }
+.kpi-value { color: hsl(var(--text)); font-weight: 800; font-size: 1.4rem; }
+.kpi-diff.negative { color: hsl(var(--error)); }
+.kpi-diff.positive { color: hsl(var(--success)); }
+.kpi-diff.neutral  { color: hsl(var(--text-3)); }
+
+.progress { height: .5rem; background: hsl(var(--surface-3)); border-radius: .5rem; overflow: hidden; }
+.progress > .fill { height: 100%; }
+.fill.good { background: hsl(var(--success)); }
+.fill.warn { background: hsl(var(--warning)); }
+.fill.bad  { background: hsl(var(--error)); }

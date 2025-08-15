@@ -491,7 +491,7 @@
   <!-- Login Modal -->
   <div id="login-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
     <div class="modal-content rounded-xl p-8 w-full max-w-sm relative">
-      <button id="close-login-btn" class="absolute top-2 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <button id="close-login-btn" class="absolute top-2 right-4 btn btn-ghost icon-btn" title="Close" aria-label="Close">&times;</button>
       <h2 class="text-2xl font-bold mb-6 text-center text-accent">Account Access</h2>
 
       <form id="auth-form" class="space-y-4">
@@ -521,7 +521,7 @@
   <!-- Settings Modal -->
   <div id="settings-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
     <div class="modal-content rounded-xl p-8 w-full max-w-4xl max-h-[90vh] relative">
-      <button id="close-settings-btn" class="absolute top-4 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <button id="close-settings-btn" class="absolute top-4 right-4 btn btn-ghost icon-btn" title="Close" aria-label="Close">&times;</button>
       <h2 class="text-2xl font-bold mb-6 text-accent">Set Baseline Targets & Configuration</h2>
 
       <form id="settings-form" class="overflow-y-auto max-h-[70vh] pr-4">
@@ -623,7 +623,7 @@
   <!-- Food Manager Modal -->
   <div id="food-manager-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
     <div class="modal-content rounded-xl p-8 w-full max-w-4xl max-h-[90vh] relative">
-      <button onclick="closeFoodManager()" class="absolute top-4 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <button onclick="closeFoodManager()" class="absolute top-4 right-4 btn btn-ghost icon-btn" title="Close" aria-label="Close">&times;</button>
       <h2 class="text-2xl font-bold mb-6 text-accent">Manage Saved Foods</h2>
       <div class="overflow-y-auto max-h-[70vh] pr-4">
         <div id="food-manager-list"></div>
@@ -642,7 +642,7 @@
   <!-- Blank Food Name Modal -->
   <div id="blank-food-name-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
     <div class="modal-content rounded-xl p-8 w-full max-w-sm relative">
-      <button onclick="closeBlankFoodNameModal()" class="absolute top-2 right-4 text-text-3 hover:text-text text-2xl" title="Close">&times;</button>
+      <button onclick="closeBlankFoodNameModal()" class="absolute top-2 right-4 btn btn-ghost icon-btn" title="Close" aria-label="Close">&times;</button>
       <h2 class="text-2xl font-bold mb-6 text-center text-accent">Food Name Required</h2>
       <div id="blank-food-name-prompt" class="text-center">
         <p class="mb-4">The food name is blank. Would you like to save it as "(blank)" or enter a name?</p>
