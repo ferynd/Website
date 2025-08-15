@@ -481,7 +481,7 @@ export function updateDashboard() {
       dashboard.innerHTML = `
         <div id="dashboard-errors"></div>
         <div class="text-center p-8 surface-1 rounded-lg shadow-md">
-          <h3 class="text-xl font-semibold text-primary">Welcome to Adaptive Nutrition Tracker!</h3>
+          <h3 class="text-xl font-semibold text-secondary">Welcome to Adaptive Nutrition Tracker!</h3>
           <p class="mt-2 text-muted">Please log in and set your baseline targets to get started.</p>
           <button onclick="document.getElementById('open-settings-btn').click()"
             class="mt-4 px-6 py-2 btn btn-primary">Set Targets</button>
@@ -573,8 +573,8 @@ function setupCollapsibleHandlers() {
 function renderInfoBox() {
   return `
     <div class="mb-6 p-4 surface-2 rounded-lg border">
-      <h3 class="font-semibold text-accent mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
-      <div class="text-sm text-secondary space-y-1">
+      <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
+      <div class="text-sm text-muted space-y-1">
         <p><strong>Smart Banking:</strong> Your "bank" tracks when you eat more (+) or less (-) than planned. Recent days matter most.</p>
         <p><strong>Auto-Adjust:</strong> Tomorrow's calories adjust to balance your bank, with safety limits (15-40% max change).</p>
         <p><strong>Training Days:</strong> Select your workout type above - this adds calories and scales electrolytes appropriately.</p>
@@ -614,7 +614,7 @@ function renderBankingPanel(bankingData) {
   return `
     <div class="section-card p-4">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-bold">🏦 Your Calorie Bank</h3>
+        <h3 class="text-xl font-bold text-secondary">🏦 Your Calorie Bank</h3>
         <button id="recent-days-toggle" class="text-accent hover:text-accent-600 text-sm font-medium flex items-center gap-2">
             <i class="fas fa-chevron-down"></i>
             <span class="toggle-text">Show Recent Days Breakdown</span>
@@ -626,7 +626,7 @@ function renderBankingPanel(bankingData) {
           <div class="text-2xl font-bold ${bankToday > 0 ? 'text-negative' : bankToday < 0 ? 'text-positive' : 'text-muted'}">
             ${bankToday > 0 ? '+' : ''}${bankToday} kcal
           </div>
-          <p class="text-sm text-secondary mt-1">${bankExplanation}</p>
+          <p class="text-sm text-muted mt-1">${bankExplanation}</p>
           ${!debug.mathIsConsistent && DASHBOARD_CONFIG.SHOW_MATH_VERIFICATION ? `
             <div class="mt-2 p-2 border surface-2 text-xs text-warning rounded">
               ⚠️ Math verification: Expected ${bankToday}, calculated ${debug.calculatedTotal} (difference: ${debug.calculatedTotal - bankToday})
@@ -649,8 +649,8 @@ function renderBankingPanel(bankingData) {
             <tbody>
               ${contributionRows}
               <tr class="border-t-2 border">
-                <td colspan="3" class="px-3 py-2 text-sm font-medium text-secondary italic">Days 6+ ago contribution</td>
-                <td class="px-3 py-2 text-sm text-center font-medium text-secondary italic">
+                <td colspan="3" class="px-3 py-2 text-sm font-medium text-primary italic">Days 6+ ago contribution</td>
+                <td class="px-3 py-2 text-sm text-center font-medium text-primary italic">
                   ${olderContributions > 0 ? '+' : ''}${Math.round(olderContributions)}
                 </td>
               </tr>
@@ -664,7 +664,7 @@ function renderBankingPanel(bankingData) {
           </table>
         </div>
 
-        <p class="mt-3 text-xs text-secondary">
+        <p class="mt-3 text-xs text-muted">
           <strong>How it works:</strong> Recent days have more impact (yesterday = 82%, 2 days = 67%, etc.).
           After 7-10 days, the impact is nearly zero (≤25%).
         </p>
@@ -714,7 +714,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
   
   return `
     <div class="mb-6 card p-6 shadow-lg">
-      <h3 class="text-xl font-bold mb-4">🍽️ Today's Nutrition Plan</h3>
+      <h3 class="text-xl font-bold text-secondary mb-4">🍽️ Today's Nutrition Plan</h3>
 
       <!-- Summary Section -->
       <div class="mb-4 p-4 surface-2 rounded-lg border">
@@ -723,7 +723,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
           <span class="text-accent">${todayKcalTarget} kcal</span>
         </div>
         <div class="flex justify-between items-center text-sm mt-1">
-          <span class="text-secondary">Remaining:</span>
+          <span class="text-primary">Remaining:</span>
           <span class="font-medium ${remainingCaloriesColor}">${remainingCalories.toFixed(0)} kcal</span>
         </div>
 
@@ -745,7 +745,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
               <span class="font-medium">${todaysTrainingBump > 0 ? '+' : ''}${todaysTrainingBump} kcal</span>
             </div>
             ${todaysTrainingBump > 0 ? `
-              <p class="text-xs text-accent px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]}</p>
+              <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]}</p>
             ` : ''}
             <div class="flex justify-between items-center p-2 rounded border ${bankToday !== 0 ? 'surface-2' : 'surface-1'}">
               <span>Bank balance adjustment:</span>
@@ -768,41 +768,32 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <!-- Macro Breakdown -->
         <div class="md:col-span-3">
-          <h4 class="font-semibold mb-3">Your Macro Targets</h4>
+          <h4 class="font-semibold text-secondary mb-3">Your Macro Targets</h4>
           <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div class="kpi card">
-              <div class="flex justify-between items-center">
-                <span class="kpi-title">Protein</span>
+            <div class="kpi">
+              <div class="flex justify-between items-center mb-1">
+                <span class="kpi-label">Protein</span>
                 <span class="kpi-value">${proteinG}g</span>
               </div>
-              <div class="flex justify-between items-center text-xs ${remainingProteinColor} mb-1">
-                <span>Remaining:</span>
-                <span class="font-bold">${remainingProtein.toFixed(0)}g</span>
-              </div>
+              <div class="kpi-delta ${remainingProtein >= 0 ? 'positive' : 'negative'}">Remaining: ${remainingProtein.toFixed(0)}g</div>
               <div class="text-xs text-muted">${proteinG * 4} kcal • ${trainingIntensity !== 'rest' && proteinG > BANKING_CONFIG.PROTEIN_G ? 'Training boost applied' : 'Standard target'}</div>
             </div>
 
-            <div class="kpi card">
-              <div class="flex justify-between items-center">
-                <span class="kpi-title">Fat (minimum)</span>
+            <div class="kpi">
+              <div class="flex justify-between items-center mb-1">
+                <span class="kpi-label">Fat (minimum)</span>
                 <span class="kpi-value">${fatG}g</span>
               </div>
-              <div class="flex justify-between items-center text-xs ${remainingFatColor} mb-1">
-                <span>Remaining:</span>
-                <span class="font-bold">${remainingFat.toFixed(0)}g</span>
-              </div>
+              <div class="kpi-delta ${remainingFat >= 0 ? 'positive' : 'negative'}">Remaining: ${remainingFat.toFixed(0)}g</div>
               <div class="text-xs text-muted">${fatG * 9} kcal • Essential for hormone production</div>
             </div>
 
-            <div class="kpi card">
-              <div class="flex justify-between items-center">
-                <span class="kpi-title">Carbs (flexible)</span>
+            <div class="kpi">
+              <div class="flex justify-between items-center mb-1">
+                <span class="kpi-label">Carbs (flexible)</span>
                 <span class="kpi-value">${carbsG}g</span>
               </div>
-              <div class="flex justify-between items-center text-xs ${remainingCarbsColor} mb-1">
-                <span>Remaining:</span>
-                <span class="font-bold">${remainingCarbs.toFixed(0)}g</span>
-              </div>
+              <div class="kpi-delta ${remainingCarbs >= 0 ? 'positive' : 'negative'}">Remaining: ${remainingCarbs.toFixed(0)}g</div>
               <div class="text-xs text-muted">${carbsG * 4} kcal • Fills remaining calories</div>
             </div>
           </div>
@@ -818,7 +809,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
 function renderChartSection() {
   return `
     <div class="mb-8 card p-6 shadow-lg">
-      <h3 class="text-2xl font-bold text-primary mb-4">📊 Nutrition Progress Chart</h3>
+      <h3 class="text-2xl font-bold text-secondary mb-4">📊 Nutrition Progress Chart</h3>
       <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label for="chart-nutrients" class="block text-sm font-medium text-primary mb-1">Select Nutrients</label>
@@ -837,11 +828,11 @@ function renderChartSection() {
           <div class="space-y-2 mt-2">
             <div class="flex items-center">
               <input type="checkbox" id="show-3day-avg" class="mr-2 h-4 w-4 text-accent border rounded focus:ring-accent-600">
-              <label for="show-3day-avg" class="text-sm text-secondary">3-day average</label>
+              <label for="show-3day-avg" class="text-sm text-primary">3-day average</label>
             </div>
             <div class="flex items-center">
               <input type="checkbox" id="show-7day-avg" class="mr-2 h-4 w-4 text-accent border rounded focus:ring-accent-600">
-              <label for="show-7day-avg" class="text-sm text-secondary">7-day average</label>
+              <label for="show-7day-avg" class="text-sm text-primary">7-day average</label>
             </div>
           </div>
         </div>
@@ -909,7 +900,7 @@ function renderMicronutrientSections(metrics) {
             <div class="w-full surface-3 rounded-full h-2">
               <div class="h-2 rounded-full ${statusColors[status]}" style="width: ${Math.min(100, percentage)}%"></div>
             </div>
-            <p class="text-xs text-secondary mt-1">${percentage.toFixed(0)}% of target</p>
+            <p class="text-xs text-muted mt-1">${percentage.toFixed(0)}% of target</p>
           </div>
         ` : ''}
       </div>
@@ -927,8 +918,8 @@ function renderMicronutrientSections(metrics) {
     return `
       <div class="mb-8">
         <div class="mb-4">
-          <h3 class="text-2xl font-bold text-primary">${title}</h3>
-          <p class="text-sm text-secondary">${description}</p>
+          <h3 class="text-2xl font-bold text-secondary">${title}</h3>
+          <p class="text-sm text-muted">${description}</p>
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           ${cards}

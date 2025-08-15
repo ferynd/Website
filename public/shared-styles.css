@@ -140,6 +140,7 @@ body {
 .kpi .kpi-value { font-weight:700; font-size:1.5rem; color:hsl(var(--text)); }
 .kpi .kpi-delta.positive { color:hsl(var(--success)); }
 .kpi .kpi-delta.negative { color:hsl(var(--error)); }
+.kpi .kpi-delta.neutral  { color:hsl(var(--text-3)); }
 /* ---------- Semantic text ---------- */
 .text-primary  { color: hsl(var(--text)); }
 .text-secondary{ color: hsl(var(--text-2)); }
@@ -174,6 +175,10 @@ body {
 .btn-danger:hover { filter: brightness(.95); }
 .btn-success  { background: hsl(var(--success)); color: #fff; }
 .btn-warning  { background: hsl(var(--warning)); color: #000; }
+.btn-secondary{ background: hsl(var(--surface-2)); color: hsl(var(--text)); border-color: hsl(var(--border)); }
+.btn-secondary:hover { filter: brightness(.95); }
+.btn-muted   { background: hsl(var(--surface-2)); color: hsl(var(--text-3)); border-color: hsl(var(--border)); }
+.btn-muted:hover { filter: brightness(.95); }
 .btn-ghost    { background: transparent; color: hsl(var(--text)); border-color: hsl(var(--border)); }
 .icon-btn     { width: 2.25rem; height: 2.25rem; padding: 0; }
 
@@ -187,14 +192,7 @@ body {
 .badge-warn { background: color-mix(in hsl, hsl(var(--warning)) 15%, hsl(var(--surface-1))); color: hsl(var(--warning)); border-color: color-mix(in hsl, hsl(var(--warning)) 30%, hsl(var(--surface-1))); }
 .badge-bad  { background: color-mix(in hsl, hsl(var(--error)) 15%, hsl(var(--surface-1))); color: hsl(var(--error)); border-color: color-mix(in hsl, hsl(var(--error)) 30%, hsl(var(--surface-1))); }
 
-/* ---------- KPI tile & progress ---------- */
-.kpi { padding: 1rem; }
-.kpi-title { color: hsl(var(--text-2)); font-weight: 600; }
-.kpi-value { color: hsl(var(--text)); font-weight: 800; font-size: 1.4rem; }
-.kpi-diff.negative { color: hsl(var(--error)); }
-.kpi-diff.positive { color: hsl(var(--success)); }
-.kpi-diff.neutral  { color: hsl(var(--text-3)); }
-
+/* ---------- Progress Bars ---------- */
 .progress { height: .5rem; background: hsl(var(--surface-3)); border-radius: .5rem; overflow: hidden; }
 .progress > .fill { height: 100%; }
 .fill.good { background: hsl(var(--success)); }

@@ -186,7 +186,7 @@ function renderFoodItemsContent(container) {
           </div>
           <div class="text-xs text-secondary">${details}</div>
         </div>
-        <button onclick="removeFoodItem(${index})" class="ml-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200 btn btn-danger icon-btn" title="Remove Item" aria-label="Remove Item">
+        <button onclick="removeFoodItem(${index})" class="ml-3 btn btn-danger icon-btn" title="Delete" aria-label="Delete">
           <span aria-hidden="true">&times;</span>
         </button>
       </div>`;
