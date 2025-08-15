@@ -86,16 +86,16 @@ export function openFoodManager() {
   const list = Array.from(state.savedFoodItems.entries()).sort(([, a], [, b]) => (a.name || '').localeCompare(b.name || ''));
 
   container.innerHTML = list.map(([id, f]) => `
-    <div class="flex justify-between items-center p-3 border-b border-gray-200">
+    <div class="flex justify-between items-center p-3 border-b border-default">
       <div>
         <div class="font-medium">${f.name}</div>
-        <div class="text-sm text-gray-500">Cal: ${f.calories || 0} | P: ${f.protein || 0} / C: ${f.carbs || 0} / F: ${f.fat || 0}</div>
+        <div class="text-sm text-muted">Cal: ${f.calories || 0} | P: ${f.protein || 0} / C: ${f.carbs || 0} / F: ${f.fat || 0}</div>
       </div>
       <div class="flex gap-2">
-        <button onclick="editFoodItem('${id}')" class="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">Edit</button>
-        <button onclick="deleteFoodItemFromManager('${id}')" class="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700">Delete</button>
+        <button onclick="editFoodItem('${id}')" class="btn btn-primary text-sm">Edit</button>
+        <button onclick="deleteFoodItemFromManager('${id}')" class="btn btn-danger text-sm">Delete</button>
       </div>
-    </div>`).join('') || '<p class="text-gray-500 text-center p-4">No saved food items.</p>';
+    </div>`).join('') || '<p class="text-muted text-center p-4">No saved food items.</p>';
 
   modal.classList.remove('hidden');
 }
