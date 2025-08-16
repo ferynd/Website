@@ -93,7 +93,7 @@ export function openFoodManager() {
       </div>
       <div class="flex gap-2">
         <button onclick="editFoodItem('${id}')" class="btn btn-primary text-sm">Edit</button>
-        <button onclick="deleteFoodItemFromManager('${id}')" class="btn btn-danger text-sm">Delete</button>
+        <button onclick="deleteFoodItemFromManager('${id}')" class="btn btn-danger icon-btn" aria-label="Delete" title="Delete">&times;</button>
       </div>
     </div>`).join('') || '<p class="text-muted text-center p-4">No saved food items.</p>';
 

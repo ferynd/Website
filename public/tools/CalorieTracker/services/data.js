@@ -186,9 +186,7 @@ function renderFoodItemsContent(container) {
           </div>
           <div class="text-xs text-secondary">${details}</div>
         </div>
-        <button onclick="removeFoodItem(${index})" class="ml-3 btn btn-danger icon-btn" title="Delete" aria-label="Delete">
-          <span aria-hidden="true">&times;</span>
-        </button>
+        <button onclick="removeFoodItem(${index})" class="btn btn-danger icon-btn" aria-label="Delete" title="Delete">&times;</button>
       </div>`;
   }).join('');
 
