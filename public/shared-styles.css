@@ -146,7 +146,7 @@ body {
   transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
 }
 .kpi:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); border-color: hsl(var(--accent) / .45); }
-.kpi .kpi-label { color:hsl(var(--text-2)); font-size:.85rem; }
+.kpi .kpi-label { color:hsl(var(--text)); font-size:1.2rem; font-weight:600;}
 .kpi .kpi-value { font-weight:700; font-size:1.5rem; color:hsl(var(--text)); }
 .kpi .kpi-delta.positive { color:hsl(var(--success)); }
 .kpi .kpi-delta.negative { color:hsl(var(--error)); }
@@ -191,6 +191,25 @@ body {
 .btn-muted:hover { filter: brightness(.95); }
 .btn-ghost    { background: transparent; color: hsl(var(--text)); border-color: hsl(var(--border)); }
 .icon-btn     { width: 2.25rem; height: 2.25rem; padding: 0; }
+
+.btn-subtle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  background-color: hsl(var(--surface-2));
+  color: hsl(var(--info));
+  border: 1px solid hsl(var(--border));
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.btn-subtle:hover {
+  background-color: hsl(var(--surface-3));
+  color: hsl(var(--info) / 0.8);
+}
 
 /* ---------- Badges ---------- */
 .badge {

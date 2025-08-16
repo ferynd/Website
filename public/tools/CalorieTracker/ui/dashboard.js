@@ -620,7 +620,7 @@ function renderBankingPanel(bankingData) {
     <div class="section-card p-4">
       <div class="flex items-center justify-between mb-4">
         <h3 class="text-xl font-bold text-secondary">🏦 Your Calorie Bank</h3>
-        <button id="recent-days-toggle" class="text-accent hover:text-accent-600 text-sm font-medium flex items-center gap-2">
+        <button id="recent-days-toggle" class="btn-subtle">
             <i class="fas fa-chevron-down"></i>
             <span class="toggle-text">Show Recent Days Breakdown</span>
         </button>
@@ -733,7 +733,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
         </div>
 
         <!-- Collapsible Details Button -->
-        <button id="bank-details-toggle" class="mt-3 text-sm text-accent hover:text-accent-600 font-medium flex items-center gap-2">
+        <button id="bank-details-toggle" class="mt-3 btn-subtle">
           <i class="fas fa-chevron-down"></i>
           <span class="toggle-text">Show How We Calculated This</span>
         </button>
