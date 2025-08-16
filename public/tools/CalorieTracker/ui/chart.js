@@ -13,12 +13,6 @@ import { getPastDate, formatDate } from '../utils/time.js';
 // CONFIGURATION (Top of file for easy modification)
 // =========================
 const CHART_CONFIG = {
-  // Chart colors for different nutrients
-  COLORS: CONFIG.CHART_COLORS || [
-    '#3B82F6', '#EF4444', '#10B981', '#F59E0B', 
-    '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'
-  ],
-  
   // Visual effects
   SHADOW_CONFIG: {
     color: 'rgba(0,0,0,0.3)',
@@ -45,6 +39,8 @@ const CHART_CONFIG = {
   DEFAULT_TIMEFRAME: 'week',
   ENABLE_DEBUG_LOGGING: true
 };
+
+// Chart colors are provided by CONFIG.CHART_COLORS
 
 // =========================
 // HELPER FUNCTIONS
@@ -213,7 +209,7 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
 
     // Create datasets for each selected nutrient
     nutrientKeys.forEach((nutrient, idx) => {
-      const color = CHART_CONFIG.COLORS[idx % CHART_CONFIG.COLORS.length];
+      const color = CONFIG.CHART_COLORS[idx % CONFIG.CHART_COLORS.length];
       
       // Get target value
       const target = parseFloat(state.baselineTargets[nutrient]) || 1;
