@@ -144,6 +144,11 @@ function getScaledNutrientTarget(nutrient, baseTarget, trainingBump) {
   return baseTarget; // No scaling for this nutrient
 }
 
+// KPI bar helpers
+const clampPct150 = (v, tgt) => Math.max(0, Math.min(150, (v / Math.max(1, tgt)) * 100));
+const pctWidth = (v, tgt) => clampPct150(v, tgt) + "%";
+const markerLeft = "66.6667%";
+
 // =========================
 // MAIN BANKING CALCULATION
 // =========================
@@ -703,9 +708,9 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
   const remainingCarbs = carbsG - todaysCarbs;
 
   const remainingCaloriesColor = remainingCalories >= 0 ? 'text-muted' : 'text-negative';
-  const remainingProteinColor = remainingProtein >= 0 ? 'text-positive' : 'text-negative';
-  const remainingFatColor = remainingFat >= 0 ? 'text-positive' : 'text-negative';
-  const remainingCarbsColor = remainingCarbs >= 0 ? 'text-positive' : 'text-negative';
+  const proteinPct = clampPct150(todaysProtein, proteinG);
+  const fatPct = clampPct150(todaysFat, fatG);
+  const carbsPct = clampPct150(todaysCarbs, carbsG);
   
   // User-friendly explanations
   const correctionExplanation = correction === rawCorrection 
@@ -775,7 +780,20 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
                 <span class="kpi-label">Protein</span>
                 <span class="kpi-value">${proteinG}g</span>
               </div>
-              <div class="kpi-delta ${remainingProtein >= 0 ? 'positive' : 'negative'}">Remaining: ${remainingProtein.toFixed(0)}g</div>
+              <div class="kpi-row">
+                <div class="meta">
+                  <span class="current">${Math.round(todaysProtein)}g</span>
+                  <span class="target">target ${Math.round(proteinG)}g</span>
+                  <span class="remain ${remainingProtein >= 0 ? 'text-positive' : 'text-negative'}">
+                    ${remainingProtein >= 0 ? `${Math.round(remainingProtein)}g left` : `${Math.abs(Math.round(remainingProtein))}g over`}
+                  </span>
+                  ${proteinPct > 150 ? `<span class="over">${Math.round((todaysProtein/proteinG)*100)}% of goal</span>` : ''}
+                </div>
+                <div class="hbar">
+                  <div class="hbar-fill" style="width:${pctWidth(todaysProtein, proteinG)}"></div>
+                  <div class="hbar-marker" style="left:${markerLeft}"></div>
+                </div>
+              </div>
               <div class="text-xs text-muted">${proteinG * 4} kcal • ${trainingIntensity !== 'rest' && proteinG > BANKING_CONFIG.PROTEIN_G ? 'Training boost applied' : 'Standard target'}</div>
             </div>
 
@@ -784,7 +802,20 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
                 <span class="kpi-label">Fat (minimum)</span>
                 <span class="kpi-value">${fatG}g</span>
               </div>
-              <div class="kpi-delta ${remainingFat >= 0 ? 'positive' : 'negative'}">Remaining: ${remainingFat.toFixed(0)}g</div>
+              <div class="kpi-row">
+                <div class="meta">
+                  <span class="current">${Math.round(todaysFat)}g</span>
+                  <span class="target">target ${Math.round(fatG)}g</span>
+                  <span class="remain ${remainingFat >= 0 ? 'text-positive' : 'text-negative'}">
+                    ${remainingFat >= 0 ? `${Math.round(remainingFat)}g left` : `${Math.abs(Math.round(remainingFat))}g over`}
+                  </span>
+                  ${fatPct > 150 ? `<span class="over">${Math.round((todaysFat/fatG)*100)}% of goal</span>` : ''}
+                </div>
+                <div class="hbar">
+                  <div class="hbar-fill" style="width:${pctWidth(todaysFat, fatG)}"></div>
+                  <div class="hbar-marker" style="left:${markerLeft}"></div>
+                </div>
+              </div>
               <div class="text-xs text-muted">${fatG * 9} kcal • Essential for hormone production</div>
             </div>
 
@@ -793,7 +824,20 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
                 <span class="kpi-label">Carbs (flexible)</span>
                 <span class="kpi-value">${carbsG}g</span>
               </div>
-              <div class="kpi-delta ${remainingCarbs >= 0 ? 'positive' : 'negative'}">Remaining: ${remainingCarbs.toFixed(0)}g</div>
+              <div class="kpi-row">
+                <div class="meta">
+                  <span class="current">${Math.round(todaysCarbs)}g</span>
+                  <span class="target">target ${Math.round(carbsG)}g</span>
+                  <span class="remain ${remainingCarbs >= 0 ? 'text-positive' : 'text-negative'}">
+                    ${remainingCarbs >= 0 ? `${Math.round(remainingCarbs)}g left` : `${Math.abs(Math.round(remainingCarbs))}g over`}
+                  </span>
+                  ${carbsPct > 150 ? `<span class="over">${Math.round((todaysCarbs/carbsG)*100)}% of goal</span>` : ''}
+                </div>
+                <div class="hbar">
+                  <div class="hbar-fill" style="width:${pctWidth(todaysCarbs, carbsG)}"></div>
+                  <div class="hbar-marker" style="left:${markerLeft}"></div>
+                </div>
+              </div>
               <div class="text-xs text-muted">${carbsG * 4} kcal • Fills remaining calories</div>
             </div>
           </div>
@@ -849,60 +893,35 @@ function renderChartSection() {
 function renderMicronutrientSections(metrics) {
   const renderNutrientCard = (nutrient, data) => {
     const { baseTarget, scaledTarget, todaysIntake, avgIntake, status, isDailyFloor, isAveraged, isScaled } = data;
-    
-    const statusColors = {
-      green: 'fill good',
-      amber: 'fill warn',
-      red: 'fill bad'
-    };
-    
+
+    const fillClass = { green: 'good', amber: 'warn', red: 'bad' };
+    const indicator = { green: 'hsl(var(--success))', amber: 'hsl(var(--warning))', red: 'hsl(var(--error))' };
+
     const displayValue = isAveraged ? avgIntake : todaysIntake;
     const targetValue = isDailyFloor ? scaledTarget : baseTarget;
-    const percentage = targetValue > 0 ? (displayValue / targetValue) * 100 : 0;
-    
+    const pct = targetValue > 0 ? (displayValue / targetValue) * 100 : 0;
+
     return `
       <div class="card p-4 hover:shadow-lg transition-shadow">
         <div class="flex items-center justify-between mb-2">
           <h4 class="font-bold text-primary">${formatNutrientName(nutrient)}</h4>
           <div class="flex items-center gap-2">
             ${isScaled && DASHBOARD_CONFIG.SHOW_TRAINING_SCALING_BADGES ? '<span class="badge-good">Training+</span>' : ''}
-            <div class="w-3 h-3 rounded-full ${statusColors[status]}"></div>
+            <div class="w-3 h-3 rounded-full" style="background:${indicator[status]}"></div>
           </div>
         </div>
-
-        <div class="space-y-1 text-sm">
-          <div class="flex justify-between">
-            <span>Today:</span>
-            <span class="font-medium">${todaysIntake.toFixed(1)}</span>
+        <div class="kpi-row">
+          <div class="meta">
+            <span class="current">${displayValue.toFixed(1)}</span>
+            <span class="target">target ${targetValue.toFixed(1)}</span>
+            <span class="remain ${displayValue >= targetValue ? 'text-positive' : 'text-negative'}">${Math.round(clampPct150(displayValue, targetValue))}%</span>
+            ${pct > 150 ? `<span class="over">${Math.round(pct)}%</span>` : ''}
           </div>
-          ${isAveraged ? `
-            <div class="flex justify-between">
-              <span>7-day avg:</span>
-              <span class="font-medium">${avgIntake.toFixed(1)}</span>
-            </div>
-          ` : ''}
-          <div class="flex justify-between">
-            <span>Target:</span>
-            <span class="font-medium">${targetValue.toFixed(1)}${isScaled ? ` (${baseTarget.toFixed(1)})` : ''}</span>
+          <div class="hbar">
+            <div class="hbar-fill ${fillClass[status]}" style="width:${pctWidth(displayValue, targetValue)}"></div>
+            <div class="hbar-marker" style="left:${markerLeft}"></div>
           </div>
-          ${isDailyFloor ? `
-            <div class="flex justify-between text-xs">
-              <span>Daily goal:</span>
-              <span class="${todaysIntake >= scaledTarget ? 'text-positive' : 'text-negative'} font-medium">
-                ${todaysIntake >= scaledTarget ? '✅ Met' : '❌ Short'}
-              </span>
-            </div>
-          ` : ''}
         </div>
-        
-        ${DASHBOARD_CONFIG.SHOW_PERCENTAGE_PROGRESS ? `
-          <div class="mt-3">
-            <div class="w-full surface-3 rounded-full h-2">
-              <div class="h-2 rounded-full ${statusColors[status]}" style="width: ${Math.min(100, percentage)}%"></div>
-            </div>
-            <p class="text-xs text-muted mt-1">${percentage.toFixed(0)}% of target</p>
-          </div>
-        ` : ''}
       </div>
     `;
   };
