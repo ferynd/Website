@@ -198,3 +198,20 @@ body {
 .fill.good { background: hsl(var(--success)); }
 .fill.warn { background: hsl(var(--warning)); }
 .fill.bad  { background: hsl(var(--error)); }
+/* Horizontal KPI bars (0 → 150% of target) */
+.hbar { position: relative; height: 0.75rem; background: hsl(var(--surface-3)); border-radius: 0.5rem; overflow: hidden; }
+.hbar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: hsl(var(--accent)); }
+.hbar-marker { position: absolute; top: -0.125rem; bottom: -0.125rem; width: 2px; background: hsl(var(--border)); opacity: .9; }
+
+/* Fill tinting */
+.hbar-fill.good { background: hsl(var(--success)); }
+.hbar-fill.warn { background: hsl(var(--warning)); }
+.hbar-fill.bad  { background: hsl(var(--error)); }
+
+/* KPI row layout */
+.kpi-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .5rem .75rem; }
+.kpi-row .meta { display:flex; gap:.75rem; align-items:center; font-size:.85rem; }
+.kpi-row .meta .current { color:hsl(var(--text)); font-weight:600; }
+.kpi-row .meta .target  { color:hsl(var(--text-2)); }
+.kpi-row .meta .remain  { color:hsl(var(--text-3)); }
+.kpi-row .meta .over    { font-size:.75rem; color:hsl(var(--error)); }
