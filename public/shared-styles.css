@@ -19,6 +19,16 @@
   --warning: 42 96% 50%;
   --error: 0 84% 60%;
   --info: 199 92% 60%;
+
+  /* Chart palette tokens */
+  --chart-1-hex: #3B82F6;
+  --chart-2-hex: #EF4444;
+  --chart-3-hex: #10B981;
+  --chart-4-hex: #F59E0B;
+  --chart-5-hex: #8B5CF6;
+  --chart-6-hex: #EC4899;
+  --chart-7-hex: #06B6D4;
+  --chart-8-hex: #84CC16;
 }
 
 [data-theme="dark"] {

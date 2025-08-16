@@ -4,6 +4,10 @@
  * Contains constants that can be easily modified to change app behavior.
  */
 
+// Read chart colors from CSS variables for easy theming
+const css = getComputedStyle(document.documentElement);
+const chartFromCss = (n) => css.getPropertyValue(`--chart-${n}-hex`)?.trim() || null;
+
 // Main application configuration object
 export const CONFIG = {
   // Timezone for date calculations to ensure consistency.
@@ -19,7 +23,16 @@ export const CONFIG = {
   DEFAULT_FAT_MINIMUM: 50,
 
   // Array of hex color codes for the chart datasets.
-  CHART_COLORS: ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'],
+  CHART_COLORS: [
+    chartFromCss(1) || '#3B82F6',
+    chartFromCss(2) || '#EF4444',
+    chartFromCss(3) || '#10B981',
+    chartFromCss(4) || '#F59E0B',
+    chartFromCss(5) || '#8B5CF6',
+    chartFromCss(6) || '#EC4899',
+    chartFromCss(7) || '#06B6D4',
+    chartFromCss(8) || '#84CC16',
+  ],
 
   // Number of previous days to look back for calculating rolling averages in the chart.
   CHART_AVERAGE_LOOKBACK: 3,
