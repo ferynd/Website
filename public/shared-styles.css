@@ -244,3 +244,7 @@ body {
 .kpi-row .meta .target  { color:hsl(var(--text-2)); }
 .kpi-row .meta .remain  { color:hsl(var(--text-3)); }
 .kpi-row .meta .over    { font-size:.75rem; color:hsl(var(--error)); }
+
+/* Table helpers */
+.divide-y > * + * { border-top:1px solid hsl(var(--border)); }
+.hover-surface-2:hover { background-color:hsl(var(--surface-2)); }

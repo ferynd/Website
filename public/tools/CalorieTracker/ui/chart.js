@@ -40,6 +40,10 @@ const CHART_CONFIG = {
   ENABLE_DEBUG_LOGGING: true
 };
 
+// Pull border color token for target line
+const css = getComputedStyle(document.documentElement);
+const borderColor = `hsl(${css.getPropertyValue('--border').trim()})`;
+
 // Chart colors are provided by CONFIG.CHART_COLORS
 
 // =========================
@@ -67,9 +71,9 @@ function handleChartError(operation, error) {
   const errorDiv = document.getElementById('chart-error-display');
   if (errorDiv) {
     errorDiv.innerHTML = `
-      <div class="p-4 bg-red-50 border border-red-200 rounded-lg">
-        <p class="text-red-800 font-medium">Chart Error in ${operation}</p>
-        <p class="text-red-600 text-sm">${error.message}</p>
+      <div class="p-4 border surface-1 rounded-lg">
+        <p class="text-negative font-medium">Chart Error in ${operation}</p>
+        <p class="text-negative text-sm">${error.message}</p>
       </div>
     `;
   }
@@ -417,7 +421,7 @@ export function updateChart() {
             label: 'Target (100%)',
             data: new Array(labels.length).fill(100),
             type: 'line',
-            borderColor: '#6B7280',
+            borderColor: borderColor,
             borderDash: [5, 5],
             borderWidth: 2,
             fill: false,
@@ -586,34 +590,34 @@ function updateChartTable(tableData, nutrientKeys, labels) {
     }
 
     if (!Object.keys(tableData).length || !nutrientKeys.length) {
-      tableContainer.innerHTML = '<p class="text-gray-500 text-center py-4">No data available for selected nutrients and timeframe</p>';
+      tableContainer.innerHTML = '<p class="text-muted text-center py-4">No data available for selected nutrients and timeframe</p>';
       return;
     }
 
     let html = `
-      <div class="overflow-x-auto bg-white rounded-lg border border-gray-200">
+      <div class="overflow-x-auto surface-1 rounded-lg border">
         <table class="min-w-full">
-          <thead class="bg-gray-50">
+          <thead class="surface-2">
             <tr>
-              <th class="px-4 py-3 text-left text-sm font-semibold text-gray-700">Nutrient</th>`;
+              <th class="px-4 py-3 text-left text-sm font-semibold text-secondary">Nutrient</th>`;
     
     labels.forEach(dateStr => {
       const date = new Date(`${dateStr}T00:00:00`);
       const shortDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      html += `<th class="px-3 py-3 text-center text-sm font-semibold text-gray-700">${shortDate}</th>`;
+      html += `<th class="px-3 py-3 text-center text-sm font-semibold text-secondary">${shortDate}</th>`;
     });
-    
-    html += `</tr></thead><tbody class="divide-y divide-gray-200">`;
+
+    html += `</tr></thead><tbody class="divide-y">`;
 
     nutrientKeys.forEach(nutrient => {
-      html += `<tr class="hover:bg-gray-50">
-        <td class="px-4 py-3 text-sm font-medium text-gray-900">${formatNutrientName(nutrient)}</td>`;
+      html += `<tr class="hover-surface-2">
+        <td class="px-4 py-3 text-sm font-medium text-primary">${formatNutrientName(nutrient)}</td>`;
       
       labels.forEach(dateStr => {
         const data = tableData[dateStr][nutrient];
         if (data) {
-          const colorClass = data.percentage >= 90 && data.percentage <= 110 ? 'text-green-600' :
-                            data.percentage >= 70 ? 'text-yellow-600' : 'text-red-600';
+          const colorClass = data.percentage >= 90 && data.percentage <= 110 ? 'text-positive' :
+                            data.percentage >= 70 ? 'text-warning' : 'text-negative';
           
           html += `
             <td class="px-3 py-3 text-center text-sm">
@@ -621,7 +625,7 @@ function updateChartTable(tableData, nutrientKeys, labels) {
               <div class="${colorClass} text-xs">${data.percentage.toFixed(0)}%</div>
             </td>`;
         } else {
-          html += `<td class="px-3 py-3 text-center text-sm text-gray-400">—</td>`;
+          html += `<td class="px-3 py-3 text-center text-sm text-muted">—</td>`;
         }
       });
       

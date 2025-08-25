@@ -148,6 +148,7 @@ function getScaledNutrientTarget(nutrient, baseTarget, trainingBump) {
 const clampPct150 = (v, tgt) => Math.max(0, Math.min(150, (v / Math.max(1, tgt)) * 100));
 const pctWidth = (v, tgt) => clampPct150(v, tgt) + "%";
 const markerLeft = "66.6667%";
+const remainClass = v => v > 0 ? 'text-positive' : v < 0 ? 'text-negative' : 'text-muted';
 
 // =========================
 // MAIN BANKING CALCULATION
@@ -784,8 +785,8 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
                 <div class="meta">
                   <span class="current">${Math.round(todaysProtein)}g</span>
                   <span class="target">target ${Math.round(proteinG)}g</span>
-                  <span class="remain ${remainingProtein >= 0 ? 'text-positive' : 'text-negative'}">
-                    ${remainingProtein >= 0 ? `${Math.round(remainingProtein)}g left` : `${Math.abs(Math.round(remainingProtein))}g over`}
+                  <span class="remain ${remainClass(remainingProtein)}">
+                    ${remainingProtein > 0 ? `${Math.round(remainingProtein)}g left` : remainingProtein < 0 ? `${Math.abs(Math.round(remainingProtein))}g over` : '0g left'}
                   </span>
                   ${proteinPct > 150 ? `<span class="over">${Math.round((todaysProtein/proteinG)*100)}% of goal</span>` : ''}
                 </div>
@@ -806,8 +807,8 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
                 <div class="meta">
                   <span class="current">${Math.round(todaysFat)}g</span>
                   <span class="target">target ${Math.round(fatG)}g</span>
-                  <span class="remain ${remainingFat >= 0 ? 'text-positive' : 'text-negative'}">
-                    ${remainingFat >= 0 ? `${Math.round(remainingFat)}g left` : `${Math.abs(Math.round(remainingFat))}g over`}
+                  <span class="remain ${remainClass(remainingFat)}">
+                    ${remainingFat > 0 ? `${Math.round(remainingFat)}g left` : remainingFat < 0 ? `${Math.abs(Math.round(remainingFat))}g over` : '0g left'}
                   </span>
                   ${fatPct > 150 ? `<span class="over">${Math.round((todaysFat/fatG)*100)}% of goal</span>` : ''}
                 </div>
@@ -828,8 +829,8 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
                 <div class="meta">
                   <span class="current">${Math.round(todaysCarbs)}g</span>
                   <span class="target">target ${Math.round(carbsG)}g</span>
-                  <span class="remain ${remainingCarbs >= 0 ? 'text-positive' : 'text-negative'}">
-                    ${remainingCarbs >= 0 ? `${Math.round(remainingCarbs)}g left` : `${Math.abs(Math.round(remainingCarbs))}g over`}
+                  <span class="remain ${remainClass(remainingCarbs)}">
+                    ${remainingCarbs > 0 ? `${Math.round(remainingCarbs)}g left` : remainingCarbs < 0 ? `${Math.abs(Math.round(remainingCarbs))}g over` : '0g left'}
                   </span>
                   ${carbsPct > 150 ? `<span class="over">${Math.round((todaysCarbs/carbsG)*100)}% of goal</span>` : ''}
                 </div>
@@ -914,7 +915,7 @@ function renderMicronutrientSections(metrics) {
           <div class="meta">
             <span class="current">${displayValue.toFixed(1)}</span>
             <span class="target">target ${targetValue.toFixed(1)}</span>
-            <span class="remain ${displayValue >= targetValue ? 'text-positive' : 'text-negative'}">${Math.round(clampPct150(displayValue, targetValue))}%</span>
+            <span class="remain ${remainClass(displayValue - targetValue)}">${Math.round(clampPct150(displayValue, targetValue))}%</span>
             ${pct > 150 ? `<span class="over">${Math.round(pct)}%</span>` : ''}
           </div>
           <div class="hbar">
