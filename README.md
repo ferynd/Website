@@ -12,6 +12,14 @@ Welcome to my personal website project! This repository is a monorepo containing
 
 This stack means the site is primarily a static front-end (deployed on Cloudflare Pages) with some dynamic client-side features. Firebase is used as a backend for data-heavy features (e.g. saving user data for certain tools like the Trip Cost calculator or Calorie Tracker).
 
+### Shared UI tokens
+
+Static tools under `/public` share utility classes and color tokens defined in `public/shared-styles.css`:
+
+- `.hbar` with `.hbar-fill` and `.hbar-marker` draws horizontal KPI bars on a 0–150% scale with a 100% marker.
+- `.kpi-row` standardizes KPI label/value layouts.
+- `--chart-1-hex` … `--chart-8-hex` variables supply chart colors consumed via `CONFIG.CHART_COLORS`.
+
 ## Project Structure
 
 The project uses a flat, intuitive structure to organize content. The main directories are:

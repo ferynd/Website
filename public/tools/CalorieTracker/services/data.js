@@ -193,8 +193,8 @@ function renderFoodItemsContent(container) {
   // Summary section
   const summaryHtml = `
     <div class="kpi card mb-3">
-      <div class="flex justify-between items-center">
-        <span class="kpi-title">Today's Totals (${state.dailyFoodItems.length} items):</span>
+      <div class="kpi-row">
+        <span class="kpi-label">Today's Totals (${state.dailyFoodItems.length} items)</span>
         <span class="kpi-value">${Math.round(totals.calories)} cal | ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f</span>
       </div>
     </div>
