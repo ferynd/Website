@@ -197,6 +197,13 @@ function renderFoodItemsContent(container) {
       });
     }
 
+    const qtyInput = typeof window.updateItemQuantity === 'function'
+      ? `<input type="number" step="0.01" min="0"
+          class="input input-xs w-16 mr-2"
+          value="${qty}"
+          oninput="window.updateItemQuantity('${item.id}', this.value)" />`
+      : '';
+
     return `
       <div class="group flex justify-between items-center p-3 rounded-lg border surface-2 ${isSubtraction ? 'text-negative' : ''} hover:shadow-md transition-all duration-200">
         <div class="flex-grow min-w-0">
@@ -206,10 +213,7 @@ function renderFoodItemsContent(container) {
           </div>
           <div class="text-xs text-secondary">${details}</div>
         </div>
-        <input type="number" step="0.01" min="0"
-          class="input input-xs w-16 mr-2"
-          value="${qty}"
-          oninput="window.updateItemQuantity('${item.id}', this.value)" />
+        ${qtyInput}
         <button onclick="removeFoodItem(${index})" class="btn btn-danger icon-btn" aria-label="Delete" title="Delete">&times;</button>
       </div>`;
   }).join('');
@@ -217,9 +221,17 @@ function renderFoodItemsContent(container) {
   // Summary section
   const summaryHtml = `
     <div class="kpi card mb-3">
-      <div class="kpi-row">
-        <span class="kpi-label">Today's Totals (${state.dailyFoodItems.length} items)</span>
-        <span class="kpi-value">${Math.round(totals.calories)} cal | ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f</span>
+      <div class="kpi-row items-start">
+        <div>
+          <div class="kpi-label">Today's Totals</div>
+          <div class="text-sm text-secondary">(${state.dailyFoodItems.length} ${state.dailyFoodItems.length === 1 ? 'item' : 'items'})</div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-2xl font-extrabold whitespace-nowrap">${Math.round(totals.calories)} cal</div>
+          <div class="text-sm text-secondary whitespace-nowrap">
+            ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f
+          </div>
+        </div>
       </div>
     </div>
   `;
