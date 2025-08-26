@@ -12,6 +12,11 @@ import { showConfirmationModal } from '../ui/modals.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 
+// Configuration
+const PARSER_CONFIG = {
+  DEFAULT_QUANTITY: 1
+};
+
 /**
  * Parses text from the paste area and populates the staging input fields.
  * It uses a map of synonyms to identify nutrient names.
@@ -72,13 +77,14 @@ export async function addStagedNutrientsToDailyLog() {
   const staged = getStagedValues();
   const dateStr = state.dom.dateInput.value;
   const todayEntry = state.dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+  const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
 
-  // Add staged values to the existing daily totals.
-  allNutrients.forEach(n => todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + (staged[n] || 0));
+  // Add staged values to the existing daily totals with quantity.
+  allNutrients.forEach(n => todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + (qty * (staged[n] || 0)));
 
   // Create a food item record for this addition.
   const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Entry)';
-  const foodItem = { name: foodName, timestamp: new Date().toISOString(), ...staged };
+  const foodItem = { id: crypto.randomUUID(), name: foodName, quantity: qty, timestamp: new Date().toISOString(), ...staged };
   state.dailyFoodItems.push(foodItem);
 
   await saveDailyEntry(dateStr, todayEntry);
@@ -98,14 +104,15 @@ export async function subtractStagedNutrientsFromDailyLog() {
   const staged = getStagedValues();
   const dateStr = state.dom.dateInput.value;
   const todayEntry = state.dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+  const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
 
   // Subtract staged values, ensuring totals don't go below zero.
-  allNutrients.forEach(n => todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - (staged[n] || 0)));
+  allNutrients.forEach(n => todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - (qty * (staged[n] || 0))));
 
   // Create a food item record for this subtraction with negative values.
-  const negativeStaged = Object.fromEntries(Object.entries(staged).map(([k, v]) => [k, -(v || 0)]));
+  const negativeStaged = Object.fromEntries(Object.entries(staged).map(([k, v]) => [k, -(qty * (v || 0))]));
   const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Subtraction)';
-  const foodItem = { name: `${foodName} (subtracted)`, timestamp: new Date().toISOString(), ...negativeStaged };
+  const foodItem = { id: crypto.randomUUID(), name: `${foodName} (subtracted)`, quantity: qty, timestamp: new Date().toISOString(), ...negativeStaged };
   state.dailyFoodItems.push(foodItem);
 
   await saveDailyEntry(dateStr, todayEntry);
@@ -139,12 +146,13 @@ export function handleStagingAction(mode) {
 
   if (mode === 'replace') {
     showConfirmationModal(`Replace all of ${dateStr} with staged values? This will overwrite existing data for this day.`, async () => {
+      const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
       const newEntry = { date: dateStr };
-      allNutrients.forEach(n => newEntry[n] = staged[n] || 0);
+      allNutrients.forEach(n => newEntry[n] = qty * (staged[n] || 0));
 
       // Create a single food item record representing the entire day's replacement.
       const foodName = document.getElementById('food-item-input')?.value.trim() || '(Replaced Day)';
-      state.dailyFoodItems = [{ name: foodName, timestamp: new Date().toISOString(), ...staged }];
+      state.dailyFoodItems = [{ id: crypto.randomUUID(), name: foodName, quantity: qty, timestamp: new Date().toISOString(), ...staged }];
 
       await saveDailyEntry(dateStr, newEntry);
       showMessage("Day's log replaced with staged values!");

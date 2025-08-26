@@ -60,11 +60,12 @@ export async function saveFoodItemToDatabase() {
  */
 async function processSaveFoodItem(foodName, stagedValues) {
   if (!state.userId) return showMessage('Cannot save food item. Not authenticated.', true);
-  
+
   try {
     // Generate a consistent ID from the food name
     const foodId = foodName.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const foodData = { name: foodName, ...stagedValues, lastUpdated: new Date().toISOString() };
+    const quantity = parseFloat(document.getElementById('actual-quantity')?.value) || 0;
+    const foodData = { name: foodName, quantity, ...stagedValues, lastUpdated: new Date().toISOString() };
 
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
     state.savedFoodItems.set(foodId, foodData); // Update local state

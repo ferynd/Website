@@ -369,6 +369,10 @@
         <div class="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
           <h4 class="text-lg font-semibold text-secondary pt-2 sticky top-0" style="background: hsl(var(--surface-1));">Macros</h4>
           <div><label for="actual-calories" class="block text-sm font-medium text-primary">Calories</label><input type="number" step="any" id="actual-calories"></div>
+          <div>
+            <label for="actual-quantity" class="block text-sm font-medium text-secondary">Qty</label>
+            <input id="actual-quantity" type="number" step="0.01" min="0" value="1" class="input">
+          </div>
           <div><label for="actual-protein" class="block text-sm font-medium text-primary">Protein (g)</label><input type="number" step="any" id="actual-protein"></div>
           <div><label for="actual-carbs" class="block text-sm font-medium text-primary">Carbs (g)</label><input type="number" step="any" id="actual-carbs"></div>
           <div><label for="actual-fat" class="block text-sm font-medium text-primary">Fat (g)</label><input type="number" step="any" id="actual-fat"></div>

@@ -2,20 +2,30 @@
  * @file src/services/data.js
  * @description UPDATED: Data handling with expandable food items list
  */
-import { state, cacheDom } from '../state/store.js';
+import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import { handleError, debugLog } from '../utils/ui.js';
-import { fetchTargets, fetchRecentEntries, loadSavedFoodItems } from './firebase.js';
+import { fetchTargets, fetchRecentEntries, loadSavedFoodItems, saveDailyEntry } from './firebase.js';
 import { updateDashboard, populateSettingsForm } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { allNutrients } from '../constants.js';
+
+// Helper to safely generate IDs across environments
+function safeId() {
+  try {
+    return crypto.randomUUID();
+  } catch (e) {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
 
 // Configuration at top of file
 const DATA_CONFIG = {
   MAX_FOOD_ITEMS_DISPLAY: 50, // Maximum food items to show before scrolling
   FOOD_ITEM_ANIMATION_DURATION: 200, // Animation for adding/removing items
   AUTO_SCROLL_TO_NEW_ITEMS: true, // Scroll to newly added items
-  DEBUG_FOOD_OPERATIONS: true // Log food item operations
+  DEBUG_FOOD_OPERATIONS: true, // Log food item operations
+  QUANTITY_UPDATE_DEBOUNCE_MS: 400 // Delay (ms) before persisting qty edits
 };
 
 /**
@@ -99,7 +109,10 @@ export function loadDailyFoodItems() {
   
   const dateStr = state.dom.dateInput.value;
   const entry = state.dailyEntries.get(dateStr) || {};
-  state.dailyFoodItems = entry.foodItems || [];
+  state.dailyFoodItems = (entry.foodItems || []).map(item => {
+    if (!item.id) item.id = safeId();
+    return coerceQuantity(item);
+  });
   
   debugLog('data-daily', 'Daily food items loaded', { date: dateStr, itemCount: state.dailyFoodItems.length });
   updateFoodItemsList();
@@ -153,10 +166,15 @@ function renderFoodItemsContent(container) {
 
   // Calculate totals for summary
   const totals = state.dailyFoodItems.reduce((acc, item) => {
-    acc.calories += parseFloat(item.calories) || 0;
-    acc.protein += parseFloat(item.protein) || 0;
-    acc.carbs += parseFloat(item.carbs) || 0;
-    acc.fat += parseFloat(item.fat) || 0;
+    const q = parseFloat(item.quantity ?? 0) || 0;
+    const cals = parseFloat(item.calories) || 0;
+    const p = parseFloat(item.protein) || 0;
+    const c = parseFloat(item.carbs) || 0;
+    const f = parseFloat(item.fat) || 0;
+    acc.calories += q * cals;
+    acc.protein  += q * p;
+    acc.carbs    += q * c;
+    acc.fat      += q * f;
     return acc;
   }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
@@ -164,6 +182,8 @@ function renderFoodItemsContent(container) {
   const itemsHtml = state.dailyFoodItems.map((item, index) => {
     const name = item.name || '(blank)';
     const isSubtraction = (item.calories || 0) < 0;
+    const qty = parseFloat(item.quantity ?? 0) || 0;
+    const nameDisplay = qty > 0 ? `${name} × ${qty}` : name;
     const details = `Cal: ${Math.round(item.calories || 0)} | P: ${Math.round(item.protein || 0)} / C: ${Math.round(item.carbs || 0)} / F: ${Math.round(item.fat || 0)}`;
     
     // Format timestamp if available
@@ -181,11 +201,15 @@ function renderFoodItemsContent(container) {
       <div class="group flex justify-between items-center p-3 rounded-lg border surface-2 ${isSubtraction ? 'text-negative' : ''} hover:shadow-md transition-all duration-200">
         <div class="flex-grow min-w-0">
           <div class="flex items-center justify-between mb-1">
-            <span class="font-medium text-primary truncate">${name}</span>
+            <span class="font-medium text-primary truncate">${nameDisplay}</span>
             ${timeStamp ? `<span class="text-xs text-muted ml-2">${timeStamp}</span>` : ''}
           </div>
           <div class="text-xs text-secondary">${details}</div>
         </div>
+        <input type="number" step="0.01" min="0"
+          class="input input-xs w-16 mr-2"
+          value="${qty}"
+          oninput="window.updateItemQuantity('${item.id}', this.value)" />
         <button onclick="removeFoodItem(${index})" class="btn btn-danger icon-btn" aria-label="Delete" title="Delete">&times;</button>
       </div>`;
   }).join('');
@@ -322,3 +346,35 @@ export function getDataSummary() {
   debugLog('data-summary', 'Data summary generated', summary);
   return summary;
 }
+
+// Debounced quantity update helper for inline inputs
+let quantityUpdateTimer;
+window.updateItemQuantity = (id, value) => {
+  const q = parseFloat(value);
+  const item = state.dailyFoodItems.find(x => x.id === id);
+  if (!item) return;
+
+  const newQty = isNaN(q) || q < 0 ? 0 : q;
+  if (item.quantity !== newQty) item.quantity = newQty;
+
+  const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
+  const entry = state.dailyEntries.get(dateStr) || { date: dateStr };
+  entry.foodItems = state.dailyFoodItems;
+  allNutrients.forEach(n => {
+    entry[n] = state.dailyFoodItems.reduce((sum, fi) => {
+      const qty = parseFloat(fi.quantity ?? 0) || 0;
+      const val = parseFloat(fi[n]) || 0;
+      return sum + qty * val;
+    }, 0);
+  });
+  state.dailyEntries.set(dateStr, entry);
+
+  updateFoodItemsList();
+  updateDashboard();
+  updateChart();
+
+  clearTimeout(quantityUpdateTimer);
+  quantityUpdateTimer = setTimeout(() => {
+    saveDailyEntry(dateStr, entry);
+  }, DATA_CONFIG.QUANTITY_UPDATE_DEBOUNCE_MS);
+};

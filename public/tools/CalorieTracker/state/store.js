@@ -73,3 +73,11 @@ export function cacheDom() {
     foodItemInput: $('food-item-input'),
   };
 }
+
+// Helper to ensure quantity fields are numeric and safely defaulted
+export function coerceQuantity(item) {
+  item.quantity = (item.quantity === undefined || item.quantity === null)
+    ? 0
+    : parseFloat(item.quantity) || 0;
+  return item;
+}

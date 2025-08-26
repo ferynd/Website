@@ -404,10 +404,16 @@ export function calculateMicronutrientMetrics(dateStr) {
     
     allNutrients.forEach(nutrient => {
       if (nutrients.macros.includes(nutrient)) return; // Skip macros
-      
+
       const baseTarget = parseFloat(state.baselineTargets[nutrient]) || DEFAULT_TARGETS[nutrient] || 0;
       const scaledTarget = getScaledNutrientTarget(nutrient, baseTarget, todaysTrainingBump);
-      const todaysIntake = parseFloat(todayEntry[nutrient]) || 0;
+      const todaysIntake = dateStr === state.dom.dateInput.value
+        ? state.dailyFoodItems.reduce((sum, item) => {
+            const q = parseFloat(item.quantity ?? 0) || 0;
+            const val = parseFloat(item[nutrient]) || 0;
+            return sum + q * val;
+          }, 0)
+        : parseFloat(todayEntry[nutrient]) || 0;
       
       let avgIntake = todaysIntake;
       let status = 'red';
@@ -421,7 +427,9 @@ export function calculateMicronutrientMetrics(dateStr) {
           const pastDate = getPastDate(targetDate, i);
           const pastDateStr = formatDate(pastDate);
           const entry = state.dailyEntries.get(pastDateStr) || {};
-          const intake = parseFloat(entry[nutrient]) || 0;
+          const intake = pastDateStr === dateStr
+            ? todaysIntake
+            : parseFloat(entry[nutrient]) || 0;
           sum += intake;
           count++;
         }
@@ -698,10 +706,24 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
     trainingIntensity
   } = bankingData;
 
-  const todaysCalories = parseFloat(todaysEntry.calories) || 0;
-  const todaysProtein = parseFloat(todaysEntry.protein) || 0;
-  const todaysFat = parseFloat(todaysEntry.fat) || 0;
-  const todaysCarbs = parseFloat(todaysEntry.carbs) || 0;
+  // Derive today's actuals from state with quantity awareness
+  const todaysTotals = state.dailyFoodItems.reduce((acc, item) => {
+    const q = parseFloat(item.quantity ?? 0) || 0;
+    const cals = parseFloat(item.calories) || 0;
+    const p = parseFloat(item.protein) || 0;
+    const f = parseFloat(item.fat) || 0;
+    const c = parseFloat(item.carbs) || 0;
+    acc.calories += q * cals;
+    acc.protein += q * p;
+    acc.fat += q * f;
+    acc.carbs += q * c;
+    return acc;
+  }, { calories: 0, protein: 0, fat: 0, carbs: 0 });
+
+  const todaysCalories = todaysTotals.calories;
+  const todaysProtein = todaysTotals.protein;
+  const todaysFat = todaysTotals.fat;
+  const todaysCarbs = todaysTotals.carbs;
 
   const remainingCalories = todayKcalTarget - todaysCalories;
   const remainingProtein = proteinG - todaysProtein;

@@ -13,6 +13,11 @@ import { hideFoodDropdown } from './dropdown.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 
+// Configuration
+const MANAGER_CONFIG = {
+  DEFAULT_QUANTITY: 1
+};
+
 /**
  * Populates the staging area input fields with data from a selected food item.
  * @param {object} foodData - The food item data object.
@@ -24,6 +29,9 @@ export function populateStagingFromFood(foodData) {
       input.value = foodData[n];
     }
   });
+
+  const qInput = document.getElementById('actual-quantity');
+  if (qInput) qInput.value = foodData.quantity ?? MANAGER_CONFIG.DEFAULT_QUANTITY;
 }
 
 /**
@@ -56,7 +64,8 @@ export async function removeFoodItem(index) {
       // Subtract the nutrients of the removed item from the daily total.
       allNutrients.forEach(n => {
         const currentTotal = parseFloat(todayEntry[n]) || 0;
-        const itemValue = parseFloat(itemToRemove[n]) || 0;
+        const qty = parseFloat(itemToRemove.quantity ?? 0) || 0;
+        const itemValue = qty * (parseFloat(itemToRemove[n]) || 0);
         todayEntry[n] = Math.max(0, currentTotal - itemValue);
       });
 
@@ -89,7 +98,7 @@ export function openFoodManager() {
     <div class="flex justify-between items-center p-3 border-b border-default">
       <div>
         <div class="font-medium">${f.name}</div>
-        <div class="text-sm text-muted">Cal: ${f.calories || 0} | P: ${f.protein || 0} / C: ${f.carbs || 0} / F: ${f.fat || 0}</div>
+        <div class="text-sm text-muted">Cal: ${f.calories || 0} | P: ${f.protein || 0} / C: ${f.carbs || 0} / F: ${f.fat || 0} | Qty: ${f.quantity ?? 0}</div>
       </div>
       <div class="flex gap-2">
         <button onclick="editFoodItem('${id}')" class="btn btn-primary text-sm">Edit</button>
