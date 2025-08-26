@@ -190,7 +190,16 @@ body {
 .btn-muted   { background: hsl(var(--surface-2)); color: hsl(var(--text-3)); border-color: hsl(var(--border)); }
 .btn-muted:hover { filter: brightness(.95); }
 .btn-ghost    { background: transparent; color: hsl(var(--text)); border-color: hsl(var(--border)); }
-.icon-btn     { width: 2.25rem; height: 2.25rem; padding: 0; }
+.icon-btn     {
+  width: 1.5rem;
+  height: 1.5rem;
+  font-size: .875rem;
+  line-height: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
 
 .btn-subtle {
   display: inline-flex;
