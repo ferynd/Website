@@ -249,6 +249,7 @@ body {
 /* KPI row layout */
 .kpi-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .5rem .75rem; }
 .kpi-row .meta { display:flex; gap:.75rem; align-items:center; font-size:.85rem; }
+.kpi-row .meta .label { font-weight:600; min-width:6rem; }
 .kpi-row .meta .current { color:hsl(var(--text)); font-weight:600; }
 .kpi-row .meta .target  { color:hsl(var(--text-2)); }
 .kpi-row .meta .remain  { color:hsl(var(--text-3)); }

@@ -148,7 +148,14 @@ function getScaledNutrientTarget(nutrient, baseTarget, trainingBump) {
 const clampPct150 = (v, tgt) => Math.max(0, Math.min(150, (v / Math.max(1, tgt)) * 100));
 const pctWidth = (v, tgt) => clampPct150(v, tgt) + "%";
 const markerLeft = "66.6667%";
+const markerPct = parseFloat(markerLeft); // numeric position of 100% marker
 const remainClass = v => v > 0 ? 'text-positive' : v < 0 ? 'text-negative' : 'text-muted';
+const pctClass = (v, tgt) => {
+  const pct = clampPct150(v, tgt);
+  return pct >= 100 ? 'good'
+       : pct >= markerPct ? 'warn'
+       : 'bad';
+};
 
 // =========================
 // MAIN BANKING CALCULATION
@@ -731,14 +738,37 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
   const remainingCarbs = carbsG - todaysCarbs;
 
   const remainingCaloriesColor = remainingCalories >= 0 ? 'text-muted' : 'text-negative';
-  const proteinPct = clampPct150(todaysProtein, proteinG);
-  const fatPct = clampPct150(todaysFat, fatG);
-  const carbsPct = clampPct150(todaysCarbs, carbsG);
-  
+
   // User-friendly explanations
-  const correctionExplanation = correction === rawCorrection 
+  const correctionExplanation = correction === rawCorrection
     ? "Full bank correction applied"
     : `Bank correction was ${rawCorrection > 0 ? 'increased' : 'reduced'} to stay within safe limits (${Math.round(capPct * 100)}% max)`;
+
+  const renderMacroRow = (label, current, target) => {
+    const remaining = target - current;
+    return `
+      <div class="kpi-row">
+        <div class="meta">
+          <span class="label">${label}</span>
+          <span class="current">${Math.round(current)}g</span>
+          <span class="target">target ${Math.round(target)}g</span>
+          <span class="remain ${remainClass(remaining)}">
+            ${remaining > 0 ? `${Math.round(remaining)}g left` : remaining < 0 ? `${Math.abs(Math.round(remaining))}g over` : '0g left'}
+          </span>
+        </div>
+        <div class="hbar">
+          <div class="hbar-fill ${pctClass(current, target)}" style="width:${pctWidth(current, target)}"></div>
+          <div class="hbar-marker" style="left:${markerLeft}"></div>
+        </div>
+      </div>
+    `;
+  };
+
+  const macroRows = [
+    renderMacroRow('Protein', todaysProtein, proteinG),
+    renderMacroRow('Fat (minimum)', todaysFat, fatG),
+    renderMacroRow('Carbs (flexible)', todaysCarbs, carbsG)
+  ].join('');
   
   return `
     <div class="mb-6 card p-6 shadow-lg">
@@ -797,72 +827,8 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
         <!-- Macro Breakdown -->
         <div class="md:col-span-3">
           <h4 class="font-semibold text-secondary mb-3">Your Macro Targets</h4>
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div class="kpi">
-              <div class="flex justify-between items-center mb-1">
-                <span class="kpi-label">Protein</span>
-                <span class="kpi-value">${proteinG}g</span>
-              </div>
-              <div class="kpi-row">
-                <div class="meta">
-                  <span class="current">${Math.round(todaysProtein)}g</span>
-                  <span class="target">target ${Math.round(proteinG)}g</span>
-                  <span class="remain ${remainClass(remainingProtein)}">
-                    ${remainingProtein > 0 ? `${Math.round(remainingProtein)}g left` : remainingProtein < 0 ? `${Math.abs(Math.round(remainingProtein))}g over` : '0g left'}
-                  </span>
-                  ${proteinPct > 150 ? `<span class="over">${Math.round((todaysProtein/proteinG)*100)}% of goal</span>` : ''}
-                </div>
-                <div class="hbar">
-                  <div class="hbar-fill" style="width:${pctWidth(todaysProtein, proteinG)}"></div>
-                  <div class="hbar-marker" style="left:${markerLeft}"></div>
-                </div>
-              </div>
-              <div class="text-xs text-muted">${proteinG * 4} kcal • ${trainingIntensity !== 'rest' && proteinG > BANKING_CONFIG.PROTEIN_G ? 'Training boost applied' : 'Standard target'}</div>
-            </div>
-
-            <div class="kpi">
-              <div class="flex justify-between items-center mb-1">
-                <span class="kpi-label">Fat (minimum)</span>
-                <span class="kpi-value">${fatG}g</span>
-              </div>
-              <div class="kpi-row">
-                <div class="meta">
-                  <span class="current">${Math.round(todaysFat)}g</span>
-                  <span class="target">target ${Math.round(fatG)}g</span>
-                  <span class="remain ${remainClass(remainingFat)}">
-                    ${remainingFat > 0 ? `${Math.round(remainingFat)}g left` : remainingFat < 0 ? `${Math.abs(Math.round(remainingFat))}g over` : '0g left'}
-                  </span>
-                  ${fatPct > 150 ? `<span class="over">${Math.round((todaysFat/fatG)*100)}% of goal</span>` : ''}
-                </div>
-                <div class="hbar">
-                  <div class="hbar-fill" style="width:${pctWidth(todaysFat, fatG)}"></div>
-                  <div class="hbar-marker" style="left:${markerLeft}"></div>
-                </div>
-              </div>
-              <div class="text-xs text-muted">${fatG * 9} kcal • Essential for hormone production</div>
-            </div>
-
-            <div class="kpi">
-              <div class="flex justify-between items-center mb-1">
-                <span class="kpi-label">Carbs (flexible)</span>
-                <span class="kpi-value">${carbsG}g</span>
-              </div>
-              <div class="kpi-row">
-                <div class="meta">
-                  <span class="current">${Math.round(todaysCarbs)}g</span>
-                  <span class="target">target ${Math.round(carbsG)}g</span>
-                  <span class="remain ${remainClass(remainingCarbs)}">
-                    ${remainingCarbs > 0 ? `${Math.round(remainingCarbs)}g left` : remainingCarbs < 0 ? `${Math.abs(Math.round(remainingCarbs))}g over` : '0g left'}
-                  </span>
-                  ${carbsPct > 150 ? `<span class="over">${Math.round((todaysCarbs/carbsG)*100)}% of goal</span>` : ''}
-                </div>
-                <div class="hbar">
-                  <div class="hbar-fill" style="width:${pctWidth(todaysCarbs, carbsG)}"></div>
-                  <div class="hbar-marker" style="left:${markerLeft}"></div>
-                </div>
-              </div>
-              <div class="text-xs text-muted">${carbsG * 4} kcal • Fills remaining calories</div>
-            </div>
+          <div class="divide-y">
+            ${macroRows}
           </div>
         </div>
       </div>
@@ -914,62 +880,50 @@ function renderChartSection() {
  * Render micronutrient sections with training day scaling
  */
 function renderMicronutrientSections(metrics) {
-  const renderNutrientCard = (nutrient, data) => {
-    const { baseTarget, scaledTarget, todaysIntake, avgIntake, status, isDailyFloor, isAveraged, isScaled } = data;
-
-    const fillClass = { green: 'good', amber: 'warn', red: 'bad' };
-    const indicator = { green: 'hsl(var(--success))', amber: 'hsl(var(--warning))', red: 'hsl(var(--error))' };
+  const renderNutrientRow = (nutrient, data) => {
+    const { baseTarget, scaledTarget, todaysIntake, avgIntake, isDailyFloor, isAveraged } = data;
 
     const displayValue = isAveraged ? avgIntake : todaysIntake;
     const targetValue = isDailyFloor ? scaledTarget : baseTarget;
-    const pct = targetValue > 0 ? (displayValue / targetValue) * 100 : 0;
+    const remaining = targetValue - displayValue;
 
     return `
-      <div class="card p-4 hover:shadow-lg transition-shadow">
-        <div class="flex items-center justify-between mb-2">
-          <h4 class="font-bold text-primary">${formatNutrientName(nutrient)}</h4>
-          <div class="flex items-center gap-2">
-            ${isScaled && DASHBOARD_CONFIG.SHOW_TRAINING_SCALING_BADGES ? '<span class="badge-good">Training+</span>' : ''}
-            <div class="w-3 h-3 rounded-full" style="background:${indicator[status]}"></div>
-          </div>
+      <div class="kpi-row">
+        <div class="meta">
+          <span class="label">${formatNutrientName(nutrient)}</span>
+          <span class="current">${displayValue.toFixed(1)}</span>
+          <span class="target">target ${targetValue.toFixed(1)}</span>
+          <span class="remain ${remainClass(remaining)}">${remaining > 0 ? `${remaining.toFixed(1)} left` : remaining < 0 ? `${Math.abs(remaining).toFixed(1)} over` : '0 left'}</span>
         </div>
-        <div class="kpi-row">
-          <div class="meta">
-            <span class="current">${displayValue.toFixed(1)}</span>
-            <span class="target">target ${targetValue.toFixed(1)}</span>
-            <span class="remain ${remainClass(displayValue - targetValue)}">${Math.round(clampPct150(displayValue, targetValue))}%</span>
-            ${pct > 150 ? `<span class="over">${Math.round(pct)}%</span>` : ''}
-          </div>
-          <div class="hbar">
-            <div class="hbar-fill ${fillClass[status]}" style="width:${pctWidth(displayValue, targetValue)}"></div>
-            <div class="hbar-marker" style="left:${markerLeft}"></div>
-          </div>
+        <div class="hbar">
+          <div class="hbar-fill ${pctClass(displayValue, targetValue)}" style="width:${pctWidth(displayValue, targetValue)}"></div>
+          <div class="hbar-marker" style="left:${markerLeft}"></div>
         </div>
       </div>
     `;
   };
-  
+
   const renderSection = (title, nutrientKeys, description) => {
-    const cards = nutrientKeys
+    const rows = nutrientKeys
       .filter(nutrient => metrics[nutrient])
-      .map(nutrient => renderNutrientCard(nutrient, metrics[nutrient]))
+      .map(nutrient => renderNutrientRow(nutrient, metrics[nutrient]))
       .join('');
-    
-    if (!cards) return '';
-    
+
+    if (!rows) return '';
+
     return `
       <div class="mb-8">
         <div class="mb-4">
           <h3 class="text-2xl font-bold text-secondary">${title}</h3>
           <p class="text-sm text-muted">${description}</p>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          ${cards}
+        <div class="divide-y">
+          ${rows}
         </div>
       </div>
     `;
   };
-  
+
   return [
     renderSection(
       '💧 Daily Electrolytes & Essentials',
@@ -977,13 +931,13 @@ function renderMicronutrientSections(metrics) {
       'Scale with training intensity - must meet daily targets'
     ),
     renderSection(
-      '🧪 Daily Vitamins', 
+      '🧪 Daily Vitamins',
       nutrients.dailyVitamins,
       'Water-soluble - daily targets, some scale with intense training'
     ),
     renderSection(
       '🟡 Fat-Soluble Vitamins',
-      nutrients.avgVitamins, 
+      nutrients.avgVitamins,
       '7-day rolling average - stored in body fat, no training scaling'
     ),
     renderSection(
