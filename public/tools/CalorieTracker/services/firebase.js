@@ -5,7 +5,7 @@
  */
 
 import { appId } from '../config.js';
-import { state } from '../state/store.js';
+import { state, coerceQuantity } from '../state/store.js';
 import { handleError, debugLog, showMessage } from '../utils/ui.js';
 
 // FIXED: Import from the correct relative path
@@ -34,6 +34,19 @@ import {
   limit,
   deleteDoc
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+// Helper to safely generate IDs across environments
+function safeId() {
+  try {
+    return crypto.randomUUID();
+  } catch (e) {
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+// Configuration
+const FIREBASE_DATA_CONFIG = {
+  DEFAULT_QUANTITY: 0
+};
 
 // Validate that the imported config is valid before initializing.
 if (!importedConfig || !importedConfig.apiKey) {
@@ -91,7 +104,11 @@ export async function saveDailyEntry(dateStr, entry) {
   if (!state.userId) return showMessage('Cannot save entry. Not authenticated.', true);
   try {
     // Ensure the food items list for the day is included in the saved document.
-    entry.foodItems = state.dailyFoodItems;
+    entry.foodItems = state.dailyFoodItems.map(it => ({
+      ...it,
+      id: it.id || safeId(),
+      quantity: coerceQuantity(it).quantity
+    }));
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), entry);
     state.dailyEntries.set(dateStr, entry); // Update local state
     debugLog('firebase-save', 'Daily entry saved successfully', dateStr);
@@ -111,7 +128,16 @@ export async function fetchAllEntries() {
   try {
     const qy = query(collection(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`), orderBy('date', 'asc'));
     const qs = await getDocs(qy);
-    qs.forEach(d => rows.push(d.data()));
+    qs.forEach(d => {
+      const data = d.data();
+        if (Array.isArray(data.foodItems)) {
+          data.foodItems = data.foodItems.map(it => {
+            if (!it.id) it.id = safeId();
+            return coerceQuantity(it);
+          });
+        }
+      rows.push(data);
+    });
     debugLog('firebase-fetch', 'All entries fetched successfully', rows.length);
   } catch (e) {
     handleError('fetch-all-entries', e, 'Failed to fetch all entries.');
@@ -129,7 +155,16 @@ export async function fetchRecentEntries() {
   try {
     const qy = query(collection(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`), orderBy('date', 'desc'), limit(365));
     const qs = await getDocs(qy);
-    qs.forEach(d => map.set(d.id, d.data()));
+    qs.forEach(d => {
+      const data = d.data();
+        if (Array.isArray(data.foodItems)) {
+          data.foodItems = data.foodItems.map(it => {
+            if (!it.id) it.id = safeId();
+            return coerceQuantity(it);
+          });
+        }
+      map.set(d.id, data);
+    });
     debugLog('firebase-fetch', 'Recent entries fetched successfully', map.size);
   } catch (e) {
     handleError('fetch-recent-entries', e, 'Failed to fetch recent entries.');
@@ -146,7 +181,11 @@ export async function loadSavedFoodItems() {
     const qy = query(collection(db, `artifacts/${appId}/users/${state.userId}/foodItems`), orderBy('name'));
     const qs = await getDocs(qy);
     state.savedFoodItems.clear();
-    qs.forEach(d => state.savedFoodItems.set(d.id, d.data()));
+    qs.forEach(d => {
+      const data = d.data();
+      coerceQuantity(data);
+      state.savedFoodItems.set(d.id, data);
+    });
     debugLog('firebase-fetch', 'Saved food items loaded successfully', state.savedFoodItems.size);
   } catch (e) {
     handleError('load-saved-foods', e, 'Failed to load saved foods.');
@@ -163,7 +202,11 @@ export async function fetchFoodItems() {
     const qy = query(collection(db, `artifacts/${appId}/users/${state.userId}/foodItems`), orderBy('name'));
     const qs = await getDocs(qy);
     const foodItems = new Map();
-    qs.forEach(d => foodItems.set(d.id, d.data()));
+    qs.forEach(d => {
+      const data = d.data();
+      coerceQuantity(data);
+      foodItems.set(d.id, data);
+    });
     debugLog('firebase-fetch', 'Food items fetched successfully', foodItems.size);
     return foodItems;
   } catch (e) {
@@ -191,7 +234,14 @@ export async function fetchEntriesInRange(startDate, endDate) {
     qs.forEach((doc) => {
       const dateStr = doc.id;
       if (dateStr >= startStr && dateStr <= endStr) {
-        entries.set(dateStr, doc.data());
+        const data = doc.data();
+        if (Array.isArray(data.foodItems)) {
+          data.foodItems = data.foodItems.map(it => {
+            if (!it.id) it.id = safeId();
+            return coerceQuantity(it);
+          });
+        }
+        entries.set(dateStr, data);
       }
     });
     
