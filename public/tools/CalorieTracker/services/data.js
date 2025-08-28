@@ -184,7 +184,12 @@ function renderFoodItemsContent(container) {
     const isSubtraction = (item.calories || 0) < 0;
     const qty = parseFloat(item.quantity ?? 0) || 0;
     const nameDisplay = qty > 0 ? `${name} × ${qty}` : name;
-    const details = `Cal: ${Math.round(item.calories || 0)} | P: ${Math.round(item.protein || 0)} / C: ${Math.round(item.carbs || 0)} / F: ${Math.round(item.fat || 0)}`;
+    // Display nutrient totals multiplied by quantity
+    const totalCals = qty * (parseFloat(item.calories) || 0);
+    const totalProtein = qty * (parseFloat(item.protein) || 0);
+    const totalCarbs = qty * (parseFloat(item.carbs) || 0);
+    const totalFat = qty * (parseFloat(item.fat) || 0);
+    const details = `Cal: ${Math.round(totalCals)} | P: ${Math.round(totalProtein)} / C: ${Math.round(totalCarbs)} / F: ${Math.round(totalFat)}`;
     
     // Format timestamp if available
     let timeStamp = '';
@@ -201,7 +206,7 @@ function renderFoodItemsContent(container) {
       ? `<input type="number" step="0.01" min="0"
           class="input input-xs w-16 mr-2"
           value="${qty}"
-          oninput="window.updateItemQuantity('${item.id}', this.value)" />`
+          onchange="window.updateItemQuantity('${item.id}', this.value)" />`
       : '';
 
     return `
@@ -359,7 +364,7 @@ export function getDataSummary() {
   return summary;
 }
 
-// Debounced quantity update helper for inline inputs
+// Debounced quantity update helper for inline inputs (fires on change)
 let quantityUpdateTimer;
 window.updateItemQuantity = (id, value) => {
   const q = parseFloat(value);
