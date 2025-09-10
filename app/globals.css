@@ -90,9 +90,9 @@ html, body {
     @screen sm { .section-xl { @apply py-28; } }
 
     /* Responsive typography utilities */
-    .text-responsive-3xl { font-size: clamp(1.5rem, 4vw + 1rem, 1.875rem); }
-    .text-responsive-2xl { font-size: clamp(1.25rem, 3vw + 0.5rem, 1.5rem); }
-    .text-responsive-xl { font-size: clamp(1.125rem, 2.5vw + 0.25rem, 1.25rem); }
+    .text-responsive-xl  { font-size: clamp(1rem, 1vw + 1rem, 1.25rem); }
+    .text-responsive-2xl { font-size: clamp(1.25rem, 1vw + 1.25rem, 1.875rem); }
+    .text-responsive-3xl { font-size: clamp(1.5rem, 1.5vw + 1.5rem, 2.25rem); }
   }
 
 /* Neon progress bar animation for the loading screen */

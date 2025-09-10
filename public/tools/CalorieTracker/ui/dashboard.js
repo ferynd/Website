@@ -644,7 +644,7 @@ function renderBankingPanel(bankingData) {
 
       <div class="p-3 rounded-lg border surface-2">
         <div class="text-center">
-          <div class="text-responsive-2xl font-bold ${bankToday > 0 ? 'text-negative' : bankToday < 0 ? 'text-positive' : 'text-muted'}">
+          <div class="text-responsive-2xl font-bold ${bankToday > 0 ? 'text-positive' : bankToday < 0 ? 'text-negative' : 'text-muted'}">
             ${bankToday > 0 ? '+' : ''}${bankToday} kcal
           </div>
           <p class="text-sm text-muted mt-1">${bankExplanation}</p>
