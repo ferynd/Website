@@ -71,6 +71,9 @@
     .text-xl { font-size: 1.25rem; }
     .text-2xl { font-size: 1.5rem; }
     .text-3xl { font-size: 1.875rem; }
+    .text-responsive-3xl { font-size: clamp(1.5rem, 4vw + 1rem, 1.875rem); }
+    .text-responsive-2xl { font-size: clamp(1.25rem, 3vw + 0.5rem, 1.5rem); }
+    .text-responsive-xl { font-size: clamp(1.125rem, 2.5vw + 0.25rem, 1.25rem); }
     .font-medium { font-weight: 500; }
     .font-semibold { font-weight: 600; }
     .font-bold { font-weight: 700; }
@@ -103,14 +106,14 @@
 
     .grid { display: grid; }
     .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-    .lg\:grid-cols-3 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-    .lg\:col-span-1 { grid-column: span 1 / span 1; }
+    .lg\:grid-cols-5 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
     .lg\:col-span-2 { grid-column: span 1 / span 1; }
+    .lg\:col-span-3 { grid-column: span 1 / span 1; }
     .gap-8 { gap: 2rem; }
     @media (min-width: 1024px) {
-      .lg\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-      .lg\:col-span-1 { grid-column: span 1 / span 1; }
+      .lg\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
       .lg\:col-span-2 { grid-column: span 2 / span 2; }
+      .lg\:col-span-3 { grid-column: span 3 / span 3; }
     }
 
     .hidden { display: none; }
@@ -292,9 +295,9 @@
       </div>
     </header>
 
-    <main class="p-4 grid grid-cols-1 lg:grid-cols-3 gap-8 text-primary">
+    <main class="p-4 grid grid-cols-1 lg:grid-cols-5 gap-8 text-primary">
       <!-- LEFT COLUMN -->
-      <div class="lg:col-span-1 section-card surface-1 text-primary h-fit">
+      <div class="lg:col-span-2 section-card surface-1 text-primary h-fit">
         <h2 class="text-2xl font-bold mb-4 text-secondary">Daily Log</h2>
 
         <div class="mb-4">
@@ -410,7 +413,7 @@
       </div>
 
       <!-- RIGHT COLUMN -->
-      <div class="lg:col-span-2">
+      <div class="lg:col-span-3">
         <div id="dashboard" class="surface-1 text-primary"></div>
       </div>
     </main>

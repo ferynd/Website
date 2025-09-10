@@ -128,6 +128,11 @@ export default function StyleGuidePage() {
             consectetur adipiscing elit.
           </p>
           <small className="text-sm text-text-2">This is small muted text.</small>
+          <div className="pt-6 space-y-2">
+            <h3 className="text-responsive-3xl font-semibold">Responsive Heading 3</h3>
+            <h4 className="text-responsive-2xl font-semibold">Responsive Heading 4</h4>
+            <p className="text-responsive-xl">This text scales with the viewport width.</p>
+          </div>
         </div>
       </section>
 

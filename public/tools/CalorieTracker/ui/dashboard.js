@@ -502,7 +502,7 @@ export function updateDashboard() {
       dashboard.innerHTML = `
         <div id="dashboard-errors"></div>
         <div class="text-center p-8 surface-1 rounded-lg shadow-md">
-          <h3 class="text-xl font-semibold text-secondary">Welcome to Adaptive Nutrition Tracker!</h3>
+          <h3 class="text-responsive-xl font-semibold text-secondary">Welcome to Adaptive Nutrition Tracker!</h3>
           <p class="mt-2 text-muted">Please log in and set your baseline targets to get started.</p>
           <button onclick="document.getElementById('open-settings-btn').click()"
             class="mt-4 px-6 py-2 btn btn-primary">Set Targets</button>
@@ -635,7 +635,7 @@ function renderBankingPanel(bankingData) {
   return `
     <div class="section-card p-4">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-bold text-secondary">🏦 Your Calorie Bank</h3>
+        <h3 class="text-responsive-xl font-bold text-secondary">🏦 Your Calorie Bank</h3>
         <button id="recent-days-toggle" class="btn-subtle">
             <i class="fas fa-chevron-down"></i>
             <span class="toggle-text">Show Recent Days Breakdown</span>
@@ -644,7 +644,7 @@ function renderBankingPanel(bankingData) {
 
       <div class="p-3 rounded-lg border surface-2">
         <div class="text-center">
-          <div class="text-2xl font-bold ${bankToday > 0 ? 'text-negative' : bankToday < 0 ? 'text-positive' : 'text-muted'}">
+          <div class="text-responsive-2xl font-bold ${bankToday > 0 ? 'text-negative' : bankToday < 0 ? 'text-positive' : 'text-muted'}">
             ${bankToday > 0 ? '+' : ''}${bankToday} kcal
           </div>
           <p class="text-sm text-muted mt-1">${bankExplanation}</p>
@@ -772,7 +772,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
   
   return `
     <div class="mb-6 card p-6 shadow-lg">
-      <h3 class="text-xl font-bold text-secondary mb-4">🍽️ Today's Nutrition Plan</h3>
+      <h3 class="text-responsive-xl font-bold text-secondary mb-4">🍽️ Today's Nutrition Plan</h3>
 
       <!-- Summary Section -->
       <div class="mb-4 p-4 surface-2 rounded-lg border">
@@ -842,7 +842,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
 function renderChartSection() {
   return `
     <div class="mb-8 card p-6 shadow-lg">
-      <h3 class="text-2xl font-bold text-secondary mb-4">📊 Nutrition Progress Chart</h3>
+      <h3 class="text-responsive-2xl font-bold text-secondary mb-4">📊 Nutrition Progress Chart</h3>
       <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label for="chart-nutrients" class="block text-sm font-medium text-primary mb-1">Select Nutrients</label>
@@ -914,7 +914,7 @@ function renderMicronutrientSections(metrics) {
     return `
       <div class="mb-8">
         <div class="mb-4">
-          <h3 class="text-2xl font-bold text-secondary">${title}</h3>
+          <h3 class="text-responsive-2xl font-bold text-secondary">${title}</h3>
           <p class="text-sm text-muted">${description}</p>
         </div>
         <div class="divide-y">
