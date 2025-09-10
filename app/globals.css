@@ -86,9 +86,14 @@ html, body {
   .section { @apply py-16; }
   @screen sm { .section { @apply py-20; } }
 
-  .section-xl { @apply py-24; }
-  @screen sm { .section-xl { @apply py-28; } }
-}
+    .section-xl { @apply py-24; }
+    @screen sm { .section-xl { @apply py-28; } }
+
+    /* Responsive typography utilities */
+    .text-responsive-3xl { font-size: clamp(1.5rem, 4vw + 1rem, 1.875rem); }
+    .text-responsive-2xl { font-size: clamp(1.25rem, 3vw + 0.5rem, 1.5rem); }
+    .text-responsive-xl { font-size: clamp(1.125rem, 2.5vw + 0.25rem, 1.25rem); }
+  }
 
 /* Neon progress bar animation for the loading screen */
 @keyframes progress {

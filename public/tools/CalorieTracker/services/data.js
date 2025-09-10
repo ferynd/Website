@@ -225,20 +225,20 @@ function renderFoodItemsContent(container) {
 
   // Summary section
   const summaryHtml = `
-    <div class="kpi card mb-3">
-      <div class="kpi-row items-start">
-        <div>
-          <div class="kpi-label">Today's Totals</div>
-          <div class="text-sm text-secondary">(${state.dailyFoodItems.length} ${state.dailyFoodItems.length === 1 ? 'item' : 'items'})</div>
-        </div>
-        <div class="text-right shrink-0">
-          <div class="text-2xl font-extrabold whitespace-nowrap">${Math.round(totals.calories)} cal</div>
-          <div class="text-sm text-secondary whitespace-nowrap">
-            ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f
+      <div class="kpi card mb-3">
+        <div class="kpi-row items-start">
+          <div>
+            <div class="kpi-label text-responsive-xl">Today's Totals</div>
+            <div class="text-sm text-secondary">(${state.dailyFoodItems.length} ${state.dailyFoodItems.length === 1 ? 'item' : 'items'})</div>
+          </div>
+          <div class="text-right shrink-0">
+            <div class="text-responsive-2xl font-extrabold whitespace-nowrap">${Math.round(totals.calories)} cal</div>
+            <div class="text-sm text-secondary whitespace-nowrap">
+              ${Math.round(totals.protein)}p / ${Math.round(totals.carbs)}c / ${Math.round(totals.fat)}f
+            </div>
           </div>
         </div>
       </div>
-    </div>
   `;
 
   // Combine summary and items
