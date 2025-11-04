@@ -14,7 +14,19 @@ Persistence is provided via **Firebase (Auth + Firestore)** for selected tools.
 - The admin user is `arkkahdarkkahd@gmail.com` (see `ADMIN_EMAIL` in the Trip Cost config). Use this only for approvals and privileged actions.
 
 ## Firestore Structure
-Trip Cost data lives under `artifacts/trip-cost/**` (see **ARCHITECTURE.md**). Calorie Tracker uses `artifacts/<appId>/users/{uid}/**` scoped to a user.
+Trip Cost data lives under `artifacts/trip-cost/**` (see **ARCHITECTURE.md**). Calorie Tracker uses `artifacts/<appId>/users/{uid}/**` scoped to a user. Trip Planner persists under `artifacts/trip-planner/**` with the following collections:
+
+- `planners/{plannerId}` — metadata, participant IDs, linked Trip Cost ID, settings, and start/end dates.
+- `planners/{plannerId}/events/{eventId}` — itinerary blocks, travel segments, and activities.
+- `planners/{plannerId}/activityIdeas/{ideaId}` — curated suggestions visible to planner participants.
+- `planners/{plannerId}/changelog/{logId}` — admin-only audit log entries.
+
+### Trip Planner
+
+- **Participants**: Only authenticated participants listed in `participantUids` (plus the admin account) can read or modify a planner, its events, and activity ideas.
+- **Changelog**: Audit entries under `planners/{plannerId}/changelog/{logId}` are **readable by admin only**. Participants may append entries that reference their own UID; no edits or deletions are allowed client-side.
+- **Linked data**: `costTrackerId` maintains the 1:1 link to Trip Cost trips. All participant mutations must keep the two tools synchronized.
+- **Uploads**: Images land in Storage under `artifacts/trip-planner/uploads/{plannerId}/**` and should be compressed client-side (see `PlanContext` image helpers) before upload.
 
 ## Firestore Security Rules (authoritative)
 The following ruleset (provided by the repo owner) governs what clients can read/write. Keep this in sync with any data model changes.
@@ -92,6 +104,43 @@ service cloud.firestore {
                     request.resource.data.payerId == request.auth.uid;
       allow update, delete: if isAdmin() ||
                             (isTripParticipant(tripId) && resource.data.payerId == request.auth.uid);
+    }
+  }
+}
+```
+
+Trip Planner-specific additions (mirroring the structure above) ensure participant-scoped access and admin-only changelog reads:
+
+```firebase
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'arkkahdarkkahd@gmail.com';
+    }
+    function isPlannerParticipant(plannerId) {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/artifacts/trip-planner/planners/$(plannerId)).data.participantUids;
+    }
+
+    match /artifacts/trip-planner/planners/{plannerId} {
+      allow read: if isAdmin() || isPlannerParticipant(plannerId);
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || isPlannerParticipant(plannerId);
+      allow delete: if isAdmin();
+    }
+
+    match /artifacts/trip-planner/planners/{plannerId}/{sub=events|activityIdeas}/{docId} {
+      allow read, create, update, delete: if isAdmin() || isPlannerParticipant(plannerId);
+    }
+
+    match /artifacts/trip-planner/planners/{plannerId}/changelog/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
     }
   }
 }

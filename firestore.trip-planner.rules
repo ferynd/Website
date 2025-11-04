@@ -1,0 +1,33 @@
+// CONFIG: ADMIN_EMAIL must match app/tools/trip-cost/firebaseConfig.ts
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'arkkahdarkkahd@gmail.com';
+    }
+    function isPlannerParticipant(plannerId) {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/artifacts/trip-planner/planners/$(plannerId)).data.participantUids;
+    }
+
+    match /artifacts/trip-planner/planners/{plannerId} {
+      allow read: if isAdmin() || isPlannerParticipant(plannerId);
+      allow create: if isSignedIn();
+      allow update: if isAdmin() || isPlannerParticipant(plannerId);
+      allow delete: if isAdmin();
+    }
+
+    match /artifacts/trip-planner/planners/{plannerId}/{sub=events|activityIdeas}/{docId} {
+      allow read, create, update, delete: if isAdmin() || isPlannerParticipant(plannerId);
+    }
+
+    match /artifacts/trip-planner/planners/{plannerId}/changelog/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
