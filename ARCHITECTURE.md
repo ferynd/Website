@@ -39,9 +39,11 @@ public/
   Path: `/games/Emeril_A_World_Divided/index.html`
 
 - **Tools**:  
-- **Trip Cost Calculator** — Split expenses and calculate balances for a group trip.  
+- **Trip Cost Calculator** — Split expenses and calculate balances for a group trip.
   Path: `/tools/trip-cost`
-- **Calorie Tracker** — A simple tool to track daily calorie intake (Static HTML).  
+- **Trip Planner** — React-based itinerary planner backed by Firebase Auth + Firestore with a timeline UI, idea library, and shared settings/map panels.
+  Path: `/tools/trip-planner`
+- **Calorie Tracker** — A simple tool to track daily calorie intake (Static HTML).
   Path: `/tools/CalorieTracker/index.html`
 - **Social Security (interactive guide)** — Learn how benefits and earnings interact through simulations.  
   Path: `/tools/social-security/index.html`
@@ -52,12 +54,13 @@ public/
 - **Chicago Trip Itinerary** — An itinerary for a trip to Chicago (Static HTML).  
   Path: `/trips/ChicagoTripItinerary/index.html`
 
-## Trip Cost: Data & Modules
+## Trip Cost & Trip Planner: Data & Modules
 - **Config:** `app/tools/trip-cost/firebaseConfig.ts` (admin email `arkkahdarkkahd@gmail.com`).
 - **DB helpers:** `app/tools/trip-cost/db.ts` set constants `APP_COLLECTION = 'artifacts'`, `APP_ID = 'trip-cost'` with helpers for `users`, `trips`, and `trips/<id>/audit`.
 - **State:** `TripContext.tsx` subscribes to Firestore with `onSnapshot` to keep trip, expenses, payments, etc. in sync.
 - **UI:** `components/AuthForm.tsx`, `TripList.tsx`, and `components/TripDetail/**` (Participants, ExpenseForm, ExpensesList, BalanceSummary, PaymentHistory, SettlementSuggestions, ConfirmDeleteModal, AuditLog).
 - **Calculations:** `utils/calc.ts` contains pure helpers for totals, balances, and settlements.
+- **Trip Planner:** `app/tools/trip-planner/page.tsx` composes the planner shell while `PlanContext.tsx` wires Firebase Auth + Firestore listeners. Supporting modules under `app/tools/trip-planner/lib/` initialize Firebase, expose typed DB helpers, and compress uploads for Storage. Timeline/ideas/settings/map components consume the context for realtime data and CRUD.
 
 ## Data Model (Firestore high-level)
 Rooted at `artifacts/trip-cost/`:

@@ -14,6 +14,7 @@ This document is the **single source of truth** for automated assistants (Claude
   - `games/page.tsx`, `tools/page.tsx`, `trips/page.tsx` list content from `/public`
   - `style-guide/page.tsx` showcases UI tokens and basic components
   - `tools/trip-cost/**` Firebase-backed Trip Cost React app
+  - `tools/trip-planner/**` Trip Planner scaffold (Firebase Auth + UI timeline)
 - **/components** — Reusable UI (Button via CVA, Input, Select, Nav, ProjectCard)
 - **/public** — Static HTML/CSS/JS sub-sites and assets
   - `/games/**`, `/tools/**`, `/trips/**` each with their own `index.html`
@@ -53,10 +54,11 @@ This document is the **single source of truth** for automated assistants (Claude
 3. Follow Trip Cost patterns for context/state when needed.
 4. Update `app/tools/page.tsx` list so it appears in the Tools hub.
 
-## Trip Cost app specifics
+## Trip Cost & Trip Planner specifics
 - Firebase config at `app/tools/trip-cost/firebaseConfig.ts` (admin email: `arkkahdarkkahd@gmail.com`).
 - Firestore collections rooted at `artifacts/trip-cost/**` (see `db.ts` helpers).
-- Authentication: Firebase Auth email/password; UI in `components/AuthForm.tsx`.
+- Authentication: Firebase Auth email/password; UI in `components/AuthForm.tsx` (reused by Trip Planner scaffold).
+- Trip Planner now persists to Firestore under `artifacts/trip-planner/**`. Client helpers live in `app/tools/trip-planner/lib/{firebase,db,image}.ts` and real-time state comes from `PlanContext.tsx`.
 - Real-time reads via Firestore listeners in `TripContext.tsx` and screens under `components/TripDetail/**`.
 
 ## Documentation requirements (non-negotiable)

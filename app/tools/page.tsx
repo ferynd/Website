@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Nav from '@/components/Nav';
-import { ArrowRight, Calculator, HeartPulse, BarChart } from 'lucide-react';
+import { ArrowRight, Calculator, HeartPulse, BarChart, Plane } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: icon size and list of available tools          */
@@ -10,6 +10,12 @@ import { ArrowRight, Calculator, HeartPulse, BarChart } from 'lucide-react';
 const cardIconSize = 24;
 
 const toolList = [
+  {
+    name: 'Trip Planner',
+    description: 'Design collaborative itineraries with timelines, ideas, and maps.',
+    href: '/tools/trip-planner',
+    icon: <Plane size={cardIconSize} className="text-accent" />,
+  },
   {
     name: 'Trip Cost Calculator',
     description: 'Split expenses and calculate balances for a group trip.',
