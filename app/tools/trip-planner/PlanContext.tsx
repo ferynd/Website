@@ -11,6 +11,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -34,30 +35,29 @@ import {
   listAll,
   ref,
   uploadBytes,
+  type StorageReference,
 } from 'firebase/storage';
 import type { CreatePlannerInput, CostTrackerSeed } from './lib/db';
 import {
   addEvent,
   addIdea,
-  appendChangelogEntry,
   createAndLinkCostTracker,
   createPlanner,
   deleteEvent,
   deleteIdea,
-  getAdminTripsList,
+  getAdminTripsList as fetchAdminTripsList,
   linkCostTracker as linkCostTrackerHelper,
   plannerDoc,
-  watchChangelog,
   watchEvents,
   watchIdeas,
   watchPlanner,
   updateEvent,
   updateIdea,
+  appendChangelogEntry,
 } from './lib/db';
 import { auth, isAdmin as isAdminUser, storage } from './lib/firebase';
-import { compressFile } from './lib/image';
+import { compressFile, type PreparedImage } from './lib/image';
 import type {
-  ChangeLogEntry,
   DaySchedule,
   Idea,
   Planner,
@@ -92,19 +92,37 @@ const EVENT_COLOR_BY_TYPE: Record<PlannerEvent['type'], string> = {
   activity: 'bg-purple/10 border border-purple/40 text-purple',
 };
 
+type PlannerEventRecord = PlannerEvent & {
+  plannerId: string;
+  startISO: string;
+  endISO: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  images: string[];
+};
+
+type IdeaRecord = Idea & {
+  plannerId?: string;
+  tags: string[];
+  images: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 interface PlanContextValue {
   user: User | null;
   authLoading: boolean;
   plannerId: string | null;
   planner: Planner | null;
-  events: PlannerEvent[];
-  activityIdeas: Idea[];
-  auditEntries: ChangeLogEntry[];
+  events: PlannerEventRecord[];
+  activityIdeas: IdeaRecord[];
   daySchedules: DaySchedule[];
   isAdmin: boolean;
   selectPlanner: (id: string | null) => void;
   createPlannerAndSelect: (input: CreatePlannerInput) => Promise<string>;
-  addParticipant: (name: string, authorUid: string, userId?: string) => Promise<void>;
+  addParticipant: (name: string, authorUid?: string, userId?: string) => Promise<void>;
   updateParticipant: (uid: string, name: string) => Promise<void>;
   deleteParticipant: (uid: string) => Promise<void>;
   addActivity: (event: PlannerEvent) => Promise<string>;
@@ -119,13 +137,13 @@ interface PlanContextValue {
   updatePlanDates: (startISO: string, endISO: string) => Promise<void>;
   linkCostTracker: (trackerId: string) => Promise<void>;
   createLinkedCostTracker: (seed: CostTrackerSeed) => Promise<string>;
-  uploadImage: (file: File, options?: { alreadyCompressed?: boolean }) => Promise<string>;
+  uploadImage: (input: File | PreparedImage) => Promise<string>;
   compressOldImages: () => Promise<void>;
-  appendAudit: (entry: Omit<ChangeLogEntry, 'id' | 'createdAt'>) => Promise<void>;
-  getDayActivities: (dateISO: string) => PlannerEvent[];
+  appendAudit: (entry: { type: string; details?: Record<string, unknown> }) => Promise<void>;
+  getDayActivities: (dateISO: string) => PlannerEventRecord[];
   getActivityIcon: (type: PlannerEvent['type'], travelMode?: TravelMode) => string;
   getActivityColor: (type: PlannerEvent['type']) => string;
-  getAdminTripsList: typeof getAdminTripsList;
+  getAdminTripsList: () => Promise<{ id: string; name: string }[]>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName?: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -146,17 +164,34 @@ const normalizeTimestamp = (value: unknown): string => {
   return new Date().toISOString();
 };
 
-const buildSchedules = (planner: Planner | null, events: PlannerEvent[]): DaySchedule[] => {
+const ensureString = (value: unknown, fallback = ''): string =>
+  typeof value === 'string' && value.length > 0 ? value : fallback;
+
+const ensureStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+const toastError = (message: string) => {
+  console.error(message);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(
+      new CustomEvent('planner-toast', { detail: { message, variant: 'error' as const } }),
+    );
+  }
+};
+
+const buildSchedules = (planner: Planner | null, events: PlannerEventRecord[]): DaySchedule[] => {
   if (!planner) return [];
-  const grouped = new Map<string, PlannerEvent[]>();
+  const grouped = new Map<string, PlannerEventRecord[]>();
   for (const event of events) {
     if (!grouped.has(event.dayId)) {
       grouped.set(event.dayId, []);
     }
     grouped.get(event.dayId)!.push(event);
   }
-  const sortEvents = (list: PlannerEvent[]) =>
-    list.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  const sortEvents = (list: PlannerEventRecord[]) =>
+    list.sort(
+      (a, b) => new Date(a.startISO ?? a.start).getTime() - new Date(b.startISO ?? b.start).getTime(),
+    );
 
   const result: DaySchedule[] = [];
   if (planner.dayOrder && planner.dayOrder.length > 0) {
@@ -173,7 +208,8 @@ const buildSchedules = (planner: Planner | null, events: PlannerEvent[]): DaySch
     items.sort((a, b) => a[1][0]?.start.localeCompare(b[1][0]?.start ?? '') ?? 0);
     for (const [dayId, evts] of items) {
       sortEvents(evts);
-      const date = evts[0]?.start.slice(0, 10) ?? planner.startDate;
+      const firstStart = evts[0]?.startISO ?? evts[0]?.start ?? planner.startDate;
+      const date = firstStart.slice(0, 10);
       result.push({ dayId, date, events: evts });
     }
   }
@@ -191,12 +227,20 @@ export const PlanProvider = ({
   const [authLoading, setAuthLoading] = useState(!auth.currentUser);
   const [activePlannerId, setActivePlannerId] = useState<string | null>(plannerId ?? null);
   const [planner, setPlanner] = useState<Planner | null>(null);
-  const [events, setEvents] = useState<PlannerEvent[]>([]);
-  const [activityIdeas, setActivityIdeas] = useState<Idea[]>([]);
-  const [auditEntries, setAuditEntries] = useState<ChangeLogEntry[]>([]);
+  const [events, setEvents] = useState<PlannerEventRecord[]>([]);
+  const [activityIdeas, setActivityIdeas] = useState<IdeaRecord[]>([]);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!mountedRef.current) return;
       setUser(firebaseUser);
       setAuthLoading(false);
     });
@@ -211,10 +255,15 @@ export const PlanProvider = ({
 
   useEffect(() => {
     if (!activePlannerId) {
-      setPlanner(null);
+      if (mountedRef.current) {
+        setPlanner(null);
+      }
       return undefined;
     }
     const unsubscribe = watchPlanner(activePlannerId, (plannerData) => {
+      if (!mountedRef.current) {
+        return;
+      }
       if (!plannerData) {
         setPlanner(null);
         return;
@@ -226,40 +275,70 @@ export const PlanProvider = ({
       });
     });
     return () => unsubscribe();
-  }, [activePlannerId]);
+  }, [activePlannerId, mountedRef]);
 
   useEffect(() => {
     if (!activePlannerId) {
-      setEvents([]);
+      if (mountedRef.current) {
+        setEvents([]);
+      }
       return undefined;
     }
     const unsubscribe = watchEvents(activePlannerId, (eventList) => {
-      setEvents(eventList);
+      if (!mountedRef.current) {
+        return;
+      }
+      const normalizedEvents: PlannerEventRecord[] = eventList.map((event) => {
+        const raw = event as Record<string, unknown>;
+        const startISO = ensureString('startISO' in raw ? raw.startISO : event.start);
+        const endISO = ensureString('endISO' in raw ? raw.endISO : event.end);
+        const plannerIdValue = ensureString(raw.plannerId, activePlannerId ?? '');
+        return {
+          ...event,
+          plannerId: plannerIdValue,
+          start: startISO,
+          end: endISO,
+          startISO,
+          endISO,
+          images: ensureStringArray(raw.images ?? event.images),
+          createdBy: ensureString(raw.createdBy, 'unknown'),
+          createdAt: normalizeTimestamp(raw.createdAt),
+          updatedAt: normalizeTimestamp(raw.updatedAt),
+        };
+      });
+      setEvents(normalizedEvents);
     });
     return () => unsubscribe();
-  }, [activePlannerId]);
+  }, [activePlannerId, mountedRef]);
 
   useEffect(() => {
     if (!activePlannerId) {
-      setActivityIdeas([]);
+      if (mountedRef.current) {
+        setActivityIdeas([]);
+      }
       return undefined;
     }
     const unsubscribe = watchIdeas(activePlannerId, (ideasList) => {
-      setActivityIdeas(ideasList);
+      if (!mountedRef.current) {
+        return;
+      }
+      const normalizedIdeas: IdeaRecord[] = ideasList.map((idea) => {
+        const raw = idea as Record<string, unknown>;
+        const plannerIdValue = ensureString(raw.plannerId);
+        return {
+          ...idea,
+          plannerId: plannerIdValue || undefined,
+          tags: ensureStringArray(raw.tags ?? idea.tags),
+          images: ensureStringArray(raw.images ?? idea.images),
+          createdBy: ensureString(raw.createdBy, 'unknown'),
+          createdAt: normalizeTimestamp(raw.createdAt),
+          updatedAt: normalizeTimestamp(raw.updatedAt),
+        };
+      });
+      setActivityIdeas(normalizedIdeas);
     });
     return () => unsubscribe();
-  }, [activePlannerId]);
-
-  useEffect(() => {
-    if (!activePlannerId || !user || !isAdminUser(user)) {
-      setAuditEntries([]);
-      return undefined;
-    }
-    const unsubscribe = watchChangelog(activePlannerId, (entries) => {
-      setAuditEntries(entries);
-    });
-    return () => unsubscribe();
-  }, [activePlannerId, user]);
+  }, [activePlannerId, mountedRef]);
 
   const daySchedules = useMemo(
     () => buildSchedules(planner, events),
@@ -279,8 +358,53 @@ export const PlanProvider = ({
     [],
   );
 
+  const requireActor = useCallback(() => {
+    if (!user) {
+      const message = 'You must be signed in to make planner changes';
+      toastError(message);
+      throw new Error(message);
+    }
+    return user;
+  }, [user]);
+
+  const assertOwnerOrAdmin = useCallback(() => {
+    const actor = requireActor();
+    if (!planner) {
+      throw new Error('No planner selected');
+    }
+    if (!isAdminUser(actor) && planner.ownerUid !== actor.uid) {
+      const message = 'Only the planner owner or admin can manage participants or linked tools';
+      toastError(message);
+      throw new Error(message);
+    }
+    return actor;
+  }, [planner, requireActor]);
+
+  const ensurePlannerId = useCallback(() => {
+    if (!activePlannerId) {
+      throw new Error('No planner selected');
+    }
+    return activePlannerId;
+  }, [activePlannerId]);
+
+  const appendAudit = useCallback(
+    async ({ type, details }: { type: string; details?: Record<string, unknown> }) => {
+      const actor = requireActor();
+      const plannerRef = ensurePlannerId();
+      await appendChangelogEntry(plannerRef, {
+        type,
+        actorUid: actor.uid,
+        actorEmail: actor.email ?? undefined,
+        details,
+        ts: serverTimestamp(),
+      });
+    },
+    [ensurePlannerId, requireActor],
+  );
+
   const addParticipant = useCallback(
-    async (name: string, authorUid: string, userId?: string) => {
+    async (name: string, _authorUid?: string, userId?: string) => {
+      const actor = assertOwnerOrAdmin();
       if (!activePlannerId || !planner) {
         throw new Error('No planner selected');
       }
@@ -298,20 +422,19 @@ export const PlanProvider = ({
         participants,
         participantUids: arrayUnion(participant.uid),
         updatedAt: serverTimestamp(),
-        lastModifiedBy: authorUid,
+        lastModifiedBy: actor.uid,
       });
-      await appendChangelogEntry(activePlannerId, {
-        actorUid: authorUid,
-        actorEmail: user?.email,
-        action: 'create',
-        details: { target: 'participant', uid: participant.uid, name: participant.displayName },
+      await appendAudit({
+        type: 'planner.participant.add',
+        details: { uid: participant.uid, name: participant.displayName },
       });
     },
-    [activePlannerId, planner, user?.email],
+    [activePlannerId, appendAudit, planner, assertOwnerOrAdmin],
   );
 
   const updateParticipant = useCallback(
     async (uid: string, name: string) => {
+      assertOwnerOrAdmin();
       if (!activePlannerId || !planner?.participants) {
         throw new Error('No planner participant list available');
       }
@@ -326,18 +449,17 @@ export const PlanProvider = ({
         participants,
         updatedAt: serverTimestamp(),
       });
-      await appendChangelogEntry(activePlannerId, {
-        actorUid: user?.uid ?? 'unknown',
-        actorEmail: user?.email,
-        action: 'update',
-        details: { target: 'participant', uid, name: trimmed },
+      await appendAudit({
+        type: 'planner.participant.update',
+        details: { uid, name: trimmed },
       });
     },
-    [activePlannerId, planner?.participants, user?.email, user?.uid],
+    [activePlannerId, appendAudit, assertOwnerOrAdmin, planner?.participants],
   );
 
   const deleteParticipant = useCallback(
     async (uid: string) => {
+      assertOwnerOrAdmin();
       if (!activePlannerId || !planner) {
         throw new Error('No planner selected');
       }
@@ -347,66 +469,128 @@ export const PlanProvider = ({
         participantUids: arrayRemove(uid),
         updatedAt: serverTimestamp(),
       });
-      await appendChangelogEntry(activePlannerId, {
-        actorUid: user?.uid ?? 'unknown',
-        actorEmail: user?.email,
-        action: 'delete',
-        details: { target: 'participant', uid },
+      await appendAudit({
+        type: 'planner.participant.remove',
+        details: { uid },
       });
     },
-    [activePlannerId, planner, user?.email, user?.uid],
+    [activePlannerId, appendAudit, assertOwnerOrAdmin, planner],
   );
 
-  const ensurePlannerId = useCallback(() => {
-    if (!activePlannerId) {
-      throw new Error('No planner selected');
-    }
-    return activePlannerId;
-  }, [activePlannerId]);
+  const createPlannerEvent = useCallback(
+    async (event: PlannerEvent) => {
+      const actor = requireActor();
+      const plannerRef = ensurePlannerId();
+      const eventId = await addEvent(plannerRef, event, {
+        uid: actor.uid,
+        email: actor.email ?? undefined,
+      });
+      await appendAudit({
+        type: `planner.event.${event.type}.create`,
+        details: { eventId, dayId: event.dayId },
+      });
+      return eventId;
+    },
+    [appendAudit, ensurePlannerId, requireActor],
+  );
 
   const addActivity = useCallback(
-    async (event: PlannerEvent) => addEvent(ensurePlannerId(), event),
-    [ensurePlannerId],
+    async (event: PlannerEvent) => createPlannerEvent(event),
+    [createPlannerEvent],
   );
 
   const updateActivity = useCallback(
-    async (eventId: string, patch: Partial<PlannerEvent>) =>
-      updateEvent(ensurePlannerId(), eventId, patch),
-    [ensurePlannerId],
+    async (eventId: string, patch: Partial<PlannerEvent>) => {
+      requireActor();
+      const plannerRef = ensurePlannerId();
+      await updateEvent(plannerRef, eventId, patch);
+      await appendAudit({
+        type: 'planner.event.update',
+        details: { eventId, fields: Object.keys(patch ?? {}) },
+      });
+    },
+    [appendAudit, ensurePlannerId, requireActor],
   );
 
   const deleteActivity = useCallback(
-    async (eventId: string) => deleteEvent(ensurePlannerId(), eventId),
-    [ensurePlannerId],
+    async (eventId: string) => {
+      requireActor();
+      const plannerRef = ensurePlannerId();
+      await deleteEvent(plannerRef, eventId);
+      await appendAudit({
+        type: 'planner.event.remove',
+        details: { eventId },
+      });
+    },
+    [appendAudit, ensurePlannerId, requireActor],
   );
 
   const addBlock = useCallback(
-    async (event: PlannerEvent) => addEvent(ensurePlannerId(), event),
-    [ensurePlannerId],
+    async (event: PlannerEvent) => createPlannerEvent(event),
+    [createPlannerEvent],
   );
 
   const addTravel = useCallback(
-    async (event: PlannerEvent & { travelMode: TravelMode }) => addEvent(ensurePlannerId(), event),
-    [ensurePlannerId],
+    async (event: PlannerEvent & { travelMode: TravelMode }) => createPlannerEvent(event),
+    [createPlannerEvent],
   );
 
   const addActivityIdea = useCallback(
-    async (idea: Idea) => addIdea(ensurePlannerId(), idea),
-    [ensurePlannerId],
+    async (idea: Idea) => {
+      const actor = requireActor();
+      const plannerRef = ensurePlannerId();
+      const ideaId = await addIdea(plannerRef, idea, {
+        uid: actor.uid,
+        email: actor.email ?? undefined,
+      });
+      await appendAudit({
+        type: 'planner.idea.create',
+        details: { ideaId, title: idea.title },
+      });
+      return ideaId;
+    },
+    [appendAudit, ensurePlannerId, requireActor],
   );
 
   const updateActivityIdea = useCallback(
-    async (id: string, patch: Partial<Idea>) => updateIdea(ensurePlannerId(), id, patch),
-    [ensurePlannerId],
+    async (id: string, patch: Partial<Idea>) => {
+      requireActor();
+      const plannerRef = ensurePlannerId();
+      await updateIdea(plannerRef, id, patch);
+      await appendAudit({
+        type: 'planner.idea.update',
+        details: { ideaId: id, fields: Object.keys(patch ?? {}) },
+      });
+    },
+    [appendAudit, ensurePlannerId, requireActor],
   );
 
   const deleteActivityIdea = useCallback(
-    async (id: string) => deleteIdea(ensurePlannerId(), id),
-    [ensurePlannerId],
+    async (id: string) => {
+      requireActor();
+      const plannerRef = ensurePlannerId();
+      await deleteIdea(plannerRef, id);
+      await appendAudit({
+        type: 'planner.idea.remove',
+        details: { ideaId: id },
+      });
+    },
+    [appendAudit, ensurePlannerId, requireActor],
   );
+
+  const getAdminTripsList = useCallback(async () => {
+    const actor = requireActor();
+    if (!isAdminUser(actor)) {
+      const message = 'Admin privileges required to load Trip Cost trips';
+      toastError(message);
+      throw new Error(message);
+    }
+    return fetchAdminTripsList();
+  }, [requireActor]);
 
   const updatePlanSettings = useCallback(
     async (patch: Partial<PlannerSettings>) => {
+      requireActor();
       const plannerRef = ensurePlannerId();
       const updates: Record<string, unknown> = { updatedAt: serverTimestamp() };
       if (typeof patch.incrementMinutes === 'number') {
@@ -424,12 +608,17 @@ export const PlanProvider = ({
         updates['settings.timezone'] = patch.timezone;
       }
       await updateDoc(plannerDoc(plannerRef), updates);
+      await appendAudit({
+        type: 'planner.settings.update',
+        details: { fields: Object.keys(patch ?? {}) },
+      });
     },
-    [ensurePlannerId],
+    [appendAudit, ensurePlannerId, requireActor],
   );
 
   const updatePlanDates = useCallback(
     async (startISO: string, endISO: string) => {
+      assertOwnerOrAdmin();
       if (new Date(startISO) > new Date(endISO)) {
         throw new Error('Start date must be before end date');
       }
@@ -439,82 +628,121 @@ export const PlanProvider = ({
         endDate: endISO,
         updatedAt: serverTimestamp(),
       });
+      await appendAudit({
+        type: 'planner.dates.update',
+        details: { startISO, endISO },
+      });
     },
-    [ensurePlannerId],
+    [appendAudit, assertOwnerOrAdmin, ensurePlannerId],
   );
 
   const linkCostTracker = useCallback(
-    async (trackerId: string) => linkCostTrackerHelper(ensurePlannerId(), trackerId),
-    [ensurePlannerId],
+    async (trackerId: string) => {
+      assertOwnerOrAdmin();
+      const plannerRef = ensurePlannerId();
+      await linkCostTrackerHelper(plannerRef, trackerId);
+      await appendAudit({
+        type: 'planner.costTracker.linked',
+        details: { trackerId },
+      });
+    },
+    [appendAudit, assertOwnerOrAdmin, ensurePlannerId],
   );
 
   const createLinkedCostTracker = useCallback(
-    async (seed: CostTrackerSeed) => createAndLinkCostTracker(ensurePlannerId(), seed),
-    [ensurePlannerId],
+    async (seed: CostTrackerSeed) => {
+      assertOwnerOrAdmin();
+      const plannerRef = ensurePlannerId();
+      const trackerId = await createAndLinkCostTracker(plannerRef, seed);
+      await appendAudit({
+        type: 'planner.costTracker.created',
+        details: { trackerId },
+      });
+      return trackerId;
+    },
+    [appendAudit, assertOwnerOrAdmin, ensurePlannerId],
   );
 
   const uploadImage = useCallback(
-    async (file: File, options?: { alreadyCompressed?: boolean }) => {
+    async (input: File | PreparedImage) => {
+      const actor = requireActor();
       const plannerRef = ensurePlannerId();
-      const userId = user?.uid ?? 'anonymous';
-      const now = new Date();
-      const folder = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-      let payload = file;
-      if (!options?.alreadyCompressed) {
-        const compressed = await compressFile(file);
-        const normalized = file.name.replace(/\.[^/.]+$/, '') || 'upload';
-        payload = new File([compressed], `${normalized}.jpg`, { type: 'image/jpeg' });
-      } else if (file.type !== 'image/jpeg') {
-        const normalized = file.name.replace(/\.[^/.]+$/, '') || 'upload';
-        payload = new File([file], `${normalized}.jpg`, { type: 'image/jpeg' });
+
+      const prepared = input instanceof File ? await compressFile(input) : input;
+      const fileKey = `${prepared.normalizedName}-${prepared.hash}.${prepared.extension}`;
+      const storageRef = ref(storage, `${UPLOAD_ROOT}/${plannerRef}/dedupe/${fileKey}`);
+
+      try {
+        const existingUrl = await getDownloadURL(storageRef);
+        if (existingUrl) {
+          return existingUrl;
+        }
+      } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code && code !== 'storage/object-not-found') {
+          throw error;
+        }
       }
-      const fileId = crypto.randomUUID();
-      const storageRef = ref(storage, `${UPLOAD_ROOT}/${plannerRef}/${userId}/${folder}/${fileId}.jpg`);
-      await uploadBytes(storageRef, payload, {
-        contentType: 'image/jpeg',
+
+      await uploadBytes(storageRef, prepared.blob, {
+        contentType: prepared.contentType,
+        customMetadata: {
+          hash: prepared.hash,
+          normalizedName: prepared.normalizedName,
+          originalName: prepared.originalName,
+          uploadedBy: actor.uid,
+          width: String(prepared.width),
+          height: String(prepared.height),
+          size: String(prepared.size),
+        },
       });
+
       return getDownloadURL(storageRef);
     },
-    [ensurePlannerId, user?.uid],
+    [ensurePlannerId, requireActor],
   );
 
   const compressOldImages = useCallback(async () => {
     const plannerRef = ensurePlannerId();
     const rootRef = ref(storage, `${UPLOAD_ROOT}/${plannerRef}`);
-    const list = await listAll(rootRef);
     const endDate = planner?.endDate ? new Date(planner.endDate) : null;
     const now = new Date();
-    for (const userFolder of list.prefixes) {
-      const monthListing = await listAll(userFolder);
-      for (const monthFolder of monthListing.prefixes) {
-        const files = await listAll(monthFolder);
-        for (const item of files.items) {
-          const metadata = await getMetadata(item);
-          const uploadedAt = metadata.timeCreated ? new Date(metadata.timeCreated) : null;
-          if (endDate && uploadedAt && endDate.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000) {
-            const download = await getDownloadURL(item);
-            const response = await fetch(download);
-            if (!response.ok) {
-              continue;
-            }
+
+    const visitFolder = async (folder: StorageReference): Promise<void> => {
+      const listing = await listAll(folder);
+      for (const item of listing.items) {
+        const metadata = await getMetadata(item);
+        const uploadedAt = metadata.timeCreated ? new Date(metadata.timeCreated) : null;
+        if (endDate && uploadedAt && endDate.getTime() < now.getTime() - 30 * 24 * 60 * 60 * 1000) {
+          const download = await getDownloadURL(item);
+          const response = await fetch(download);
+          if (response.ok) {
             const blob = await response.blob();
-            const compressed = await compressFile(new File([blob], item.name, { type: blob.type }), 1600, 0.6);
-            await uploadBytes(item, compressed, { contentType: 'image/jpeg' });
-          }
-          if (uploadedAt && uploadedAt.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) {
-            await deleteObject(item);
+            const prepared = await compressFile(new File([blob], item.name, { type: blob.type }), 1600, 0.8);
+            await uploadBytes(item, prepared.blob, {
+              contentType: prepared.contentType,
+              customMetadata: {
+                hash: prepared.hash,
+                normalizedName: prepared.normalizedName,
+                originalName: prepared.originalName,
+                width: String(prepared.width),
+                height: String(prepared.height),
+                size: String(prepared.size),
+              },
+            });
           }
         }
+        if (uploadedAt && uploadedAt.getTime() < now.getTime() - 180 * 24 * 60 * 60 * 1000) {
+          await deleteObject(item);
+        }
       }
-    }
-  }, [ensurePlannerId, planner?.endDate]);
+      for (const child of listing.prefixes) {
+        await visitFolder(child);
+      }
+    };
 
-  const appendAudit = useCallback(
-    async (entry: Omit<ChangeLogEntry, 'id' | 'createdAt'>) => {
-      await appendChangelogEntry(ensurePlannerId(), entry);
-    },
-    [ensurePlannerId],
-  );
+    await visitFolder(rootRef);
+  }, [ensurePlannerId, planner?.endDate]);
 
   const getDayActivities = useCallback(
     (dateISO: string) => {
@@ -525,10 +753,14 @@ export const PlanProvider = ({
           if (dayDate) {
             return dayDate === targetDate;
           }
-          return event.start.slice(0, 10) === targetDate;
+          const startValue = event.startISO ?? event.start;
+          return startValue.slice(0, 10) === targetDate;
         })
         .slice()
-        .sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+        .sort(
+          (a, b) =>
+            new Date((a.startISO ?? a.start) || '').getTime() - new Date((b.startISO ?? b.start) || '').getTime(),
+        );
     },
     [events, planner?.days],
   );
@@ -577,7 +809,6 @@ export const PlanProvider = ({
       planner,
       events,
       activityIdeas,
-      auditEntries,
       daySchedules,
       isAdmin: isAdminUser(user),
       selectPlanner,
@@ -615,7 +846,6 @@ export const PlanProvider = ({
       planner,
       events,
       activityIdeas,
-      auditEntries,
       daySchedules,
       selectPlanner,
       createPlannerAndSelect,
@@ -640,6 +870,7 @@ export const PlanProvider = ({
       getDayActivities,
       getActivityIcon,
       getActivityColor,
+      getAdminTripsList,
       signInHandler,
       signUpHandler,
       signOutHandler,
