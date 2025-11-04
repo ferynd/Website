@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Lightbulb, Search, Tag, Plus, X } from 'lucide-react';
+import { Image as ImageIcon, Lightbulb, Search, Tag, Plus, X } from 'lucide-react';
 import Input from '@/components/Input';
 import Button from '@/components/Button';
 import type { Idea, Planner } from '../lib/types';
@@ -70,6 +70,9 @@ export default function ActivityIdeasPanel({
             <h2 className="text-lg font-semibold">Activity ideas</h2>
             <p className="text-sm text-text-3">
               Curated suggestions you can drop directly into the timeline.
+            </p>
+            <p className="mt-1 text-xs text-text-4">
+              Uploads reuse matching files per planner, so sharing the same photo never duplicates storage.
             </p>
           </div>
         </div>
@@ -180,6 +183,11 @@ export default function ActivityIdeasPanel({
               {idea.address && (
                 <p className="mt-2 text-xs text-text-3">Located at {idea.address}</p>
               )}
+              {idea.images?.length ? (
+                <p className="mt-2 flex items-center gap-2 text-xs text-text-3">
+                  <ImageIcon size={14} /> {idea.images.length} {idea.images.length === 1 ? 'deduped image' : 'deduped images'}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>

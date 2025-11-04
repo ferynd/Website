@@ -12,6 +12,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -24,13 +25,7 @@ import {
   type FirestoreError,
 } from 'firebase/firestore';
 import { auth, db, isAdmin } from './firebase';
-import type {
-  ChangeLogEntry,
-  Idea,
-  Planner,
-  PlannerEvent,
-  PlannerSettings,
-} from './types';
+import type { Idea, Planner, PlannerEvent, PlannerSettings } from './types';
 
 type FirestoreUnsubscribe = () => void;
 
@@ -58,10 +53,18 @@ const plannerChangelogCol = (plannerId: string): CollectionReference =>
 const tripCostTripsCol = (): CollectionReference =>
   collection(db, ROOT_COLLECTION, 'trip-cost', 'trips');
 
-const cleanData = <T extends Record<string, unknown>>(input: T): T => {
+export const stripUndefined = <T extends Record<string, unknown>>(input: T): T => {
   const entries = Object.entries(input).filter(([, value]) => value !== undefined);
   return Object.fromEntries(entries) as T;
 };
+
+const ensureStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+interface MutationAuthor {
+  uid: string;
+  email?: string | null;
+}
 
 export interface CreatePlannerInput {
   name: string;
@@ -123,11 +126,32 @@ export const watchEvents = (
   plannerId: string,
   onData: (events: PlannerEvent[], error?: FirestoreError) => void,
 ): FirestoreUnsubscribe => {
-  const q = query(plannerEventsCol(plannerId), orderBy('start', 'asc'));
+  const q = query(plannerEventsCol(plannerId), orderBy('startISO', 'asc'));
   return onSnapshot(
     q,
     (snap) => {
-      onData(snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Omit<PlannerEvent, 'id'>) })));
+      const events = snap.docs.map((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        const startISO = typeof data.startISO === 'string' ? data.startISO : (typeof data.start === 'string' ? data.start : '');
+        const endISO = typeof data.endISO === 'string' ? data.endISO : (typeof data.end === 'string' ? data.end : '');
+        const rawType = data.type;
+        const type: PlannerEvent['type'] = rawType === 'travel' || rawType === 'activity' ? (rawType as PlannerEvent['type']) : 'block';
+        return {
+          id: docSnap.id,
+          ...(data as PlannerEvent),
+          plannerId,
+          type,
+          start: startISO,
+          end: endISO,
+          startISO,
+          endISO,
+          images: ensureStringArray(data.images),
+          createdBy: typeof data.createdBy === 'string' ? (data.createdBy as string) : 'unknown',
+          createdAt: data.createdAt ?? startISO,
+          updatedAt: data.updatedAt ?? endISO,
+        } as PlannerEvent;
+      });
+      onData(events);
     },
     (error) => onData([], error),
   );
@@ -140,18 +164,50 @@ export const watchIdeas = (
   onSnapshot(
     plannerIdeasCol(plannerId),
     (snap) => {
-      onData(snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Omit<Idea, 'id'>) })));
+      const ideas = snap.docs.map((docSnap) => {
+        const data = docSnap.data() as Record<string, unknown>;
+        return {
+          id: docSnap.id,
+          ...(data as Idea),
+          plannerId,
+          tags: ensureStringArray(data.tags),
+          images: ensureStringArray(data.images),
+          createdBy: typeof data.createdBy === 'string' ? (data.createdBy as string) : 'unknown',
+          createdAt: data.createdAt ?? null,
+          updatedAt: data.updatedAt ?? data.createdAt ?? null,
+        } as Idea;
+      });
+      onData(ideas);
     },
     (error) => onData([], error),
   );
 
-export const addEvent = async (plannerId: string, event: PlannerEvent): Promise<string> => {
+export const addEvent = async (
+  plannerId: string,
+  event: PlannerEvent,
+  author: MutationAuthor,
+): Promise<string> => {
   const eventId = event.id || crypto.randomUUID();
-  await setDoc(plannerEventDoc(plannerId, eventId), {
-    ...cleanData({ ...event, id: undefined }),
+  const startISO = (event as Record<string, unknown>).startISO ?? event.start;
+  const endISO = (event as Record<string, unknown>).endISO ?? event.end;
+  if (typeof startISO !== 'string' || typeof endISO !== 'string') {
+    throw new Error('Events must include start and end timestamps');
+  }
+  const payload = stripUndefined({
+    ...event,
+    id: undefined,
+    plannerId,
+    start: startISO,
+    end: endISO,
+    startISO,
+    endISO,
+    images: ensureStringArray((event as Record<string, unknown>).images),
+    createdBy: author.uid,
+    createdByEmail: author.email ?? undefined,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await setDoc(plannerEventDoc(plannerId, eventId), payload);
   await updateDoc(plannerDoc(plannerId), { updatedAt: serverTimestamp() });
   return eventId;
 };
@@ -161,8 +217,29 @@ export const updateEvent = async (
   eventId: string,
   patch: Partial<PlannerEvent>,
 ): Promise<void> => {
+  const sanitized = stripUndefined({ ...patch });
+  delete (sanitized as Record<string, unknown>).id;
+  delete (sanitized as Record<string, unknown>).plannerId;
+  delete (sanitized as Record<string, unknown>).createdAt;
+  delete (sanitized as Record<string, unknown>).createdBy;
+
+  const startValue = (patch as Record<string, unknown>).startISO ?? patch.start;
+  if (typeof startValue === 'string') {
+    (sanitized as Record<string, unknown>).start = startValue;
+    (sanitized as Record<string, unknown>).startISO = startValue;
+  }
+  const endValue = (patch as Record<string, unknown>).endISO ?? patch.end;
+  if (typeof endValue === 'string') {
+    (sanitized as Record<string, unknown>).end = endValue;
+    (sanitized as Record<string, unknown>).endISO = endValue;
+  }
+  if ('images' in sanitized) {
+    (sanitized as Record<string, unknown>).images = ensureStringArray(
+      (sanitized as Record<string, unknown>).images,
+    );
+  }
   await updateDoc(plannerEventDoc(plannerId, eventId), {
-    ...cleanData(patch),
+    ...sanitized,
     updatedAt: serverTimestamp(),
   });
   await updateDoc(plannerDoc(plannerId), { updatedAt: serverTimestamp() });
@@ -173,13 +250,24 @@ export const deleteEvent = async (plannerId: string, eventId: string): Promise<v
   await updateDoc(plannerDoc(plannerId), { updatedAt: serverTimestamp() });
 };
 
-export const addIdea = async (plannerId: string, idea: Idea): Promise<string> => {
+export const addIdea = async (
+  plannerId: string,
+  idea: Idea,
+  author: MutationAuthor,
+): Promise<string> => {
   const ideaId = idea.id || crypto.randomUUID();
-  await setDoc(plannerIdeaDoc(plannerId, ideaId), {
-    ...cleanData({ ...idea, id: undefined }),
+  const payload = stripUndefined({
+    ...idea,
+    id: undefined,
+    plannerId,
+    tags: ensureStringArray((idea as Record<string, unknown>).tags),
+    images: ensureStringArray((idea as Record<string, unknown>).images),
+    createdBy: author.uid,
+    createdByEmail: author.email ?? undefined,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
+  await setDoc(plannerIdeaDoc(plannerId, ideaId), payload);
   await updateDoc(plannerDoc(plannerId), { updatedAt: serverTimestamp() });
   return ideaId;
 };
@@ -189,8 +277,23 @@ export const updateIdea = async (
   ideaId: string,
   patch: Partial<Idea>,
 ): Promise<void> => {
+  const sanitized = stripUndefined({ ...patch });
+  delete (sanitized as Record<string, unknown>).id;
+  delete (sanitized as Record<string, unknown>).plannerId;
+  delete (sanitized as Record<string, unknown>).createdAt;
+  delete (sanitized as Record<string, unknown>).createdBy;
+  if ('tags' in sanitized) {
+    (sanitized as Record<string, unknown>).tags = ensureStringArray(
+      (sanitized as Record<string, unknown>).tags,
+    );
+  }
+  if ('images' in sanitized) {
+    (sanitized as Record<string, unknown>).images = ensureStringArray(
+      (sanitized as Record<string, unknown>).images,
+    );
+  }
   await updateDoc(plannerIdeaDoc(plannerId, ideaId), {
-    ...cleanData(patch),
+    ...sanitized,
     updatedAt: serverTimestamp(),
   });
   await updateDoc(plannerDoc(plannerId), { updatedAt: serverTimestamp() });
@@ -202,8 +305,26 @@ export const deleteIdea = async (plannerId: string, ideaId: string): Promise<voi
 };
 
 export const linkCostTracker = async (plannerId: string, costTrackerId: string): Promise<void> => {
-  await updateDoc(plannerDoc(plannerId), {
-    costTrackerId,
+  const actor = auth.currentUser;
+  if (!actor) {
+    throw new Error('Authentication required to link a cost tracker');
+  }
+
+  const plannerRef = plannerDoc(plannerId);
+  const plannerSnap = await getDoc(plannerRef);
+  if (!plannerSnap.exists()) {
+    throw new Error('Planner not found');
+  }
+
+  const data = plannerSnap.data() as { ownerUid?: string };
+  const ownerUid = data.ownerUid;
+  const isOwner = typeof ownerUid === 'string' && ownerUid === actor.uid;
+  if (!isOwner && !isAdmin(actor)) {
+    throw new Error('Only the planner owner or an admin can link a cost tracker');
+  }
+
+  await updateDoc(plannerRef, {
+    ...stripUndefined({ costTrackerId }),
     updatedAt: serverTimestamp(),
   });
 };
@@ -220,8 +341,16 @@ export const createAndLinkCostTracker = async (
   seed: CostTrackerSeed,
 ): Promise<string> => {
   const tripRef = doc(tripCostTripsCol());
-  const participants = seed.participants ?? [];
-  const participantIds = participants.map((p) => p.userId ?? p.id);
+  const participants = (seed.participants ?? []).map((participant) =>
+    stripUndefined({
+      id: participant.id,
+      name: participant.name,
+      userId: participant.userId,
+    }),
+  );
+  const participantIds = participants
+    .map((participant) => ('userId' in participant ? participant.userId : participant.id))
+    .filter((value): value is string => typeof value === 'string' && value.length > 0);
 
   await setDoc(tripRef, {
     name: seed.name,
@@ -243,27 +372,21 @@ export const createAndLinkCostTracker = async (
   return tripRef.id;
 };
 
-export const watchChangelog = (
-  plannerId: string,
-  onData: (entries: ChangeLogEntry[], error?: FirestoreError) => void,
-): FirestoreUnsubscribe => {
-  const q = query(plannerChangelogCol(plannerId), orderBy('createdAt', 'desc'));
-  return onSnapshot(
-    q,
-    (snap) =>
-      onData(snap.docs.map((docSnap) => ({ id: docSnap.id, ...(docSnap.data() as Omit<ChangeLogEntry, 'id'>) }))),
-    (error) => onData([], error),
-  );
-};
-
 export const appendChangelogEntry = async (
   plannerId: string,
-  entry: Omit<ChangeLogEntry, 'id' | 'createdAt'>,
+  entry: {
+    type: string;
+    actorUid: string;
+    actorEmail?: string | null;
+    details?: Record<string, unknown>;
+    ts?: unknown;
+  },
 ): Promise<void> => {
-  await addDoc(plannerChangelogCol(plannerId), {
+  const payload = stripUndefined({
     ...entry,
-    createdAt: serverTimestamp(),
+    ts: entry.ts ?? serverTimestamp(),
   });
+  await addDoc(plannerChangelogCol(plannerId), payload);
 };
 
 export const addParticipantUid = async (

@@ -12,7 +12,7 @@ const cardIconSize = 24;
 const toolList = [
   {
     name: 'Trip Planner',
-    description: 'Design collaborative itineraries with timelines, ideas, and maps.',
+    description: 'Collaborative itinerary planner with realtime timelines, shared ideas, and map panels.',
     href: '/tools/trip-planner',
     icon: <Plane size={cardIconSize} className="text-accent" />,
   },

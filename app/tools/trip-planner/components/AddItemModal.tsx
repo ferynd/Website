@@ -7,13 +7,14 @@ import Input from '@/components/Input';
 import Select from '@/components/Select';
 import type { AddItemMode, Idea, PlannerDay, PlannerEventDraft } from '../lib/types';
 import { usePlan } from '../PlanContext';
-import { compressFile } from '../lib/image';
+import { compressFile, formatFileSize } from '../lib/image';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: default form values and recurrence options     */
 /* ------------------------------------------------------------ */
 const DEFAULT_START_TIME = '09:00';
 const DEFAULT_END_TIME = '10:00';
+const SIZE_WARNING_BYTES = 1.5 * 1024 * 1024;
 const RECURRENCE_OPTIONS = [
   { value: 'none', label: 'No recurrence' },
   { value: 'daily-count', label: 'Repeat daily for N days' },
@@ -47,6 +48,18 @@ const travelModes = [
 ] as const;
 
 type RecurrenceMode = (typeof RECURRENCE_OPTIONS)[number]['value'];
+
+type UploadSummaryStatus = 'pending' | 'uploaded' | 'error';
+
+interface UploadSummary {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  warning: boolean;
+  status: UploadSummaryStatus;
+  url?: string;
+}
 
 function buildIsoFromDateTime(day: PlannerDay | undefined, time: string) {
   if (!day) return new Date().toISOString();
@@ -85,6 +98,7 @@ export default function AddItemModal({
   const [activityCompanyName, setActivityCompanyName] = useState('');
   const [contact, setContact] = useState('');
   const [uploadedUrls, setUploadedUrls] = useState<string[]>([]);
+  const [uploadSummaries, setUploadSummaries] = useState<UploadSummary[]>([]);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
 
@@ -111,6 +125,7 @@ export default function AddItemModal({
     setRecurrence('none');
     setRecurrenceCount('3');
     setUploadedUrls([]);
+    setUploadSummaries([]);
     setUploadError('');
   }, [idea, mode, open]);
 
@@ -184,13 +199,54 @@ export default function AddItemModal({
     try {
       const urls: string[] = [];
       for (const file of Array.from(files)) {
-        const compressedBlob = await compressFile(file);
-        const normalizedName = file.name.replace(/\.[^/.]+$/, '') || 'upload';
-        const compressedFile = new File([compressedBlob], `${normalizedName}.jpg`, { type: 'image/jpeg' });
-        const url = await uploadImage(compressedFile, { alreadyCompressed: true });
-        urls.push(url);
+        const prepared = await compressFile(file);
+        const summaryId = `${prepared.normalizedName}-${prepared.hash}`;
+        setUploadSummaries((current) => {
+          const existing = current.filter((entry) => entry.id !== summaryId);
+          return [
+            ...existing,
+            {
+              id: summaryId,
+              name: `${prepared.normalizedName}.${prepared.extension}`,
+              contentType: prepared.contentType,
+              size: prepared.size,
+              warning: prepared.size > SIZE_WARNING_BYTES,
+              status: 'pending',
+            },
+          ];
+        });
+        try {
+          const url = await uploadImage(prepared);
+          urls.push(url);
+          setUploadSummaries((current) =>
+            current.map((entry) =>
+              entry.id === summaryId
+                ? {
+                    ...entry,
+                    status: 'uploaded',
+                    url,
+                  }
+                : entry,
+            ),
+          );
+        } catch (uploadFailure) {
+          setUploadSummaries((current) =>
+            current.map((entry) =>
+              entry.id === summaryId
+                ? {
+                    ...entry,
+                    status: 'error',
+                  }
+                : entry,
+            ),
+          );
+          throw uploadFailure;
+        }
       }
-      setUploadedUrls((prev) => [...prev, ...urls]);
+      setUploadedUrls((prev) => {
+        const merged = [...prev, ...urls];
+        return Array.from(new Set(merged));
+      });
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : 'Upload failed.');
     } finally {
@@ -377,14 +433,59 @@ export default function AddItemModal({
             </div>
           )}
 
-          {uploadedUrls.length > 0 && (
+          {uploadSummaries.length > 0 && (
             <div className="rounded-xl border border-border/60 bg-surface-2/70 p-4 text-sm text-text-2">
               <p className="flex items-center gap-2 text-text">
-                <Upload size={16} /> Uploaded attachments
+                <Upload size={16} /> Prepared uploads
               </p>
-              <ul className="mt-2 space-y-1 text-xs break-all text-text-3">
-                {uploadedUrls.map((url) => (
-                  <li key={url}>{url}</li>
+              <ul className="mt-2 space-y-2 text-xs text-text-3">
+                {uploadSummaries.map((summary) => (
+                  <li
+                    key={summary.id}
+                    className="flex flex-col gap-1 rounded-lg border border-border/50 bg-surface-1/70 px-3 py-2"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-medium text-text">
+                        {summary.name}{' '}
+                        <span className="font-normal text-text-3">({summary.contentType})</span>
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <span className={summary.warning ? 'font-semibold text-warning' : ''}>
+                          {formatFileSize(summary.size)}
+                        </span>
+                        <span
+                          className={
+                            summary.status === 'uploaded'
+                              ? 'text-success'
+                              : summary.status === 'error'
+                              ? 'text-error'
+                              : 'text-text-3'
+                          }
+                        >
+                          {summary.status === 'uploaded'
+                            ? 'Uploaded'
+                            : summary.status === 'error'
+                            ? 'Failed'
+                            : 'Uploading…'}
+                        </span>
+                      </span>
+                    </div>
+                    {summary.warning && (
+                      <span className="text-warning">
+                        Large upload (&gt; {formatFileSize(SIZE_WARNING_BYTES)})
+                      </span>
+                    )}
+                    {summary.url && (
+                      <a
+                        href={summary.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="break-all text-accent hover:underline"
+                      >
+                        {summary.url}
+                      </a>
+                    )}
+                  </li>
                 ))}
               </ul>
             </div>

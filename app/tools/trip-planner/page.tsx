@@ -32,7 +32,7 @@ import {
   DEFAULT_TIMEZONE,
   INCREMENTS,
 } from './lib/config';
-import { auth } from './lib/firebase';
+import { auth, isAdmin as isAdminUser } from './lib/firebase';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: timeline defaults mirrored for toolbar        */
@@ -90,7 +90,6 @@ const TripPlannerShell = () => {
     events,
     activityIdeas,
     daySchedules,
-    isAdmin,
     addActivity,
     addBlock,
     addTravel,
@@ -134,9 +133,11 @@ const TripPlannerShell = () => {
     }
   }, [planner, daySchedules, activeDayId]);
 
+  const isAdminUserFlag = user ? isAdminUser(user) : false;
+
   useEffect(() => {
     let active = true;
-    if (!isAdmin) {
+    if (!isAdminUserFlag) {
       setAdminTrips([]);
       setAdminTripsLoading(false);
       return () => {
@@ -165,7 +166,7 @@ const TripPlannerShell = () => {
     return () => {
       active = false;
     };
-  }, [getAdminTripsList, isAdmin]);
+  }, [getAdminTripsList, isAdminUserFlag]);
 
   const plannerWithDays: Planner | null = useMemo(() => {
     if (!planner) return null;
@@ -511,7 +512,7 @@ const TripPlannerShell = () => {
             Settings
           </Button>
           <div className="ml-auto flex items-center gap-3">
-            {isAdmin && (
+            {isAdminUserFlag && (
               <Select
                 value={plannerWithDays.costTrackerId ?? ''}
                 onChange={handleAdminLinkChange}
