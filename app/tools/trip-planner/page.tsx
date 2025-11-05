@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { CalendarClock, Settings, Plus } from 'lucide-react';
-import { serverTimestamp, setDoc } from 'firebase/firestore';
+import { getDocs, limit, orderBy, query, serverTimestamp, setDoc } from 'firebase/firestore';
 import Nav from '@/components/Nav';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
@@ -35,6 +35,13 @@ import {
 } from './lib/config';
 import { auth, isAdmin as isAdminUser } from './lib/firebase';
 import { computeIdeaSlot } from './lib/scheduling';
+import { plannerChangelogCol } from './lib/db';
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: changelog fetch behavior                      */
+/* ------------------------------------------------------------ */
+
+const CHANGELOG_FETCH_LIMIT = 75;
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: timeline defaults mirrored for toolbar        */
@@ -83,6 +90,173 @@ const buildEventFromDraft = (draft: PlannerEventDraft): PlannerEvent => {
   };
 };
 
+interface PlannerChangelogEntry {
+  id: string;
+  type: string;
+  actorUid: string;
+  actorEmail?: string;
+  details?: Record<string, unknown>;
+  timestampISO: string;
+}
+
+interface PlannerChangelogModalProps {
+  plannerId: string;
+  open: boolean;
+  onClose: () => void;
+  isAdmin: boolean;
+}
+
+const normalizeChangelogTimestamp = (value: unknown): string => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value !== null && 'toDate' in (value as Record<string, unknown>)) {
+    try {
+      return (value as { toDate: () => Date }).toDate().toISOString();
+    } catch (error) {
+      console.error('Failed to normalize changelog timestamp', error);
+      return new Date().toISOString();
+    }
+  }
+  return new Date().toISOString();
+};
+
+const PlannerChangelogModal = ({ plannerId, open, onClose, isAdmin }: PlannerChangelogModalProps) => {
+  const [entries, setEntries] = useState<PlannerChangelogEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    if (!open) {
+      return () => {
+        active = false;
+      };
+    }
+
+    if (!plannerId || !isAdmin) {
+      setEntries([]);
+      setError(
+        isAdmin
+          ? 'A planner must be selected to view changelog entries.'
+          : 'Only administrators can view the changelog.',
+      );
+      return () => {
+        active = false;
+      };
+    }
+
+    const fetchEntries = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const q = query(plannerChangelogCol(plannerId), orderBy('ts', 'desc'), limit(CHANGELOG_FETCH_LIMIT));
+        const snapshot = await getDocs(q);
+        if (!active) {
+          return;
+        }
+        const mapped: PlannerChangelogEntry[] = snapshot.docs.map((docSnap) => {
+          const data = docSnap.data() as Record<string, unknown>;
+          return {
+            id: docSnap.id,
+            type: typeof data.type === 'string' ? data.type : 'unknown',
+            actorUid: typeof data.actorUid === 'string' ? data.actorUid : 'unknown',
+            actorEmail: typeof data.actorEmail === 'string' ? data.actorEmail : undefined,
+            details: (data.details as Record<string, unknown> | undefined) ?? undefined,
+            timestampISO: normalizeChangelogTimestamp(data.ts),
+          };
+        });
+        setEntries(mapped);
+      } catch (fetchError) {
+        if (!active) {
+          return;
+        }
+        console.error('Failed to load planner changelog', fetchError);
+        setError(fetchError instanceof Error ? fetchError.message : 'Unable to load changelog entries.');
+        setEntries([]);
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    void fetchEntries();
+
+    return () => {
+      active = false;
+    };
+  }, [open, plannerId, isAdmin]);
+
+  if (!open) {
+    return null;
+  }
+
+  const renderDetails = (details?: Record<string, unknown>) => {
+    if (!details || Object.keys(details).length === 0) {
+      return <span className="text-text-3">No additional details</span>;
+    }
+    return (
+      <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-surface-2/70 p-3 text-sm text-text-2 shadow-inner">
+        {JSON.stringify(details, null, 2)}
+      </pre>
+    );
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-8">
+      <div className="w-full max-w-3xl overflow-hidden rounded-xl3 border border-border bg-surface-1 shadow-2xl">
+        <header className="flex items-center justify-between border-b border-border/60 px-6 py-4">
+          <div>
+            <h2 className="text-xl font-semibold">Planner changelog</h2>
+            <p className="text-sm text-text-2">Chronological actions across the planner, newest first.</p>
+          </div>
+          <Button variant="ghost" onClick={onClose}>
+            Close
+          </Button>
+        </header>
+        <div className="max-h-[28rem] overflow-y-auto px-6 py-6">
+          {!isAdmin && (
+            <p className="text-sm text-error">You do not have permission to view the changelog.</p>
+          )}
+          {isAdmin && loading && (
+            <p className="text-sm text-text-2">Loading changelog entries…</p>
+          )}
+          {isAdmin && !loading && error && (
+            <p className="text-sm text-error">{error}</p>
+          )}
+          {isAdmin && !loading && !error && entries.length === 0 && (
+            <p className="text-sm text-text-2">No changelog entries have been recorded yet.</p>
+          )}
+          {isAdmin && !loading && !error && entries.length > 0 && (
+            <ul className="space-y-4">
+              {entries.map((entry) => {
+                const timestamp = entry.timestampISO
+                  ? new Date(entry.timestampISO).toLocaleString(undefined, {
+                      dateStyle: 'medium',
+                      timeStyle: 'short',
+                    })
+                  : 'Unknown time';
+                return (
+                  <li key={entry.id} className="rounded-xl2 border border-border/60 bg-surface-2/80 p-4 shadow-sm">
+                    <div className="flex flex-wrap items-center gap-2 text-sm text-text-2">
+                      <span className="font-medium text-text">{timestamp}</span>
+                      <span aria-hidden="true">•</span>
+                      <span>{entry.actorEmail ?? 'Unknown actor'}</span>
+                      <span aria-hidden="true">•</span>
+                      <span className="uppercase tracking-wide text-xs text-text-3">{entry.type}</span>
+                    </div>
+                    {renderDetails(entry.details)}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const TripPlannerShell = () => {
   const {
     user,
@@ -126,6 +300,7 @@ const TripPlannerShell = () => {
   const [plannerName, setPlannerName] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [showAuditLog, setShowAuditLog] = useState(false);
 
   useEffect(() => {
     if (!planner) {
@@ -594,21 +769,26 @@ const TripPlannerShell = () => {
           </Button>
           <div className="ml-auto flex items-center gap-3">
             {isAdminUserFlag && (
-              <Select
-                value={plannerWithDays.costTrackerId ?? ''}
-                onChange={handleAdminLinkChange}
-                aria-label="Assign to cost tracker"
-                disabled={adminTripsLoading}
-              >
-                <option value="">
-                  {adminTripsLoading ? 'Loading Trip Cost trips…' : 'Assign to cost tracker'}
-                </option>
-                {adminTrips.map((trip) => (
-                  <option key={trip.id} value={trip.id}>
-                    {trip.name}
+              <div className="flex items-center gap-3">
+                <Select
+                  value={plannerWithDays.costTrackerId ?? ''}
+                  onChange={handleAdminLinkChange}
+                  aria-label="Assign to cost tracker"
+                  disabled={adminTripsLoading}
+                >
+                  <option value="">
+                    {adminTripsLoading ? 'Loading Trip Cost trips…' : 'Assign to cost tracker'}
                   </option>
-                ))}
-              </Select>
+                  {adminTrips.map((trip) => (
+                    <option key={trip.id} value={trip.id}>
+                      {trip.name}
+                    </option>
+                  ))}
+                </Select>
+                <Button variant="secondary" onClick={() => setShowAuditLog(true)}>
+                  View changelog
+                </Button>
+              </div>
             )}
             <Select
               value={String(settings.incrementMinutes)}
@@ -691,6 +871,12 @@ const TripPlannerShell = () => {
           setPrefillIdea(undefined);
         }}
         onSubmit={handleAddItemSubmit}
+      />
+      <PlannerChangelogModal
+        plannerId={plannerWithDays.id}
+        open={showAuditLog}
+        onClose={() => setShowAuditLog(false)}
+        isAdmin={isAdminUserFlag}
       />
     </main>
   );
