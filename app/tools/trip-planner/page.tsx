@@ -34,6 +34,7 @@ import {
   INCREMENTS,
 } from './lib/config';
 import { auth, isAdmin as isAdminUser } from './lib/firebase';
+import { computeIdeaSlot } from './lib/scheduling';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: timeline defaults mirrored for toolbar        */
@@ -363,51 +364,17 @@ const TripPlannerShell = () => {
       const increment = settings.incrementMinutes;
       const durationMinutes = idea.suggestedDurationMinutes ?? increment * 2;
 
-      const toDate = (hour: number, minute: number) =>
-        new Date(`${dayMeta.date}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00`);
-      const clampToIncrement = (value: Date, roundUp = false) => {
-        const minutes = value.getMinutes();
-        const remainder = minutes % increment;
-        if (remainder === 0) return value;
-        const adjustment = roundUp ? increment - remainder : -remainder;
-        value.setMinutes(minutes + adjustment);
-        return value;
-      };
-
-      let cursor = clampToIncrement(toDate(visibleStart, 0));
-      const limit = toDate(visibleEnd, 0);
-      const sortedEvents = [...getDayActivities(dayMeta.date)].sort(
-        (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime(),
-      );
-
-      for (const existing of sortedEvents) {
-        const existingStart = new Date(existing.start);
-        const existingEnd = new Date(existing.end);
-        if (existingEnd <= cursor) {
-          continue;
-        }
-        if (existingStart > cursor) {
-          const gapMinutes = (existingStart.getTime() - cursor.getTime()) / 60000;
-          if (gapMinutes >= durationMinutes) {
-            break;
-          }
-        }
-        cursor = clampToIncrement(new Date(existingEnd), true);
-        if (cursor >= limit) {
-          break;
-        }
-      }
-
-      let startDate = cursor;
-      let endDate = new Date(startDate.getTime() + durationMinutes * 60000);
-      if (endDate > limit) {
-        endDate = clampToIncrement(new Date(limit.getTime()), false);
-        startDate = new Date(endDate.getTime() - durationMinutes * 60000);
-        if (startDate < toDate(visibleStart, 0)) {
-          startDate = clampToIncrement(toDate(visibleStart, 0));
-          endDate = new Date(startDate.getTime() + durationMinutes * 60000);
-        }
-      }
+      const { start: startDate, end: endDate } = computeIdeaSlot({
+        dayDate: dayMeta.date,
+        visibleStartHour: visibleStart,
+        visibleEndHour: visibleEnd,
+        incrementMinutes: increment,
+        durationMinutes,
+        existingEvents: getDayActivities(dayMeta.date).map((event) => ({
+          start: event.start,
+          end: event.end,
+        })),
+      });
 
       const event: PlannerEvent = {
         id: crypto.randomUUID(),
