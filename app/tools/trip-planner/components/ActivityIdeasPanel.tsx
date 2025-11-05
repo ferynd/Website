@@ -57,7 +57,9 @@ export default function ActivityIdeasPanel({
       .slice(0, MAX_RESULTS);
   }, [ideas, query, selectedTags]);
 
-  const activeDay = activeDayId ? planner.days[activeDayId] : undefined;
+  const plannerDays = planner.days ?? {};
+  const dayOrder = planner.dayOrder ?? [];
+  const activeDay = activeDayId ? plannerDays[activeDayId] : undefined;
 
   return (
     <aside className="rounded-xl3 border border-border bg-surface-1/80 shadow-md">
@@ -138,11 +140,17 @@ export default function ActivityIdeasPanel({
             className="rounded-md border border-border bg-surface-1 px-3 py-1 text-sm focus-ring"
           >
             <option value="">Choose day</option>
-            {planner.dayOrder.map((dayId) => (
-              <option key={dayId} value={dayId}>
-                {planner.days[dayId].date} · {planner.days[dayId].headline ?? 'Untitled day'}
-              </option>
-            ))}
+            {dayOrder.map((dayId) => {
+              const day = plannerDays[dayId];
+              if (!day) {
+                return null;
+              }
+              return (
+                <option key={dayId} value={dayId}>
+                  {day.date} · {day.headline ?? 'Untitled day'}
+                </option>
+              );
+            })}
           </select>
         </div>
 

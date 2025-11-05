@@ -27,6 +27,7 @@ import {
   arrayUnion,
   serverTimestamp,
   updateDoc,
+  type FieldValue,
 } from 'firebase/firestore';
 import {
   deleteObject,
@@ -289,7 +290,7 @@ export const PlanProvider = ({
         return;
       }
       const normalizedEvents: PlannerEventRecord[] = eventList.map((event) => {
-        const raw = event as Record<string, unknown>;
+        const raw = event as unknown as Record<string, unknown>;
         const startISO = ensureString('startISO' in raw ? raw.startISO : event.start);
         const endISO = ensureString('endISO' in raw ? raw.endISO : event.end);
         const plannerIdValue = ensureString(raw.plannerId, activePlannerId ?? '');
@@ -323,7 +324,7 @@ export const PlanProvider = ({
         return;
       }
       const normalizedIdeas: IdeaRecord[] = ideasList.map((idea) => {
-        const raw = idea as Record<string, unknown>;
+        const raw = idea as unknown as Record<string, unknown>;
         const plannerIdValue = ensureString(raw.plannerId);
         return {
           ...idea,
@@ -607,7 +608,10 @@ export const PlanProvider = ({
       if (typeof patch.timezone === 'string') {
         updates['settings.timezone'] = patch.timezone;
       }
-      await updateDoc(plannerDoc(plannerRef), updates);
+      await updateDoc(
+        plannerDoc(plannerRef),
+        updates as unknown as Record<string, FieldValue | Partial<unknown> | undefined>,
+      );
       await appendAudit({
         type: 'planner.settings.update',
         details: { fields: Object.keys(patch ?? {}) },

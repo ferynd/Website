@@ -136,9 +136,11 @@ export const watchEvents = (
         const endISO = typeof data.endISO === 'string' ? data.endISO : (typeof data.end === 'string' ? data.end : '');
         const rawType = data.type;
         const type: PlannerEvent['type'] = rawType === 'travel' || rawType === 'activity' ? (rawType as PlannerEvent['type']) : 'block';
+        const { id: _ignoredId, ...rest } = (data as unknown as PlannerEvent) ?? {};
+        void _ignoredId;
         return {
+          ...(rest as unknown as PlannerEvent),
           id: docSnap.id,
-          ...(data as PlannerEvent),
           plannerId,
           type,
           start: startISO,
@@ -149,7 +151,7 @@ export const watchEvents = (
           createdBy: typeof data.createdBy === 'string' ? (data.createdBy as string) : 'unknown',
           createdAt: data.createdAt ?? startISO,
           updatedAt: data.updatedAt ?? endISO,
-        } as PlannerEvent;
+        } as unknown as PlannerEvent;
       });
       onData(events);
     },
@@ -166,16 +168,18 @@ export const watchIdeas = (
     (snap) => {
       const ideas = snap.docs.map((docSnap) => {
         const data = docSnap.data() as Record<string, unknown>;
+        const { id: _ignoredId, ...rest } = (data as unknown as Idea) ?? {};
+        void _ignoredId;
         return {
+          ...(rest as unknown as Idea),
           id: docSnap.id,
-          ...(data as Idea),
           plannerId,
           tags: ensureStringArray(data.tags),
           images: ensureStringArray(data.images),
           createdBy: typeof data.createdBy === 'string' ? (data.createdBy as string) : 'unknown',
           createdAt: data.createdAt ?? null,
           updatedAt: data.updatedAt ?? data.createdAt ?? null,
-        } as Idea;
+        } as unknown as Idea;
       });
       onData(ideas);
     },
@@ -188,8 +192,8 @@ export const addEvent = async (
   author: MutationAuthor,
 ): Promise<string> => {
   const eventId = event.id || crypto.randomUUID();
-  const startISO = (event as Record<string, unknown>).startISO ?? event.start;
-  const endISO = (event as Record<string, unknown>).endISO ?? event.end;
+  const startISO = (event as unknown as Record<string, unknown>).startISO ?? event.start;
+  const endISO = (event as unknown as Record<string, unknown>).endISO ?? event.end;
   if (typeof startISO !== 'string' || typeof endISO !== 'string') {
     throw new Error('Events must include start and end timestamps');
   }
@@ -201,7 +205,7 @@ export const addEvent = async (
     end: endISO,
     startISO,
     endISO,
-    images: ensureStringArray((event as Record<string, unknown>).images),
+    images: ensureStringArray((event as unknown as Record<string, unknown>).images),
     createdBy: author.uid,
     createdByEmail: author.email ?? undefined,
     createdAt: serverTimestamp(),
@@ -218,24 +222,24 @@ export const updateEvent = async (
   patch: Partial<PlannerEvent>,
 ): Promise<void> => {
   const sanitized = stripUndefined({ ...patch });
-  delete (sanitized as Record<string, unknown>).id;
-  delete (sanitized as Record<string, unknown>).plannerId;
-  delete (sanitized as Record<string, unknown>).createdAt;
-  delete (sanitized as Record<string, unknown>).createdBy;
+  delete (sanitized as unknown as Record<string, unknown>).id;
+  delete (sanitized as unknown as Record<string, unknown>).plannerId;
+  delete (sanitized as unknown as Record<string, unknown>).createdAt;
+  delete (sanitized as unknown as Record<string, unknown>).createdBy;
 
-  const startValue = (patch as Record<string, unknown>).startISO ?? patch.start;
+  const startValue = (patch as unknown as Record<string, unknown>).startISO ?? patch.start;
   if (typeof startValue === 'string') {
-    (sanitized as Record<string, unknown>).start = startValue;
-    (sanitized as Record<string, unknown>).startISO = startValue;
+    (sanitized as unknown as Record<string, unknown>).start = startValue;
+    (sanitized as unknown as Record<string, unknown>).startISO = startValue;
   }
-  const endValue = (patch as Record<string, unknown>).endISO ?? patch.end;
+  const endValue = (patch as unknown as Record<string, unknown>).endISO ?? patch.end;
   if (typeof endValue === 'string') {
-    (sanitized as Record<string, unknown>).end = endValue;
-    (sanitized as Record<string, unknown>).endISO = endValue;
+    (sanitized as unknown as Record<string, unknown>).end = endValue;
+    (sanitized as unknown as Record<string, unknown>).endISO = endValue;
   }
   if ('images' in sanitized) {
-    (sanitized as Record<string, unknown>).images = ensureStringArray(
-      (sanitized as Record<string, unknown>).images,
+    (sanitized as unknown as Record<string, unknown>).images = ensureStringArray(
+      (sanitized as unknown as Record<string, unknown>).images,
     );
   }
   await updateDoc(plannerEventDoc(plannerId, eventId), {
@@ -260,8 +264,8 @@ export const addIdea = async (
     ...idea,
     id: undefined,
     plannerId,
-    tags: ensureStringArray((idea as Record<string, unknown>).tags),
-    images: ensureStringArray((idea as Record<string, unknown>).images),
+    tags: ensureStringArray((idea as unknown as Record<string, unknown>).tags),
+    images: ensureStringArray((idea as unknown as Record<string, unknown>).images),
     createdBy: author.uid,
     createdByEmail: author.email ?? undefined,
     createdAt: serverTimestamp(),
@@ -278,18 +282,18 @@ export const updateIdea = async (
   patch: Partial<Idea>,
 ): Promise<void> => {
   const sanitized = stripUndefined({ ...patch });
-  delete (sanitized as Record<string, unknown>).id;
-  delete (sanitized as Record<string, unknown>).plannerId;
-  delete (sanitized as Record<string, unknown>).createdAt;
-  delete (sanitized as Record<string, unknown>).createdBy;
+  delete (sanitized as unknown as Record<string, unknown>).id;
+  delete (sanitized as unknown as Record<string, unknown>).plannerId;
+  delete (sanitized as unknown as Record<string, unknown>).createdAt;
+  delete (sanitized as unknown as Record<string, unknown>).createdBy;
   if ('tags' in sanitized) {
-    (sanitized as Record<string, unknown>).tags = ensureStringArray(
-      (sanitized as Record<string, unknown>).tags,
+    (sanitized as unknown as Record<string, unknown>).tags = ensureStringArray(
+      (sanitized as unknown as Record<string, unknown>).tags,
     );
   }
   if ('images' in sanitized) {
-    (sanitized as Record<string, unknown>).images = ensureStringArray(
-      (sanitized as Record<string, unknown>).images,
+    (sanitized as unknown as Record<string, unknown>).images = ensureStringArray(
+      (sanitized as unknown as Record<string, unknown>).images,
     );
   }
   await updateDoc(plannerIdeaDoc(plannerId, ideaId), {
@@ -341,15 +345,18 @@ export const createAndLinkCostTracker = async (
   seed: CostTrackerSeed,
 ): Promise<string> => {
   const tripRef = doc(tripCostTripsCol());
-  const participants = (seed.participants ?? []).map((participant) =>
-    stripUndefined({
+  const participants = (seed.participants ?? []).map((participant) => {
+    const sanitized: { id: string; name: string; userId?: string } = {
       id: participant.id,
       name: participant.name,
-      userId: participant.userId,
-    }),
-  );
+    };
+    if (participant.userId) {
+      sanitized.userId = participant.userId;
+    }
+    return sanitized;
+  });
   const participantIds = participants
-    .map((participant) => ('userId' in participant ? participant.userId : participant.id))
+    .map((participant) => participant.userId ?? participant.id)
     .filter((value): value is string => typeof value === 'string' && value.length > 0);
 
   await setDoc(tripRef, {

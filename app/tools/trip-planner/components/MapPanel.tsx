@@ -20,6 +20,9 @@ interface MapPanelProps {
 export default function MapPanel({ planner, events, activeDayId, onSelectDay }: MapPanelProps) {
   const [expanded, setExpanded] = useState(true);
 
+  const dayOrder = planner.dayOrder ?? [];
+  const plannerDays = planner.days ?? {};
+
   const activityCount = useMemo(
     () => events.filter((event) => event.type === 'activity').length,
     [events]
@@ -81,16 +84,22 @@ export default function MapPanel({ planner, events, activeDayId, onSelectDay }: 
               <p className="font-semibold text-text">Interactive map coming soon</p>
               <p className="mt-2">We will load Leaflet dynamically to keep initial bundle size lean.</p>
               <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                {planner.dayOrder.map((dayId) => (
-                  <Button
-                    key={dayId}
-                    size="sm"
-                    variant={activeDayId === dayId ? 'primary' : 'secondary'}
-                    onClick={() => onSelectDay(dayId)}
-                  >
-                    {planner.days[dayId].headline ?? planner.days[dayId].date}
-                  </Button>
-                ))}
+                {dayOrder.map((dayId) => {
+                  const day = plannerDays[dayId];
+                  if (!day) {
+                    return null;
+                  }
+                  return (
+                    <Button
+                      key={dayId}
+                      size="sm"
+                      variant={activeDayId === dayId ? 'primary' : 'secondary'}
+                      onClick={() => onSelectDay(dayId)}
+                    >
+                      {day.headline ?? day.date}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
           </div>

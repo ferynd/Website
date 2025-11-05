@@ -37,7 +37,6 @@ import { auth, isAdmin as isAdminUser } from './lib/firebase';
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: timeline defaults mirrored for toolbar        */
 /* ------------------------------------------------------------ */
-export { INCREMENTS, DEFAULT_INCREMENT, DEFAULT_VISIBLE_HOURS };
 
 const buildEventFromDraft = (draft: PlannerEventDraft): PlannerEvent => {
   const base = {
