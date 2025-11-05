@@ -6,6 +6,7 @@ import { CalendarClock, Settings, Plus } from 'lucide-react';
 import { serverTimestamp, setDoc } from 'firebase/firestore';
 import Nav from '@/components/Nav';
 import Button from '@/components/Button';
+import Input from '@/components/Input';
 import Select from '@/components/Select';
 import AuthForm from '../trip-cost/components/AuthForm';
 import { ADMIN_EMAIL } from '../trip-cost/firebaseConfig';
@@ -101,6 +102,7 @@ const TripPlannerShell = () => {
     signOut,
     getAdminTripsList,
     createLinkedCostTracker,
+    createPlannerAndSelect,
   } = usePlan();
 
   const [showAuth, setShowAuth] = useState(false);
@@ -119,6 +121,10 @@ const TripPlannerShell = () => {
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [adminTrips, setAdminTrips] = useState<{ id: string; name: string }[]>([]);
   const [adminTripsLoading, setAdminTripsLoading] = useState(false);
+  const [showCreatePlanner, setShowCreatePlanner] = useState(false);
+  const [plannerName, setPlannerName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
     if (!planner) {
@@ -430,6 +436,50 @@ const TripPlannerShell = () => {
     ],
   );
 
+  const handleCreatePlannerSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!user) {
+        return;
+      }
+      const trimmedName = plannerName.trim();
+      if (!trimmedName) {
+        return;
+      }
+      try {
+        await createPlannerAndSelect({
+          name: trimmedName,
+          startDate,
+          endDate,
+          timezone: DEFAULT_TIMEZONE,
+          ownerUid: user.uid,
+        });
+        setPlannerName('');
+        setStartDate('');
+        setEndDate('');
+        setActiveDayId(null);
+        setShowCreatePlanner(false);
+      } catch (error) {
+        console.error('Failed to create planner', error);
+      }
+    },
+    [
+      createPlannerAndSelect,
+      endDate,
+      plannerName,
+      setActiveDayId,
+      startDate,
+      user,
+    ],
+  );
+
+  const handleCancelCreatePlanner = useCallback(() => {
+    setShowCreatePlanner(false);
+    setPlannerName('');
+    setStartDate('');
+    setEndDate('');
+  }, []);
+
   if (authLoading) {
     return (
       <main className="bg-bg text-text min-h-dvh">
@@ -468,7 +518,72 @@ const TripPlannerShell = () => {
       <main className="bg-bg text-text min-h-dvh">
         <Nav />
         <section className="container-tight py-16 sm:py-24">
-          <p className="text-center text-text-2">No planner selected yet.</p>
+          {!showCreatePlanner ? (
+            <div className="mx-auto max-w-xl rounded-xl3 border border-border bg-surface-1/80 p-10 text-center shadow-xl">
+              <h1 className="text-3xl font-semibold">Let&rsquo;s start a new planner</h1>
+              <p className="mt-4 text-text-2">
+                Create your first collaborative itinerary to unlock the timeline, saved ideas, and map view.
+              </p>
+              <Button
+                type="button"
+                className="mt-8"
+                onClick={() => setShowCreatePlanner(true)}
+              >
+                Start planning
+              </Button>
+            </div>
+          ) : (
+            <div className="mx-auto max-w-xl">
+              <form
+                onSubmit={handleCreatePlannerSubmit}
+                className="space-y-8 rounded-xl3 border border-border bg-surface-1/80 p-10 shadow-xl"
+              >
+                <div className="space-y-3 text-center">
+                  <h1 className="text-3xl font-semibold">New Trip Planner</h1>
+                  <p className="text-text-2">
+                    Give your planner a name and choose the travel window to begin organizing your trip.
+                  </p>
+                </div>
+                <Input
+                  label="Planner name"
+                  value={plannerName}
+                  onChange={(event) => setPlannerName(event.target.value)}
+                  placeholder="Summer in Kyoto"
+                  required
+                />
+                <div className="grid gap-6 sm:grid-cols-2">
+                  <Input
+                    label="Start date"
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    required
+                  />
+                  <Input
+                    label="End date"
+                    type="date"
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={(event) => setEndDate(event.target.value)}
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-4 sm:flex-row sm:justify-end">
+                  <Button type="submit" variant="primary" className="w-full sm:w-auto">
+                    Create Planner
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="w-full sm:w-auto"
+                    onClick={handleCancelCreatePlanner}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </div>
+          )}
         </section>
       </main>
     );
