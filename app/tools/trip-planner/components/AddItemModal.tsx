@@ -5,7 +5,7 @@ import { Clock3, Plane, MapPin, Plus, NotebookPen, Upload } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import Select from '@/components/Select';
-import type { AddItemMode, Idea, PlannerDay, PlannerEventDraft } from '../lib/types';
+import type { AddItemMode, Idea, PlannerDay, PlannerEvent, PlannerEventDraft } from '../lib/types';
 import { usePlan } from '../PlanContext';
 import { compressFile, formatFileSize } from '../lib/image';
 
@@ -26,10 +26,12 @@ interface AddItemModalProps {
   mode: AddItemMode;
   day?: PlannerDay;
   idea?: Idea;
+  initialData?: PlannerEvent;
   incrementMinutes: number;
   timezone: string;
   onClose: () => void;
-  onSubmit: (payload: PlannerEventDraft) => void;
+  onSubmit: (payload: PlannerEventDraft, options?: { applyToSeries?: boolean }) => void;
+  onDelete?: (applyToSeries: boolean) => void;
 }
 
 const travelModes = [
@@ -73,10 +75,12 @@ export default function AddItemModal({
   mode,
   day,
   idea,
+  initialData,
   incrementMinutes,
   timezone,
   onClose,
   onSubmit,
+  onDelete,
 }: AddItemModalProps) {
   const [activeTab, setActiveTab] = useState<AddItemMode>('block');
   const [title, setTitle] = useState('');
@@ -85,6 +89,7 @@ export default function AddItemModal({
   const [endTime, setEndTime] = useState(DEFAULT_END_TIME);
   const [recurrence, setRecurrence] = useState<RecurrenceMode>('none');
   const [recurrenceCount, setRecurrenceCount] = useState('3');
+  const [applySeries, setApplySeries] = useState(false);
 
   // Travel specific
   const [travelMode, setTravelMode] = useState<(typeof travelModes)[number]>('flight');
@@ -106,28 +111,44 @@ export default function AddItemModal({
 
   useEffect(() => {
     if (!open) return;
+    const getTimePortion = (value: string | undefined, fallback: string) =>
+      value?.split('T')[1]?.slice(0, 5) ?? fallback;
     const ideaPrefill = idea ?? null;
-    setActiveTab(mode === 'idea' ? 'activity' : mode);
-    setTitle(ideaPrefill ? ideaPrefill.title : '');
-    setDescription(ideaPrefill ? ideaPrefill.description ?? '' : '');
-    setTravelMode('flight');
-    setCompanyName('');
-    setConfirmationCode('');
-    setCompanyPhone('');
-    if (ideaPrefill?.address) setAddress(ideaPrefill.address);
-    else setAddress('');
-    if (ideaPrefill?.tags?.length) setTags(ideaPrefill.tags.join(', '));
-    else setTags('');
-    setActivityCompanyName('');
-    setContact('');
-    setStartTime(DEFAULT_START_TIME);
-    setEndTime(DEFAULT_END_TIME);
+    const sourceEvent = initialData ?? undefined;
+    const selectedTab = sourceEvent ? sourceEvent.type : mode === 'idea' ? 'activity' : mode;
+    setActiveTab(selectedTab);
+    setTitle(sourceEvent?.title ?? (ideaPrefill ? ideaPrefill.title : ''));
+    setDescription(sourceEvent?.notes ?? (ideaPrefill ? ideaPrefill.description ?? '' : ''));
+    setTravelMode(sourceEvent?.type === 'travel' ? sourceEvent.travelMode ?? 'flight' : 'flight');
+    setCompanyName(sourceEvent?.type === 'travel' ? sourceEvent.companyName ?? '' : '');
+    setConfirmationCode(sourceEvent?.type === 'travel' ? sourceEvent.confirmationCode ?? '' : '');
+    setCompanyPhone(sourceEvent?.type === 'travel' ? sourceEvent.companyPhone ?? '' : '');
+    if (sourceEvent?.type === 'activity') {
+      setAddress(sourceEvent.address ?? '');
+      setTags(sourceEvent.tags?.join(', ') ?? '');
+      setActivityCompanyName(sourceEvent.companyName ?? '');
+      setContact(sourceEvent.contact ?? '');
+    } else if (ideaPrefill) {
+      setAddress(ideaPrefill.address ?? '');
+      setTags(ideaPrefill.tags?.join(', ') ?? '');
+      setActivityCompanyName('');
+      setContact('');
+    } else {
+      setAddress('');
+      setTags('');
+      setActivityCompanyName('');
+      setContact('');
+    }
+    setStartTime(getTimePortion(sourceEvent?.start, DEFAULT_START_TIME));
+    setEndTime(getTimePortion(sourceEvent?.end, DEFAULT_END_TIME));
     setRecurrence('none');
     setRecurrenceCount('3');
-    setUploadedUrls([]);
+    setApplySeries(false);
+    setUploadedUrls(sourceEvent?.images ?? []);
     setUploadSummaries([]);
     setUploadError('');
-  }, [idea, mode, open]);
+    setUploading(false);
+  }, [idea, initialData, mode, open]);
 
   const tabs: { id: AddItemMode; label: string; icon: React.ElementType }[] = useMemo(
     () => [
@@ -140,19 +161,21 @@ export default function AddItemModal({
   );
 
   useEffect(() => {
-    if (mode !== 'idea') {
+    if (mode !== 'idea' && !initialData) {
       setActiveTab(mode);
     }
-  }, [mode]);
+  }, [initialData, mode]);
 
   if (!open) return null;
 
+  const isEditMode = Boolean(initialData);
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!day) return;
     const startISO = buildIsoFromDateTime(day, startTime);
     const endISO = buildIsoFromDateTime(day, endTime);
     const payload: PlannerEventDraft = {
+      id: initialData?.id,
       type: activeTab === 'idea' ? 'activity' : activeTab,
       dayId: day.id,
       title,
@@ -188,7 +211,7 @@ export default function AddItemModal({
       images: uploadedUrls,
       ideaId: idea?.id,
     };
-    onSubmit(payload);
+    onSubmit(payload, { applyToSeries: applySeries && Boolean(initialData?.groupId) });
   };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -260,7 +283,7 @@ export default function AddItemModal({
       <div className="w-full max-w-3xl rounded-xl3 border border-border bg-surface-1 shadow-2xl">
         <header className="flex items-center justify-between border-b border-border/60 px-6 py-4">
           <div>
-            <h2 className="text-xl font-semibold">Add itinerary item</h2>
+            <h2 className="text-xl font-semibold">{initialData ? 'Edit itinerary item' : 'Add itinerary item'}</h2>
             <p className="text-sm text-text-3">{day ? `Target day: ${day.date}` : 'Select a day to continue.'}</p>
           </div>
           <Button variant="ghost" onClick={onClose}>
@@ -301,6 +324,7 @@ export default function AddItemModal({
               label="Recurrence"
               value={recurrence}
               onChange={(event) => setRecurrence(event.target.value as RecurrenceMode)}
+              disabled={isEditMode}
             >
               {RECURRENCE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -308,6 +332,11 @@ export default function AddItemModal({
                 </option>
               ))}
             </Select>
+            {isEditMode && (
+              <p className="text-xs text-text-3 sm:col-span-2">
+                Recurrence can’t be changed when editing an existing event.
+              </p>
+            )}
             {recurrence === 'daily-count' && (
               <Input
                 label="Number of days"
@@ -316,6 +345,17 @@ export default function AddItemModal({
                 value={recurrenceCount}
                 onChange={(event) => setRecurrenceCount(event.target.value)}
               />
+            )}
+            {initialData?.groupId && (
+              <label className="flex items-center gap-2 rounded-lg border border-border/60 bg-surface-2/70 px-3 py-2 text-sm text-text">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4 rounded border-border bg-surface-1 text-accent focus-ring"
+                  checked={applySeries}
+                  onChange={(event) => setApplySeries(event.target.checked)}
+                />
+                <span>Apply to all events in this series?</span>
+              </label>
             )}
           </div>
 
@@ -327,6 +367,7 @@ export default function AddItemModal({
               value={startTime}
               onChange={(event) => setStartTime(event.target.value)}
               required
+              disabled={applySeries}
             />
             <Input
               label="End time"
@@ -335,7 +376,13 @@ export default function AddItemModal({
               value={endTime}
               onChange={(event) => setEndTime(event.target.value)}
               required
+              disabled={applySeries}
             />
+            {applySeries && (
+              <p className="text-xs text-text-3 sm:col-span-2">
+                Time changes must be made to individual events.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4">
@@ -509,13 +556,26 @@ export default function AddItemModal({
           )}
 
           <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
-            <p className="text-sm text-text-3">All times are saved in {timezone.replace('_', ' ')}.</p>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+              {initialData && (
+                <Button
+                  type="button"
+                  variant="danger"
+                  className="w-full sm:w-auto"
+                  onClick={() => onDelete?.(applySeries && Boolean(initialData?.groupId))}
+                  disabled={!onDelete}
+                >
+                  Delete
+                </Button>
+              )}
+              <p className="text-sm text-text-3">All times are saved in {timezone.replace('_', ' ')}.</p>
+            </div>
             <div className="flex gap-3">
               <Button type="button" variant="ghost" onClick={onClose}>
                 Cancel
               </Button>
               <Button type="submit" variant="primary" className="inline-flex items-center gap-2" disabled={uploading}>
-                <Plus size={16} /> Save item
+                <Plus size={16} /> {initialData ? 'Save Changes' : 'Save item'}
               </Button>
             </div>
           </footer>
