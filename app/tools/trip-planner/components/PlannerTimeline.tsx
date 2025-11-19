@@ -750,7 +750,8 @@ const DayColumn = memo(function DayColumn({
                 <div className="space-y-1">
                   <h4 className="font-semibold text-text">{event.title}</h4>
                   {event.notes && <p className="text-sm text-text-3">{event.notes}</p>}
-                  {event.confirmationCode && (
+                  {/* Check if 'confirmationCode' exists in this specific event type first */}
+                  {'confirmationCode' in event && event.confirmationCode && (
                     <p className="text-xs font-medium text-text-3">
                       Confirmation: {event.confirmationCode}
                     </p>
