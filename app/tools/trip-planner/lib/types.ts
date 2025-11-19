@@ -5,6 +5,15 @@ import type { Timestamp } from 'firebase/firestore';
 
 export type AddItemMode = 'block' | 'travel' | 'idea' | 'activity';
 
+export type ActivityCategory =
+  | 'cultural'
+  | 'sightseeing'
+  | 'adventure'
+  | 'food-drinks'
+  | 'show'
+  | 'shopping'
+  | 'other';
+
 export type TravelMode =
   | 'flight'
   | 'taxi'
@@ -64,6 +73,7 @@ export interface EventBase {
   start: string; // ISO timestamp
   end: string; // ISO timestamp
   timezone: string;
+  groupId?: string;
   notes?: string;
   images?: string[];
 }
@@ -74,7 +84,7 @@ export interface EventBlock extends EventBase {
 
 export interface EventTravel extends EventBase {
   type: 'travel';
-  travelMode: TravelMode;
+  travelMode?: TravelMode;
   companyName?: string;
   confirmationCode?: string;
   companyPhone?: string;
@@ -86,6 +96,8 @@ export interface EventActivity extends EventBase {
   tags?: string[];
   companyName?: string;
   contact?: string;
+  category?: ActivityCategory;
+  confirmationCode?: string;
 }
 
 export type PlannerEvent = EventBlock | EventTravel | EventActivity;

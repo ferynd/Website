@@ -2,17 +2,10 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
-import {
-  CalendarClock,
-  GripVertical,
-  Hand,
-  LucideIcon,
-  Mountain,
-  Plane,
-  Train,
-} from 'lucide-react';
+import { GripVertical, Hand } from 'lucide-react';
 import Button from '@/components/Button';
 import type { AddItemMode, Planner, PlannerDay, PlannerEvent } from '../lib/types';
+import { getEventIcon } from '../lib/icons';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: layout metrics & keyboard movement semantics   */
@@ -169,16 +162,6 @@ const minutesFromVisibleStart = (iso: string, visibleStartHour: number) => {
   const baseline = new Date(date);
   baseline.setHours(visibleStartHour, 0, 0, 0);
   return (date.getTime() - baseline.getTime()) / 60000;
-};
-
-const getEventIcon = (event: PlannerEvent): LucideIcon => {
-  if (event.type === 'travel') {
-    return event.travelMode === 'flight' ? Plane : Train;
-  }
-  if (event.type === 'activity') {
-    return Mountain;
-  }
-  return CalendarClock;
 };
 
 const buildDayDescriptors = (planner: Planner, events: PlannerEvent[]): DayDescriptor[] => {
@@ -767,6 +750,11 @@ const DayColumn = memo(function DayColumn({
                 <div className="space-y-1">
                   <h4 className="font-semibold text-text">{event.title}</h4>
                   {event.notes && <p className="text-sm text-text-3">{event.notes}</p>}
+                  {event.confirmationCode && (
+                    <p className="text-xs font-medium text-text-3">
+                      Confirmation: {event.confirmationCode}
+                    </p>
+                  )}
                 </div>
               </div>
             </article>
