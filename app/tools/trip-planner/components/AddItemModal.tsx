@@ -168,6 +168,7 @@ export default function AddItemModal({
 
   if (!open) return null;
 
+  const isEditMode = Boolean(initialData);
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!day) return;
@@ -323,6 +324,7 @@ export default function AddItemModal({
               label="Recurrence"
               value={recurrence}
               onChange={(event) => setRecurrence(event.target.value as RecurrenceMode)}
+              disabled={isEditMode}
             >
               {RECURRENCE_OPTIONS.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -330,6 +332,11 @@ export default function AddItemModal({
                 </option>
               ))}
             </Select>
+            {isEditMode && (
+              <p className="text-xs text-text-3 sm:col-span-2">
+                Recurrence can’t be changed when editing an existing event.
+              </p>
+            )}
             {recurrence === 'daily-count' && (
               <Input
                 label="Number of days"
@@ -360,6 +367,7 @@ export default function AddItemModal({
               value={startTime}
               onChange={(event) => setStartTime(event.target.value)}
               required
+              disabled={applySeries}
             />
             <Input
               label="End time"
@@ -368,7 +376,13 @@ export default function AddItemModal({
               value={endTime}
               onChange={(event) => setEndTime(event.target.value)}
               required
+              disabled={applySeries}
             />
+            {applySeries && (
+              <p className="text-xs text-text-3 sm:col-span-2">
+                Time changes must be made to individual events.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4">
