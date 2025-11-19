@@ -268,7 +268,9 @@ const TripPlannerShell = () => {
     addActivity,
     addBlock,
     addTravel,
+    updateEvent,
     updateActivity,
+    deleteEvent,
     updatePlanSettings,
     linkCostTracker,
     getDayActivities,
@@ -292,6 +294,7 @@ const TripPlannerShell = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalMode, setAddModalMode] = useState<AddItemMode>('block');
   const [modalDayId, setModalDayId] = useState<string | null>(null);
+  const [editingEvent, setEditingEvent] = useState<PlannerEvent | null>(null);
   const [prefillIdea, setPrefillIdea] = useState<Idea | undefined>(undefined);
   const [showSettingsPanel, setShowSettingsPanel] = useState(false);
   const [adminTrips, setAdminTrips] = useState<{ id: string; name: string }[]>([]);
@@ -419,8 +422,15 @@ const TripPlannerShell = () => {
   const openAddItemModal = useCallback((dayId: string, mode: AddItemMode, idea?: Idea) => {
     setModalDayId(dayId);
     setAddModalMode(mode);
+    setEditingEvent(null);
     setPrefillIdea(idea);
     setAddModalOpen(true);
+  }, []);
+
+  const closeAddItemModal = useCallback(() => {
+    setAddModalOpen(false);
+    setPrefillIdea(undefined);
+    setEditingEvent(null);
   }, []);
 
   const deriveRecurrenceEvents = useCallback(
@@ -429,7 +439,9 @@ const TripPlannerShell = () => {
         return [buildEventFromDraft(draft)];
       }
       const eventsToPersist: PlannerEvent[] = [];
-      const baseEvent = buildEventFromDraft(draft);
+      const shouldApplyGroup = draft.recurrence.mode !== 'none';
+      const groupId = shouldApplyGroup ? crypto.randomUUID() : undefined;
+      const baseEvent = groupId ? { ...buildEventFromDraft(draft), groupId } : buildEventFromDraft(draft);
       eventsToPersist.push(baseEvent);
       const startIndex = plannerWithDays.dayOrder.findIndex((dayId) => dayId === draft.dayId);
       if (startIndex < 0) {
@@ -457,16 +469,69 @@ const TripPlannerShell = () => {
           start: startIso,
           end: endIso,
         };
-        eventsToPersist.push(buildEventFromDraft(recurringDraft));
+        const recurringEvent = groupId
+          ? { ...buildEventFromDraft(recurringDraft), groupId }
+          : buildEventFromDraft(recurringDraft);
+        eventsToPersist.push(recurringEvent);
       }
       return eventsToPersist;
     },
     [plannerWithDays],
   );
 
+  const handleEditEvent = useCallback((event: PlannerEvent) => {
+    setModalDayId(event.dayId);
+    setAddModalMode(event.type);
+    setEditingEvent(event);
+    setAddModalOpen(true);
+  }, []);
+
   const handleAddItemSubmit = useCallback(
-    async (draft: PlannerEventDraft) => {
+    async (draft: PlannerEventDraft, options?: { applyToSeries?: boolean }) => {
       try {
+        if (editingEvent) {
+          const metadata = draft.metadata ?? {};
+          const basePatch: Partial<PlannerEvent> = {
+            type: draft.type,
+            dayId: draft.dayId,
+            title: draft.title,
+            notes: draft.notes,
+            start: draft.start,
+            end: draft.end,
+            timezone: draft.timezone,
+            images: draft.images,
+          };
+
+          if (draft.type === 'travel') {
+            basePatch.travelMode = (metadata.travelMode as TravelMode) ?? 'other';
+            basePatch.companyName = metadata.companyName as string | undefined;
+            basePatch.confirmationCode = metadata.confirmationCode as string | undefined;
+            basePatch.companyPhone = metadata.companyPhone as string | undefined;
+          } else if (draft.type === 'activity') {
+            basePatch.address = metadata.address as string | undefined;
+            basePatch.tags = (metadata.tags as string[]) ?? undefined;
+            basePatch.companyName = metadata.companyName as string | undefined;
+            basePatch.contact = metadata.contact as string | undefined;
+          }
+
+          const applySeries = Boolean(options?.applyToSeries && editingEvent.groupId);
+          const detachFromSeries = Boolean(editingEvent.groupId && !applySeries);
+
+          const patchPayload: Partial<PlannerEvent> = { ...basePatch };
+          if (applySeries) {
+            delete (patchPayload as Record<string, unknown>).dayId;
+            delete (patchPayload as Record<string, unknown>).start;
+            delete (patchPayload as Record<string, unknown>).end;
+          }
+
+          await updateEvent(editingEvent.id, patchPayload, {
+            applyToSeries: applySeries,
+            groupId: editingEvent.groupId,
+            detachFromSeries,
+          });
+          return;
+        }
+
         const eventsToSave = deriveRecurrenceEvents(draft).map((event) =>
           event.type === 'activity' && draft.images?.length
             ? { ...event, images: [...(event.images ?? []), ...draft.images] }
@@ -483,11 +548,33 @@ const TripPlannerShell = () => {
           }
         }
       } finally {
-        setAddModalOpen(false);
-        setPrefillIdea(undefined);
+        closeAddItemModal();
       }
     },
-    [addActivity, addBlock, addTravel, deriveRecurrenceEvents],
+    [
+      addActivity,
+      addBlock,
+      addTravel,
+      closeAddItemModal,
+      deriveRecurrenceEvents,
+      editingEvent,
+      updateEvent,
+    ],
+  );
+
+  const handleDeleteEvent = useCallback(
+    async (applySeries?: boolean) => {
+      if (!editingEvent) return;
+      try {
+        await deleteEvent(editingEvent.id, {
+          applyToSeries: Boolean(applySeries && editingEvent.groupId),
+          groupId: editingEvent.groupId,
+        });
+      } finally {
+        closeAddItemModal();
+      }
+    },
+    [closeAddItemModal, deleteEvent, editingEvent],
   );
 
   const handleCreateOrLink = useCallback(async () => {
@@ -816,7 +903,7 @@ const TripPlannerShell = () => {
               planner={plannerWithDays}
               events={events}
               onAddItem={(dayId, mode) => openAddItemModal(dayId, mode)}
-              onEdit={(event) => console.log('Edit event placeholder', event.id)}
+              onEdit={handleEditEvent}
               onResize={(eventId, newEnd) => updateActivity(eventId, { end: newEnd })}
               onMove={(eventId, newStart, newEnd) => updateActivity(eventId, { start: newStart, end: newEnd })}
               incrementMinutes={settings.incrementMinutes}
@@ -864,13 +951,12 @@ const TripPlannerShell = () => {
         mode={addModalMode}
         day={modalDayId ? plannerWithDays.days?.[modalDayId] : undefined}
         idea={prefillIdea}
+        initialData={editingEvent ?? undefined}
         incrementMinutes={settings.incrementMinutes}
         timezone={settings.timezone}
-        onClose={() => {
-          setAddModalOpen(false);
-          setPrefillIdea(undefined);
-        }}
+        onClose={closeAddItemModal}
         onSubmit={handleAddItemSubmit}
+        onDelete={handleDeleteEvent}
       />
       <PlannerChangelogModal
         plannerId={plannerWithDays.id}
