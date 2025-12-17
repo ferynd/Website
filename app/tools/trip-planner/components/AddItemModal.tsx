@@ -31,7 +31,7 @@ interface AddItemModalProps {
   timezone: string;
   onClose: () => void;
   onSubmit: (payload: PlannerEventDraft, options?: { applyToSeries?: boolean }) => void;
-  onDelete?: (applyToSeries: boolean) => void;
+  onDelete?: (applyToSeries: boolean) => void | Promise<void>;
 }
 
 const travelModes = [

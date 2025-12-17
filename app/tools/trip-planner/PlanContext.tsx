@@ -184,8 +184,12 @@ const ensureString = (value: unknown, fallback = ''): string =>
 const ensureStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 
-const buildEventPatch = (patch: Partial<PlannerEvent>): Record<string, unknown> => {
-  const sanitized = stripUndefined({ ...patch });
+type PlannerEventUpdate = {
+  [field: string]: FieldValue | string | string[] | number | boolean | null | undefined;
+};
+
+const buildEventPatch = (patch: Partial<PlannerEvent>): PlannerEventUpdate => {
+  const sanitized = stripUndefined({ ...patch }) as PlannerEventUpdate;
   delete (sanitized as Record<string, unknown>).id;
   delete (sanitized as Record<string, unknown>).plannerId;
   delete (sanitized as Record<string, unknown>).createdAt;
@@ -193,21 +197,19 @@ const buildEventPatch = (patch: Partial<PlannerEvent>): Record<string, unknown> 
 
   const startValue = (patch as Record<string, unknown>).startISO ?? patch.start;
   if (typeof startValue === 'string') {
-    (sanitized as Record<string, unknown>).start = startValue;
-    (sanitized as Record<string, unknown>).startISO = startValue;
+    sanitized.start = startValue;
+    sanitized.startISO = startValue;
   }
   const endValue = (patch as Record<string, unknown>).endISO ?? patch.end;
   if (typeof endValue === 'string') {
-    (sanitized as Record<string, unknown>).end = endValue;
-    (sanitized as Record<string, unknown>).endISO = endValue;
+    sanitized.end = endValue;
+    sanitized.endISO = endValue;
   }
   if ('images' in sanitized) {
-    (sanitized as Record<string, unknown>).images = ensureStringArray(
-      (sanitized as Record<string, unknown>).images,
-    );
+    sanitized.images = ensureStringArray(sanitized.images);
   }
 
-  return sanitized as Record<string, unknown>;
+  return sanitized;
 };
 
 const toastError = (message: string) => {
@@ -552,7 +554,7 @@ export const PlanProvider = ({
       const detachFromSeries = Boolean(options?.detachFromSeries);
 
       const patchData = buildEventPatch(patch);
-      const updatePayload: Record<string, unknown> = {
+      const updatePayload: PlannerEventUpdate = {
         ...patchData,
         updatedAt: serverTimestamp(),
         ...(detachFromSeries ? { groupId: deleteField() } : {}),
