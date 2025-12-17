@@ -25,8 +25,14 @@ import {
 import {
   arrayRemove,
   arrayUnion,
+  deleteDoc,
+  deleteField,
+  getDocs,
+  query,
   serverTimestamp,
   updateDoc,
+  where,
+  writeBatch,
   type FieldValue,
 } from 'firebase/firestore';
 import {
@@ -44,19 +50,20 @@ import {
   addIdea,
   createAndLinkCostTracker,
   createPlanner,
-  deleteEvent,
   deleteIdea,
   getAdminTripsList as fetchAdminTripsList,
   linkCostTracker as linkCostTrackerHelper,
   plannerDoc,
+  plannerEventDoc,
+  plannerEventsCol,
+  stripUndefined,
   watchEvents,
   watchIdeas,
   watchPlanner,
-  updateEvent,
   updateIdea,
   appendChangelogEntry,
 } from './lib/db';
-import { auth, isAdmin as isAdminUser, storage } from './lib/firebase';
+import { auth, db, isAdmin as isAdminUser, storage } from './lib/firebase';
 import { compressFile, type PreparedImage } from './lib/image';
 import type {
   DaySchedule,
@@ -127,7 +134,13 @@ interface PlanContextValue {
   updateParticipant: (uid: string, name: string) => Promise<void>;
   deleteParticipant: (uid: string) => Promise<void>;
   addActivity: (event: PlannerEvent) => Promise<string>;
+  updateEvent: (
+    eventId: string,
+    patch: Partial<PlannerEvent>,
+    options?: { applyToSeries?: boolean; groupId?: string; detachFromSeries?: boolean },
+  ) => Promise<void>;
   updateActivity: (eventId: string, patch: Partial<PlannerEvent>) => Promise<void>;
+  deleteEvent: (eventId: string, options?: { applyToSeries?: boolean; groupId?: string }) => Promise<void>;
   deleteActivity: (eventId: string) => Promise<void>;
   addBlock: (event: PlannerEvent) => Promise<string>;
   addTravel: (event: PlannerEvent & { travelMode: TravelMode }) => Promise<string>;
@@ -170,6 +183,34 @@ const ensureString = (value: unknown, fallback = ''): string =>
 
 const ensureStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+type PlannerEventUpdate = {
+  [field: string]: FieldValue | string | string[] | number | boolean | null | undefined;
+};
+
+const buildEventPatch = (patch: Partial<PlannerEvent>): PlannerEventUpdate => {
+  const sanitized = stripUndefined({ ...patch }) as PlannerEventUpdate;
+  delete (sanitized as Record<string, unknown>).id;
+  delete (sanitized as Record<string, unknown>).plannerId;
+  delete (sanitized as Record<string, unknown>).createdAt;
+  delete (sanitized as Record<string, unknown>).createdBy;
+
+  const startValue = (patch as Record<string, unknown>).startISO ?? patch.start;
+  if (typeof startValue === 'string') {
+    sanitized.start = startValue;
+    sanitized.startISO = startValue;
+  }
+  const endValue = (patch as Record<string, unknown>).endISO ?? patch.end;
+  if (typeof endValue === 'string') {
+    sanitized.end = endValue;
+    sanitized.endISO = endValue;
+  }
+  if ('images' in sanitized) {
+    sanitized.images = ensureStringArray(sanitized.images);
+  }
+
+  return sanitized;
+};
 
 const toastError = (message: string) => {
   console.error(message);
@@ -500,30 +541,86 @@ export const PlanProvider = ({
     [createPlannerEvent],
   );
 
-  const updateActivity = useCallback(
-    async (eventId: string, patch: Partial<PlannerEvent>) => {
+  const updateEvent = useCallback(
+    async (
+      eventId: string,
+      patch: Partial<PlannerEvent>,
+      options?: { applyToSeries?: boolean; groupId?: string; detachFromSeries?: boolean },
+    ) => {
       requireActor();
-      const plannerRef = ensurePlannerId();
-      await updateEvent(plannerRef, eventId, patch);
+      const plannerId = ensurePlannerId();
+      const targetGroupId = options?.groupId;
+      const applyToSeries = Boolean(options?.applyToSeries && targetGroupId);
+      const detachFromSeries = Boolean(options?.detachFromSeries);
+
+      const patchData = buildEventPatch(patch);
+      const updatePayload: PlannerEventUpdate = {
+        ...patchData,
+        updatedAt: serverTimestamp(),
+        ...(detachFromSeries ? { groupId: deleteField() } : {}),
+      };
+
+      if (applyToSeries) {
+        const seriesQuery = query(plannerEventsCol(plannerId), where('groupId', '==', targetGroupId));
+        const snapshot = await getDocs(seriesQuery);
+        const batch = writeBatch(db);
+        snapshot.docs.forEach((docSnap) => {
+          batch.update(docSnap.ref, updatePayload);
+        });
+        await batch.commit();
+      } else {
+        await updateDoc(plannerEventDoc(plannerId, eventId), updatePayload);
+      }
+
+      await updateDoc(plannerDoc(plannerId), { updatedAt: serverTimestamp() });
       await appendAudit({
-        type: 'planner.event.update',
-        details: { eventId, fields: Object.keys(patch ?? {}) },
+        type: applyToSeries ? 'planner.event.series.update' : 'planner.event.update',
+        details: {
+          eventId,
+          groupId: targetGroupId,
+          applyToSeries,
+          detachFromSeries,
+          fields: Object.keys(patch ?? {}),
+        },
+      });
+    },
+    [appendAudit, ensurePlannerId, requireActor],
+  );
+
+  const updateActivity = useCallback(
+    async (eventId: string, patch: Partial<PlannerEvent>) => updateEvent(eventId, patch),
+    [updateEvent],
+  );
+
+  const deleteEvent = useCallback(
+    async (eventId: string, options?: { applyToSeries?: boolean; groupId?: string }) => {
+      requireActor();
+      const plannerId = ensurePlannerId();
+      const targetGroupId = options?.groupId;
+      const applyToSeries = Boolean(options?.applyToSeries && targetGroupId);
+
+      if (applyToSeries) {
+        const seriesQuery = query(plannerEventsCol(plannerId), where('groupId', '==', targetGroupId));
+        const snapshot = await getDocs(seriesQuery);
+        const batch = writeBatch(db);
+        snapshot.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+        await batch.commit();
+      } else {
+        await deleteDoc(plannerEventDoc(plannerId, eventId));
+      }
+
+      await updateDoc(plannerDoc(plannerId), { updatedAt: serverTimestamp() });
+      await appendAudit({
+        type: applyToSeries ? 'planner.event.series.delete' : 'planner.event.remove',
+        details: { eventId, groupId: targetGroupId, applyToSeries },
       });
     },
     [appendAudit, ensurePlannerId, requireActor],
   );
 
   const deleteActivity = useCallback(
-    async (eventId: string) => {
-      requireActor();
-      const plannerRef = ensurePlannerId();
-      await deleteEvent(plannerRef, eventId);
-      await appendAudit({
-        type: 'planner.event.remove',
-        details: { eventId },
-      });
-    },
-    [appendAudit, ensurePlannerId, requireActor],
+    async (eventId: string) => deleteEvent(eventId),
+    [deleteEvent],
   );
 
   const addBlock = useCallback(
@@ -821,7 +918,9 @@ export const PlanProvider = ({
       updateParticipant,
       deleteParticipant,
       addActivity,
+      updateEvent,
       updateActivity,
+      deleteEvent,
       deleteActivity,
       addBlock,
       addTravel,
@@ -857,7 +956,9 @@ export const PlanProvider = ({
       updateParticipant,
       deleteParticipant,
       addActivity,
+      updateEvent,
       updateActivity,
+      deleteEvent,
       deleteActivity,
       addBlock,
       addTravel,

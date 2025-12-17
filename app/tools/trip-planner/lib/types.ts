@@ -127,7 +127,7 @@ export interface DaySchedule {
   events: PlannerEvent[];
 }
 
-export type PlannerEventDraft = {
+export interface PlannerEventDraft {
   id?: string;
   type: PlannerEvent['type'];
   dayId: string;
@@ -144,4 +144,4 @@ export type PlannerEventDraft = {
   images?: string[];
   files?: File[];
   ideaId?: string;
-};
+}
