@@ -25,6 +25,9 @@ import type {
   PlannerEvent,
   PlannerEventDraft,
   PlannerSettings,
+  EventBlock,
+  EventTravel,
+  EventActivity,
   TravelMode,
 } from './lib/types';
 import {
@@ -491,7 +494,9 @@ const TripPlannerShell = () => {
       try {
         if (editingEvent) {
           const metadata = draft.metadata ?? {};
-          const basePatch: Partial<PlannerEvent> = {
+          type PlannerEventEditPatch = Partial<EventBlock> & Partial<EventTravel> & Partial<EventActivity> & Partial<PlannerEvent>;
+
+          const basePatch: PlannerEventEditPatch = {
             type: draft.type,
             dayId: draft.dayId,
             title: draft.title,
@@ -518,11 +523,6 @@ const TripPlannerShell = () => {
           const detachFromSeries = Boolean(editingEvent.groupId && !applySeries);
 
           const patchPayload: Partial<PlannerEvent> = { ...basePatch };
-          if (applySeries) {
-            delete (patchPayload as Record<string, unknown>).dayId;
-            delete (patchPayload as Record<string, unknown>).start;
-            delete (patchPayload as Record<string, unknown>).end;
-          }
 
           await updateEvent(editingEvent.id, patchPayload, {
             applyToSeries: applySeries,
