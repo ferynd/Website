@@ -25,7 +25,6 @@ import type {
   PlannerEvent,
   PlannerEventDraft,
   PlannerSettings,
-  EventBlock,
   EventTravel,
   EventActivity,
   TravelMode,
@@ -494,7 +493,11 @@ const TripPlannerShell = () => {
       try {
         if (editingEvent) {
           const metadata = draft.metadata ?? {};
-          type PlannerEventEditPatch = Partial<EventBlock> & Partial<EventTravel> & Partial<EventActivity> & Partial<PlannerEvent>;
+          type PlannerEventEditPatch = {
+            type?: PlannerEvent['type'];
+          } & Partial<Omit<PlannerEvent, 'id' | 'type'>> &
+            Partial<Omit<EventTravel, 'id' | 'type'>> &
+            Partial<Omit<EventActivity, 'id' | 'type'>>;
 
           const basePatch: PlannerEventEditPatch = {
             type: draft.type,
@@ -542,7 +545,7 @@ const TripPlannerShell = () => {
           if (event.type === 'activity') {
             await addActivity(event);
           } else if (event.type === 'travel') {
-            await addTravel(event);
+            await addTravel({ ...event, travelMode: event.travelMode ?? 'other' });
           } else {
             await addBlock(event);
           }
