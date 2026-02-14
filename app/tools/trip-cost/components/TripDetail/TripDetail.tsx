@@ -1,10 +1,5 @@
 "use client";
 
-// ===============================
-// CONFIGURATION
-// ===============================
-// None
-
 import React, { useState } from 'react';
 import { useTrip } from '../../TripContext';
 import ParticipantsSection from './ParticipantsSection';
@@ -14,6 +9,7 @@ import BalanceSummary from './BalanceSummary';
 import SettlementSuggestions from './SettlementSuggestions';
 import PaymentHistory from './PaymentHistory';
 import AuditLog from './AuditLog';
+import TripSettings from './TripSettings';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import type { UserProfile } from '../../pageTypes';
 import Button from '@/components/Button';
@@ -65,7 +61,8 @@ export default function TripDetail({
               </Button>
               <h1 className="text-2xl font-bold text-text">{trip.name}</h1>
               <div className="text-text-3 text-sm">
-                {expenses.length} expense{expenses.length !== 1 ? 's' : ''} · {payments.length} payment{payments.length !== 1 ? 's' : ''}
+                {expenses.length} expense{expenses.length !== 1 ? 's' : ''} ·{' '}
+                {payments.length} payment{payments.length !== 1 ? 's' : ''}
               </div>
             </div>
           </header>
@@ -81,24 +78,31 @@ export default function TripDetail({
               />
               <ExpenseForm />
             </div>
-            
+
             <div className="space-y-4">
               <BalanceSummary userProfile={userProfile} />
               <SettlementSuggestions />
             </div>
           </div>
 
+          {/* Trip Settings (admin only) */}
+          <TripSettings userProfile={userProfile} />
+
           {/* Full Width Sections */}
           <ExpensesList
             userProfile={userProfile}
-            onDeleteExpense={(id) => setConfirmDelete({ type: 'expense', id })}
+            onDeleteExpense={(id) =>
+              setConfirmDelete({ type: 'expense', id })
+            }
           />
-          
+
           <PaymentHistory
             userProfile={userProfile}
-            onDeletePayment={(id) => setConfirmDelete({ type: 'payment', id })}
+            onDeletePayment={(id) =>
+              setConfirmDelete({ type: 'payment', id })
+            }
           />
-          
+
           {userProfile?.isAdmin && (
             <AuditLog
               entries={auditEntries}

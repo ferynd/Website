@@ -1,10 +1,5 @@
 "use client";
 
-// ===============================
-// CONFIGURATION
-// ===============================
-// None - provider consumes selectedTripId from props
-
 import React, {
   createContext,
   useContext,
@@ -29,10 +24,18 @@ import type {
   Payment,
   AuditEntry,
   Balance,
+  CappedBalance,
   ExpenseDraft,
   UserProfile,
+  SpendCap,
+  OverageSplit,
+  DefaultSplit,
 } from './pageTypes';
-import { calculateBalances, calculateSettlements } from './utils/calc';
+import {
+  calculateBalances,
+  calculateSettlements,
+  applySpendCaps,
+} from './utils/calc';
 
 interface TripContextValue {
   trip: Trip | null;
@@ -41,6 +44,7 @@ interface TripContextValue {
   payments: Payment[];
   auditEntries: AuditEntry[];
   balances: Balance[];
+  cappedBalances: CappedBalance[];
   settlements: { from: string; to: string; amount: number }[];
   newExpense: ExpenseDraft;
   setNewExpense: React.Dispatch<React.SetStateAction<ExpenseDraft>>;
@@ -52,10 +56,7 @@ interface TripContextValue {
   updateParticipant: (id: string, name: string) => Promise<void>;
   deleteParticipant: (id: string) => Promise<void>;
   addExpense: (draft: ExpenseDraft) => Promise<void>;
-  updateExpense: (
-    id: string,
-    draft: ExpenseDraft
-  ) => Promise<void>;
+  updateExpense: (id: string, draft: ExpenseDraft) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   addPayment: (
     payerId: string,
@@ -65,6 +66,9 @@ interface TripContextValue {
     authorUid: string
   ) => Promise<void>;
   deletePayment: (id: string) => Promise<void>;
+  updateSpendCaps: (caps: SpendCap[]) => Promise<void>;
+  updateOverageSplit: (split: OverageSplit) => Promise<void>;
+  updateDefaultSplit: (split: DefaultSplit) => Promise<void>;
 }
 
 const TripContext = createContext<TripContextValue | undefined>(undefined);
@@ -90,6 +94,7 @@ export const TripProvider = ({
     splitType: 'even',
     splitParticipants: [],
     manualSplit: {},
+    manualSplitMode: 'amount',
   };
   const [newExpense, setNewExpense] = useState<ExpenseDraft>(emptyExpenseDraft);
 
@@ -126,13 +131,25 @@ export const TripProvider = ({
     () => trip?.participants || [],
     [trip]
   );
+
   const balances = useMemo(
     () => calculateBalances(participants, expenses, payments),
     [participants, expenses, payments]
   );
+
+  const cappedBalances = useMemo(
+    () =>
+      applySpendCaps(
+        balances,
+        trip?.spendCaps || [],
+        trip?.overageSplit || { type: 'even' }
+      ),
+    [balances, trip?.spendCaps, trip?.overageSplit]
+  );
+
   const settlements = useMemo(
-    () => calculateSettlements(balances),
-    [balances]
+    () => calculateSettlements(cappedBalances),
+    [cappedBalances]
   );
 
   const addParticipant = async (
@@ -140,328 +157,244 @@ export const TripProvider = ({
     authorUid: string,
     userId?: string
   ) => {
-    if (!trip) {
-      throw new Error('[addParticipant] No trip loaded');
-    }
-    
-    if (!name.trim()) {
-      throw new Error('[addParticipant] Participant name is required');
-    }
+    if (!trip) throw new Error('No trip loaded');
+    if (!name.trim()) throw new Error('Participant name is required');
 
-    try {
-      // Remove undefined values for Firestore
-      const newPart: TripParticipant = {
-        id: crypto.randomUUID(),
-        name: name.trim(),
-        isRegistered: !!userId,
-        addedBy: authorUid,
-        // Only include userId if it's defined (Firestore doesn't allow undefined)
-        ...(userId && { userId })
-      };
+    const newPart: TripParticipant = {
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      isRegistered: !!userId,
+      addedBy: authorUid,
+      ...(userId && { userId })
+    };
 
-      const updated = [...participants, newPart];
-      
-      // Create participantIds array - use userId if available, otherwise use participant id
-      const participantIds = updated.map((p) => p.userId || p.id);
-      
-      console.log('[addParticipant] Saving participant:', newPart);
-      console.log('[addParticipant] Updated participantIds:', participantIds);
+    const updated = [...participants, newPart];
+    const participantIds = updated.map((p) => p.userId || p.id);
 
-      await setDoc(
-        tripDoc(trip.id),
-        { 
-          participants: updated, 
-          participantIds, 
-          updatedAt: serverTimestamp() 
-        },
-        { merge: true }
-      );
-
-      console.log('[addParticipant] Successfully added participant');
-    } catch (error) {
-      console.error('[addParticipant] Firebase error:', error);
-      throw new Error(`[addParticipant] Failed to add participant: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    await setDoc(
+      tripDoc(trip.id),
+      { participants: updated, participantIds, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const updateParticipant = async (id: string, name: string) => {
-    if (!trip) {
-      throw new Error('[updateParticipant] No trip loaded');
-    }
-    
-    if (!name.trim()) {
-      throw new Error('[updateParticipant] Participant name is required');
-    }
+    if (!trip) throw new Error('No trip loaded');
+    if (!name.trim()) throw new Error('Participant name is required');
 
-    try {
-      const updated = participants.map((p) =>
-        p.id === id ? { ...p, name: name.trim() } : p
-      );
-      const participantIds = updated.map((p) => p.userId || p.id);
-      
-      console.log('[updateParticipant] Updating participant:', id, 'to name:', name.trim());
-      
-      await setDoc(
-        tripDoc(trip.id),
-        { participants: updated, participantIds, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-      
-      console.log('[updateParticipant] Successfully updated participant');
-    } catch (error) {
-      console.error('[updateParticipant] Firebase error:', error);
-      throw new Error(`[updateParticipant] Failed to update participant: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    const updated = participants.map((p) =>
+      p.id === id ? { ...p, name: name.trim() } : p
+    );
+    const participantIds = updated.map((p) => p.userId || p.id);
+
+    await setDoc(
+      tripDoc(trip.id),
+      { participants: updated, participantIds, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const deleteParticipant = async (id: string) => {
-    if (!trip) {
-      throw new Error('[deleteParticipant] No trip loaded');
-    }
-    
-    try {
-      const updated = participants.filter((p) => p.id !== id);
-      const participantIds = updated.map((p) => p.userId || p.id);
-      
-      console.log('[deleteParticipant] Deleting participant:', id);
-      
-      await setDoc(
-        tripDoc(trip.id),
-        { participants: updated, participantIds, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-      
-      console.log('[deleteParticipant] Successfully deleted participant');
-    } catch (error) {
-      console.error('[deleteParticipant] Firebase error:', error);
-      throw new Error(`[deleteParticipant] Failed to delete participant: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    if (!trip) throw new Error('No trip loaded');
+
+    const updated = participants.filter((p) => p.id !== id);
+    const participantIds = updated.map((p) => p.userId || p.id);
+
+    // Also remove any spend cap for this participant
+    const updatedCaps = (trip.spendCaps || []).filter(
+      (c) => c.participantId !== id
+    );
+
+    // Clean up default split
+    const updatedDefaultSplit = { ...(trip.defaultSplit || {}) };
+    delete updatedDefaultSplit[id];
+
+    await setDoc(
+      tripDoc(trip.id),
+      {
+        participants: updated,
+        participantIds,
+        spendCaps: updatedCaps,
+        defaultSplit: updatedDefaultSplit,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   };
 
   const addExpense = async (draft: ExpenseDraft) => {
-    if (!trip) {
-      throw new Error('[addExpense] No trip loaded');
+    if (!trip) throw new Error('No trip loaded');
+
+    const totalAmount = Math.max(0, parseFloat(String(draft.totalAmount || '')));
+    if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
+
+    // Process who paid
+    const paidBy: Record<string, number> = {};
+    for (const [pid, val] of Object.entries(draft.paidBy || {})) {
+      const n = parseFloat(String(val));
+      if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
     }
-    
-    try {
-      console.log('[addExpense] Starting to add expense with draft:', draft);
-      
-      // Parse and validate the total amount
-      const totalAmount = Math.max(0, parseFloat(String(draft.totalAmount || '')));
-      console.log('[addExpense] Parsed total amount:', totalAmount);
-      
-      if (totalAmount <= 0) {
-        throw new Error('[addExpense] Enter an amount greater than 0.');
-      }
-      
-      // Process who paid
-      const paidBy: Record<string, number> = {};
-      for (const [pid, val] of Object.entries(draft.paidBy || {})) {
-        const n = parseFloat(String(val));
-        if (!Number.isNaN(n) && n > 0) {
-          paidBy[pid] = n;
+
+    const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
+    if (sumPaid > 0 && Math.abs(sumPaid - totalAmount) > 0.01) {
+      throw new Error('Payer amounts must sum to the total amount.');
+    }
+
+    // Find current user's participant ID
+    const currentParticipant = participants.find(
+      p => p.userId === userProfile?.uid || p.addedBy === userProfile?.uid
+    );
+    const currentParticipantId = currentParticipant?.id || userProfile?.uid || 'unknown';
+
+    if (Object.keys(paidBy).length === 0) {
+      paidBy[currentParticipantId] = totalAmount;
+    }
+
+    // Process split
+    const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
+    let splitParticipants = Array.isArray(draft.splitParticipants)
+      ? draft.splitParticipants.slice()
+      : [];
+    if (!splitParticipants.length) {
+      splitParticipants = (trip.participants || []).map((p) => p.id);
+    }
+
+    const manualSplit: Expense['manualSplit'] = {};
+    if (splitType === 'manual') {
+      const mode = draft.manualSplitMode || 'amount';
+      for (const pid of splitParticipants) {
+        const v = draft.manualSplit?.[pid]?.value;
+        const n = parseFloat(String(v));
+        if (!Number.isNaN(n) && n >= 0) {
+          manualSplit[pid] = { type: mode, value: n };
         }
       }
-      console.log('[addExpense] Processed paidBy:', paidBy);
-      
-      // Validate payer amounts
-      const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
-      if (sumPaid > 0 && Math.abs(sumPaid - totalAmount) > 0.01) {
-        throw new Error('[addExpense] Payer amounts must sum to the total amount.');
-      }
-      
-      // Find current user's participant ID
-      const currentParticipant = participants.find(
-        p => p.userId === userProfile?.uid || p.addedBy === userProfile?.uid
-      );
-      const currentParticipantId = currentParticipant?.id || userProfile?.uid || 'unknown';
-      console.log('[addExpense] Current participant ID:', currentParticipantId);
-      
-      // If no one specified as payer, default to current user
-      if (Object.keys(paidBy).length === 0) {
-        paidBy[currentParticipantId] = totalAmount;
-        console.log('[addExpense] Defaulted paidBy to current user:', paidBy);
-      }
-      
-      // Process split type
-      const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
-      let splitParticipants = Array.isArray(draft.splitParticipants) ? draft.splitParticipants.slice() : [];
-      if (!splitParticipants.length) {
-        splitParticipants = (trip?.participants || []).map((p) => p.id);
-      }
-      console.log('[addExpense] Split type:', splitType, 'participants:', splitParticipants);
-      
-      // Process manual split amounts
-      const manualSplit: Expense['manualSplit'] = {};
-      if (splitType === 'manual') {
-        for (const pid of splitParticipants) {
-          const v = draft.manualSplit?.[pid]?.value;
-          const n = parseFloat(String(v));
-          if (!Number.isNaN(n) && n >= 0) {
-            manualSplit[pid] = { type: 'amount', value: n };
-          }
+
+      // Validate
+      if (mode === 'percent') {
+        const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
+        if (Math.abs(sum - 100) > 0.01) {
+          throw new Error('Percentage split must sum to 100%.');
         }
-        
-        // Validate manual split sums to total
+      } else {
         const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
         if (Math.abs(sum - totalAmount) > 0.01) {
-          throw new Error('[addExpense] Manual split must sum to total amount.');
+          throw new Error('Manual split must sum to total amount.');
         }
-        console.log('[addExpense] Manual split:', manualSplit);
       }
-      
-      // ===== FIX: Use regular Date instead of serverTimestamp() for array items =====
-      const expense: Expense = {
-        id: crypto.randomUUID(),
-        category: draft.category,
-        description: draft.description.trim(),
-        totalAmount,
-        paidBy,
-        splitType,
-        splitParticipants,
-        manualSplit,
-        createdBy: userProfile?.uid || 'unknown',
-        // ✅ Use regular Date for items that go in arrays
-        createdAt: Timestamp.fromDate(new Date()),
-      };
-      
-      console.log('[addExpense] Created expense object:', expense);
-      
-      // Save to Firebase
-      const updated = [...expenses, expense];
-      console.log('[addExpense] Saving updated expenses array with', updated.length, 'items');
-      
-      await setDoc(
-        tripDoc(trip.id),
-        { 
-          expenses: updated, 
-          updatedAt: serverTimestamp()  // ✅ serverTimestamp() OK at document level
-        },
-        { merge: true }
-      );
-      
-      console.log('[addExpense] Successfully saved expense to Firebase');
-      
-      // Reset the form
-      setNewExpense(emptyExpenseDraft);
-      console.log('[addExpense] Reset expense form');
-      
-    } catch (error) {
-      console.error('[addExpense] Error adding expense:', error);
-      throw new Error(`[addExpense] Failed to add expense: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+
+    const expense: Expense = {
+      id: crypto.randomUUID(),
+      category: draft.category,
+      description: draft.description.trim(),
+      totalAmount,
+      paidBy,
+      splitType,
+      splitParticipants,
+      manualSplit,
+      createdBy: userProfile?.uid || 'unknown',
+      createdAt: Timestamp.fromDate(new Date()),
+    };
+
+    const updated = [...expenses, expense];
+    await setDoc(
+      tripDoc(trip.id),
+      { expenses: updated, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+
+    setNewExpense(emptyExpenseDraft);
   };
 
   const updateExpense = async (id: string, draft: ExpenseDraft) => {
-    if (!trip) {
-      throw new Error('[updateExpense] No trip loaded');
+    if (!trip) throw new Error('No trip loaded');
+
+    const totalAmount = Math.max(0, parseFloat(String(draft.totalAmount || '')));
+    if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
+
+    const paidBy: Record<string, number> = {};
+    for (const [pid, val] of Object.entries(draft.paidBy || {})) {
+      const n = parseFloat(String(val));
+      if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
     }
-    
-    try {
-      console.log('[updateExpense] Updating expense:', id, 'with draft:', draft);
-      
-      const totalAmount = Math.max(0, parseFloat(String(draft.totalAmount || '')));
-      
-      if (totalAmount <= 0) {
-        throw new Error('[updateExpense] Enter an amount greater than 0.');
-      }
-      
-      const paidBy: Record<string, number> = {};
-      for (const [pid, val] of Object.entries(draft.paidBy || {})) {
-        const n = parseFloat(String(val));
-        if (!Number.isNaN(n) && n > 0) {
-          paidBy[pid] = n;
+
+    const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
+    if (sumPaid > 0 && Math.abs(sumPaid - totalAmount) > 0.01) {
+      throw new Error('Payer amounts must sum to the total amount.');
+    }
+
+    const currentParticipant = participants.find(
+      p => p.userId === userProfile?.uid || p.addedBy === userProfile?.uid
+    );
+    const currentParticipantId = currentParticipant?.id || userProfile?.uid || 'unknown';
+
+    if (Object.keys(paidBy).length === 0) {
+      paidBy[currentParticipantId] = totalAmount;
+    }
+
+    const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
+    let splitParticipants = Array.isArray(draft.splitParticipants)
+      ? draft.splitParticipants.slice()
+      : [];
+    if (!splitParticipants.length) {
+      splitParticipants = (trip.participants || []).map((p) => p.id);
+    }
+
+    const manualSplit: Expense['manualSplit'] = {};
+    if (splitType === 'manual') {
+      const mode = draft.manualSplitMode || 'amount';
+      for (const pid of splitParticipants) {
+        const v = draft.manualSplit?.[pid]?.value;
+        const n = parseFloat(String(v));
+        if (!Number.isNaN(n) && n >= 0) {
+          manualSplit[pid] = { type: mode, value: n };
         }
       }
-      
-      const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
-      if (sumPaid > 0 && Math.abs(sumPaid - totalAmount) > 0.01) {
-        throw new Error('[updateExpense] Payer amounts must sum to the total amount.');
-      }
-      
-      // Use participant ID consistently
-      const currentParticipant = participants.find(
-        p => p.userId === userProfile?.uid || p.addedBy === userProfile?.uid
-      );
-      const currentParticipantId = currentParticipant?.id || userProfile?.uid || 'unknown';
-      
-      if (Object.keys(paidBy).length === 0) {
-        paidBy[currentParticipantId] = totalAmount;
-      }
-      
-      const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
-      let splitParticipants = Array.isArray(draft.splitParticipants) ? draft.splitParticipants.slice() : [];
-      if (!splitParticipants.length) {
-        splitParticipants = (trip.participants || []).map((p) => p.id);
-      }
-      
-      const manualSplit: Expense['manualSplit'] = {};
-      if (splitType === 'manual') {
-        for (const pid of splitParticipants) {
-          const v = draft.manualSplit?.[pid]?.value;
-          const n = parseFloat(String(v));
-          if (!Number.isNaN(n) && n >= 0) {
-            manualSplit[pid] = { type: 'amount', value: n };
-          }
+
+      if (mode === 'percent') {
+        const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
+        if (Math.abs(sum - 100) > 0.01) {
+          throw new Error('Percentage split must sum to 100%.');
         }
+      } else {
         const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
         if (Math.abs(sum - totalAmount) > 0.01) {
-          throw new Error('[updateExpense] Manual split must sum to total amount.');
+          throw new Error('Manual split must sum to total amount.');
         }
       }
-      
-      const updated = expenses.map((e) =>
-        e.id === id
-          ? {
-              ...e,
-              category: draft.category,
-              description: draft.description.trim(),
-              totalAmount,
-              paidBy,
-              splitType,
-              splitParticipants,
-              manualSplit,
-              // Keep original createdAt, don't update it
-            }
-          : e
-      );
-      
-      await setDoc(
-        tripDoc(trip.id),
-        { expenses: updated, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-      
-      console.log('[updateExpense] Successfully updated expense');
-      
-    } catch (error) {
-      console.error('[updateExpense] Error updating expense:', error);
-      throw new Error(`[updateExpense] Failed to update expense: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+
+    const updated = expenses.map((e) =>
+      e.id === id
+        ? {
+            ...e,
+            category: draft.category,
+            description: draft.description.trim(),
+            totalAmount,
+            paidBy,
+            splitType,
+            splitParticipants,
+            manualSplit,
+          }
+        : e
+    );
+
+    await setDoc(
+      tripDoc(trip.id),
+      { expenses: updated, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const deleteExpense = async (id: string) => {
-    if (!trip) {
-      throw new Error('[deleteExpense] No trip loaded');
-    }
-    
-    try {
-      console.log('[deleteExpense] Deleting expense:', id);
-      
-      const updated = expenses.filter((e) => e.id !== id);
-      
-      await setDoc(
-        tripDoc(trip.id),
-        { expenses: updated, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-      
-      console.log('[deleteExpense] Successfully deleted expense');
-      
-    } catch (error) {
-      console.error('[deleteExpense] Error deleting expense:', error);
-      throw new Error(`[deleteExpense] Failed to delete expense: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    if (!trip) throw new Error('No trip loaded');
+    const updated = expenses.filter((e) => e.id !== id);
+    await setDoc(
+      tripDoc(trip.id),
+      { expenses: updated, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const addPayment = async (
@@ -471,67 +404,62 @@ export const TripProvider = ({
     description: string,
     authorUid: string
   ) => {
-    if (!trip) {
-      throw new Error('[addPayment] No trip loaded');
-    }
-    
-    try {
-      console.log('[addPayment] Adding payment from', payerId, 'to', payeeId, 'amount:', amount);
-      
-      // ===== FIX: Use regular Date instead of serverTimestamp() for array items =====
-      const payment: Payment = {
-        id: crypto.randomUUID(),
-        payerId,
-        payeeId,
-        amount,
-        description,
-        date: new Date().toISOString(),
-        createdBy: authorUid,
-        // ✅ Use regular Date for items that go in arrays
-        createdAt: Timestamp.fromDate(new Date()),
-      };
-      
-      const updated = [...payments, payment];
-      
-      await setDoc(
-        tripDoc(trip.id),
-        { 
-          payments: updated, 
-          updatedAt: serverTimestamp()  // ✅ serverTimestamp() OK at document level
-        },
-        { merge: true }
-      );
-      
-      console.log('[addPayment] Successfully added payment');
-      
-    } catch (error) {
-      console.error('[addPayment] Error adding payment:', error);
-      throw new Error(`[addPayment] Failed to add payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    if (!trip) throw new Error('No trip loaded');
+
+    const payment: Payment = {
+      id: crypto.randomUUID(),
+      payerId,
+      payeeId,
+      amount,
+      description,
+      date: new Date().toISOString(),
+      createdBy: authorUid,
+      createdAt: Timestamp.fromDate(new Date()),
+    };
+
+    const updated = [...payments, payment];
+    await setDoc(
+      tripDoc(trip.id),
+      { payments: updated, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const deletePayment = async (id: string) => {
-    if (!trip) {
-      throw new Error('[deletePayment] No trip loaded');
-    }
-    
-    try {
-      console.log('[deletePayment] Deleting payment:', id);
-      
-      const updated = payments.filter((p) => p.id !== id);
-      
-      await setDoc(
-        tripDoc(trip.id),
-        { payments: updated, updatedAt: serverTimestamp() },
-        { merge: true }
-      );
-      
-      console.log('[deletePayment] Successfully deleted payment');
-      
-    } catch (error) {
-      console.error('[deletePayment] Error deleting payment:', error);
-      throw new Error(`[deletePayment] Failed to delete payment: ${error instanceof Error ? error.message : 'Unknown error'}`);
-    }
+    if (!trip) throw new Error('No trip loaded');
+    const updated = payments.filter((p) => p.id !== id);
+    await setDoc(
+      tripDoc(trip.id),
+      { payments: updated, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  };
+
+  const updateSpendCaps = async (caps: SpendCap[]) => {
+    if (!trip) throw new Error('No trip loaded');
+    await setDoc(
+      tripDoc(trip.id),
+      { spendCaps: caps, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  };
+
+  const updateOverageSplit = async (split: OverageSplit) => {
+    if (!trip) throw new Error('No trip loaded');
+    await setDoc(
+      tripDoc(trip.id),
+      { overageSplit: split, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  };
+
+  const updateDefaultSplit = async (split: DefaultSplit) => {
+    if (!trip) throw new Error('No trip loaded');
+    await setDoc(
+      tripDoc(trip.id),
+      { defaultSplit: split, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
   };
 
   const value: TripContextValue = {
@@ -541,6 +469,7 @@ export const TripProvider = ({
     payments,
     auditEntries,
     balances,
+    cappedBalances,
     settlements,
     newExpense,
     setNewExpense,
@@ -552,6 +481,9 @@ export const TripProvider = ({
     deleteExpense,
     addPayment,
     deletePayment,
+    updateSpendCaps,
+    updateOverageSplit,
+    updateDefaultSplit,
   };
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;

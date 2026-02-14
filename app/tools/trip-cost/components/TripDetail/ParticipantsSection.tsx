@@ -75,9 +75,8 @@ export default function ParticipantsSection({
         });
         
         setRegisteredUsers(users);
-        console.log('[ParticipantsSection] Loaded registered users:', users);
-      } catch (error) {
-        console.error('[ParticipantsSection] Error loading users:', error);
+      } catch {
+        // Failed to load registered users
       } finally {
         setLoadingUsers(false);
       }
@@ -122,9 +121,8 @@ export default function ParticipantsSection({
       await addParticipant(name.trim(), userProfile.uid);
       setName('');
       setIsSearchMode(false);
-    } catch (err) {
+    } catch {
       setError('Failed to add participant. Please try again.');
-      console.error('Error adding participant:', err);
     }
   };
 
@@ -138,9 +136,8 @@ export default function ParticipantsSection({
       setSelectedUser(null);
       setShowDropdown(false);
       setIsSearchMode(false);
-    } catch (err) {
+    } catch {
       setError('Failed to add registered user. Please try again.');
-      console.error('Error adding registered user:', err);
     }
   };
 
@@ -155,8 +152,8 @@ export default function ParticipantsSection({
         await updateParticipant(editingId, editName.trim());
         setEditingId(null);
         setEditName('');
-      } catch (err) {
-        console.error('Error updating participant:', err);
+      } catch {
+        // Failed to update participant
       }
     }
   };
