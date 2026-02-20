@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>3-Day Rolling Average Nutrition Tracker</title>
+  <title>Rolling Balance Nutrition Tracker</title>
 
   <!-- UI libs -->
   <link rel="stylesheet" href="/shared-styles.css">
@@ -279,7 +279,7 @@
     <header class="section-card surface-1 text-primary p-6 mb-8 flex justify-between items-center">
       <div class="flex items-center">
         <i class="fas fa-chart-pie text-3xl text-accent" style="margin-right:.75rem;"></i>
-        <h1 class="text-2xl font-bold">3-Day Rolling Nutrition Tracker</h1>
+        <h1 class="text-2xl font-bold">Rolling Balance Nutrition Tracker</h1>
       </div>
       <div class="flex items-center space-x-4">
         <span id="user-status" class="text-primary text-sm hidden"></span>
@@ -462,19 +462,11 @@
             </div>
           </div>
 
-          <!-- Banking Config -->
+          <!-- Additional Macro Settings -->
           <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Banking System Configuration</h3>
+            <h3 class="text-lg font-semibold text-secondary mb-2">Additional Macro Settings</h3>
             <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-fatMinimum" class="block text-sm font-medium text-primary">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum"></div>
-              <div><label for="target-correctionDivisor" class="block text-sm font-medium text-primary">Correction Divisor</label><input type="number" step="0.1" id="target-correctionDivisor" title="Bank divided by this number equals raw correction (default: 3)"></div>
-              <div><label for="target-decayHalfLife" class="block text-sm font-medium text-primary">Decay Half-Life (days)</label><input type="number" step="0.1" id="target-decayHalfLife" title="How quickly past days lose influence (default: 3.5)"></div>
-              <div class="grid grid-cols-1 gap-4">
-                <h4 class="text-md font-medium text-secondary">Safety Caps (% of base calories)</h4>
-                <div><label for="target-smallBankCap" class="block text-sm font-medium text-primary">Small Bank Cap (%)</label><input type="number" step="1" id="target-smallBankCap" title="Max adjustment when |bank| less than base calories (default: 15%)"></div>
-                <div><label for="target-mediumBankCap" class="block text-sm font-medium text-primary">Medium Bank Cap (%)</label><input type="number" step="1" id="target-mediumBankCap" title="Max adjustment when |bank| at least base calories (default: 30%)"></div>
-                <div><label for="target-largeBankCap" class="block text-sm font-medium text-primary">Large Bank Cap (%)</label><input type="number" step="1" id="target-largeBankCap" title="Max adjustment when |bank| at least two times base calories (default: 40%)"></div>
-              </div>
+              <div><label for="target-fatMinimum" class="block text-sm font-medium text-primary">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum" title="Minimum daily fat intake in grams (default: 50)"></div>
             </div>
           </div>
 

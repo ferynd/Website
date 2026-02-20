@@ -1,18 +1,17 @@
 /**
  * @file src/ui/dashboard.js
- * @description Complete dashboard with fixed banking calculations, collapsible details, and configurable safety caps
+ * @description Dashboard with rolling 7-day balance calculations and micronutrient tracking
  */
 
 import { state } from '../state/store.js';
-import { 
-  allNutrients, 
-  nutrients, 
-  dailyTrackedNutrients, 
+import {
+  allNutrients,
+  nutrients,
+  dailyTrackedNutrients,
   averagedNutrients,
-  BANKING_CONFIG, 
-  DAILY_DECAY_FACTOR, 
+  BANKING_CONFIG,
   BankingHelpers,
-  DEFAULT_TARGETS 
+  DEFAULT_TARGETS
 } from '../constants.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
@@ -23,24 +22,15 @@ import { CONFIG } from '../config.js';
 // CONFIGURATION (Top of file for easy modification)
 // =========================
 const DASHBOARD_CONFIG = {
-  // Banking calculation settings
+  // Debug settings
   ENABLE_BANKING_DEBUG: true, // Set to false to disable banking debug logs
-  SHOW_MATH_VERIFICATION: true, // Show math verification in UI when debugging
-  MAX_BANK_HISTORY_DAYS: 30, // How many days back to look for bank calculations
-  
+  LOG_CALCULATION_STEPS: true, // Log detailed calculation steps
+
   // UI behavior settings
   DEFAULT_COLLAPSED_DETAILS: true, // Start with bank details collapsed
-  ANIMATION_DURATION: 300, // Milliseconds for UI animations
-  SHOW_CONFIGURATION_HINTS: true, // Show helpful tooltips in settings
-  
-  // Micronutrient display settings
-  SHOW_TRAINING_SCALING_BADGES: true, // Show "Training+" badges on scaled nutrients
-  GROUP_NUTRIENTS_BY_TYPE: true, // Group nutrients in logical sections
-  SHOW_PERCENTAGE_PROGRESS: true, // Show percentage bars for nutrients
-  
+
   // Error handling
   SHOW_ERRORS_IN_UI: true, // Display errors in the dashboard
-  LOG_CALCULATION_STEPS: true, // Log detailed calculation steps
   FALLBACK_TO_DEFAULTS: true // Use default values if user settings are invalid
 };
 
@@ -158,236 +148,166 @@ const pctClass = (v, tgt) => {
 };
 
 // =========================
-// MAIN BANKING CALCULATION
+// MAIN BANKING CALCULATION (Rolling 7-Day Balance)
 // =========================
 
 /**
- * Calculate banking data with consistent math and configurable parameters
+ * Calculate rolling 7-day balance data.
+ *
+ * Each day's "target" = baseGoal + that day's trainingBump.
+ * The 7-day window budget = sum of all 7 individual day targets.
+ * Today's target = windowBudget − sumPast6Actual + todaysTrainingBump
+ *               = (baseKcal × 7 + sumPastTrainingBumps + todaysTrainingBump) − sumPast6Actual
+ *
+ * Eating exactly your target on a training day is budget-neutral — the extra
+ * training calories are accounted for in the window budget, not treated as
+ * overages. If you hit today's target exactly, tomorrow's target (on a rest
+ * day) will be exactly baseGoal.
+ *
  * @param {string} targetDateStr - Target date in YYYY-MM-DD format
  * @returns {Object} Banking calculation results
  */
 export function calculateBankingData(targetDateStr) {
   try {
     debugLog('calc-start', { targetDateStr, userId: state.userId });
-    
+
     const targetDate = new Date(`${targetDateStr}T00:00:00`);
-    
+    const windowDays = BANKING_CONFIG.ROLLING_WINDOW_DAYS; // 7
+
     // Get base parameters with proper fallbacks
     const baseKcal = parseFloat(state.baselineTargets.calories) || BANKING_CONFIG.BASE_KCAL;
     const proteinG = parseFloat(state.baselineTargets.protein) || BANKING_CONFIG.PROTEIN_G;
-    
+
     // Proper fat minimum handling with hierarchy
     let fatFloorG;
     if (state.baselineTargets.fatMinimum !== undefined && state.baselineTargets.fatMinimum !== null) {
       fatFloorG = parseFloat(state.baselineTargets.fatMinimum);
-      debugLog('fat-selection', 'Using fatMinimum from settings');
     } else if (state.baselineTargets.fat !== undefined && state.baselineTargets.fat !== null) {
       fatFloorG = parseFloat(state.baselineTargets.fat);
-      debugLog('fat-selection', 'Using fat from settings');
     } else {
       fatFloorG = BANKING_CONFIG.FAT_FLOOR_G;
-      debugLog('fat-selection', 'Using default fat floor');
     }
-    
-    // Get configurable banking parameters
-    const decayHalfLife = BankingHelpers.getDecayHalfLife(state.baselineTargets);
-    const correctionDivisor = BankingHelpers.getCorrectionDivisor(state.baselineTargets);
-    const dynamicDecayFactor = BankingHelpers.calculateDecayFactor(decayHalfLife);
-    
-    debugLog('banking-config', {
-      baseKcal,
-      proteinG,
-      fatFloorG,
-      decayHalfLife,
-      correctionDivisor,
-      dynamicDecayFactor: dynamicDecayFactor.toFixed(4)
-    });
-    
-    // Calculate bank with consistent tracking
-    const bankContributions = [];
-    let totalBankBalance = 0;
-    let olderContributions = 0;
-    let recentContributions = 0;
-    
-    // Track all contributions for debugging
-    const allContributions = [];
-    
-    // *** FIX: Loop from 1 to MAX_BANK_HISTORY_DAYS to calculate the bank based on *past* days only.
-    // This excludes the current day (ageInDays = 0) from the calculation.
-    for (let i = 1; i <= DASHBOARD_CONFIG.MAX_BANK_HISTORY_DAYS; i++) {
+
+    // Sum actual intake AND training bumps for the previous (windowDays - 1) days.
+    const pastDays = [];
+    let sumPast6Actual = 0;
+    let sumPastTrainingBumps = 0;
+
+    for (let i = 1; i < windowDays; i++) {
       const pastDate = getPastDate(targetDate, i);
       const pastDateStr = formatDate(pastDate);
       const entry = state.dailyEntries.get(pastDateStr) || {};
-      
+
       const actualKcal = parseFloat(entry.calories) || 0;
       const trainingBump = parseFloat(entry.trainingBump) || 0;
       const dailyTarget = baseKcal + trainingBump;
-      const deltaKcal = actualKcal - dailyTarget;
-      
-      const ageInDays = i;
-      const decayWeight = Math.pow(dynamicDecayFactor, ageInDays);
-      const contribution = deltaKcal * decayWeight;
-      
-      // Add to total bank
-      totalBankBalance += contribution;
-      
-      // Store all for debugging
-      if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS) {
-        allContributions.push({
-          date: pastDateStr,
-          actualKcal,
-          trainingBump,
-          dailyTarget,
-          deltaKcal,
-          ageInDays,
-          decayWeight: decayWeight.toFixed(4),
-          contribution: contribution.toFixed(2)
-        });
-      }
-      
-      // Only store last 5 days for display
-      if (i <= 5) {
-        const contributionData = {
-          date: pastDate,
-          dateStr: pastDateStr,
-          deltaKcal,
-          ageInDays,
-          decayWeight,
-          contribution,
-          dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
-        };
-        bankContributions.push(contributionData);
-        recentContributions += contribution;
-      } else {
-        // Accumulate older contributions
-        olderContributions += contribution;
-      }
+      const delta = actualKcal - dailyTarget;
+
+      pastDays.push({
+        date: pastDate,
+        dateStr: pastDateStr,
+        actualKcal,
+        trainingBump,
+        dailyTarget,
+        delta,
+        dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
+      });
+
+      sumPast6Actual += actualKcal;
+      sumPastTrainingBumps += trainingBump;
     }
-    
-    // Use consistent bank balance for all calculations
-    const bankToday = totalBankBalance;
-    
-    // Calculate correction using configurable parameters
-    const rawCorrection = -bankToday / correctionDivisor;
-    const capPct = BankingHelpers.getCorrectionCap(bankToday, baseKcal, state.baselineTargets);
-    const capValue = capPct * baseKcal;
-    const correction = BankingHelpers.clamp(rawCorrection, -capValue, capValue);
-    
-    // Today's targets
+
+    // Today's entry (for training bump)
     const todaysEntry = state.dailyEntries.get(targetDateStr) || {};
     const todaysTrainingBump = parseFloat(todaysEntry.trainingBump) || 0;
-    const todayKcalTarget = BankingHelpers.roundToNearest25(baseKcal + todaysTrainingBump + correction);
-    
+
+    // The full 7-day window budget includes base calories for every day
+    // PLUS training bumps for every day (past and today).
+    const windowBudget = baseKcal * windowDays + sumPastTrainingBumps + todaysTrainingBump;
+
+    // Rolling target = how much of the window budget remains for today.
+    const rollingTarget = windowBudget - sumPast6Actual;
+
+    // Bank balance = how much today's target differs from a plain rest-day goal.
+    // Positive = you under-ate relative to targets = more room today.
+    // Negative = you over-ate relative to targets = less room today.
+    const bankBalance = rollingTarget - baseKcal - todaysTrainingBump;
+
+    // Round to nearest 25 for display friendliness
+    const todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
+
     // Calculate macros with training scaling
     const scaledProteinG = getScaledNutrientTarget('protein', proteinG, todaysTrainingBump);
     const proteinKcal = scaledProteinG * 4;
     const fatKcal = fatFloorG * 9;
     const remainingKcal = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
     const carbsG = Math.round(remainingKcal / 4);
-    
-    // Math verification
-    const calculatedTotal = Math.round(recentContributions + olderContributions);
-    const mathIsConsistent = Math.abs(calculatedTotal - Math.round(bankToday)) <= 1;
-    
-    // DEBUGGING: Comprehensive calculation logging
-    if (DASHBOARD_CONFIG.ENABLE_BANKING_DEBUG) {
-      debugLog('calculation-summary', {
-        totalBankBalance: Math.round(totalBankBalance),
-        recentContributions: Math.round(recentContributions),
-        olderContributions: Math.round(olderContributions),
-        mathVerification: { calculatedTotal, bankToday: Math.round(bankToday), consistent: mathIsConsistent },
-        rawCorrection: Math.round(rawCorrection),
-        capPct: (capPct * 100).toFixed(1) + '%',
-        appliedCorrection: Math.round(correction),
-        todayTarget: todayKcalTarget
-      });
-      
-      if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS && allContributions.length > 0) {
-        console.table(allContributions.slice(0, 10)); // Show most recent 10 days of contributions
-      }
-      
-      if (!mathIsConsistent) {
-        console.warn('🚨 BANKING MATH INCONSISTENCY:', {
-          expected: Math.round(bankToday),
-          calculated: calculatedTotal,
-          difference: calculatedTotal - Math.round(bankToday)
-        });
-      }
+
+    // Sum of all past day targets (for display in the table footer)
+    const sumPastTargets = baseKcal * pastDays.length + sumPastTrainingBumps;
+
+    debugLog('calculation-summary', {
+      windowBudget,
+      sumPast6Actual: Math.round(sumPast6Actual),
+      sumPastTrainingBumps,
+      todaysTrainingBump,
+      rollingTarget: Math.round(rollingTarget),
+      bankBalance: Math.round(bankBalance),
+      todayKcalTarget
+    });
+
+    if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS && pastDays.length > 0) {
+      console.table(pastDays.map(d => ({
+        date: d.dateStr,
+        actual: Math.round(d.actualKcal),
+        training: d.trainingBump,
+        target: d.dailyTarget,
+        delta: Math.round(d.delta)
+      })));
     }
-    
+
     return {
-      // Core banking values
-      bankToday: Math.round(bankToday),
-      bankContributions,
-      olderContributions: Math.round(olderContributions),
-      recentContributions: Math.round(recentContributions),
-      
+      // Core rolling balance values
+      bankBalance: Math.round(bankBalance),
+      pastDays,
+      sumPast6Actual: Math.round(sumPast6Actual),
+      sumPastTargets: Math.round(sumPastTargets),
+      windowBudget: Math.round(windowBudget),
+
       // Base parameters
       baseKcal,
       todaysTrainingBump,
-      
-      // Correction calculation
-      rawCorrection: Math.round(rawCorrection),
-      capPct,
-      correction: Math.round(correction),
-      
+
       // Target results
       todayKcalTarget,
       proteinG: Math.round(scaledProteinG),
       fatG: Math.round(fatFloorG),
       carbsG,
       trainingIntensity: getTrainingIntensity(todaysTrainingBump),
-      
-      // Configuration details for display
+
+      // Config
       config: {
-        decayHalfLife,
-        correctionDivisor,
-        decayFactor: dynamicDecayFactor,
-        smallBankCap: state.baselineTargets.smallBankCap || DEFAULT_TARGETS.smallBankCap,
-        mediumBankCap: state.baselineTargets.mediumBankCap || DEFAULT_TARGETS.mediumBankCap,
-        largeBankCap: state.baselineTargets.largeBankCap || DEFAULT_TARGETS.largeBankCap
-      },
-      
-      // Debug information
-      debug: {
-        mathIsConsistent,
-        calculatedTotal,
-        allContributionsCount: allContributions.length
+        windowDays
       }
     };
-    
+
   } catch (error) {
     handleError('calculate-banking', error, 'Failed to calculate banking data');
-    
-    // Return safe fallback values
+
     return {
-      bankToday: 0,
-      bankContributions: [],
-      olderContributions: 0,
-      recentContributions: 0,
+      bankBalance: 0,
+      pastDays: [],
+      sumPast6Actual: 0,
+      sumPastTargets: 0,
+      windowBudget: BANKING_CONFIG.BASE_KCAL * BANKING_CONFIG.ROLLING_WINDOW_DAYS,
       baseKcal: BANKING_CONFIG.BASE_KCAL,
       todaysTrainingBump: 0,
-      rawCorrection: 0,
-      capPct: 0.15,
-      correction: 0,
       todayKcalTarget: BANKING_CONFIG.BASE_KCAL,
       proteinG: BANKING_CONFIG.PROTEIN_G,
       fatG: BANKING_CONFIG.FAT_FLOOR_G,
       carbsG: 0,
       trainingIntensity: 'rest',
-      config: {
-        decayHalfLife: BANKING_CONFIG.DECAY_HALF_LIFE_DAYS,
-        correctionDivisor: BANKING_CONFIG.CORRECTION_DIVISOR,
-        decayFactor: DAILY_DECAY_FACTOR,
-        smallBankCap: DEFAULT_TARGETS.smallBankCap,
-        mediumBankCap: DEFAULT_TARGETS.mediumBankCap,
-        largeBankCap: DEFAULT_TARGETS.largeBankCap
-      },
-      debug: {
-        mathIsConsistent: false,
-        calculatedTotal: 0,
-        allContributionsCount: 0
-      }
+      config: { windowDays: BANKING_CONFIG.ROLLING_WINDOW_DAYS }
     };
   }
 }
@@ -575,8 +495,8 @@ function setupCollapsibleHandlers() {
     setupToggle(
       'recent-days-toggle',
       'recent-days-content',
-      'Show Recent Days Breakdown',
-      'Hide Recent Days Breakdown'
+      'Show Past 6 Days',
+      'Hide Past 6 Days'
     );
 
   } catch (error) {
@@ -596,63 +516,53 @@ function renderInfoBox() {
     <div class="mb-6 p-4 surface-2 rounded-lg border">
       <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
       <div class="text-sm text-muted space-y-1">
-        <p><strong>Smart Banking:</strong> Your "bank" tracks when you eat more (+) or less (-) than planned. Recent days matter most.</p>
-        <p><strong>Auto-Adjust:</strong> Tomorrow's calories adjust to balance your bank, with safety limits (15-40% max change).</p>
-        <p><strong>Training Days:</strong> Select your workout type above - this adds calories and scales electrolytes appropriately.</p>
+        <p><strong>Rolling 7-Day Balance:</strong> Your calorie budget is tracked over a 7-day window. Under-eat one day? You get extra the next. Over-eat? Tomorrow's target drops.</p>
+        <p><strong>Auto-Correct:</strong> Today's target is set so that hitting it exactly makes tomorrow's target your base goal. The system trues up naturally.</p>
+        <p><strong>Training Days:</strong> Select your workout type above — this adds calories and scales electrolytes appropriately.</p>
       </div>
     </div>
   `;
 }
 
 /**
- * Render banking panel with consistent math verification
+ * Render banking panel showing rolling 7-day balance
  */
 function renderBankingPanel(bankingData) {
-  const { bankToday, bankContributions, olderContributions, recentContributions, debug } = bankingData;
-  
-  const dayDecayPcts = [1, 2, 3, 4, 5].map(days => {
-    const pct = Math.pow(DAILY_DECAY_FACTOR, days) * 100;
-    return Math.round(pct);
-  });
-  
-  const contributionRows = bankContributions.map((c, index) => `
+  const { bankBalance, pastDays, sumPast6Actual, sumPastTargets, windowBudget, baseKcal } = bankingData;
+
+  const contributionRows = pastDays.map(d => `
     <tr>
-      <td class="px-3 py-2 text-sm font-medium">${c.dayName}</td>
-      <td class="px-3 py-2 text-sm text-center">${c.deltaKcal > 0 ? '+' : ''}${Math.round(c.deltaKcal)}</td>
-      <td class="px-3 py-2 text-sm text-center text-muted">${dayDecayPcts[index]}%</td>
-      <td class="px-3 py-2 text-sm text-center font-medium ${c.contribution > 0 ? 'text-negative' : 'text-positive'}">
-        ${c.contribution > 0 ? '+' : ''}${Math.round(c.contribution)}
+      <td class="px-3 py-2 text-sm font-medium">${d.dayName}${d.trainingBump > 0 ? ' <span class="text-xs text-accent">+' + d.trainingBump + '</span>' : ''}</td>
+      <td class="px-3 py-2 text-sm text-center">${Math.round(d.actualKcal)}</td>
+      <td class="px-3 py-2 text-sm text-center text-muted">${Math.round(d.dailyTarget)}</td>
+      <td class="px-3 py-2 text-sm text-center font-medium ${d.delta > 0 ? 'text-negative' : d.delta < 0 ? 'text-positive' : 'text-muted'}">
+        ${d.delta > 0 ? '+' : ''}${Math.round(d.delta)}
       </td>
     </tr>
   `).join('');
-  
-  const bankExplanation = bankToday > 0 
-    ? "You've been eating more than planned - tomorrow's calories will be reduced to balance this out."
-    : bankToday < 0 
-    ? "You've been eating less than planned - tomorrow's calories will be increased to balance this out."
-    : "You're perfectly balanced - no adjustment needed!";
-  
+
+  const bankExplanation = bankBalance > 0
+    ? `You have ${bankBalance} kcal banked from under-eating — today's target is higher to use it.`
+    : bankBalance < 0
+    ? `You're ${Math.abs(bankBalance)} kcal over budget — today's target is lower to balance it out.`
+    : "You're perfectly on track — no adjustment needed!";
+
   return `
     <div class="section-card p-4">
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-responsive-xl font-bold text-secondary">🏦 Your Calorie Bank</h3>
+        <h3 class="text-responsive-xl font-bold text-secondary">🏦 Rolling 7-Day Balance</h3>
         <button id="recent-days-toggle" class="btn-subtle">
             <i class="fas fa-chevron-down"></i>
-            <span class="toggle-text">Show Recent Days Breakdown</span>
+            <span class="toggle-text">Show Past 6 Days</span>
         </button>
       </div>
 
       <div class="p-3 rounded-lg border surface-2">
         <div class="text-center">
-          <div class="text-responsive-2xl font-bold ${bankToday > 0 ? 'text-positive' : bankToday < 0 ? 'text-negative' : 'text-muted'}">
-            ${bankToday > 0 ? '+' : ''}${bankToday} kcal
+          <div class="text-responsive-2xl font-bold ${bankBalance > 0 ? 'text-positive' : bankBalance < 0 ? 'text-negative' : 'text-muted'}">
+            ${bankBalance > 0 ? '+' : ''}${bankBalance} kcal
           </div>
           <p class="text-sm text-muted mt-1">${bankExplanation}</p>
-          ${!debug.mathIsConsistent && DASHBOARD_CONFIG.SHOW_MATH_VERIFICATION ? `
-            <div class="mt-2 p-2 border surface-2 text-xs text-warning rounded">
-              ⚠️ Math verification: Expected ${bankToday}, calculated ${debug.calculatedTotal} (difference: ${debug.calculatedTotal - bankToday})
-            </div>
-          ` : ''}
         </div>
       </div>
 
@@ -662,33 +572,30 @@ function renderBankingPanel(bankingData) {
             <thead class="surface-2">
               <tr>
                 <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Day</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Actual</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Goal</th>
                 <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Over/Under</th>
-                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Weight</th>
-                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Impact Today</th>
               </tr>
             </thead>
             <tbody>
               ${contributionRows}
-              <tr class="border-t-2 border">
-                <td colspan="3" class="px-3 py-2 text-sm font-medium text-primary italic">Days 6+ ago contribution</td>
-                <td class="px-3 py-2 text-sm text-center font-medium text-primary italic">
-                  ${olderContributions > 0 ? '+' : ''}${Math.round(olderContributions)}
-                </td>
-              </tr>
               <tr class="surface-2 border-t-2 border">
-                <td colspan="3" class="px-3 py-2 text-sm font-medium">Total Bank Balance:</td>
-                <td class="px-3 py-2 text-lg text-center ${bankToday > 0 ? 'text-negative' : bankToday < 0 ? 'text-positive' : 'text-muted'} font-bold">
-                  ${bankToday > 0 ? '+' : ''}${bankToday} kcal
+                <td class="px-3 py-2 text-sm font-medium">Total (6 days)</td>
+                <td class="px-3 py-2 text-sm text-center font-bold">${sumPast6Actual}</td>
+                <td class="px-3 py-2 text-sm text-center font-bold">${sumPastTargets}</td>
+                <td class="px-3 py-2 text-sm text-center font-bold ${bankBalance > 0 ? 'text-positive' : bankBalance < 0 ? 'text-negative' : 'text-muted'}">
+                  ${bankBalance > 0 ? '+' : ''}${bankBalance}
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <p class="mt-3 text-xs text-muted">
-          <strong>How it works:</strong> Recent days have more impact (yesterday = 82%, 2 days = 67%, etc.).
-          After 7-10 days, the impact is nearly zero (≤25%).
-        </p>
+        <div class="mt-3 p-3 surface-2 rounded-lg text-xs text-muted space-y-1">
+          <p><strong>How it works:</strong> Your 7-day calorie budget is ${windowBudget} kcal (${baseKcal}/day × 7 + training bumps).</p>
+          <p>You've consumed ${sumPast6Actual} kcal over the last 6 days against a target of ${sumPastTargets} kcal.</p>
+          <p>If you hit today's target, tomorrow's target resets to exactly ${baseKcal} kcal (on a rest day).</p>
+        </div>
       </div>
     </div>
   `;
@@ -702,10 +609,10 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
   const {
     baseKcal,
     todaysTrainingBump,
-    bankToday,
-    rawCorrection,
-    capPct,
-    correction,
+    bankBalance,
+    sumPast6Actual,
+    sumPastTargets,
+    windowBudget,
     todayKcalTarget,
     proteinG,
     fatG,
@@ -733,16 +640,8 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
   const todaysCarbs = todaysTotals.carbs;
 
   const remainingCalories = todayKcalTarget - todaysCalories;
-  const remainingProtein = proteinG - todaysProtein;
-  const remainingFat = fatG - todaysFat;
-  const remainingCarbs = carbsG - todaysCarbs;
 
   const remainingCaloriesColor = remainingCalories >= 0 ? 'text-muted' : 'text-negative';
-
-  // User-friendly explanations
-  const correctionExplanation = correction === rawCorrection
-    ? "Full bank correction applied"
-    : `Bank correction was ${rawCorrection > 0 ? 'increased' : 'reduced'} to stay within safe limits (${Math.round(capPct * 100)}% max)`;
 
   const renderMacroRow = (label, current, target) => {
     const remaining = target - current;
@@ -769,7 +668,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
     renderMacroRow('Fat (minimum)', todaysFat, fatG),
     renderMacroRow('Carbs (flexible)', todaysCarbs, carbsG)
   ].join('');
-  
+
   return `
     <div class="mb-6 card p-6 shadow-lg">
       <h3 class="text-responsive-xl font-bold text-secondary mb-4">🍽️ Today's Nutrition Plan</h3>
@@ -795,34 +694,40 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
         <div id="bank-details-content" class="${DASHBOARD_CONFIG.DEFAULT_COLLAPSED_DETAILS ? 'hidden' : ''} mt-4 space-y-2 text-sm">
           <div class="grid grid-cols-1 gap-2">
             <div class="flex justify-between items-center p-2 surface-1 rounded border">
-              <span>Your base daily calories:</span>
-              <span class="font-medium">${baseKcal} kcal</span>
+              <span>7-day window budget:</span>
+              <span class="font-medium">${windowBudget} kcal</span>
             </div>
-            <div class="flex justify-between items-center p-2 rounded border ${todaysTrainingBump > 0 ? 'surface-2' : 'surface-1'}">
-              <span>Training fuel today:</span>
-              <span class="font-medium">${todaysTrainingBump > 0 ? '+' : ''}${todaysTrainingBump} kcal</span>
+            <div class="flex justify-between items-center p-2 surface-1 rounded border">
+              <span>Past 6 days target:</span>
+              <span class="font-medium">${sumPastTargets} kcal (base + training)</span>
+            </div>
+            <div class="flex justify-between items-center p-2 surface-1 rounded border">
+              <span>Past 6 days consumed:</span>
+              <span class="font-medium">${sumPast6Actual} kcal</span>
+            </div>
+            <div class="flex justify-between items-center p-2 surface-1 rounded border">
+              <span>Remaining for today:</span>
+              <span class="font-medium">${windowBudget - sumPast6Actual} kcal</span>
             </div>
             ${todaysTrainingBump > 0 ? `
-              <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]}</p>
+              <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
             ` : ''}
-            <div class="flex justify-between items-center p-2 rounded border ${bankToday !== 0 ? 'surface-2' : 'surface-1'}">
-              <span>Bank balance adjustment:</span>
-              <span class="font-medium">${correction > 0 ? '+' : ''}${correction} kcal</span>
-            </div>
-            ${correction !== rawCorrection ? `
-              <p class="text-xs text-muted px-2 italic">${correctionExplanation}</p>
+            ${bankBalance !== 0 ? `
+              <div class="flex justify-between items-center p-2 rounded border surface-2">
+                <span>Rolling balance adjustment:</span>
+                <span class="font-medium ${bankBalance > 0 ? 'text-positive' : 'text-negative'}">${bankBalance > 0 ? '+' : ''}${bankBalance} kcal</span>
+              </div>
             ` : ''}
             <div class="mt-2 pt-2 border-t border">
               <div class="text-xs text-muted space-y-1">
-                <div>Raw bank correction: ${rawCorrection > 0 ? '+' : ''}${rawCorrection} kcal (bank ÷ ${bankingData.config.correctionDivisor})</div>
-                <div>Safety cap: ±${Math.round(capPct * 100)}% of base (±${Math.round(capPct * baseKcal)} kcal max)</div>
-                <div>Final calculation: ${baseKcal} + ${todaysTrainingBump} + ${correction} = <strong>${todayKcalTarget} kcal</strong></div>
+                <div>Final target: ${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal</strong></div>
+                <div>If you eat exactly this, tomorrow's target will be ${baseKcal} kcal (on a rest day).</div>
               </div>
             </div>
           </div>
         </div>
       </div>
-      
+
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <!-- Macro Breakdown -->
         <div class="md:col-span-3">
@@ -993,22 +898,6 @@ export function populateSettingsForm() {
         fatMinInput.value = BANKING_CONFIG.FAT_FLOOR_G;
       }
     }
-    
-    // Handle banking configuration parameters
-    const bankingFields = [
-      { id: 'target-smallBankCap', key: 'smallBankCap', default: DEFAULT_TARGETS.smallBankCap },
-      { id: 'target-mediumBankCap', key: 'mediumBankCap', default: DEFAULT_TARGETS.mediumBankCap },
-      { id: 'target-largeBankCap', key: 'largeBankCap', default: DEFAULT_TARGETS.largeBankCap },
-      { id: 'target-correctionDivisor', key: 'correctionDivisor', default: DEFAULT_TARGETS.correctionDivisor },
-      { id: 'target-decayHalfLife', key: 'decayHalfLife', default: DEFAULT_TARGETS.decayHalfLife }
-    ];
-    
-    bankingFields.forEach(({ id, key, default: defaultValue }) => {
-      const input = document.getElementById(id);
-      if (input) {
-        input.value = state.baselineTargets[key] || defaultValue;
-      }
-    });
     
     // Handle all other micronutrients
     allNutrients.forEach(nutrient => {
