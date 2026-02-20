@@ -154,10 +154,15 @@ const pctClass = (v, tgt) => {
 /**
  * Calculate rolling 7-day balance data.
  *
- * The idea: your total calorie budget over any 7-day window is baseGoal × 7.
- * Today's target = (baseGoal × 7) − (sum of last 6 days' actual intake) + todaysTrainingBump.
- * If you hit today's target exactly, tomorrow's target will be exactly baseGoal
- * (because the 7-day window slides forward and the oldest day drops off).
+ * Each day's "target" = baseGoal + that day's trainingBump.
+ * The 7-day window budget = sum of all 7 individual day targets.
+ * Today's target = windowBudget − sumPast6Actual + todaysTrainingBump
+ *               = (baseKcal × 7 + sumPastTrainingBumps + todaysTrainingBump) − sumPast6Actual
+ *
+ * Eating exactly your target on a training day is budget-neutral — the extra
+ * training calories are accounted for in the window budget, not treated as
+ * overages. If you hit today's target exactly, tomorrow's target (on a rest
+ * day) will be exactly baseGoal.
  *
  * @param {string} targetDateStr - Target date in YYYY-MM-DD format
  * @returns {Object} Banking calculation results
@@ -183,13 +188,10 @@ export function calculateBankingData(targetDateStr) {
       fatFloorG = BANKING_CONFIG.FAT_FLOOR_G;
     }
 
-    // Rolling window budget = baseGoal × windowDays
-    const windowBudget = baseKcal * windowDays;
-
-    // Sum actual intake for the previous (windowDays - 1) days (days 1..6 ago).
-    // These are the days that, together with today, form the 7-day window.
+    // Sum actual intake AND training bumps for the previous (windowDays - 1) days.
     const pastDays = [];
-    let sumPast6 = 0;
+    let sumPast6Actual = 0;
+    let sumPastTrainingBumps = 0;
 
     for (let i = 1; i < windowDays; i++) {
       const pastDate = getPastDate(targetDate, i);
@@ -198,36 +200,38 @@ export function calculateBankingData(targetDateStr) {
 
       const actualKcal = parseFloat(entry.calories) || 0;
       const trainingBump = parseFloat(entry.trainingBump) || 0;
-      const dailyBaseTarget = baseKcal + trainingBump;
-      const delta = actualKcal - dailyBaseTarget;
+      const dailyTarget = baseKcal + trainingBump;
+      const delta = actualKcal - dailyTarget;
 
       pastDays.push({
         date: pastDate,
         dateStr: pastDateStr,
         actualKcal,
         trainingBump,
-        dailyBaseTarget,
+        dailyTarget,
         delta,
         dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
       });
 
-      sumPast6 += actualKcal;
+      sumPast6Actual += actualKcal;
+      sumPastTrainingBumps += trainingBump;
     }
 
     // Today's entry (for training bump)
     const todaysEntry = state.dailyEntries.get(targetDateStr) || {};
     const todaysTrainingBump = parseFloat(todaysEntry.trainingBump) || 0;
 
-    // Rolling balance = how much of the 7-day budget remains for today
-    // todayTarget = windowBudget - sumPast6 + todaysTrainingBump
-    // Training bumps from past days are already baked into their actual intake totals,
-    // but today's training bump is additive since it represents extra fuel needed today.
-    const rollingTarget = windowBudget - sumPast6 + todaysTrainingBump;
+    // The full 7-day window budget includes base calories for every day
+    // PLUS training bumps for every day (past and today).
+    const windowBudget = baseKcal * windowDays + sumPastTrainingBumps + todaysTrainingBump;
 
-    // The "bank balance" is conceptually how far ahead or behind you are.
-    // Positive bank = you under-ate in the past = more room today.
-    // Negative bank = you over-ate in the past = less room today.
-    const bankBalance = rollingTarget - baseKcal - todaysTrainingBump; // i.e. windowBudget - sumPast6 - baseKcal
+    // Rolling target = how much of the window budget remains for today.
+    const rollingTarget = windowBudget - sumPast6Actual;
+
+    // Bank balance = how much today's target differs from a plain rest-day goal.
+    // Positive = you under-ate relative to targets = more room today.
+    // Negative = you over-ate relative to targets = less room today.
+    const bankBalance = rollingTarget - baseKcal - todaysTrainingBump;
 
     // Round to nearest 25 for display friendliness
     const todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
@@ -239,9 +243,13 @@ export function calculateBankingData(targetDateStr) {
     const remainingKcal = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
     const carbsG = Math.round(remainingKcal / 4);
 
+    // Sum of all past day targets (for display in the table footer)
+    const sumPastTargets = baseKcal * pastDays.length + sumPastTrainingBumps;
+
     debugLog('calculation-summary', {
       windowBudget,
-      sumPast6: Math.round(sumPast6),
+      sumPast6Actual: Math.round(sumPast6Actual),
+      sumPastTrainingBumps,
       todaysTrainingBump,
       rollingTarget: Math.round(rollingTarget),
       bankBalance: Math.round(bankBalance),
@@ -253,7 +261,7 @@ export function calculateBankingData(targetDateStr) {
         date: d.dateStr,
         actual: Math.round(d.actualKcal),
         training: d.trainingBump,
-        baseTarget: d.dailyBaseTarget,
+        target: d.dailyTarget,
         delta: Math.round(d.delta)
       })));
     }
@@ -262,8 +270,9 @@ export function calculateBankingData(targetDateStr) {
       // Core rolling balance values
       bankBalance: Math.round(bankBalance),
       pastDays,
-      sumPast6: Math.round(sumPast6),
-      windowBudget,
+      sumPast6Actual: Math.round(sumPast6Actual),
+      sumPastTargets: Math.round(sumPastTargets),
+      windowBudget: Math.round(windowBudget),
 
       // Base parameters
       baseKcal,
@@ -288,7 +297,8 @@ export function calculateBankingData(targetDateStr) {
     return {
       bankBalance: 0,
       pastDays: [],
-      sumPast6: 0,
+      sumPast6Actual: 0,
+      sumPastTargets: 0,
       windowBudget: BANKING_CONFIG.BASE_KCAL * BANKING_CONFIG.ROLLING_WINDOW_DAYS,
       baseKcal: BANKING_CONFIG.BASE_KCAL,
       todaysTrainingBump: 0,
@@ -518,13 +528,13 @@ function renderInfoBox() {
  * Render banking panel showing rolling 7-day balance
  */
 function renderBankingPanel(bankingData) {
-  const { bankBalance, pastDays, sumPast6, windowBudget, baseKcal } = bankingData;
+  const { bankBalance, pastDays, sumPast6Actual, sumPastTargets, windowBudget, baseKcal } = bankingData;
 
   const contributionRows = pastDays.map(d => `
     <tr>
-      <td class="px-3 py-2 text-sm font-medium">${d.dayName}</td>
+      <td class="px-3 py-2 text-sm font-medium">${d.dayName}${d.trainingBump > 0 ? ' <span class="text-xs text-accent">+' + d.trainingBump + '</span>' : ''}</td>
       <td class="px-3 py-2 text-sm text-center">${Math.round(d.actualKcal)}</td>
-      <td class="px-3 py-2 text-sm text-center text-muted">${Math.round(d.dailyBaseTarget)}</td>
+      <td class="px-3 py-2 text-sm text-center text-muted">${Math.round(d.dailyTarget)}</td>
       <td class="px-3 py-2 text-sm text-center font-medium ${d.delta > 0 ? 'text-negative' : d.delta < 0 ? 'text-positive' : 'text-muted'}">
         ${d.delta > 0 ? '+' : ''}${Math.round(d.delta)}
       </td>
@@ -571,8 +581,8 @@ function renderBankingPanel(bankingData) {
               ${contributionRows}
               <tr class="surface-2 border-t-2 border">
                 <td class="px-3 py-2 text-sm font-medium">Total (6 days)</td>
-                <td class="px-3 py-2 text-sm text-center font-bold">${sumPast6}</td>
-                <td class="px-3 py-2 text-sm text-center font-bold">${Math.round(baseKcal * (pastDays.length))}</td>
+                <td class="px-3 py-2 text-sm text-center font-bold">${sumPast6Actual}</td>
+                <td class="px-3 py-2 text-sm text-center font-bold">${sumPastTargets}</td>
                 <td class="px-3 py-2 text-sm text-center font-bold ${bankBalance > 0 ? 'text-positive' : bankBalance < 0 ? 'text-negative' : 'text-muted'}">
                   ${bankBalance > 0 ? '+' : ''}${bankBalance}
                 </td>
@@ -582,9 +592,9 @@ function renderBankingPanel(bankingData) {
         </div>
 
         <div class="mt-3 p-3 surface-2 rounded-lg text-xs text-muted space-y-1">
-          <p><strong>How it works:</strong> Your 7-day calorie budget is ${windowBudget} kcal (${baseKcal} × 7).</p>
-          <p>You've consumed ${sumPast6} kcal over the last 6 days, leaving the remainder for today.</p>
-          <p>If you hit today's target, tomorrow's target resets to exactly ${baseKcal} kcal.</p>
+          <p><strong>How it works:</strong> Your 7-day calorie budget is ${windowBudget} kcal (${baseKcal}/day × 7 + training bumps).</p>
+          <p>You've consumed ${sumPast6Actual} kcal over the last 6 days against a target of ${sumPastTargets} kcal.</p>
+          <p>If you hit today's target, tomorrow's target resets to exactly ${baseKcal} kcal (on a rest day).</p>
         </div>
       </div>
     </div>
@@ -600,7 +610,8 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
     baseKcal,
     todaysTrainingBump,
     bankBalance,
-    sumPast6,
+    sumPast6Actual,
+    sumPastTargets,
     windowBudget,
     todayKcalTarget,
     proteinG,
@@ -658,8 +669,6 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
     renderMacroRow('Carbs (flexible)', todaysCarbs, carbsG)
   ].join('');
 
-  const rollingAdjustment = todayKcalTarget - baseKcal - todaysTrainingBump;
-
   return `
     <div class="mb-6 card p-6 shadow-lg">
       <h3 class="text-responsive-xl font-bold text-secondary mb-4">🍽️ Today's Nutrition Plan</h3>
@@ -685,34 +694,34 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
         <div id="bank-details-content" class="${DASHBOARD_CONFIG.DEFAULT_COLLAPSED_DETAILS ? 'hidden' : ''} mt-4 space-y-2 text-sm">
           <div class="grid grid-cols-1 gap-2">
             <div class="flex justify-between items-center p-2 surface-1 rounded border">
-              <span>7-day calorie budget:</span>
-              <span class="font-medium">${windowBudget} kcal (${baseKcal} × 7)</span>
+              <span>7-day window budget:</span>
+              <span class="font-medium">${windowBudget} kcal</span>
             </div>
             <div class="flex justify-between items-center p-2 surface-1 rounded border">
-              <span>Consumed in last 6 days:</span>
-              <span class="font-medium">${sumPast6} kcal</span>
+              <span>Past 6 days target:</span>
+              <span class="font-medium">${sumPastTargets} kcal (base + training)</span>
+            </div>
+            <div class="flex justify-between items-center p-2 surface-1 rounded border">
+              <span>Past 6 days consumed:</span>
+              <span class="font-medium">${sumPast6Actual} kcal</span>
             </div>
             <div class="flex justify-between items-center p-2 surface-1 rounded border">
               <span>Remaining for today:</span>
-              <span class="font-medium">${windowBudget - sumPast6} kcal</span>
+              <span class="font-medium">${windowBudget - sumPast6Actual} kcal</span>
             </div>
             ${todaysTrainingBump > 0 ? `
-              <div class="flex justify-between items-center p-2 rounded border surface-2">
-                <span>Training fuel today:</span>
-                <span class="font-medium">+${todaysTrainingBump} kcal</span>
-              </div>
-              <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]}</p>
+              <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
             ` : ''}
-            ${rollingAdjustment !== 0 ? `
-              <div class="flex justify-between items-center p-2 rounded border ${rollingAdjustment > 0 ? 'surface-2' : 'surface-2'}">
+            ${bankBalance !== 0 ? `
+              <div class="flex justify-between items-center p-2 rounded border surface-2">
                 <span>Rolling balance adjustment:</span>
-                <span class="font-medium ${rollingAdjustment > 0 ? 'text-positive' : 'text-negative'}">${rollingAdjustment > 0 ? '+' : ''}${rollingAdjustment} kcal</span>
+                <span class="font-medium ${bankBalance > 0 ? 'text-positive' : 'text-negative'}">${bankBalance > 0 ? '+' : ''}${bankBalance} kcal</span>
               </div>
             ` : ''}
             <div class="mt-2 pt-2 border-t border">
               <div class="text-xs text-muted space-y-1">
-                <div>Final target: ${windowBudget} − ${sumPast6}${todaysTrainingBump > 0 ? ` + ${todaysTrainingBump}` : ''} = <strong>${todayKcalTarget} kcal</strong></div>
-                <div>If you eat exactly this, tomorrow's target will be ${baseKcal} kcal (your base goal).</div>
+                <div>Final target: ${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal</strong></div>
+                <div>If you eat exactly this, tomorrow's target will be ${baseKcal} kcal (on a rest day).</div>
               </div>
             </div>
           </div>
