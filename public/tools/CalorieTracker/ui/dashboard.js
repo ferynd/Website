@@ -17,6 +17,7 @@ import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
 import { CONFIG } from '../config.js';
+import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -441,11 +442,13 @@ export function updateDashboard() {
       ${renderBankingPanel(bankingData)}
       ${renderTodaysPlanPanel(bankingData, todaysEntry)}
       ${renderChartSection()}
+      ${renderAnalysisSection()}
       ${renderMicronutrientSections(micronutrientMetrics)}
     `;
 
     initializeChartControls();
-    
+    initAnalysisEvents();
+
     // Set up event handlers for collapsible sections
     setupCollapsibleHandlers();
 

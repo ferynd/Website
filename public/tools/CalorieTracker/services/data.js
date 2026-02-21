@@ -5,7 +5,7 @@
 import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import { handleError, debugLog } from '../utils/ui.js';
-import { fetchTargets, fetchRecentEntries, loadSavedFoodItems, saveDailyEntry } from './firebase.js';
+import { fetchTargets, fetchRecentEntries, loadSavedFoodItems, saveDailyEntry, fetchWeightEntries } from './firebase.js';
 import { updateDashboard, populateSettingsForm } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { allNutrients } from '../constants.js';
@@ -68,14 +68,16 @@ export async function loadUserData() {
     debugLog('data-load', 'Starting parallel data fetch for user', state.userId);
     
     // Fetch all necessary data in parallel for better performance.
-    const [targets, entries] = await Promise.all([
+    const [targets, entries, weightEntries] = await Promise.all([
       fetchTargets(),
       fetchRecentEntries(),
+      fetchWeightEntries(),
     ]);
-    
+
     state.baselineTargets = targets;
     state.dailyEntries = entries;
-    debugLog('data-load', 'Core data loaded', { targetsCount: Object.keys(targets).length, entriesCount: entries.size });
+    state.weightEntries = weightEntries;
+    debugLog('data-load', 'Core data loaded', { targetsCount: Object.keys(targets).length, entriesCount: entries.size, weightCount: weightEntries.size });
 
     // Load food items after initial data is fetched.
     await loadSavedFoodItems();
