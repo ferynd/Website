@@ -64,6 +64,14 @@ function median(arr) {
   return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/** Population standard deviation (returns 0 for fewer than 2 elements) */
+function stdDev(arr) {
+  if (arr.length < 2) return 0;
+  const mean = arr.reduce((a, b) => a + b, 0) / arr.length;
+  const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / (arr.length - 1);
+  return Math.sqrt(variance);
+}
+
 /** Median absolute deviation */
 function mad(arr) {
   const med = median(arr);
@@ -418,6 +426,10 @@ export function estimateBMR(rows) {
     return impliedBMR - fittedBMR;
   });
   const adaptation = Math.round(median(adaptResiduals));
+  // SD of the residuals: captures both true day-to-day variation and logging noise
+  // (missed entries or incorrect amounts shift the apparent energy balance, so this
+  // is a combined "biological + measurement" uncertainty, not just physiology).
+  const adaptationSD = Math.round(stdDev(adaptResiduals));
 
   // Current TDEE estimate for a rest day
   const restPal = bestPals[0] || 1.3;
@@ -434,6 +446,7 @@ export function estimateBMR(rows) {
     bmr_current: Math.round(bmrBase + adaptation),
     bmr_baseline: Math.round(bmrBase),
     adaptation,
+    adaptationSD,
     tdee_current: tdeeRecent,
     tdee_rest_day: tdeeRestDay,
     score: bestScore,
@@ -479,10 +492,12 @@ export function imputeCalories(rows, bmrModel) {
       continue;
     }
 
-    // Gate 3: need enough future weight readings
+    // Gate 3: need enough future weight readings (use the full configured threshold,
+    // not Math.min(..., 3) which would silently cap it to 3 and allow imputation
+    // on far sparser follow-up data than IMPUTE_MIN_FUTURE_WEIGHTS advertises).
     const futureWeights = result.slice(i + 1, i + 1 + C.IMPUTE_MIN_FUTURE_WEIGHTS)
       .filter(fr => fr.weight_lb != null);
-    if (futureWeights.length < Math.min(C.IMPUTE_MIN_FUTURE_WEIGHTS, 3)) {
+    if (futureWeights.length < C.IMPUTE_MIN_FUTURE_WEIGHTS) {
       r.impute_status = 'pending';
       continue;
     }
@@ -552,6 +567,114 @@ export function detectPlateau(rows) {
   }
 
   return { isPlateaued, slopeLbPerWeek, daysCovered: recent.length, message };
+}
+
+// ==========================================
+// BLANK DAY POPULATION
+// ==========================================
+
+/**
+ * Return all days eligible to be filled with estimated nutrient data.
+ *
+ * A day qualifies when:
+ *  - Its date is on or after the first date that has REAL (non-imputed) food data.
+ *  - The engine successfully imputed a calorie value for it (calories_imputed === true).
+ *
+ * Each returned object is a ready-to-save Firestore entry whose macros sum to
+ * the imputed calorie total (protein and fat are taken from the user's baseline
+ * targets; carbs fill the remainder).  All micronutrient fields are set to the
+ * baseline targets so that the saved document represents a plausible day.
+ *
+ * @param {Array}  rows            - Output of imputeCalories() (rows with calories_imputed).
+ * @param {Map}    dailyEntries    - state.dailyEntries
+ * @param {object} baselineTargets - state.baselineTargets
+ * @returns {Array<object>} Estimated daily entries, one per eligible blank day.
+ */
+export function getBlankDaysForPopulation(rows, dailyEntries, baselineTargets) {
+  // Find the earliest date with genuinely logged food (not imputed).
+  const firstFoodRow = rows.find(r => {
+    if (!r.calories_imputed && r.calories != null) {
+      const entry = dailyEntries.get(r.date);
+      return entry && (parseFloat(entry.calories) || 0) > 0;
+    }
+    return false;
+  });
+  if (!firstFoodRow) return [];
+  const firstFoodDate = firstFoodRow.date;
+
+  const MICRO_KEYS = [
+    'fiber', 'potassium', 'magnesium', 'sodium', 'calcium', 'choline',
+    'vitaminB12', 'folate', 'vitaminC', 'vitaminB6',
+    'vitaminA', 'vitaminD', 'vitaminE', 'vitaminK',
+    'selenium', 'iodine', 'phosphorus', 'iron', 'zinc', 'omega3',
+  ];
+
+  // ── Compute per-nutrient averages from all actually-logged days ──────────
+  // Using the historical average of what the user actually ate is a better
+  // estimate for a blank day than the static baseline target, which may differ
+  // substantially from habitual intake.  Falls back to the baseline target only
+  // when no logged data exists for a given nutrient.
+  const loggedEntries = [];
+  for (const entry of dailyEntries.values()) {
+    if ((parseFloat(entry.calories) || 0) > 0) loggedEntries.push(entry);
+  }
+
+  function avgNutrient(key, fallback) {
+    const vals = loggedEntries
+      .map(e => parseFloat(e[key]))
+      .filter(v => !isNaN(v) && v > 0);
+    if (vals.length === 0) return fallback ?? 0;
+    return vals.reduce((a, b) => a + b, 0) / vals.length;
+  }
+
+  const avgProtein = avgNutrient('protein', parseFloat(baselineTargets.protein) || 150);
+  const avgFat     = avgNutrient('fat',     parseFloat(baselineTargets.fatMinimum ?? baselineTargets.fat) || 50);
+
+  // Pre-compute micro averages once (not per-row).
+  const avgMicros = {};
+  for (const key of MICRO_KEYS) {
+    avgMicros[key] = avgNutrient(key, parseFloat(baselineTargets[key]) || 0);
+  }
+
+  return rows
+    .filter(r => r.date >= firstFoodDate && r.calories_imputed)
+    .map(r => {
+      const existingEntry = dailyEntries.get(r.date) || {};
+      const trainingBump = parseFloat(existingEntry.trainingBump) || 0;
+      const estCals = r.calories;
+
+      // Carbs absorb the remainder after protein and fat floors.
+      const carbsG = Math.max(0, Math.round((estCals - avgProtein * 4 - avgFat * 9) / 4));
+
+      // The food item carries ALL nutrients so that when the user adjusts quantity
+      // (or removes the item), updateItemQuantity() correctly recomputes every
+      // entry-level nutrient total — macros and micros alike.
+      const foodItem = {
+        id: `est-${r.date}`,
+        name: "Day's estimate",
+        quantity: 1,
+        timestamp: `${r.date}T12:00:00.000Z`,
+        calories: estCals,
+        protein: avgProtein,
+        fat: avgFat,
+        carbs: carbsG,
+        ...avgMicros,
+      };
+
+      // Build the entry with nutrient totals mirroring qty=1 × foodItem values.
+      const entry = {
+        date: r.date,
+        calories: estCals,
+        protein: avgProtein,
+        fat: avgFat,
+        carbs: carbsG,
+        trainingBump,
+        foodItems: [foodItem],
+        ...avgMicros,
+      };
+
+      return entry;
+    });
 }
 
 // ==========================================

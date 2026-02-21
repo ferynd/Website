@@ -119,6 +119,30 @@ export async function saveDailyEntry(dateStr, entry) {
 }
 
 /**
+ * Saves a pre-built daily entry that already contains its own foodItems array.
+ * Unlike saveDailyEntry(), this does NOT overwrite foodItems with state.dailyFoodItems,
+ * making it safe to call for historical days without corrupting today's food log.
+ * Used by the blank-day population feature in analysisUI.js.
+ * @param {string} dateStr - The date key in YYYY-MM-DD format.
+ * @param {object} entry   - Fully-formed entry object including entry.foodItems.
+ */
+export async function saveEstimatedEntry(dateStr, entry) {
+  if (!state.userId) return showMessage('Cannot save entry. Not authenticated.', true);
+  try {
+    // Ensure every food item has an id.
+    if (Array.isArray(entry.foodItems)) {
+      entry.foodItems = entry.foodItems.map(it => ({ ...it, id: it.id || safeId() }));
+    }
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), entry);
+    state.dailyEntries.set(dateStr, entry);
+    debugLog('firebase-save', 'Estimated entry saved', dateStr);
+  } catch (e) {
+    handleError('estimated-entry-save', e, 'Failed to save estimated entry.');
+    throw e;
+  }
+}
+
+/**
  * Fetches all daily entries for the user from Firestore, ordered by date.
  * @returns {Promise<Array<object>>} A promise that resolves to an array of all entry objects.
  */
