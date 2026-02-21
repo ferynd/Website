@@ -289,7 +289,7 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
             sum += parseFloat(entry[nutrient]) || 0;
           }
           const avg = sum / 3;
-          avg3Data.push(target > 0 ? (avg / target) * 100 : 0);
+          avg3Data.push(targetValues[displayIdx] > 0 ? (avg / targetValues[displayIdx]) * 100 : 0);
           avg3Values.push(avg);
         });
 
@@ -335,7 +335,7 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
             sum += parseFloat(entry[nutrient]) || 0;
           }
           const avg = sum / 7;
-          avg7Data.push(target > 0 ? (avg / target) * 100 : 0);
+          avg7Data.push(targetValues[displayIdx] > 0 ? (avg / targetValues[displayIdx]) * 100 : 0);
           avg7Values.push(avg);
         });
 
