@@ -52,6 +52,48 @@ function localTimestamp(d) {
 }
 
 /**
+ * Split a single CSV row respecting RFC-4180 double-quote rules.
+ *
+ * A naive split(',') breaks when a field like "Jul 13, 2017 07:20:13 AM" is
+ * surrounded by quotes — the embedded comma is split into separate columns,
+ * causing the date parser to receive a partial string and silently drop the row.
+ *
+ * For tab-delimited files the split is always naive because tabs never appear
+ * inside quoted date/time fields from common scale exports.
+ *
+ * @param {string} line  - A single row from the file.
+ * @param {string} delim - ',' or '\t'.
+ * @returns {string[]}
+ */
+function splitCsvRow(line, delim) {
+  if (delim !== ',') return line.split(delim);
+
+  const fields = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        // Escaped double-quote inside a quoted field ("" → ")
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (ch === ',' && !inQuotes) {
+      fields.push(current.trim());
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  fields.push(current.trim());
+  return fields;
+}
+
+/**
  * Parse a weight CSV/TSV string into structured entries.
  * @param {string} raw - The raw file content.
  * @returns {Array<{date: string, weight_lb: number, time_min: number, timestamp: string}>}
@@ -63,7 +105,8 @@ export function parseWeightCSV(raw) {
   // Detect delimiter: tab or comma
   const header = lines[0];
   const delim = header.includes('\t') ? '\t' : ',';
-  const cols = header.split(delim).map(c => c.trim().toLowerCase());
+  // Use splitCsvRow so that a quoted header cell (rare but valid) is handled correctly.
+  const cols = splitCsvRow(header, delim).map(c => c.toLowerCase());
 
   // Find the weight and date/time column indices
   const weightIdx = cols.findIndex(c => c.startsWith('weight'));
@@ -77,7 +120,7 @@ export function parseWeightCSV(raw) {
   const entries = [];
 
   for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(delim);
+    const parts = splitCsvRow(lines[i], delim);
     if (parts.length <= Math.max(weightIdx, dateIdx)) continue;
 
     const weightStr = parts[weightIdx].trim();

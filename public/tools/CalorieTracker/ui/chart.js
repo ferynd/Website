@@ -214,21 +214,33 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     // Create datasets for each selected nutrient
     nutrientKeys.forEach((nutrient, idx) => {
       const color = CONFIG.CHART_COLORS[idx % CONFIG.CHART_COLORS.length];
-      
-      // Get target value
-      const target = parseFloat(state.baselineTargets[nutrient]) || 1;
-      
-      // Main bar data (actual values as percentage of target)
-      const actualData = displayLabels.map(dateStr => {
-        const entry = state.dailyEntries.get(dateStr) || {};
-        const actual = parseFloat(entry[nutrient]) || 0;
-        return target > 0 ? (actual / target) * 100 : 0;
-      });
 
-      // Raw actual values for tooltips
+      // For calories, the target is per-date: base goal + that day's training bump.
+      // This mirrors what the daily plan panel shows and the rolling-budget system uses,
+      // so the chart correctly reflects whether the user hit their adjusted target.
+      // For all other nutrients, the baseline target is a fixed value.
+      const baseTarget = parseFloat(state.baselineTargets[nutrient]) || 1;
+      const getDateTarget = (dateStr) => {
+        if (nutrient === 'calories') {
+          const entry = state.dailyEntries.get(dateStr) || {};
+          const bump = parseFloat(entry.trainingBump) || 0;
+          return baseTarget + bump;
+        }
+        return baseTarget;
+      };
+
+      // Per-date target values (used for % bars, tooltips, and the data table)
+      const targetValues = displayLabels.map(dateStr => getDateTarget(dateStr));
+
+      // Main bar data (actual values as percentage of per-date target)
       const actualValues = displayLabels.map(dateStr => {
         const entry = state.dailyEntries.get(dateStr) || {};
         return parseFloat(entry[nutrient]) || 0;
+      });
+
+      const actualData = displayLabels.map((dateStr, i) => {
+        const t = targetValues[i];
+        return t > 0 ? (actualValues[i] / t) * 100 : 0;
       });
 
       // Add main bar dataset with metadata for tooltips
@@ -242,17 +254,18 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
         order: 3, // Bars in back
         // Metadata for tooltip system
         _nutrient: nutrient,
-        _target: target,
+        _target: baseTarget,        // fallback / non-date-sensitive reference
+        _targetValues: targetValues, // per-date targets for accurate tooltip deltas
         _actualValues: actualValues,
         _isAverage: false
       });
 
-      // Populate table data
+      // Populate table data with per-date targets
       displayLabels.forEach((dateStr, i) => {
         tableData[dateStr][nutrient] = {
           actual: actualValues[i],
           percentage: actualData[i],
-          target: target
+          target: targetValues[i]
         };
       });
 
@@ -294,7 +307,8 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
           order: 1,
           // Metadata for tooltip system
           _nutrient: nutrient,
-          _target: target,
+          _target: baseTarget,
+          _targetValues: targetValues,
           _actualValues: avg3Values,
           _isAverage: true,
           _avgType: '3-day'
@@ -339,7 +353,8 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
           order: 2,
           // Metadata for tooltip system
           _nutrient: nutrient,
-          _target: target,
+          _target: baseTarget,
+          _targetValues: targetValues,
           _actualValues: avg7Values,
           _isAverage: true,
           _avgType: '7-day'
@@ -493,20 +508,24 @@ export function updateChart() {
                   const dataset = context.dataset;
                   const dataIndex = context.dataIndex;
                   const nutrient = dataset._nutrient;
-                  const target = dataset._target;
+                  // Use the per-date target when available (calories varies by training bump);
+                  // fall back to the static baseline target for all other nutrients.
+                  const target = (dataset._targetValues && dataset._targetValues[dataIndex] != null)
+                    ? dataset._targetValues[dataIndex]
+                    : dataset._target;
                   const actual = dataset._actualValues[dataIndex];
-                  
+
                   if (actual === null || actual === undefined) return null;
 
                   const delta = actual - target;
-                  const deltaText = delta >= 0 
-                    ? `+${Math.round(delta)}` 
+                  const deltaText = delta >= 0
+                    ? `+${Math.round(delta)}`
                     : `${Math.round(delta)}`;
-                  
+
                   const nutrientName = formatNutrientName(nutrient);
-                  
+
                   return `${nutrientName}: ${Math.round(actual)} (${deltaText})`;
-                  
+
                 } catch (error) {
                   handleChartError('tooltip-label', error);
                   return 'Error';

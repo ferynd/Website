@@ -479,10 +479,12 @@ export function imputeCalories(rows, bmrModel) {
       continue;
     }
 
-    // Gate 3: need enough future weight readings
+    // Gate 3: need enough future weight readings (use the full configured threshold,
+    // not Math.min(..., 3) which would silently cap it to 3 and allow imputation
+    // on far sparser follow-up data than IMPUTE_MIN_FUTURE_WEIGHTS advertises).
     const futureWeights = result.slice(i + 1, i + 1 + C.IMPUTE_MIN_FUTURE_WEIGHTS)
       .filter(fr => fr.weight_lb != null);
-    if (futureWeights.length < Math.min(C.IMPUTE_MIN_FUTURE_WEIGHTS, 3)) {
+    if (futureWeights.length < C.IMPUTE_MIN_FUTURE_WEIGHTS) {
       r.impute_status = 'pending';
       continue;
     }
@@ -552,6 +554,89 @@ export function detectPlateau(rows) {
   }
 
   return { isPlateaued, slopeLbPerWeek, daysCovered: recent.length, message };
+}
+
+// ==========================================
+// BLANK DAY POPULATION
+// ==========================================
+
+/**
+ * Return all days eligible to be filled with estimated nutrient data.
+ *
+ * A day qualifies when:
+ *  - Its date is on or after the first date that has REAL (non-imputed) food data.
+ *  - The engine successfully imputed a calorie value for it (calories_imputed === true).
+ *
+ * Each returned object is a ready-to-save Firestore entry whose macros sum to
+ * the imputed calorie total (protein and fat are taken from the user's baseline
+ * targets; carbs fill the remainder).  All micronutrient fields are set to the
+ * baseline targets so that the saved document represents a plausible day.
+ *
+ * @param {Array}  rows            - Output of imputeCalories() (rows with calories_imputed).
+ * @param {Map}    dailyEntries    - state.dailyEntries
+ * @param {object} baselineTargets - state.baselineTargets
+ * @returns {Array<object>} Estimated daily entries, one per eligible blank day.
+ */
+export function getBlankDaysForPopulation(rows, dailyEntries, baselineTargets) {
+  // Find the earliest date that has genuinely logged food (not imputed).
+  const firstFoodRow = rows.find(r => {
+    if (!r.calories_imputed && r.calories != null) {
+      const entry = dailyEntries.get(r.date);
+      return entry && (parseFloat(entry.calories) || 0) > 0;
+    }
+    return false;
+  });
+  if (!firstFoodRow) return [];
+  const firstFoodDate = firstFoodRow.date;
+
+  const baseProtein = parseFloat(baselineTargets.protein) || 150;
+  const baseFat = parseFloat(baselineTargets.fatMinimum ?? baselineTargets.fat) || 50;
+
+  const MICRO_KEYS = [
+    'fiber', 'potassium', 'magnesium', 'sodium', 'calcium', 'choline',
+    'vitaminB12', 'folate', 'vitaminC', 'vitaminB6',
+    'vitaminA', 'vitaminD', 'vitaminE', 'vitaminK',
+    'selenium', 'iodine', 'phosphorus', 'iron', 'zinc', 'omega3',
+  ];
+
+  return rows
+    .filter(r => r.date >= firstFoodDate && r.calories_imputed)
+    .map(r => {
+      const existingEntry = dailyEntries.get(r.date) || {};
+      const trainingBump = parseFloat(existingEntry.trainingBump) || 0;
+      const estCals = r.calories;
+
+      // Distribute estimated calories: protein and fat floors first, carbs absorb remainder.
+      const carbsG = Math.max(0, Math.round((estCals - baseProtein * 4 - baseFat * 9) / 4));
+
+      const entry = {
+        date: r.date,
+        calories: estCals,
+        protein: baseProtein,
+        fat: baseFat,
+        carbs: carbsG,
+        trainingBump,
+        // Single food-item record so the food-items list shows the source.
+        foodItems: [{
+          id: `est-${r.date}`,
+          name: 'Auto-estimated (imputed from weight trend)',
+          quantity: 1,
+          timestamp: `${r.date}T12:00:00.000Z`,
+          calories: estCals,
+          protein: baseProtein,
+          fat: baseFat,
+          carbs: carbsG,
+        }],
+      };
+
+      // Fill micronutrients with baseline targets.
+      for (const key of MICRO_KEYS) {
+        const v = parseFloat(baselineTargets[key]);
+        if (!isNaN(v)) entry[key] = v;
+      }
+
+      return entry;
+    });
 }
 
 // ==========================================
