@@ -339,11 +339,7 @@ function renderEnergyDetail(bmrModel) {
 
   const adaptationSign = bmrModel.adaptation > 0 ? '+' : '';
   const adaptationColor = bmrModel.adaptation < 0 ? 'text-negative' : 'text-positive';
-  const adaptationMeaning = bmrModel.adaptation < 0
-    ? 'Your metabolism is running slower than a textbook BMR-for-weight formula predicts — a common response to sustained calorie restriction ("adaptive thermogenesis"). This means your body is burning fewer calories at rest than your weight alone would suggest.'
-    : bmrModel.adaptation > 0
-      ? 'Your metabolism is running faster than a textbook BMR-for-weight formula predicts — consistent with high non-exercise activity, a higher-than-average muscle mass, or a recent period of re-feeding.'
-      : 'Your metabolism is tracking right on the textbook prediction for your weight.';
+  const sd = bmrModel.adaptationSD ?? '?';
 
   return `
     <div class="mb-6 card p-6 shadow-lg">
@@ -357,14 +353,17 @@ function renderEnergyDetail(bmrModel) {
           <div class="text-xs text-muted mt-1">Predicted by the BMR ~ a + b × weight_kg regression fit to your historical data.</div>
         </div>
         <div class="surface-2 rounded-lg border p-4">
-          <div class="text-sm text-muted mb-1">Metabolic Adaptation</div>
-          <div class="font-bold text-lg ${adaptationColor}">${adaptationSign}${bmrModel.adaptation} kcal</div>
-          <div class="text-xs text-muted mt-1">${adaptationMeaning}</div>
+          <div class="text-sm text-muted mb-1">BMR Model Residual (last 21 days)</div>
+          <div class="font-bold text-lg ${adaptationColor}">${adaptationSign}${bmrModel.adaptation} <span class="font-normal text-base">± ${sd} kcal</span></div>
+          <div class="text-xs text-muted mt-1 space-y-1">
+            <p>Median gap between what the weight-regression predicts for your BMR and what your weight-change + calorie data implies. A negative value means the model over-predicts your burn rate; positive means it under-predicts.</p>
+            <p class="text-warning">The ±${sd} kcal spread is a combined uncertainty — it includes both real day-to-day variation in output <em>and</em> logging noise (missed entries, incorrect amounts, or unmeasured water weight). The two cannot be separated from scale + food-log data alone, so treat this figure as a rough signal, not a precise metabolic measurement.</p>
+          </div>
         </div>
         <div class="surface-2 rounded-lg border p-4">
-          <div class="text-sm text-muted mb-1">Current BMR (adapted)</div>
+          <div class="text-sm text-muted mb-1">Adjusted BMR</div>
           <div class="font-bold text-lg text-accent">${bmrModel.bmr_current} kcal</div>
-          <div class="text-xs text-muted mt-1">= Baseline + Adaptation. Used as the base for TDEE estimates below.</div>
+          <div class="text-xs text-muted mt-1">= Baseline + Residual. Used as the base for TDEE estimates below. Carry the ±${sd} kcal uncertainty forward when interpreting those numbers.</div>
         </div>
       </div>
 
