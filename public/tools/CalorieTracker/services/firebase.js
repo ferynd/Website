@@ -269,6 +269,63 @@ export async function deleteFoodItem(foodId) {
   }
 }
 
+// ---------- WEIGHT ENTRIES ----------
+
+/**
+ * Saves a batch of weight entries to Firestore using deterministic document IDs.
+ * Re-uploading the same CSV just overwrites existing docs = automatic dedup.
+ * @param {Array<{date: string, weight_lb: number, time_min: number, timestamp: string}>} entries
+ * @returns {Promise<{saved: number, skipped: number}>}
+ */
+export async function saveWeightEntries(entries) {
+  if (!state.userId) {
+    showMessage('Cannot save weight data. Not authenticated.', true);
+    return { saved: 0, skipped: 0 };
+  }
+  let saved = 0;
+  try {
+    for (const entry of entries) {
+      // Deterministic ID from timestamp: "2017-07-13T07-20-13"
+      const docId = entry.timestamp.replace(/[:/]/g, '-').replace(/\s/g, 'T');
+      const docData = {
+        date: entry.date,
+        weight_lb: entry.weight_lb,
+        time_min: entry.time_min,
+        timestamp: entry.timestamp,
+        source: 'csv_upload'
+      };
+      await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/weightEntries`, docId), docData);
+      state.weightEntries.set(docId, docData);
+      saved++;
+    }
+    debugLog('firebase-weight', `Saved ${saved} weight entries`);
+  } catch (e) {
+    handleError('weight-save', e, 'Failed to save weight entries.');
+  }
+  return { saved, skipped: entries.length - saved };
+}
+
+/**
+ * Fetches all weight entries for the user from Firestore.
+ * @returns {Promise<Map<string, object>>} Map with docIds as keys.
+ */
+export async function fetchWeightEntries() {
+  if (!state.userId) return new Map();
+  const map = new Map();
+  try {
+    const qy = query(
+      collection(db, `artifacts/${appId}/users/${state.userId}/weightEntries`),
+      orderBy('date', 'asc')
+    );
+    const qs = await getDocs(qy);
+    qs.forEach(d => map.set(d.id, d.data()));
+    debugLog('firebase-weight', `Fetched ${map.size} weight entries`);
+  } catch (e) {
+    handleError('weight-fetch', e, 'Failed to fetch weight entries.');
+  }
+  return map;
+}
+
 // ---------- AUTHENTICATION FUNCTIONS ----------
 
 /**

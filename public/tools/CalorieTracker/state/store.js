@@ -15,6 +15,13 @@ export const state = {
   // A Map to store daily nutrition entries, with date strings as keys.
   dailyEntries: new Map(),
 
+  // A Map to store weight entries, with date strings as keys.
+  // Each value: { weight_lb, time_min, timestamp, source }
+  weightEntries: new Map(),
+
+  // Cached analysis results (recomputed when weight/nutrition data changes).
+  analysisResults: null,
+
   // A reference to the Chart.js instance.
   chartInstance: null,
 

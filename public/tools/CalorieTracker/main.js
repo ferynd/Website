@@ -487,6 +487,8 @@ export async function handleLogout() {
     stateObject.dailyEntries.clear();
     stateObject.dailyFoodItems = [];
     stateObject.savedFoodItems.clear();
+    stateObject.weightEntries.clear();
+    stateObject.analysisResults = null;
 
     if (stateObject.chartInstance) {
       stateObject.chartInstance.destroy();
