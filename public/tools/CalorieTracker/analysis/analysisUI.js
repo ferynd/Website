@@ -34,7 +34,7 @@ export function renderAnalysisSection() {
       <!-- CSV Upload -->
       ${renderUploadArea()}
 
-      ${results.error && state.weightEntries.size === 0
+      ${results.error
         ? renderNoDataMessage(results.error)
         : `
           <!-- KPI Cards -->

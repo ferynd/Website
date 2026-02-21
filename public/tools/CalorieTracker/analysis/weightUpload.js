@@ -14,6 +14,42 @@
 import { state } from '../state/store.js';
 import { saveWeightEntries, fetchWeightEntries } from '../services/firebase.js';
 import { showMessage, debugLog } from '../utils/ui.js';
+import { CONFIG } from '../config.js';
+
+/**
+ * Format a Date in the app's local timezone as YYYY-MM-DD.
+ * Mirrors the approach used by nutrition entries (en-CA locale = YYYY-MM-DD).
+ * @param {Date} d
+ * @returns {string}
+ */
+function localDateStr(d) {
+  try {
+    return d.toLocaleDateString('en-CA', { timeZone: CONFIG.TIMEZONE });
+  } catch {
+    // Fallback: manual local-time formatting
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+}
+
+/**
+ * Build a deterministic, timezone-stable timestamp string for Firestore doc IDs.
+ * Uses local time components so re-uploads always produce the same ID
+ * regardless of daylight-saving shifts in toISOString().
+ * @param {Date} d
+ * @returns {string} e.g. "2017-07-13T07-20-13"
+ */
+function localTimestamp(d) {
+  const y = d.getFullYear();
+  const mo = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const h = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  const s = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${mo}-${day}T${h}-${mi}-${s}`;
+}
 
 /**
  * Parse a weight CSV/TSV string into structured entries.
@@ -53,10 +89,10 @@ export function parseWeightCSV(raw) {
     const parsed = new Date(dateStr);
     if (isNaN(parsed.getTime())) continue;
 
-    const date = parsed.toISOString().split('T')[0]; // YYYY-MM-DD
+    // Use local time (matches nutrition entry dates) — NOT UTC via toISOString()
+    const date = localDateStr(parsed);
     const time_min = parsed.getHours() * 60 + parsed.getMinutes();
-    // Compact timestamp for deterministic doc ID
-    const timestamp = parsed.toISOString().replace('Z', '').split('.')[0];
+    const timestamp = localTimestamp(parsed);
 
     entries.push({ date, weight_lb, time_min, timestamp });
   }
