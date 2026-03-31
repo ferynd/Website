@@ -10,6 +10,14 @@ const ctaLinks = [
   { href: '/trips', label: 'Trips' },
 ];
 
+const featuredLinks = [
+  {
+    href: '/trips/JapanTrip.html',
+    label: 'Open Japan Trip',
+    description: 'Drop your file in /public/trips/JapanTrip.html and launch it from here.',
+  },
+];
+
 export default function Home() {
   return (
     <main>
@@ -33,6 +41,18 @@ export default function Home() {
                 }
               >
                 {link.label}
+              </Link>
+            ))}
+          </div>
+          <div className="mt-8 grid gap-3 sm:max-w-xl">
+            {featuredLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="rounded-xl border border-border bg-surface-1 px-4 py-3 transition-all duration-200 ease-in-out hover:border-accent focus-ring"
+              >
+                <p className="text-sm font-semibold text-text">{link.label}</p>
+                <p className="text-sm text-text-2">{link.description}</p>
               </Link>
             ))}
           </div>

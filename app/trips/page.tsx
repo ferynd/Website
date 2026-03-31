@@ -11,6 +11,12 @@ const cardIconSize = 24;
 
 const tripList = [
   {
+    name: 'Japan Trip',
+    description: 'Drop-in page path: /public/trips/JapanTrip.html (served at /trips/JapanTrip.html).',
+    href: '/trips/JapanTrip.html',
+    icon: <Map size={cardIconSize} className="text-accent" />,
+  },
+  {
     name: 'Chicago Trip Itinerary',
     description: 'An itinerary for a trip to Chicago (Static HTML).',
     href: '/trips/ChicagoTripItinerary/index.html',
