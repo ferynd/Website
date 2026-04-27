@@ -17,6 +17,9 @@ app/
   trips/page.tsx     # Lists /public/trips/** itineraries
   style-guide/page.tsx # Shows tokens (colors, spacing) and base components
   tools/trip-cost/   # Firebase-backed app (Auth + Firestore + context + screens)
+  tools/date-night/  # Date Night Roulette (Auth + Firestore + weighted roller + reviews)
+    lib/decay.ts, lib/stacking.ts, lib/roller.ts # Pure roll math modules
+    __tests__/ # Vitest coverage for decay/stacking/rarity behavior
 components/
   Button.tsx, Input.tsx, Select.tsx, Nav.tsx, ProjectCard.tsx
 public/
@@ -43,6 +46,8 @@ public/
   Path: `/tools/trip-cost`
 - **Trip Planner** — React-based itinerary planner backed by Firebase Auth + Firestore with a timeline UI, idea library, and shared settings/map panels.
   Path: `/tools/trip-planner`
+- **Date Night Roulette** — Firebase-backed picker for date ideas/modifiers with veto/accept flow and photo/review history.
+  Path: `/tools/date-night`
 - **Calorie Tracker** — A simple tool to track daily calorie intake (Static HTML).
   Path: `/tools/CalorieTracker/index.html`
 - **Social Security (interactive guide)** — Learn how benefits and earnings interact through simulations.  

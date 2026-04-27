@@ -100,3 +100,19 @@ html, body {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
 }
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: Date Night Roulette reveal animations         */
+/* ------------------------------------------------------------ */
+@keyframes date-reveal {
+  0% { opacity: 0; transform: translateY(8px) scale(0.98); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes sparkle-float {
+  0%, 100% { transform: translateY(0); opacity: .85; }
+  50% { transform: translateY(-6px); opacity: 1; }
+}
+
+.animate-date-reveal { animation: date-reveal 360ms ease-out both; }
+.animate-sparkle-float { animation: sparkle-float 1.6s ease-in-out infinite; }
+.glow-accent { text-shadow: 0 0 12px hsl(var(--accent) / .45); }

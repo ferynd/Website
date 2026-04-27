@@ -15,6 +15,7 @@ This document is the **single source of truth** for automated assistants (Claude
   - `style-guide/page.tsx` showcases UI tokens and basic components
   - `tools/trip-cost/**` Firebase-backed Trip Cost React app
   - `tools/trip-planner/**` Trip Planner scaffold (Firebase Auth + UI timeline)
+  - `tools/date-night/**` Date Night Roulette (Firebase Auth + Firestore roller + reviews; split math in `lib/{decay,stacking,roller}.ts` with Vitest tests)
 - **/components** — Reusable UI (Button via CVA, Input, Select, Nav, ProjectCard)
 - **/public** — Static HTML/CSS/JS sub-sites and assets
   - `/games/**`, `/tools/**`, `/trips/**` each with their own `index.html`

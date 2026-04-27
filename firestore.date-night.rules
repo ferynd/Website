@@ -1,0 +1,20 @@
+// CONFIG: ADMIN_EMAIL must match app/tools/trip-cost/firebaseConfig.ts
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'arkkahdarkkahd@gmail.com';
+    }
+    function isCoupleParticipant() {
+      return isSignedIn() &&
+        request.auth.uid in get(/databases/$(database)/documents/artifacts/date-night/couples/main).data.participantUids;
+    }
+
+    match /artifacts/date-night/{document=**} {
+      allow read, write: if isAdmin() || isCoupleParticipant();
+    }
+  }
+}
