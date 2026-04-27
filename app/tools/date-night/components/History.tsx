@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Input from '@/components/Input';
 import { weeksSince } from '../lib/decay';
+import { toDateOrNull } from '../lib/time';
 import { useDateNight } from '../DateNightContext';
 
 /* ------------------------------------------------------------ */
@@ -60,7 +61,10 @@ export default function History() {
     .sort((a, b) => b.weeks - a.weeks)
     .slice(0, 5);
 
-  const weekSet = new Set(completedRolls.flatMap((roll) => (roll.createdAt ? [weekKey(new Date(roll.createdAt as string).toISOString())] : [])));
+  const weekSet = new Set(completedRolls.flatMap((roll) => {
+    const createdAt = toDateOrNull(roll.createdAt);
+    return createdAt ? [weekKey(createdAt.toISOString())] : [];
+  }));
   let streak = 0;
   let cursor = new Date();
   while (true) {

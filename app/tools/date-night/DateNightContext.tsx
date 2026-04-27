@@ -11,6 +11,7 @@ import {
 } from 'react';
 import {
   addDoc,
+  arrayUnion,
   deleteDoc,
   doc,
   increment,
@@ -187,18 +188,17 @@ export function DateNightProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const saveItem = useCallback(async (kind: 'date' | 'modifier', payload: Partial<DateNightPoolItem>, id?: string) => {
-    const basePayload = {
-      ...DEFAULT_POOL_ITEM,
+    const editablePayload = {
       ...payload,
       baseWeight: Math.min(5, Math.max(0.1, Number(payload.baseWeight ?? 1))),
       updatedAt: serverTimestamp(),
     };
 
     if (kind === 'date') {
-      if (id) await updateDoc(dateDoc(id), basePayload);
-      else await setDoc(doc(datesCol()), { ...basePayload, createdAt: serverTimestamp() });
-    } else if (id) await updateDoc(modifierDoc(id), basePayload);
-    else await setDoc(doc(modifiersCol()), { ...basePayload, createdAt: serverTimestamp() });
+      if (id) await updateDoc(dateDoc(id), editablePayload);
+      else await setDoc(doc(datesCol()), { ...DEFAULT_POOL_ITEM, ...editablePayload, createdAt: serverTimestamp() });
+    } else if (id) await updateDoc(modifierDoc(id), editablePayload);
+    else await setDoc(doc(modifiersCol()), { ...DEFAULT_POOL_ITEM, ...editablePayload, createdAt: serverTimestamp() });
   }, []);
 
   const deleteItem = useCallback(async (kind: 'date' | 'modifier', id: string) => {
@@ -262,12 +262,11 @@ export function DateNightProvider({ children }: { children: ReactNode }) {
     await uploadBytes(objectRef, prepared.blob, { contentType: prepared.contentType });
     const url = await getDownloadURL(objectRef);
 
-    const existing = rolls.find((row) => row.id === rollId)?.photos ?? [];
     await updateDoc(rollDoc(rollId), {
-      photos: [...existing, { url, storagePath, uploadedAt: new Date().toISOString() }],
+      photos: arrayUnion({ url, storagePath, uploadedAt: new Date().toISOString() }),
       updatedAt: serverTimestamp(),
     });
-  }, [rolls]);
+  }, []);
 
   const markCompleted = useCallback(async (rollId: string) => {
     await updateDoc(rollDoc(rollId), { status: 'completed', updatedAt: serverTimestamp() });
