@@ -1,0 +1,20 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'arkkahdarkkahd@gmail.com';
+    }
+    function isCoupleParticipant() {
+      return isSignedIn() &&
+        request.auth.uid in
+        firestore.get(/databases/(default)/documents/artifacts/date-night/couples/main).data.participantUids;
+    }
+
+    match /artifacts/date-night/uploads/{allPaths=**} {
+      allow read, write: if isAdmin() || isCoupleParticipant();
+    }
+  }
+}

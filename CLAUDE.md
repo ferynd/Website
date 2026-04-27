@@ -36,11 +36,12 @@ app/
   page.tsx           # home hub
   loading.tsx        # loading overlay
   games/page.tsx     # lists static games in /public/games
-  tools/page.tsx     # lists tools (Trip Planner + Trip Cost React + static tools)
+  tools/page.tsx     # lists tools (Trip Planner + Trip Cost + Date Night + static tools)
   trips/page.tsx     # lists static trip itineraries
   style-guide/page.tsx
   tools/trip-cost/** # Firebase-backed React app (Auth + Firestore)
   tools/trip-planner/** # Planner scaffold (Auth + UI, data layer pending)
+  tools/date-night/** # Date Night Roulette (Auth + weighted roller + reviews + history, split math libs + Vitest tests)
 
 components/          # Reusable UI: Button, Input, Select, Nav, ProjectCard
 public/

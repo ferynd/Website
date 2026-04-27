@@ -167,3 +167,13 @@ service cloud.firestore {
 - Any change to auth flows, Firestore structure, **rules**, data retention, or external scripts.
 - Any new tool that persists user data or reads sensitive data.
 
+
+
+### Date Night Roulette
+
+- Firestore paths: `artifacts/date-night/**` for `couples/main`, `settings/global`, `dates`, `modifiers`, and `rolls`.
+- Access model: only `participantUids` from `couples/main` plus admin email may read/write tool data.
+- Uploads: Storage path `artifacts/date-night/uploads/**` is participant/admin scoped (see `storage.date-night.rules`).
+- Rules file: `firestore.date-night.rules` mirrors Trip Planner participant/admin checks with a couple-level helper function.
+
+- State-machine note: vetoes increment source counters without creating roll docs; only accepted outcomes create `rolls` entries.
