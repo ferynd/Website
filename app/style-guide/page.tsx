@@ -29,6 +29,7 @@ const colorTokens = [
 
 const buttonVariants = ['primary', 'secondary', 'danger', 'success', 'ghost'] as const;
 const spacingSizes = ['1', '2', '4', '8', '16', '24', '32'];
+const csvUploadHeaders = ['name', 'description', 'rarity', 'frequency', 'baseWeight', 'decayEnabled'];
 
 export default function StyleGuidePage() {
   const [colors, setColors] = useState<{ name: string; label: string; value: string }[]>([]);
@@ -97,6 +98,23 @@ export default function StyleGuidePage() {
           <Select label="Disabled" disabled>
             <option>Option A</option>
           </Select>
+        </div>
+      </section>
+
+      <section>
+        <h2 className="text-3xl font-semibold mb-8">CSV Upload Pattern</h2>
+        <div className="rounded-xl border border-border bg-surface-2/60 p-5 space-y-3">
+          <p className="text-sm text-text-2">
+            Use this pattern when tools support downloadable template files + batch CSV uploads.
+          </p>
+          <div className="rounded-lg border border-border/70 bg-surface-1 p-3">
+            <p className="text-xs uppercase tracking-wide text-text-3 mb-2">Required columns</p>
+            <p className="font-mono text-xs text-text-2 break-all">{csvUploadHeaders.join(', ')}</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" size="sm" type="button">Download template</Button>
+            <Input label="Upload CSV" type="file" />
+          </div>
         </div>
       </section>
 
@@ -172,4 +190,3 @@ export default function StyleGuidePage() {
     </div>
   );
 }
-

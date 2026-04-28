@@ -46,7 +46,7 @@ public/
   Path: `/tools/trip-cost`
 - **Trip Planner** — React-based itinerary planner backed by Firebase Auth + Firestore with a timeline UI, idea library, and shared settings/map panels.
   Path: `/tools/trip-planner`
-- **Date Night Roulette** — Firebase-backed picker for date ideas/modifiers with veto/accept flow and photo/review history.
+- **Date Night Roulette** — Firebase-backed picker for date ideas/modifiers with veto/accept flow, batch CSV uploads for pool items, and photo/review history.
   Path: `/tools/date-night`
 - **Calorie Tracker** — A simple tool to track daily calorie intake (Static HTML).
   Path: `/tools/CalorieTracker/index.html`
