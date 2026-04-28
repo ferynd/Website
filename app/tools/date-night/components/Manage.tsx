@@ -33,16 +33,17 @@ const CSV_TEMPLATE_ROWS = [
   ['Picnic at sunset', 'Pack snacks and watch the sunset together', 'common', 'biweekly', '1.1', 'true'],
 ];
 
-const splitCsvLine = (line: string) => {
-  const values: string[] = [];
+const parseCsvContent = (raw: string) => {
+  const rows: string[][] = [];
+  let row: string[] = [];
   let current = '';
   let inQuotes = false;
 
-  for (let idx = 0; idx < line.length; idx += 1) {
-    const char = line[idx];
+  for (let idx = 0; idx < raw.length; idx += 1) {
+    const char = raw[idx];
 
     if (char === '"') {
-      const next = line[idx + 1];
+      const next = raw[idx + 1];
       if (inQuotes && next === '"') {
         current += '"';
         idx += 1;
@@ -53,16 +54,29 @@ const splitCsvLine = (line: string) => {
     }
 
     if (char === ',' && !inQuotes) {
-      values.push(current.trim());
+      row.push(current.trim());
       current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && raw[idx + 1] === '\n') idx += 1;
+      row.push(current.trim());
+      current = '';
+      const hasContent = row.some((value) => value.length > 0);
+      if (hasContent) rows.push(row);
+      row = [];
       continue;
     }
 
     current += char;
   }
 
-  values.push(current.trim());
-  return values.map((value) => value.replace(/^"(.*)"$/, '$1').trim());
+  row.push(current.trim());
+  const hasContent = row.some((value) => value.length > 0);
+  if (hasContent) rows.push(row);
+
+  return rows;
 };
 
 const parseBoolean = (value: string, fallback = true) => {
@@ -125,18 +139,15 @@ export default function Manage() {
     try {
       setUploadingBatch(true);
       const raw = await file.text();
-      const lines = raw
-        .split(/\r?\n/g)
-        .map((line) => line.trim())
-        .filter(Boolean);
+      const records = parseCsvContent(raw);
 
-      if (lines.length < 2) {
+      if (records.length < 2) {
         setBatchMessage('CSV must include a header row and at least one data row.');
         return;
       }
 
-      const [header, ...rows] = lines;
-      const parsedHeader = splitCsvLine(header).map((column) => column.trim());
+      const [header, ...rows] = records;
+      const parsedHeader = header.map((column) => column.trim());
       const missingColumns = CSV_HEADERS.filter((column) => !parsedHeader.includes(column));
       const existingItems = uploadKind === 'date' ? dates : modifiers;
       const existingNames = new Set(
@@ -154,7 +165,7 @@ export default function Manage() {
       const rowErrors: string[] = [];
 
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
-        const values = splitCsvLine(rows[rowIndex]);
+        const values = rows[rowIndex];
         const rowMap = Object.fromEntries(parsedHeader.map((key, index) => [key, values[index] ?? '']));
         const name = rowMap.name?.trim() ?? '';
         const normalizedName = name.toLowerCase();
@@ -185,15 +196,19 @@ export default function Manage() {
 
         existingNames.add(normalizedName);
 
-        await saveItem(uploadKind, {
-          name,
-          description: rowMap.description ?? '',
-          rarity,
-          frequency,
-          baseWeight,
-          decayEnabled: parseBoolean(rowMap.decayEnabled ?? '', true),
-        });
-        savedNames.push(name);
+        try {
+          await saveItem(uploadKind, {
+            name,
+            description: rowMap.description ?? '',
+            rarity,
+            frequency,
+            baseWeight,
+            decayEnabled: parseBoolean(rowMap.decayEnabled ?? '', true),
+          });
+          savedNames.push(name);
+        } catch (error) {
+          rowErrors.push(`Row ${rowIndex + 2}: failed to save "${name}".`);
+        }
       }
 
       if (savedNames.length > 0 && rowErrors.length === 0) {
