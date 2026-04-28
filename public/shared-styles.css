@@ -260,6 +260,25 @@ body {
 .kpi-row .meta .remain  { color:hsl(var(--text-3)); }
 .kpi-row .meta .over    { font-size:.75rem; color:hsl(var(--error)); }
 
+/* ---------- Batch CSV upload helpers ---------- */
+.upload-panel {
+  background: hsl(var(--surface-2));
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.75rem;
+  padding: 1rem;
+}
+
+.upload-columns {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.upload-note {
+  color: hsl(var(--text-2));
+  font-size: 0.875rem;
+}
+
 /* Table helpers */
 .divide-y > * + * { border-top:1px solid hsl(var(--border)); }
 .hover-surface-2:hover { background-color:hsl(var(--surface-2)); }

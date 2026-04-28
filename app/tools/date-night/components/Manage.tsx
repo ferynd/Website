@@ -27,12 +27,74 @@ const FREQUENCY_LABELS: Record<DateNightFrequency, string> = {
   biannual: 'Twice a year',
   annual: 'Once a year',
 };
+const CSV_HEADERS = ['name', 'description', 'rarity', 'frequency', 'baseWeight', 'decayEnabled'] as const;
+const CSV_TEMPLATE_ROWS = [
+  ['Wine tasting night', 'Try a new local winery or tasting room', 'uncommon', 'monthly', '1.4', 'true'],
+  ['Picnic at sunset', 'Pack snacks and watch the sunset together', 'common', 'biweekly', '1.1', 'true'],
+];
+
+const parseCsvContent = (raw: string) => {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let idx = 0; idx < raw.length; idx += 1) {
+    const char = raw[idx];
+
+    if (char === '"') {
+      const next = raw[idx + 1];
+      if (inQuotes && next === '"') {
+        current += '"';
+        idx += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(current.trim());
+      current = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && raw[idx + 1] === '\n') idx += 1;
+      row.push(current.trim());
+      current = '';
+      const hasContent = row.some((value) => value.length > 0);
+      if (hasContent) rows.push(row);
+      row = [];
+      continue;
+    }
+
+    current += char;
+  }
+
+  row.push(current.trim());
+  const hasContent = row.some((value) => value.length > 0);
+  if (hasContent) rows.push(row);
+
+  return rows;
+};
+
+const parseBoolean = (value: string, fallback = true) => {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return fallback;
+  return ['true', '1', 'yes', 'y'].includes(normalized);
+};
+
+const isRarity = (value: string): value is DateNightRarity => RARITIES.includes(value as DateNightRarity);
+const isFrequency = (value: string): value is DateNightFrequency => FREQUENCIES.includes(value as DateNightFrequency);
 
 export default function Manage() {
   const { dates, modifiers, saveItem, deleteItem } = useDateNight();
   const [kind, setKind] = useState<'date' | 'modifier'>('date');
   const [editing, setEditing] = useState<DateNightPoolItem | null>(null);
   const [sort, setSort] = useState<'recent' | 'accepted' | 'dormant'>('recent');
+  const [uploadingBatch, setUploadingBatch] = useState(false);
+  const [batchMessage, setBatchMessage] = useState('');
   const [form, setForm] = useState({
     name: '', description: '', rarity: 'common' as DateNightRarity, frequency: 'anytime' as DateNightFrequency, baseWeight: 1, decayEnabled: true,
   });
@@ -50,6 +112,119 @@ export default function Manage() {
     await saveItem(kind, form, editing?.id);
     setEditing(null);
     setForm({ name: '', description: '', rarity: 'common', frequency: 'anytime', baseWeight: 1, decayEnabled: true });
+  };
+
+  const downloadTemplate = (downloadKind: 'date' | 'modifier') => {
+    const suffix = downloadKind === 'date' ? 'idea' : 'modifier';
+    const csvRows = [
+      CSV_HEADERS.join(','),
+      ...CSV_TEMPLATE_ROWS.map((row) => row.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')),
+    ];
+
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `date-night-${suffix}-batch-template.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleBatchUpload = async (event: React.ChangeEvent<HTMLInputElement>, uploadKind: 'date' | 'modifier') => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    setBatchMessage('');
+    if (!file) return;
+
+    try {
+      setUploadingBatch(true);
+      const raw = await file.text();
+      const records = parseCsvContent(raw);
+
+      if (records.length < 2) {
+        setBatchMessage('CSV must include a header row and at least one data row.');
+        return;
+      }
+
+      const [header, ...rows] = records;
+      const parsedHeader = header.map((column) => column.trim());
+      const missingColumns = CSV_HEADERS.filter((column) => !parsedHeader.includes(column));
+      const existingItems = uploadKind === 'date' ? dates : modifiers;
+      const existingNames = new Set(
+        existingItems
+          .map((item) => item.name.trim().toLowerCase())
+          .filter(Boolean),
+      );
+
+      if (missingColumns.length > 0) {
+        setBatchMessage(`Missing required columns: ${missingColumns.join(', ')}`);
+        return;
+      }
+
+      const savedNames: string[] = [];
+      const rowErrors: string[] = [];
+
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+        const values = rows[rowIndex];
+        const rowMap = Object.fromEntries(parsedHeader.map((key, index) => [key, values[index] ?? '']));
+        const name = rowMap.name?.trim() ?? '';
+        const normalizedName = name.toLowerCase();
+        const rarity = (rowMap.rarity ?? '').trim();
+        const frequency = (rowMap.frequency ?? '').trim();
+        const baseWeight = Number(rowMap.baseWeight);
+
+        if (!name) {
+          rowErrors.push(`Row ${rowIndex + 2}: name is required.`);
+          continue;
+        }
+        if (!isRarity(rarity)) {
+          rowErrors.push(`Row ${rowIndex + 2}: invalid rarity "${rarity}".`);
+          continue;
+        }
+        if (!isFrequency(frequency)) {
+          rowErrors.push(`Row ${rowIndex + 2}: invalid frequency "${frequency}".`);
+          continue;
+        }
+        if (Number.isNaN(baseWeight)) {
+          rowErrors.push(`Row ${rowIndex + 2}: baseWeight must be a number.`);
+          continue;
+        }
+        if (existingNames.has(normalizedName)) {
+          rowErrors.push(`Row ${rowIndex + 2}: skipped duplicate name "${name}".`);
+          continue;
+        }
+
+        existingNames.add(normalizedName);
+
+        try {
+          await saveItem(uploadKind, {
+            name,
+            description: rowMap.description ?? '',
+            rarity,
+            frequency,
+            baseWeight,
+            decayEnabled: parseBoolean(rowMap.decayEnabled ?? '', true),
+          });
+          savedNames.push(name);
+        } catch (error) {
+          rowErrors.push(`Row ${rowIndex + 2}: failed to save "${name}".`);
+        }
+      }
+
+      if (savedNames.length > 0 && rowErrors.length === 0) {
+        setBatchMessage(`Uploaded ${savedNames.length} ${uploadKind === 'date' ? 'date idea' : 'modifier'} item(s) successfully.`);
+        return;
+      }
+
+      if (savedNames.length > 0) {
+        setBatchMessage(`Uploaded ${savedNames.length} row(s) with ${rowErrors.length} warning(s): ${rowErrors.slice(0, 3).join(' ')}`);
+        return;
+      }
+
+      setBatchMessage(`No rows were imported. ${rowErrors.slice(0, 3).join(' ')}`);
+    } finally {
+      setUploadingBatch(false);
+    }
   };
 
   return (
@@ -76,6 +251,44 @@ export default function Manage() {
           {editing && <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancel edit</Button>}
         </div>
       </form>
+
+      <div className="rounded-xl border border-border/60 bg-surface-2/60 p-4 space-y-3">
+        <h3 className="text-lg font-semibold">Batch upload</h3>
+        <p className="text-sm text-text-2">
+          Download a CSV template, fill in each row, then upload to add multiple date ideas or modifiers at once.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Button size="sm" variant="secondary" type="button" onClick={() => downloadTemplate('date')}>
+            Download date ideas CSV template
+          </Button>
+          <Button size="sm" variant="secondary" type="button" onClick={() => downloadTemplate('modifier')}>
+            Download modifiers CSV template
+          </Button>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-sm text-text-2">
+            Upload date ideas CSV
+            <input
+              className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-border file:bg-surface-3 file:px-3 file:py-2 file:text-text"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => void handleBatchUpload(event, 'date')}
+              disabled={uploadingBatch}
+            />
+          </label>
+          <label className="text-sm text-text-2">
+            Upload modifiers CSV
+            <input
+              className="mt-2 block w-full text-sm file:mr-3 file:rounded-lg file:border file:border-border file:bg-surface-3 file:px-3 file:py-2 file:text-text"
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(event) => void handleBatchUpload(event, 'modifier')}
+              disabled={uploadingBatch}
+            />
+          </label>
+        </div>
+        {batchMessage && <p className="text-sm text-text-2">{batchMessage}</p>}
+      </div>
 
       <ul className="space-y-3">
         {sorted.map((item) => (

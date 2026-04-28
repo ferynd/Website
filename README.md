@@ -120,6 +120,7 @@ Key features:
 - **Accept/veto state machine:** spins are local-first, accepts persist `pending-review` rolls, vetoes increment source counters and reroll.
 - **Pending review workflow:** two participant review columns (1-9 labeled scoring), photo uploads with client-side compression, and completion handling.
 - **Admin participant panel:** add/edit participant UIDs + display names directly in-app.
+- **Batch list management:** downloadable CSV templates plus batch upload support for date ideas and modifiers.
 - **History & stats:** most-loved dates, veto leaderboards, dormancy ranking, weekly streak, and score histogram.
 
 Data persists under `artifacts/date-night/**` with `couples/main`, `settings/global`, `dates`, `modifiers`, and `rolls`.
