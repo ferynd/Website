@@ -1,10 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2 } from 'lucide-react';
+import { X, Sparkles, Loader2, Trash2 } from 'lucide-react';
 import type { Show, ShowType, ShowStatus, ShowList } from '../types';
 import { VIBE_CATEGORIES } from '../lib/vibeCategories';
-import { isRatable } from '../lib/compositeScore';
 import VibeTagChip from './VibeTagChip';
 import ScoreBlock from './ScoreBlock';
 import { useShows } from '../ShowsContext';
@@ -40,7 +39,7 @@ interface Props {
 }
 
 export default function ShowForm({ show, listId, members, onClose }: Props) {
-  const { user, addShow, updateShow, updateMyRating } = useShows();
+  const { user, activeList, addShow, updateShow, updateMyRating, deleteShow } = useShows();
   const isEdit = !!show;
 
   const [title, setTitle] = useState(show?.title ?? '');
@@ -60,10 +59,13 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [watchers, setWatchers] = useState<string[]>(
     show?.watchers ?? (user ? [user.uid] : []),
   );
+  const [description, setDescription] = useState(show?.description ?? '');
   const [notes, setNotes] = useState(show?.notes ?? '');
   const [vibeTags, setVibeTags] = useState<string[]>(show?.vibeTags ?? []);
   const [classifying, setClassifying] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
 
   // Local rating state for the current user (editable inline)
@@ -92,11 +94,29 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
       });
       if (!res.ok) throw new Error('Classification failed');
       const data = await res.json();
+      // AI owns type, vibes, and description — never touches notes
+      if (data.type) setType(data.type);
       if (data.vibes?.length) setVibeTags(data.vibes);
+      if (typeof data.description === 'string') setDescription(data.description);
     } catch {
       setError('Could not classify — check your connection and try again.');
     } finally {
       setClassifying(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!show) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await deleteShow(show.id);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed. Try again.');
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -134,14 +154,14 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         totalSeasons: hasEpisodes(type) && totalSeasons ? Number(totalSeasons) : null,
         service: resolvedService,
         watchers,
+        description,
         notes,
         vibeTags,
         ratings: show?.ratings ?? {},
       };
       if (isEdit && show) {
         await updateShow(show.id, payload);
-        // Persist rating changes separately (dot-notation field)
-        if (user && isRatable(status)) {
+        if (user) {
           await updateMyRating(show.id, pendingRating);
         }
       } else {
@@ -155,8 +175,11 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
     }
   }
 
+  const canDelete = isEdit && show && user && (
+    show.createdBy === user.uid || (activeList?.adminUids.includes(user.uid) ?? false)
+  );
   const showEpisodeFields = hasEpisodes(type);
-  const showScores = isEdit && show && isRatable(status);
+  const showScores = isEdit && show;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -356,19 +379,31 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             </div>
           </div>
 
-          {/* Notes */}
+          {/* Description (AI-populated) */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-text-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="AI will fill this when you classify the show."
+              className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent resize-none"
+            />
+          </div>
+
+          {/* Notes (user-only) */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-text-2">Notes</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Anything to remember…"
+              placeholder="Your personal notes about this show."
               className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent resize-none"
             />
           </div>
 
-          {/* Score blocks — only on edit when ratable */}
+          {/* Score blocks — visible on edit for all statuses */}
           {showScores && user && (
             <div className="space-y-2">
               <p className="text-sm font-medium text-text-2">Scores</p>
@@ -403,6 +438,20 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             </div>
           )}
 
+          {/* Delete */}
+          {canDelete && (
+            <div className="border-t border-border pt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-1.5 text-sm text-error bg-transparent hover:underline"
+              >
+                <Trash2 size={14} />
+                Delete this show
+              </button>
+            </div>
+          )}
+
           {/* Submit */}
           <div className="flex gap-3 pt-2 pb-safe">
             <button
@@ -422,6 +471,37 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
           </div>
         </form>
       </div>
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && show && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowDeleteConfirm(false)}
+          />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl bg-surface-1 border border-border p-6 space-y-4 shadow-2">
+            <h3 className="font-semibold text-text">Delete &ldquo;{show.title}&rdquo;?</h3>
+            <p className="text-sm text-text-2">This can&rsquo;t be undone.</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 rounded-xl border border-border bg-surface-2 py-3 text-sm font-medium text-text-2 hover:text-text transition-colors min-h-[48px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-xl bg-error py-3 text-sm font-semibold text-white disabled:opacity-50 transition-opacity min-h-[48px]"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

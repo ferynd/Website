@@ -16,16 +16,21 @@ function buildPrompt(
   candidates: Show[],
   history: Record<string, HistoryEntry>,
 ): string {
-  const moodLines = Object.values(moods)
-    .map((m) => `${m.name} is feeling: ${m.mood || '(no input)'}`)
-    .join('\n');
-
   const historyLines = Object.values(history)
     .map((h) => {
       const shows =
         h.highScoringShows.length > 0
           ? h.highScoringShows
-              .map((s) => `  - ${s.title}: ${s.vibes.join(', ')} (${s.composite.toFixed(1)})`)
+              .map((s) => {
+                const parts = [
+                  `  - ${s.title}`,
+                  `vibes: ${s.vibes.join(', ')}`,
+                  `composite: ${s.composite.toFixed(1)}`,
+                ];
+                if (s.description) parts.push(`description: ${s.description}`);
+                if (s.notes) parts.push(`notes: ${s.notes}`);
+                return parts.join(' | ');
+              })
               .join('\n')
           : '  (no high-scoring history yet)';
       return `${h.name}'s high-scoring shows (composite ≥ 7):\n${shows}`;
@@ -36,22 +41,33 @@ function buildPrompt(
     .map((s) => {
       const ep =
         s.currentSeason !== null || s.currentEpisode !== null
-          ? ` — S${s.currentSeason ?? '?'} E${s.currentEpisode ?? '?'}`
+          ? ` | current: S${s.currentSeason ?? '?'} E${s.currentEpisode ?? '?'}`
           : '';
       const vibes = s.vibeTags.length > 0 ? s.vibeTags.join(', ') : 'no tags';
-      return `  - id:${s.id} | ${s.title} (${s.type}) | vibes: ${vibes} | status: ${s.status}${ep}`;
+      const parts = [
+        `  - id:${s.id}`,
+        `${s.title} (${s.type})`,
+        `vibes: ${vibes}`,
+        `status: ${s.status}${ep}`,
+      ];
+      if (s.description) parts.push(`description: ${s.description}`);
+      if (s.notes) parts.push(`notes: ${s.notes}`);
+      return parts.join(' | ');
     })
     .join('\n');
 
   return (
-    `Pick one show for these people to watch together right now.\n\n` +
-    `${moodLines}\n\n` +
-    `${historyLines}\n\n` +
-    `Available shows (status: watching/planned/on_hold):\n${candidateLines}\n\n` +
-    `Pick the show that best fits both moods AND the patterns in what each person has historically rated highly. ` +
-    `Prefer shows whose vibes overlap with vibes both people have liked before. ` +
-    `Return JSON only (no prose, no markdown): { "showId": "<id from the list above>", "reason": "<2-3 sentences>" }. ` +
-    `Reason should explain why this fits both moods and aligns with their history.`
+    `Pick one show for these people to watch together right now. Weight your decision in this exact order:\n\n` +
+    `1. VIBES FIRST: Match the candidate's vibe tags to what each person is feeling right now, and to the vibes of shows each person has historically rated highly. This is your strongest signal.\n\n` +
+    `2. SCORE HISTORY SECOND: Each person's high-scoring shows (composite ≥ 7) show what they tend to enjoy. Favor candidates whose vibes overlap with vibes from each person's high-scoring shows.\n\n` +
+    `3. NOTES IF RELEVANT: Personal notes are written by the viewers themselves and are high-signal when they apply. Read each candidate's notes carefully. If a note seems relevant to the current mood or situation (e.g. comments on pacing, content that matches what someone wants tonight, prior watch context), weight it heavily. If a note is unrelated trivia, ignore it. Same for notes on history shows.\n\n` +
+    `4. DESCRIPTION FOURTH: AI-generated descriptions add tone and theme nuance. Use as light context and tiebreaker.\n\n` +
+    Object.values(moods).map((m) => `${m.name} is feeling: ${m.mood || '(no input)'}`).join('\n') +
+    `\n\n${historyLines}\n\n` +
+    `Available shows in their watchlist (status: watching/planned/on_hold):\n${candidateLines}\n\n` +
+    `Pick one. Return JSON only (no prose, no markdown, no code fences):\n` +
+    `{ "showId": "<id from the list above>", "reason": "<2-3 sentences>" }\n\n` +
+    `The reason should lead with the vibe match. Mention score-history connection if relevant. Bring in notes only if a note materially shaped the pick. Description is fine to leave unmentioned.`
   );
 }
 

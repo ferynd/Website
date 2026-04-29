@@ -8,7 +8,13 @@ export interface MoodEntry {
 
 export interface HistoryEntry {
   name: string;
-  highScoringShows: Array<{ title: string; vibes: string[]; composite: number }>;
+  highScoringShows: Array<{
+    title: string;
+    vibes: string[];
+    composite: number;
+    description: string;
+    notes: string;
+  }>;
 }
 
 export function buildHistory(
@@ -23,7 +29,13 @@ export function buildHistory(
         if (!rating) return [];
         const composite = memberComposite(rating);
         if (composite === null || composite < 7) return [];
-        return [{ title: show.title, vibes: show.vibeTags, composite }];
+        return [{
+          title: show.title,
+          vibes: show.vibeTags,
+          composite,
+          description: show.description ?? '',
+          notes: show.notes ?? '',
+        }];
       });
     history[member.uid] = { name: member.displayName, highScoringShows };
   }
