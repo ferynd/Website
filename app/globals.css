@@ -30,6 +30,15 @@
 
   --radius-xl2: 1rem;
   --radius-xl3: 1.5rem;
+
+  --chart-1-hex: #3B82F6;
+  --chart-2-hex: #EF4444;
+  --chart-3-hex: #10B981;
+  --chart-4-hex: #F59E0B;
+  --chart-5-hex: #8B5CF6;
+  --chart-6-hex: #EC4899;
+  --chart-7-hex: #06B6D4;
+  --chart-8-hex: #84CC16;
 }
 
 [data-theme="dark"] {
@@ -116,3 +125,47 @@ html, body {
 .animate-date-reveal { animation: date-reveal 360ms ease-out both; }
 .animate-sparkle-float { animation: sparkle-float 1.6s ease-in-out infinite; }
 .glow-accent { text-shadow: 0 0 12px hsl(var(--accent) / .45); }
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: shared UI utilities (badge, kpi, hbar)        */
+/* ------------------------------------------------------------ */
+
+/* Status badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 500;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+  color: hsl(var(--text-2));
+  white-space: nowrap;
+}
+.badge.info     { color: hsl(var(--info));    border-color: hsl(var(--info) / 0.35); }
+.badge.positive { color: hsl(var(--success)); border-color: hsl(var(--success) / 0.35); }
+.badge.negative { color: hsl(var(--error));   border-color: hsl(var(--error) / 0.35); }
+
+/* KPI stat cards */
+.kpi {
+  border-radius: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+  padding: 0.875rem 1rem;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+}
+.kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-2); border-color: hsl(var(--accent) / 0.4); }
+.kpi-label { font-size: 0.75rem; font-weight: 500; color: hsl(var(--text-2)); text-transform: uppercase; letter-spacing: 0.06em; }
+.kpi-value { font-weight: 700; font-size: 1.5rem; color: hsl(var(--text)); margin-top: 0.2rem; line-height: 1.2; }
+
+/* Horizontal progress bars */
+.hbar { position: relative; height: 0.625rem; background: hsl(var(--surface-3)); border-radius: 0.5rem; overflow: hidden; }
+.hbar-fill { position: absolute; left: 0; top: 0; bottom: 0; background: hsl(var(--accent)); border-radius: 0.5rem; transition: width 0.4s ease; }
+.hbar-marker { position: absolute; top: -0.2rem; bottom: -0.2rem; width: 2px; background: hsl(var(--border)); opacity: 0.9; }
+
+/* KPI row (label + bar layout) */
+.kpi-row { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 0.4rem 0.75rem; }
+.kpi-row .meta { display: flex; gap: 0.6rem; align-items: center; font-size: 0.82rem; }
+.kpi-row .meta .label   { font-weight: 600; min-width: 1.5rem; }
+.kpi-row .meta .current { color: hsl(var(--text)); font-weight: 600; }
