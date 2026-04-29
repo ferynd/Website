@@ -1,7 +1,7 @@
 // app/tools/date-night/components/Roller.tsx
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Sparkles } from 'lucide-react';
 import Button from '@/components/Button';
 import { useDateNight } from '../DateNightContext';
@@ -17,26 +17,20 @@ import { targetRotationForSlice } from './Roller/wheelUtils';
 /* CONFIGURATION: spin durations + stage timings                */
 /* ------------------------------------------------------------ */
 
-const DATE_SPIN_MS = 4000;
-const MODIFIER_SPIN_MS = 3000;
+const DATE_SPIN_MS = 2200;
+const MODIFIER_SPIN_MS = 1400;
 
 const INITIAL_PAUSE_MS = 800;
-const REVEAL_DELAY_MS = 750;
+const REVEAL_DELAY_MS = 250;
 const RARITY_READ_DELAY_MS = 800;
 const DATE_RESULT_READ_DELAY_MS = 1000;
 const MODIFIER_STAGE_LABEL_DELAY_MS = 500;
 const MODIFIER_RARITY_READ_DELAY_MS = 600;
 const MODIFIER_ITEM_READ_DELAY_MS = 800;
 
-const TICKER_INTERVAL_MS = 60;
-
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 type SpinStage = 'idle' | 'date-rarity' | 'date-item' | 'mod-rarity' | 'mod-item';
-
-type TickerPoolItem = {
-  label: string;
-};
 
 const EMPTY_DATE_SLICE: WheelSlice = {
   id: 'empty',
@@ -48,6 +42,13 @@ const EMPTY_MODIFIER_SLICE: WheelSlice = {
   id: 'empty',
   label: 'No eligible modifiers',
   weight: 1,
+};
+
+const RARITY_DISPLAY_LABELS: Record<string, string> = {
+  common: 'Common',
+  uncommon: 'Uncommon',
+  rare: 'Rare',
+  veryRare: 'Very Rare',
 };
 
 export default function Roller() {
@@ -84,55 +85,24 @@ export default function Roller() {
   const [spinStage, setSpinStage] = useState<SpinStage>('idle');
   const [tickerText, setTickerText] = useState('');
 
-  const tickerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
   const rarityWeights = pushRare ? RARE_PUSH_WEIGHTS : settings.rarityWeights;
-
-  useEffect(() => {
-    return () => {
-      if (tickerIntervalRef.current) {
-        clearInterval(tickerIntervalRef.current);
-        tickerIntervalRef.current = null;
-      }
-    };
-  }, []);
-
-  const clearTicker = () => {
-    if (tickerIntervalRef.current) {
-      clearInterval(tickerIntervalRef.current);
-      tickerIntervalRef.current = null;
-    }
-  };
-
-  const runTicker = (pool: TickerPoolItem[]) => {
-    clearTicker();
-
-    if (!pool.length) return;
-
-    tickerIntervalRef.current = setInterval(() => {
-      const randomItem = pool[Math.floor(Math.random() * pool.length)];
-      setTickerText(randomItem.label);
-    }, TICKER_INTERVAL_MS);
-  };
-
-  const haltTicker = (finalText: string) => {
-    clearTicker();
-    setTickerText(finalText);
-  };
 
   const buildRaritySlices = (): WheelSlice[] => {
     return Object.entries(rarityWeights).map(([id, weight]) => ({
       id,
-      label: id.toUpperCase(),
-      weight,
+      label: RARITY_DISPLAY_LABELS[id] ?? id.toUpperCase(),
+      weight: Math.max(0.0001, weight),
     }));
   };
 
   const resetSpinUi = () => {
-    clearTicker();
     setSpinStage('idle');
     setRolling(false);
   };
+
+  const handleLivePointerSync = useCallback((_sliceId: string, label: string) => {
+    setTickerText(label);
+  }, []);
 
   const startSpinSequence = async () => {
     try {
@@ -155,8 +125,6 @@ export default function Roller() {
       const dateRarity = pickRarity(settings, { pushRare });
       const raritySlices = buildRaritySlices();
 
-      runTicker(raritySlices);
-
       const nextRarityRotation = targetRotationForSlice(
         raritySlices,
         dateRarity,
@@ -167,7 +135,7 @@ export default function Roller() {
 
       await sleep(DATE_SPIN_MS);
 
-      haltTicker(dateRarity.toUpperCase());
+      setTickerText(RARITY_DISPLAY_LABELS[dateRarity] ?? dateRarity);
 
       await sleep(RARITY_READ_DELAY_MS);
 
@@ -204,8 +172,6 @@ export default function Roller() {
       setActiveDateItemSlices(dateSlicePool);
       setSpinStage('date-item');
 
-      runTicker(dateSlicePool);
-
       const nextItemRotation = targetRotationForSlice(
         dateSlicePool,
         chosenDate.id,
@@ -216,7 +182,7 @@ export default function Roller() {
 
       await sleep(DATE_SPIN_MS);
 
-      haltTicker(chosenDate.name);
+      setTickerText(chosenDate.name);
 
       await sleep(DATE_RESULT_READ_DELAY_MS);
 
@@ -254,8 +220,6 @@ export default function Roller() {
 
             await sleep(MODIFIER_STAGE_LABEL_DELAY_MS);
 
-            runTicker(modifierRaritySlices);
-
             runningRarityRotation = targetRotationForSlice(
               modifierRaritySlices,
               modifierRarity,
@@ -267,7 +231,7 @@ export default function Roller() {
 
             await sleep(MODIFIER_SPIN_MS);
 
-            haltTicker(modifierRarity.toUpperCase());
+            setTickerText(RARITY_DISPLAY_LABELS[modifierRarity] ?? modifierRarity);
 
             await sleep(MODIFIER_RARITY_READ_DELAY_MS);
 
@@ -287,8 +251,6 @@ export default function Roller() {
             setActiveModifierItemSlices(modifierSlicePool);
             setSpinStage('mod-item');
 
-            runTicker(modifierSlicePool);
-
             runningItemRotation = targetRotationForSlice(
               modifierSlicePool,
               selectedModifier.id,
@@ -300,7 +262,7 @@ export default function Roller() {
 
             await sleep(MODIFIER_SPIN_MS);
 
-            haltTicker(selectedModifier.name);
+            setTickerText(selectedModifier.name);
 
             await sleep(MODIFIER_ITEM_READ_DELAY_MS);
           }
@@ -320,7 +282,6 @@ export default function Roller() {
       setShowReveal(true);
       setRolling(false);
     } catch {
-      clearTicker();
       setSpinStage('idle');
       setRolling(false);
       setEmptyState('Something went wrong during the spin. Try again.');
@@ -541,6 +502,7 @@ export default function Roller() {
               weights={rarityWeights}
               rotationDeg={rarityRotation}
               durationMs={DATE_SPIN_MS}
+              onPointerChange={handleLivePointerSync}
             />
           </div>
 
@@ -556,6 +518,7 @@ export default function Roller() {
               slices={activeDateItemSlices.length ? activeDateItemSlices : [EMPTY_DATE_SLICE]}
               rotationDeg={itemRotation}
               durationMs={DATE_SPIN_MS}
+              onPointerChange={handleLivePointerSync}
             />
           </div>
 
@@ -571,6 +534,7 @@ export default function Roller() {
               weights={rarityWeights}
               rotationDeg={modifierRarityRotation}
               durationMs={MODIFIER_SPIN_MS}
+              onPointerChange={handleLivePointerSync}
             />
           </div>
 
@@ -590,6 +554,7 @@ export default function Roller() {
               }
               rotationDeg={modifierItemRotation}
               durationMs={MODIFIER_SPIN_MS}
+              onPointerChange={handleLivePointerSync}
             />
           </div>
         </div>
