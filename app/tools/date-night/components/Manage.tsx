@@ -95,6 +95,7 @@ export default function Manage() {
   const [sort, setSort] = useState<'recent' | 'accepted' | 'dormant'>('recent');
   const [uploadingBatch, setUploadingBatch] = useState(false);
   const [batchMessage, setBatchMessage] = useState('');
+  const [batchStatus, setBatchStatus] = useState<'idle' | 'success' | 'warning' | 'error'>('idle');
   const [form, setForm] = useState({
     name: '', description: '', rarity: 'common' as DateNightRarity, frequency: 'anytime' as DateNightFrequency, baseWeight: 1, decayEnabled: true,
   });
@@ -134,7 +135,13 @@ export default function Manage() {
     const file = event.target.files?.[0];
     event.target.value = '';
     setBatchMessage('');
+    setBatchStatus('idle');
     if (!file) return;
+
+    const finish = (msg: string, status: 'success' | 'warning' | 'error') => {
+      setBatchMessage(msg);
+      setBatchStatus(status);
+    };
 
     try {
       setUploadingBatch(true);
@@ -142,28 +149,35 @@ export default function Manage() {
       const records = parseCsvContent(raw);
 
       if (records.length < 2) {
-        setBatchMessage('CSV must include a header row and at least one data row.');
+        finish('CSV must include a header row and at least one data row.', 'error');
         return;
       }
 
       const [header, ...rows] = records;
       const parsedHeader = header.map((column) => column.trim());
       const missingColumns = CSV_HEADERS.filter((column) => !parsedHeader.includes(column));
-      const existingItems = uploadKind === 'date' ? dates : modifiers;
-      const existingNames = new Set(
-        existingItems
-          .map((item) => item.name.trim().toLowerCase())
-          .filter(Boolean),
-      );
 
       if (missingColumns.length > 0) {
-        setBatchMessage(`Missing required columns: ${missingColumns.join(', ')}`);
+        finish(`Missing required columns: ${missingColumns.join(', ')}`, 'error');
         return;
       }
 
-      const savedNames: string[] = [];
+      const existingItems = uploadKind === 'date' ? dates : modifiers;
+      const existingNames = new Set(existingItems.map((item) => item.name.trim().toLowerCase()).filter(Boolean));
       const rowErrors: string[] = [];
 
+      type ValidRow = {
+        rowIndex: number;
+        name: string;
+        description: string;
+        rarity: DateNightRarity;
+        frequency: DateNightFrequency;
+        baseWeight: number;
+        decayEnabled: boolean;
+      };
+      const validRows: ValidRow[] = [];
+
+      // First pass: validate all rows and detect duplicates
       for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
         const values = rows[rowIndex];
         const rowMap = Object.fromEntries(parsedHeader.map((key, index) => [key, values[index] ?? '']));
@@ -173,55 +187,57 @@ export default function Manage() {
         const frequency = (rowMap.frequency ?? '').trim();
         const baseWeight = Number(rowMap.baseWeight);
 
-        if (!name) {
-          rowErrors.push(`Row ${rowIndex + 2}: name is required.`);
-          continue;
-        }
-        if (!isRarity(rarity)) {
-          rowErrors.push(`Row ${rowIndex + 2}: invalid rarity "${rarity}".`);
-          continue;
-        }
-        if (!isFrequency(frequency)) {
-          rowErrors.push(`Row ${rowIndex + 2}: invalid frequency "${frequency}".`);
-          continue;
-        }
-        if (Number.isNaN(baseWeight)) {
-          rowErrors.push(`Row ${rowIndex + 2}: baseWeight must be a number.`);
-          continue;
-        }
-        if (existingNames.has(normalizedName)) {
-          rowErrors.push(`Row ${rowIndex + 2}: skipped duplicate name "${name}".`);
-          continue;
-        }
+        if (!name) { rowErrors.push(`Row ${rowIndex + 2}: name is required.`); continue; }
+        if (!isRarity(rarity)) { rowErrors.push(`Row ${rowIndex + 2}: invalid rarity "${rarity}".`); continue; }
+        if (!isFrequency(frequency)) { rowErrors.push(`Row ${rowIndex + 2}: invalid frequency "${frequency}".`); continue; }
+        if (Number.isNaN(baseWeight)) { rowErrors.push(`Row ${rowIndex + 2}: baseWeight must be a number.`); continue; }
+        if (existingNames.has(normalizedName)) { rowErrors.push(`Row ${rowIndex + 2}: skipped duplicate "${name}".`); continue; }
 
         existingNames.add(normalizedName);
+        validRows.push({ rowIndex, name, description: rowMap.description ?? '', rarity, frequency, baseWeight, decayEnabled: parseBoolean(rowMap.decayEnabled ?? '', true) });
+      }
 
-        try {
-          await saveItem(uploadKind, {
-            name,
-            description: rowMap.description ?? '',
-            rarity,
-            frequency,
-            baseWeight,
-            decayEnabled: parseBoolean(rowMap.decayEnabled ?? '', true),
-          });
-          savedNames.push(name);
-        } catch (error) {
-          rowErrors.push(`Row ${rowIndex + 2}: failed to save "${name}".`);
+      if (validRows.length === 0) {
+        finish(`No rows imported. ${rowErrors.slice(0, 3).join(' ')}`, 'error');
+        return;
+      }
+
+      // Second pass: save in parallel batches of 6
+      const BATCH_SIZE = 6;
+      const savedNames: string[] = [];
+
+      for (let i = 0; i < validRows.length; i += BATCH_SIZE) {
+        setBatchMessage(`Uploading ${Math.min(i + BATCH_SIZE, validRows.length)} of ${validRows.length}…`);
+        const batch = validRows.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map((row) =>
+            saveItem(uploadKind, {
+              name: row.name,
+              description: row.description,
+              rarity: row.rarity,
+              frequency: row.frequency,
+              baseWeight: row.baseWeight,
+              decayEnabled: row.decayEnabled,
+            }),
+          ),
+        );
+        for (let j = 0; j < results.length; j += 1) {
+          if (results[j].status === 'fulfilled') {
+            savedNames.push(batch[j].name);
+          } else {
+            rowErrors.push(`Row ${batch[j].rowIndex + 2}: failed to save "${batch[j].name}".`);
+          }
         }
       }
 
+      const label = uploadKind === 'date' ? 'date idea' : 'modifier';
       if (savedNames.length > 0 && rowErrors.length === 0) {
-        setBatchMessage(`Uploaded ${savedNames.length} ${uploadKind === 'date' ? 'date idea' : 'modifier'} item(s) successfully.`);
-        return;
+        finish(`Uploaded ${savedNames.length} ${label} item(s) successfully.`, 'success');
+      } else if (savedNames.length > 0) {
+        finish(`Uploaded ${savedNames.length} item(s) with ${rowErrors.length} skipped: ${rowErrors.slice(0, 3).join(' ')}`, 'warning');
+      } else {
+        finish(`No rows imported. ${rowErrors.slice(0, 3).join(' ')}`, 'error');
       }
-
-      if (savedNames.length > 0) {
-        setBatchMessage(`Uploaded ${savedNames.length} row(s) with ${rowErrors.length} warning(s): ${rowErrors.slice(0, 3).join(' ')}`);
-        return;
-      }
-
-      setBatchMessage(`No rows were imported. ${rowErrors.slice(0, 3).join(' ')}`);
     } finally {
       setUploadingBatch(false);
     }
@@ -287,7 +303,17 @@ export default function Manage() {
             />
           </label>
         </div>
-        {batchMessage && <p className="text-sm text-text-2">{batchMessage}</p>}
+        {(uploadingBatch || batchMessage) && (
+          <p className={`text-sm font-medium ${
+            uploadingBatch ? 'text-text-2' :
+            batchStatus === 'success' ? 'text-success' :
+            batchStatus === 'warning' ? 'text-warning' :
+            'text-error'
+          }`}>
+            {uploadingBatch && <span className="mr-2 inline-block animate-spin">⟳</span>}
+            {batchMessage}
+          </p>
+        )}
       </div>
 
       <ul className="space-y-3">

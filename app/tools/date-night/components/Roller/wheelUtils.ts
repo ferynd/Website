@@ -49,12 +49,14 @@ export const targetRotationForSlice = (
   return currentRotation + delta;
 };
 
+const CHART_COLORS_FALLBACK = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
+
 export const getChartColors = (): string[] => {
-  if (typeof window === 'undefined') {
-    return ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'];
-  }
+  if (typeof window === 'undefined') return CHART_COLORS_FALLBACK;
   const style = getComputedStyle(document.documentElement);
-  return Array.from({ length: 8 }, (_, index) => style.getPropertyValue(`--chart-${index + 1}-hex`).trim() || '#3B82F6');
+  return CHART_COLORS_FALLBACK.map((fallback, index) =>
+    style.getPropertyValue(`--chart-${index + 1}-hex`).trim() || fallback
+  );
 };
 
 export const truncateLabel = (text: string, max = 18) => (text.length > max ? `${text.slice(0, max - 1)}…` : text);

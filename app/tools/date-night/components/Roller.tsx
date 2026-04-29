@@ -163,23 +163,42 @@ export default function Roller() {
   }, [modifiers, overrideFrequency, settings]);
 
   return (
-    <section className="rounded-xl3 border border-border bg-surface-1/80 p-5 shadow-md space-y-4">
+    <section className="rounded-xl3 border border-border bg-surface-1/80 p-5 shadow-md space-y-5">
       <h2 className="text-xl font-semibold">Roller</h2>
-      <div className="grid sm:grid-cols-2 gap-2 text-sm">
-        <label><input type="checkbox" checked={noModifier} onChange={(e) => setNoModifier(e.target.checked)} /> No modifier</label>
-        <label><input type="checkbox" checked={higherStacking} onChange={(e) => setHigherStacking(e.target.checked)} /> Higher stacking</label>
-        <label><input type="checkbox" checked={pushRare} onChange={(e) => setPushRare(e.target.checked)} /> Push rare stuff</label>
-        <label><input type="checkbox" checked={overrideFrequency} onChange={(e) => setOverrideFrequency(e.target.checked)} /> Override frequency</label>
+
+      <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+        {([
+          { label: 'No modifier', checked: noModifier, set: setNoModifier },
+          { label: 'Higher stacking', checked: higherStacking, set: setHigherStacking },
+          { label: 'Push rare', checked: pushRare, set: setPushRare },
+          { label: 'Override cooldown', checked: overrideFrequency, set: setOverrideFrequency },
+        ] as { label: string; checked: boolean; set: (v: boolean) => void }[]).map(({ label, checked, set }) => (
+          <label key={label} className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={(e) => set(e.target.checked)}
+              className="h-4 w-4 rounded border border-border accent-[hsl(var(--accent))]"
+            />
+            {label}
+          </label>
+        ))}
       </div>
 
-      <div className="grid xl:grid-cols-2 gap-6">
-        <RarityWheel weights={rarityWeights} rotationDeg={rarityRotation} durationMs={DATE_SPIN_MS} dimmed={showReveal} />
-        <ItemWheel title="Date item wheel" slices={dateItemSlices.length ? dateItemSlices : [{ id: 'empty', label: 'No eligible items', weight: 1 }]} rotationDeg={itemRotation} durationMs={DATE_SPIN_MS} dimmed={showReveal} />
+      <div className="space-y-1">
+        <p className="text-xs font-semibold uppercase tracking-wider text-text-3">Date</p>
+        <div className="grid xl:grid-cols-2 gap-6">
+          <RarityWheel title="Date rarity" weights={rarityWeights} rotationDeg={rarityRotation} durationMs={DATE_SPIN_MS} dimmed={showReveal} />
+          <ItemWheel title="Date ideas" slices={dateItemSlices.length ? dateItemSlices : [{ id: 'empty', label: 'No eligible items', weight: 1 }]} rotationDeg={itemRotation} durationMs={DATE_SPIN_MS} dimmed={showReveal} />
+        </div>
       </div>
       {!noModifier && (
-        <div className="grid xl:grid-cols-2 gap-6">
-          <RarityWheel weights={rarityWeights} rotationDeg={modifierRarityRotation} durationMs={MODIFIER_SPIN_MS} dimmed={showReveal} />
-          <ItemWheel title="Modifier item wheel" slices={modifierItemSlices.length ? modifierItemSlices : [{ id: 'empty', label: 'No eligible modifiers', weight: 1 }]} rotationDeg={modifierItemRotation} durationMs={MODIFIER_SPIN_MS} dimmed={showReveal} />
+        <div className="space-y-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-3">Modifier</p>
+          <div className="grid xl:grid-cols-2 gap-6">
+            <RarityWheel title="Modifier rarity" weights={rarityWeights} rotationDeg={modifierRarityRotation} durationMs={MODIFIER_SPIN_MS} dimmed={showReveal} />
+            <ItemWheel title="Modifiers" slices={modifierItemSlices.length ? modifierItemSlices : [{ id: 'empty', label: 'No eligible modifiers', weight: 1 }]} rotationDeg={modifierItemRotation} durationMs={MODIFIER_SPIN_MS} dimmed={showReveal} />
+          </div>
         </div>
       )}
 
