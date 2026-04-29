@@ -1,3 +1,4 @@
+export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { VIBE_CATEGORIES } from '@/app/tools/shows/lib/vibeCategories';
 
