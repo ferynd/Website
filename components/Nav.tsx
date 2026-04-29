@@ -20,14 +20,19 @@ const activeLinkClass = 'text-text font-medium';
 const inactiveLinkClass = 'text-text-2';
 const mobileMenuTransition =
   'transition-all duration-200 ease-in-out origin-top transform';
+const navShellClass =
+  'sticky top-0 z-50 backdrop-blur-md bg-surface-2/80 border-b border-border shadow-sm';
+const navBarClass = 'container-tight flex items-center justify-between py-2 sm:py-3';
+const brandClass = 'text-base sm:text-lg font-semibold';
+const mobileToggleClass = 'md:hidden p-2 border border-border hover:border-accent';
 
 export default function Nav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-md bg-surface-2/80 border-b border-border shadow-sm">
-      <nav className="container-tight flex items-center justify-between py-4">
-        <Link href="/" className={`text-lg font-semibold ${linkBaseClass}`}>
+    <header className={navShellClass}>
+      <nav className={navBarClass}>
+        <Link href="/" className={`${brandClass} ${linkBaseClass}`}>
           JB
         </Link>
         <Button
@@ -35,7 +40,7 @@ export default function Nav() {
           aria-expanded={open}
           variant="ghost"
           size="sm"
-          className="md:hidden p-4 border border-border hover:border-accent"
+          className={mobileToggleClass}
           onClick={() => setOpen(!open)}
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
