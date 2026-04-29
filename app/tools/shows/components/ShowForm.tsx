@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react';
 import { X, Sparkles, Loader2, Trash2 } from 'lucide-react';
 import type { Show, ShowType, ShowStatus, ShowList } from '../types';
 import { VIBE_CATEGORIES } from '../lib/vibeCategories';
-import { isRatable } from '../lib/compositeScore';
 import VibeTagChip from './VibeTagChip';
 import ScoreBlock from './ScoreBlock';
 import { useShows } from '../ShowsContext';
@@ -157,7 +156,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
       };
       if (isEdit && show) {
         await updateShow(show.id, payload);
-        if (user && isRatable(status)) {
+        if (user) {
           await updateMyRating(show.id, pendingRating);
         }
       } else {
@@ -175,7 +174,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
     show.createdBy === user.uid || (activeList?.adminUids.includes(user.uid) ?? false)
   );
   const showEpisodeFields = hasEpisodes(type);
-  const showScores = isEdit && show && isRatable(status);
+  const showScores = isEdit && show;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -387,7 +386,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             />
           </div>
 
-          {/* Score blocks — only on edit when ratable */}
+          {/* Score blocks — visible on edit for all statuses */}
           {showScores && user && (
             <div className="space-y-2">
               <p className="text-sm font-medium text-text-2">Scores</p>
