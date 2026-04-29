@@ -17,8 +17,8 @@ import { targetRotationForSlice } from './Roller/wheelUtils';
 /* CONFIGURATION: spin durations + stage timings                */
 /* ------------------------------------------------------------ */
 
-const DATE_SPIN_MS = 2200;
-const MODIFIER_SPIN_MS = 1400;
+const RARITY_SPIN_MS = 1200;
+const ITEM_SPIN_MS = 3200;
 
 const INITIAL_PAUSE_MS = 800;
 const REVEAL_DELAY_MS = 250;
@@ -125,28 +125,18 @@ export default function Roller() {
       const dateRarity = pickRarity(settings, { pushRare });
       const raritySlices = buildRaritySlices();
 
-      const nextRarityRotation = targetRotationForSlice(
-        raritySlices,
-        dateRarity,
-        rarityRotation,
-      );
-
+      const nextRarityRotation = targetRotationForSlice(raritySlices, dateRarity, rarityRotation);
       setRarityRotation(nextRarityRotation);
 
-      await sleep(DATE_SPIN_MS);
-
+      await sleep(RARITY_SPIN_MS);
       setTickerText(RARITY_DISPLAY_LABELS[dateRarity] ?? dateRarity);
-
       await sleep(RARITY_READ_DELAY_MS);
 
       /* ------------------------------------------------------------ */
       /* STAGE 2: Date item                                           */
       /* ------------------------------------------------------------ */
 
-      const chosenDate = pickItemByRarity(dates, dateRarity, settings, {
-        overrideFrequency,
-        pushRare,
-      });
+      const chosenDate = pickItemByRarity(dates, dateRarity, settings, { overrideFrequency, pushRare });
 
       if (!chosenDate) {
         setEmptyState('Everything is on cooldown right now. Try override frequency or add more ideas.');
@@ -172,18 +162,11 @@ export default function Roller() {
       setActiveDateItemSlices(dateSlicePool);
       setSpinStage('date-item');
 
-      const nextItemRotation = targetRotationForSlice(
-        dateSlicePool,
-        chosenDate.id,
-        itemRotation,
-      );
-
+      const nextItemRotation = targetRotationForSlice(dateSlicePool, chosenDate.id, itemRotation);
       setItemRotation(nextItemRotation);
 
-      await sleep(DATE_SPIN_MS);
-
+      await sleep(ITEM_SPIN_MS);
       setTickerText(chosenDate.name);
-
       await sleep(DATE_RESULT_READ_DELAY_MS);
 
       /* ------------------------------------------------------------ */
@@ -194,21 +177,11 @@ export default function Roller() {
 
       if (!noModifier && modifiers.length) {
         const desiredCount = pickModifierCount(settings, higherStacking);
-
-        selectedModifiers = pickDistinctModifiers(
-          modifiers,
-          settings,
-          desiredCount,
-          {
-            pushRare,
-            overrideFrequency,
-          },
-        );
+        selectedModifiers = pickDistinctModifiers(modifiers, settings, desiredCount, { pushRare, overrideFrequency });
 
         if (selectedModifiers.length > 0) {
           let runningRarityRotation = modifierRarityRotation;
           let runningItemRotation = modifierItemRotation;
-
           const modifierRaritySlices = buildRaritySlices();
 
           for (let i = 0; i < selectedModifiers.length; i += 1) {
@@ -217,22 +190,13 @@ export default function Roller() {
 
             setSpinStage('mod-rarity');
             setTickerText(`Modifier ${i + 1} Rarity...`);
-
             await sleep(MODIFIER_STAGE_LABEL_DELAY_MS);
 
-            runningRarityRotation = targetRotationForSlice(
-              modifierRaritySlices,
-              modifierRarity,
-              runningRarityRotation,
-              3,
-            );
-
+            runningRarityRotation = targetRotationForSlice(modifierRaritySlices, modifierRarity, runningRarityRotation, 3);
             setModifierRarityRotation(runningRarityRotation);
 
-            await sleep(MODIFIER_SPIN_MS);
-
+            await sleep(RARITY_SPIN_MS);
             setTickerText(RARITY_DISPLAY_LABELS[modifierRarity] ?? modifierRarity);
-
             await sleep(MODIFIER_RARITY_READ_DELAY_MS);
 
             const modifierSlicePool = modifiers
@@ -244,26 +208,16 @@ export default function Roller() {
               }))
               .filter((slice) => slice.weight > 0);
 
-            if (!modifierSlicePool.length) {
-              continue;
-            }
+            if (!modifierSlicePool.length) continue;
 
             setActiveModifierItemSlices(modifierSlicePool);
             setSpinStage('mod-item');
 
-            runningItemRotation = targetRotationForSlice(
-              modifierSlicePool,
-              selectedModifier.id,
-              runningItemRotation,
-              3,
-            );
-
+            runningItemRotation = targetRotationForSlice(modifierSlicePool, selectedModifier.id, runningItemRotation, 3);
             setModifierItemRotation(runningItemRotation);
 
-            await sleep(MODIFIER_SPIN_MS);
-
+            await sleep(ITEM_SPIN_MS);
             setTickerText(selectedModifier.name);
-
             await sleep(MODIFIER_ITEM_READ_DELAY_MS);
           }
         }
@@ -278,7 +232,6 @@ export default function Roller() {
       });
 
       await sleep(REVEAL_DELAY_MS);
-
       setShowReveal(true);
       setRolling(false);
     } catch {
@@ -293,24 +246,18 @@ export default function Roller() {
       setShowArchiveConfirm(true);
       return;
     }
-
     void startSpinSequence();
   };
 
   const confirmArchiveThenSpin = async () => {
-    if (pendingRoll) {
-      await archivePendingRollWithoutReview(pendingRoll.id);
-    }
-
+    if (pendingRoll) await archivePendingRollWithoutReview(pendingRoll.id);
     setShowArchiveConfirm(false);
     await startSpinSequence();
   };
 
   const accept = async () => {
     if (!candidate) return;
-
     await acceptCandidate(candidate, vetoCount);
-
     setCandidate(null);
     setVetoCount(0);
     setShowReveal(false);
@@ -320,10 +267,8 @@ export default function Roller() {
 
   const vetoAndRespin = async () => {
     if (!candidate) return;
-
     await recordVeto(candidate);
     setVetoCount((prev) => prev + 1);
-
     await startSpinSequence();
   };
 
@@ -349,11 +294,7 @@ export default function Roller() {
 
   return (
     <>
-      <section
-        className={`space-y-5 rounded-3xl border border-border bg-surface-1/80 p-5 shadow-md transition-opacity duration-500 ${
-          rolling ? 'pointer-events-none opacity-30' : 'opacity-100'
-        }`}
-      >
+      <section className={`space-y-5 rounded-3xl border border-border bg-surface-1/80 p-5 shadow-md transition-opacity duration-500 ${rolling ? 'pointer-events-none opacity-30' : 'opacity-100'}`}>
         <h2 className="text-xl font-semibold">Roller</h2>
 
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
@@ -362,85 +303,38 @@ export default function Roller() {
             { label: 'Higher stacking', checked: higherStacking, set: setHigherStacking },
             { label: 'Push rare', checked: pushRare, set: setPushRare },
             { label: 'Override cooldown', checked: overrideFrequency, set: setOverrideFrequency },
-          ] as { label: string; checked: boolean; set: (value: boolean) => void }[]).map(
-            ({ label, checked, set }) => (
-              <label key={label} className="flex cursor-pointer select-none items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(event) => set(event.target.checked)}
-                  className="h-4 w-4 rounded border border-border accent-[hsl(var(--accent))]"
-                />
-                {label}
-              </label>
-            ),
-          )}
+          ] as { label: string; checked: boolean; set: (value: boolean) => void }[]).map(({ label, checked, set }) => (
+            <label key={label} className="flex cursor-pointer select-none items-center gap-2">
+              <input type="checkbox" checked={checked} onChange={(event) => set(event.target.checked)} className="h-4 w-4 rounded border border-border accent-[hsl(var(--accent))]" />
+              {label}
+            </label>
+          ))}
         </div>
 
         <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-wider text-text-3">
-            Date
-          </p>
-
+          <p className="text-xs font-semibold uppercase tracking-wider text-text-3">Date</p>
           <div className="grid gap-6 xl:grid-cols-2">
-            <RarityWheel
-              title="Date rarity"
-              weights={rarityWeights}
-              rotationDeg={rarityRotation}
-              durationMs={DATE_SPIN_MS}
-              dimmed={showReveal}
-            />
-
-            <ItemWheel
-              title="Date ideas"
-              slices={dateItemSlices.length ? dateItemSlices : [EMPTY_DATE_SLICE]}
-              rotationDeg={itemRotation}
-              durationMs={DATE_SPIN_MS}
-              dimmed={showReveal}
-            />
+            <RarityWheel title="Date rarity" weights={rarityWeights} rotationDeg={rarityRotation} durationMs={RARITY_SPIN_MS} dimmed={showReveal} />
+            <ItemWheel title="Date ideas" slices={dateItemSlices.length ? dateItemSlices : [EMPTY_DATE_SLICE]} rotationDeg={itemRotation} durationMs={ITEM_SPIN_MS} dimmed={showReveal} />
           </div>
         </div>
 
         {!noModifier && (
           <div className="space-y-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-text-3">
-              Modifier
-            </p>
-
+            <p className="text-xs font-semibold uppercase tracking-wider text-text-3">Modifier</p>
             <div className="grid gap-6 xl:grid-cols-2">
-              <RarityWheel
-                title="Modifier rarity"
-                weights={rarityWeights}
-                rotationDeg={modifierRarityRotation}
-                durationMs={MODIFIER_SPIN_MS}
-                dimmed={showReveal}
-              />
-
-              <ItemWheel
-                title="Modifiers"
-                slices={modifierItemSlices.length ? modifierItemSlices : [EMPTY_MODIFIER_SLICE]}
-                rotationDeg={modifierItemRotation}
-                durationMs={MODIFIER_SPIN_MS}
-                dimmed={showReveal}
-              />
+              <RarityWheel title="Modifier rarity" weights={rarityWeights} rotationDeg={modifierRarityRotation} durationMs={RARITY_SPIN_MS} dimmed={showReveal} />
+              <ItemWheel title="Modifiers" slices={modifierItemSlices.length ? modifierItemSlices : [EMPTY_MODIFIER_SLICE]} rotationDeg={modifierItemRotation} durationMs={ITEM_SPIN_MS} dimmed={showReveal} />
             </div>
           </div>
         )}
 
         <div className="flex flex-wrap gap-3">
-          <Button onClick={handleSpinClick} disabled={rolling}>
-            {rolling ? 'Spinning...' : 'Spin Roulette'}
-          </Button>
-
+          <Button onClick={handleSpinClick} disabled={rolling}>{rolling ? 'Spinning...' : 'Spin Roulette'}</Button>
           {candidate && showReveal && (
             <>
-              <Button variant="success" onClick={accept}>
-                Accept
-              </Button>
-
-              <Button variant="danger" onClick={vetoAndRespin}>
-                Veto & Re-spin
-              </Button>
+              <Button variant="success" onClick={accept}>Accept</Button>
+              <Button variant="danger" onClick={vetoAndRespin}>Veto & Re-spin</Button>
             </>
           )}
         </div>
@@ -450,39 +344,17 @@ export default function Roller() {
         {showReveal && candidate && (
           <div className="animate-date-reveal rounded-xl border border-accent/40 bg-surface-2/80 p-6 text-center">
             <div className="animate-sparkle-float flex items-center justify-center gap-2 text-accent">
-              <Sparkles size={20} />
-              <Sparkles size={28} />
-              <Sparkles size={20} />
+              <Sparkles size={20} /><Sparkles size={28} /><Sparkles size={20} />
             </div>
-
-            <p className="mt-3 text-sm uppercase tracking-widest text-text-3">
-              Date selected
-            </p>
-
-            <h3 className="glow-accent mt-1 text-3xl font-bold">
-              {candidate.date.name}
-            </h3>
-
-            <p className="mt-2 text-text-2">
-              {candidate.modifiers.length
-                ? candidate.modifiers.map((modifier) => modifier.name).join(' · ')
-                : 'No modifiers'}
-            </p>
-
-            {vetoCount > 0 && (
-              <p className="mt-2 text-xs text-warning">
-                Vetoes before acceptance: {vetoCount}
-              </p>
-            )}
+            <p className="mt-3 text-sm uppercase tracking-widest text-text-3">Date selected</p>
+            <h3 className="glow-accent mt-1 text-3xl font-bold">{candidate.date.name}</h3>
+            <p className="mt-2 text-text-2">{candidate.modifiers.length ? candidate.modifiers.map((modifier) => modifier.name).join(' · ') : 'No modifiers'}</p>
+            {vetoCount > 0 && <p className="mt-2 text-xs text-warning">Vetoes before acceptance: {vetoCount}</p>}
           </div>
         )}
       </section>
 
-      <div
-        className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-surface-1/95 backdrop-blur-md transition-opacity duration-500 ${
-          rolling ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'
-        }`}
-      >
+      <div className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-surface-1/95 backdrop-blur-md transition-opacity duration-500 ${rolling ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0'}`}>
         <div className="flex min-h-0 flex-1 items-end pb-8">
           <h2 className="max-w-[92vw] break-words px-6 text-center text-3xl font-bold tracking-wide text-accent drop-shadow-md text-balance md:text-5xl lg:text-6xl">
             {tickerText}
@@ -490,75 +362,19 @@ export default function Roller() {
         </div>
 
         <div className="relative flex aspect-square w-[min(76vw,360px)] flex-none items-center justify-center">
-          <div
-            className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
-              spinStage === 'date-rarity'
-                ? 'scale-110 opacity-100 sm:scale-125'
-                : 'pointer-events-none scale-90 opacity-0'
-            }`}
-          >
-            <RarityWheel
-              title=""
-              weights={rarityWeights}
-              rotationDeg={rarityRotation}
-              durationMs={DATE_SPIN_MS}
-              onPointerChange={handleLivePointerSync}
-            />
+          <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${spinStage === 'date-rarity' ? 'scale-110 opacity-100 sm:scale-125' : 'pointer-events-none scale-90 opacity-0'}`}>
+            <RarityWheel title="" weights={rarityWeights} rotationDeg={rarityRotation} durationMs={RARITY_SPIN_MS} onPointerChange={handleLivePointerSync} />
           </div>
-
-          <div
-            className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
-              spinStage === 'date-item'
-                ? 'scale-110 opacity-100 sm:scale-125'
-                : 'pointer-events-none scale-90 opacity-0'
-            }`}
-          >
-            <ItemWheel
-              title=""
-              slices={activeDateItemSlices.length ? activeDateItemSlices : [EMPTY_DATE_SLICE]}
-              rotationDeg={itemRotation}
-              durationMs={DATE_SPIN_MS}
-              onPointerChange={handleLivePointerSync}
-            />
+          <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${spinStage === 'date-item' ? 'scale-110 opacity-100 sm:scale-125' : 'pointer-events-none scale-90 opacity-0'}`}>
+            <ItemWheel title="" slices={activeDateItemSlices.length ? activeDateItemSlices : [EMPTY_DATE_SLICE]} rotationDeg={itemRotation} durationMs={ITEM_SPIN_MS} onPointerChange={handleLivePointerSync} />
           </div>
-
-          <div
-            className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
-              spinStage === 'mod-rarity'
-                ? 'scale-110 opacity-100 sm:scale-125'
-                : 'pointer-events-none scale-90 opacity-0'
-            }`}
-          >
-            <RarityWheel
-              title=""
-              weights={rarityWeights}
-              rotationDeg={modifierRarityRotation}
-              durationMs={MODIFIER_SPIN_MS}
-              onPointerChange={handleLivePointerSync}
-            />
+          <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${spinStage === 'mod-rarity' ? 'scale-110 opacity-100 sm:scale-125' : 'pointer-events-none scale-90 opacity-0'}`}>
+            <RarityWheel title="" weights={rarityWeights} rotationDeg={modifierRarityRotation} durationMs={RARITY_SPIN_MS} onPointerChange={handleLivePointerSync} />
           </div>
-
-          <div
-            className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${
-              spinStage === 'mod-item'
-                ? 'scale-110 opacity-100 sm:scale-125'
-                : 'pointer-events-none scale-90 opacity-0'
-            }`}
-          >
-            <ItemWheel
-              title=""
-              slices={
-                activeModifierItemSlices.length
-                  ? activeModifierItemSlices
-                  : [EMPTY_MODIFIER_SLICE]
-              }
-              rotationDeg={modifierItemRotation}
-              durationMs={MODIFIER_SPIN_MS}
-              onPointerChange={handleLivePointerSync}
-            />
+          <div className={`absolute inset-0 flex items-center justify-center transition-all duration-300 ${spinStage === 'mod-item' ? 'scale-110 opacity-100 sm:scale-125' : 'pointer-events-none scale-90 opacity-0'}`}>
+            <ItemWheel title="" slices={activeModifierItemSlices.length ? activeModifierItemSlices : [EMPTY_MODIFIER_SLICE]} rotationDeg={modifierItemRotation} durationMs={ITEM_SPIN_MS} onPointerChange={handleLivePointerSync} />
           </div>
         </div>
-
         <div className="min-h-0 flex-1" />
       </div>
 
@@ -566,20 +382,10 @@ export default function Roller() {
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-lg space-y-4 rounded-3xl border border-border bg-surface-1 p-5">
             <h3 className="text-lg font-semibold">Pending review exists</h3>
-
-            <p className="text-sm text-text-2">
-              You haven&apos;t finished reviewing your last date night. If you spin now,
-              it&apos;ll be archived without a review. Spin anyway?
-            </p>
-
+            <p className="text-sm text-text-2">You haven&apos;t finished reviewing your last date night. If you spin now, it&apos;ll be archived without a review. Spin anyway?</p>
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={() => setShowArchiveConfirm(false)}>
-                Cancel
-              </Button>
-
-              <Button variant="danger" onClick={() => void confirmArchiveThenSpin()}>
-                Spin anyway
-              </Button>
+              <Button variant="ghost" onClick={() => setShowArchiveConfirm(false)}>Cancel</Button>
+              <Button variant="danger" onClick={() => void confirmArchiveThenSpin()}>Spin anyway</Button>
             </div>
           </div>
         </div>
