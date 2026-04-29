@@ -43,6 +43,7 @@ export interface Show {
   totalSeasons: number | null;
   service: string | null;
   watchers: string[];
+  description: string;
   notes: string;
   vibeTags: string[];
   ratings: Record<string, MemberRating>;

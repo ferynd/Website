@@ -59,6 +59,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [watchers, setWatchers] = useState<string[]>(
     show?.watchers ?? (user ? [user.uid] : []),
   );
+  const [description, setDescription] = useState(show?.description ?? '');
   const [notes, setNotes] = useState(show?.notes ?? '');
   const [vibeTags, setVibeTags] = useState<string[]>(show?.vibeTags ?? []);
   const [classifying, setClassifying] = useState(false);
@@ -93,7 +94,10 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
       });
       if (!res.ok) throw new Error('Classification failed');
       const data = await res.json();
+      // AI owns type, vibes, and description — never touches notes
+      if (data.type) setType(data.type);
       if (data.vibes?.length) setVibeTags(data.vibes);
+      if (typeof data.description === 'string') setDescription(data.description);
     } catch {
       setError('Could not classify — check your connection and try again.');
     } finally {
@@ -150,6 +154,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         totalSeasons: hasEpisodes(type) && totalSeasons ? Number(totalSeasons) : null,
         service: resolvedService,
         watchers,
+        description,
         notes,
         vibeTags,
         ratings: show?.ratings ?? {},
@@ -374,14 +379,26 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             </div>
           </div>
 
-          {/* Notes */}
+          {/* Description (AI-populated) */}
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium text-text-2">Description</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="AI will fill this when you classify the show."
+              className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent resize-none"
+            />
+          </div>
+
+          {/* Notes (user-only) */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-text-2">Notes</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Anything to remember…"
+              placeholder="Your personal notes about this show."
               className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent resize-none"
             />
           </div>
