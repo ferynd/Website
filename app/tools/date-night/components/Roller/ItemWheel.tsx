@@ -1,3 +1,4 @@
+// app/tools/date-night/components/Roller/ItemWheel.tsx
 'use client';
 
 import type { WheelSlice } from '../../lib/types';
@@ -13,8 +14,9 @@ interface ItemWheelProps {
   rotationDeg: number;
   durationMs: number;
   dimmed?: boolean;
+  onPointerChange?: (sliceId: string, label: string) => void;
 }
 
-export default function ItemWheel({ title, slices, rotationDeg, durationMs, dimmed }: ItemWheelProps) {
-  return <WheelBase title={title} slices={slices} rotationDeg={rotationDeg} durationMs={durationMs} dimmed={dimmed} />;
+export default function ItemWheel({ title, slices, rotationDeg, durationMs, dimmed, onPointerChange }: ItemWheelProps) {
+  return <WheelBase title={title} slices={slices} rotationDeg={rotationDeg} durationMs={durationMs} dimmed={dimmed} onPointerChange={onPointerChange} />;
 }
