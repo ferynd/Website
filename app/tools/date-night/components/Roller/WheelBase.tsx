@@ -1,6 +1,7 @@
+// app/tools/date-night/components/Roller/WheelBase.tsx
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { WheelSlice } from '../../lib/types';
 import { arcPath, describeSlices, getChartColors, LABEL_RADIUS, truncateLabel, WHEEL_SIZE } from './wheelUtils';
 
@@ -15,11 +16,57 @@ interface WheelBaseProps {
   rotationDeg: number;
   durationMs: number;
   dimmed?: boolean;
+  onPointerChange?: (sliceId: string, label: string) => void;
 }
 
-export default function WheelBase({ title, slices, rotationDeg, durationMs, dimmed }: WheelBaseProps) {
+export default function WheelBase({ title, slices, rotationDeg, durationMs, dimmed, onPointerChange }: WheelBaseProps) {
   const laidOut = useMemo(() => describeSlices(slices), [slices]);
   const colors = useMemo(() => getChartColors(), []);
+  
+  const svgRef = useRef<SVGSVGElement>(null);
+  const prevRotationRef = useRef(rotationDeg);
+  const currentLabelRef = useRef<string | null>(null);
+
+  // --- NEW: Real-time pointer tracking ---
+  useEffect(() => {
+    if (rotationDeg !== prevRotationRef.current && onPointerChange && svgRef.current) {
+      let animationFrameId: number;
+      const startTime = Date.now();
+
+      const checkRotation = () => {
+        if (!svgRef.current) return;
+        const matrix = window.getComputedStyle(svgRef.current).transform;
+        
+        if (matrix !== 'none') {
+          const domMatrix = new DOMMatrix(matrix);
+          // Convert 2D matrix to rotation angle
+          let currentAngle = Math.atan2(domMatrix.b, domMatrix.a) * (180 / Math.PI);
+          if (currentAngle < 0) currentAngle += 360;
+
+          // The pointer is at the top (0 degrees). If wheel rotates clockwise by R, 
+          // the slice currently at the top is the one located at (360 - R) degrees.
+          const topAngle = (360 - (currentAngle % 360)) % 360;
+          
+          const activeSlice = laidOut.find(s => topAngle >= s.start && topAngle < s.end) || laidOut[0];
+
+          if (activeSlice && activeSlice.label !== currentLabelRef.current) {
+            currentLabelRef.current = activeSlice.label;
+            onPointerChange(activeSlice.id, activeSlice.label);
+          }
+        }
+
+        // Keep looping until the CSS transition duration is fully complete (+ a small buffer)
+        if (Date.now() - startTime < durationMs + 100) {
+          animationFrameId = requestAnimationFrame(checkRotation);
+        }
+      };
+
+      animationFrameId = requestAnimationFrame(checkRotation);
+      prevRotationRef.current = rotationDeg;
+
+      return () => cancelAnimationFrame(animationFrameId);
+    }
+  }, [rotationDeg, durationMs, onPointerChange, laidOut]);
 
   return (
     <div className={`space-y-2 transition-opacity ${dimmed ? 'opacity-30' : 'opacity-100'}`}>
@@ -27,6 +74,7 @@ export default function WheelBase({ title, slices, rotationDeg, durationMs, dimm
       <div className="relative mx-auto w-[320px]">
         <div className="absolute left-1/2 top-0 z-20 h-0 w-0 -translate-x-1/2 border-x-[12px] border-b-[22px] border-x-transparent border-b-accent drop-shadow-md" />
         <svg
+          ref={svgRef}
           width={WHEEL_SIZE}
           height={WHEEL_SIZE}
           viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
@@ -38,10 +86,16 @@ export default function WheelBase({ title, slices, rotationDeg, durationMs, dimm
             const angle = slice.center - 90;
             const x = WHEEL_SIZE / 2 + LABEL_RADIUS * Math.cos((angle * Math.PI) / 180);
             const y = WHEEL_SIZE / 2 + LABEL_RADIUS * Math.sin((angle * Math.PI) / 180);
-            // Flip rotation for bottom-half slices so text is never upside-down
-            const textRotation = slice.center > 90 && slice.center < 270 ? slice.center - 180 : slice.center;
-            // Scale max chars to available arc width; hide label on tiny slices
-            const maxChars = sweep < 13 ? 0 : sweep < 22 ? 5 : sweep < 34 ? 8 : sweep < 52 ? 13 : 18;
+            
+            // NEW: Rotate -90 degrees from the center to align parallel with the slice's radius.
+            // We flip the text on the left half (180 to 360 deg) so it reads inwards instead of upside-down.
+            const textRotation = slice.center > 180 && slice.center < 360 
+              ? slice.center - 270 
+              : slice.center - 90;
+              
+            // NEW: Text length is now constrained by the wheel radius.
+            const maxChars = sweep < 6 ? 0 : 18;
+            
             return (
               <g key={slice.id}>
                 <path d={arcPath(slice.start, slice.end)} fill={colors[index % colors.length]} stroke="rgba(0,0,0,0.18)" strokeWidth={1.5} />
