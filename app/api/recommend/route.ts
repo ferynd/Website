@@ -1,10 +1,15 @@
+// --- Configuration ---
+// File: app/api/recommend/route.ts
+// GEMINI_URL: The endpoint targeting the specific model to use for the recommendation task.
+// ---------------------
+
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Show } from '@/app/tools/shows/types';
 import type { MoodEntry, HistoryEntry } from '@/app/tools/shows/lib/recommendationContext';
 
 const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent';
 
 interface RecommendBody {
   moods: Record<string, MoodEntry>;
@@ -126,7 +131,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'AI response missing showId or reason.' }, { status: 502 });
   }
 
-  // Validate that the showId is actually in the candidate set
   const validIds = new Set(candidates.map((s) => s.id));
   if (!validIds.has(showId)) {
     return NextResponse.json(
