@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2 } from 'lucide-react';
+import { X, Sparkles, Loader2, Trash2 } from 'lucide-react';
 import type { Show, ShowType, ShowStatus, ShowList } from '../types';
 import { VIBE_CATEGORIES } from '../lib/vibeCategories';
 import { isRatable } from '../lib/compositeScore';
@@ -40,7 +40,7 @@ interface Props {
 }
 
 export default function ShowForm({ show, listId, members, onClose }: Props) {
-  const { user, addShow, updateShow, updateMyRating } = useShows();
+  const { user, activeList, addShow, updateShow, updateMyRating, deleteShow } = useShows();
   const isEdit = !!show;
 
   const [title, setTitle] = useState(show?.title ?? '');
@@ -64,6 +64,8 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [vibeTags, setVibeTags] = useState<string[]>(show?.vibeTags ?? []);
   const [classifying, setClassifying] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
 
   // Local rating state for the current user (editable inline)
@@ -97,6 +99,21 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
       setError('Could not classify — check your connection and try again.');
     } finally {
       setClassifying(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!show) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await deleteShow(show.id);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed. Try again.');
+      setShowDeleteConfirm(false);
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -140,7 +157,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
       };
       if (isEdit && show) {
         await updateShow(show.id, payload);
-        // Persist rating changes separately (dot-notation field)
         if (user && isRatable(status)) {
           await updateMyRating(show.id, pendingRating);
         }
@@ -155,6 +171,9 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
     }
   }
 
+  const canDelete = isEdit && show && user && (
+    show.createdBy === user.uid || (activeList?.adminUids.includes(user.uid) ?? false)
+  );
   const showEpisodeFields = hasEpisodes(type);
   const showScores = isEdit && show && isRatable(status);
 
@@ -403,6 +422,20 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             </div>
           )}
 
+          {/* Delete */}
+          {canDelete && (
+            <div className="border-t border-border pt-4 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="flex items-center gap-1.5 text-sm text-error bg-transparent hover:underline"
+              >
+                <Trash2 size={14} />
+                Delete this show
+              </button>
+            </div>
+          )}
+
           {/* Submit */}
           <div className="flex gap-3 pt-2 pb-safe">
             <button
@@ -422,6 +455,37 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
           </div>
         </form>
       </div>
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && show && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowDeleteConfirm(false)}
+          />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl bg-surface-1 border border-border p-6 space-y-4 shadow-2">
+            <h3 className="font-semibold text-text">Delete &ldquo;{show.title}&rdquo;?</h3>
+            <p className="text-sm text-text-2">This can&rsquo;t be undone.</p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 rounded-xl border border-border bg-surface-2 py-3 text-sm font-medium text-text-2 hover:text-text transition-colors min-h-[48px]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-xl bg-error py-3 text-sm font-semibold text-white disabled:opacity-50 transition-opacity min-h-[48px]"
+              >
+                {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
