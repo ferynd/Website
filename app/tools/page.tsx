@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Nav from '@/components/Nav';
-import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices } from 'lucide-react';
+import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices, Tv } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: icon size and list of available tools          */
@@ -10,6 +10,12 @@ import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices } from 'luci
 const cardIconSize = 24;
 
 const toolList = [
+  {
+    name: 'Show Tracker',
+    description: 'Track anime, shows, and movies with your group. Rate, score, and get AI-powered mood-based picks.',
+    href: '/tools/shows',
+    icon: <Tv size={cardIconSize} className="text-accent" />,
+  },
   {
     name: 'Trip Planner',
     description: 'Collaborative itinerary planner with realtime timelines, shared ideas, and map panels.',
