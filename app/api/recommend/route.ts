@@ -1,15 +1,8 @@
-// --- Configuration ---
-// File: app/api/recommend/route.ts
-// GEMINI_URL: The endpoint targeting the specific model to use for the recommendation task.
-// ---------------------
-
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import type { Show } from '@/app/tools/shows/types';
 import type { MoodEntry, HistoryEntry } from '@/app/tools/shows/lib/recommendationContext';
-
-const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent';
+import { callGemini } from '@/app/lib/aiConfig';
 
 interface RecommendBody {
   moods: Record<string, MoodEntry>;
@@ -92,30 +85,14 @@ export async function POST(req: NextRequest) {
 
   const prompt = buildPrompt(moods, candidates, history);
 
-  let geminiRes: Response;
+  let raw: string;
   try {
-    geminiRes = await fetch(`${GEMINI_URL}?key=${key}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7 },
-      }),
-    });
-  } catch {
-    return NextResponse.json({ error: 'Gemini request failed (network).' }, { status: 502 });
+    raw = await callGemini(prompt, key);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  if (!geminiRes.ok) {
-    const text = await geminiRes.text().catch(() => '');
-    return NextResponse.json(
-      { error: `Gemini error ${geminiRes.status}: ${text.slice(0, 200)}` },
-      { status: 502 },
-    );
-  }
-
-  const data = await geminiRes.json();
-  const raw: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}';
   const cleaned = raw.replace(/```[a-z]*\n?/gi, '').trim();
 
   let result: { showId?: string; reason?: string };
