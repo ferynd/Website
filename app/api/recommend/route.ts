@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Show } from '@/app/tools/shows/types';
 import type { MoodEntry, HistoryEntry } from '@/app/tools/shows/lib/recommendationContext';
-
-const GEMINI_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+import { geminiEndpoint } from '@/app/lib/aiConfig';
 
 interface RecommendBody {
   moods: Record<string, MoodEntry>;
@@ -29,7 +27,7 @@ function buildPrompt(
               .map((s) => `  - ${s.title}: ${s.vibes.join(', ')} (${s.composite.toFixed(1)})`)
               .join('\n')
           : '  (no high-scoring history yet)';
-      return `${h.name}'s high-scoring shows (composite ≥ 7):\n${shows}`;
+      return `${h.name}'s high-scoring shows (composite >= 7):\n${shows}`;
     })
     .join('\n\n');
 
@@ -37,7 +35,7 @@ function buildPrompt(
     .map((s) => {
       const ep =
         s.currentSeason !== null || s.currentEpisode !== null
-          ? ` — S${s.currentSeason ?? '?'} E${s.currentEpisode ?? '?'}`
+          ? ` S${s.currentSeason ?? '?'} E${s.currentEpisode ?? '?'}`
           : '';
       const vibes = s.vibeTags.length > 0 ? s.vibeTags.join(', ') : 'no tags';
       return `  - id:${s.id} | ${s.title} (${s.type}) | vibes: ${vibes} | status: ${s.status}${ep}`;
@@ -51,8 +49,7 @@ function buildPrompt(
     `Available shows (status: watching/planned/on_hold):\n${candidateLines}\n\n` +
     `Pick the show that best fits both moods AND the patterns in what each person has historically rated highly. ` +
     `Prefer shows whose vibes overlap with vibes both people have liked before. ` +
-    `Return JSON only (no prose, no markdown): { "showId": "<id from the list above>", "reason": "<2-3 sentences>" }. ` +
-    `Reason should explain why this fits both moods and aligns with their history.`
+    `Return JSON only: { "showId": "<id from the list above>", "reason": "<2-3 sentences explaining why>" }`
   );
 }
 
@@ -72,14 +69,17 @@ export async function POST(req: NextRequest) {
   const { moods, candidates: allCandidates, history, excludeIds = [] } = body;
 
   if (!moods || !allCandidates || !history) {
-    return NextResponse.json({ error: 'moods, candidates, and history are required.' }, { status: 400 });
+    return NextResponse.json(
+      { error: 'moods, candidates, and history are required.' },
+      { status: 400 },
+    );
   }
 
   const candidates = allCandidates.filter((s) => !excludeIds.includes(s.id));
 
   if (candidates.length === 0) {
     return NextResponse.json(
-      { error: 'No more candidates to pick from. You\'ve exhausted the list!' },
+      { error: "No more candidates — you've respun through everything!" },
       { status: 400 },
     );
   }
@@ -88,22 +88,28 @@ export async function POST(req: NextRequest) {
 
   let geminiRes: Response;
   try {
-    geminiRes = await fetch(`${GEMINI_URL}?key=${key}`, {
+    geminiRes = await fetch(geminiEndpoint(key), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.7 },
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          responseMimeType: 'application/json',
+        },
       }),
     });
-  } catch {
-    return NextResponse.json({ error: 'Gemini request failed (network).' }, { status: 502 });
+  } catch (err) {
+    return NextResponse.json(
+      { error: `Gemini request failed (network): ${err instanceof Error ? err.message : String(err)}` },
+      { status: 502 },
+    );
   }
 
   if (!geminiRes.ok) {
     const text = await geminiRes.text().catch(() => '');
     return NextResponse.json(
-      { error: `Gemini error ${geminiRes.status}: ${text.slice(0, 200)}` },
+      { error: `Gemini error ${geminiRes.status}: ${text.slice(0, 400)}` },
       { status: 502 },
     );
   }
@@ -116,20 +122,25 @@ export async function POST(req: NextRequest) {
   try {
     result = JSON.parse(cleaned);
   } catch {
-    return NextResponse.json({ error: 'AI returned invalid JSON.' }, { status: 502 });
+    return NextResponse.json(
+      { error: `AI returned non-JSON: ${cleaned.slice(0, 200)}` },
+      { status: 502 },
+    );
   }
 
   const { showId, reason } = result;
 
   if (!showId || !reason) {
-    return NextResponse.json({ error: 'AI response missing showId or reason.' }, { status: 502 });
+    return NextResponse.json(
+      { error: 'AI response missing showId or reason.' },
+      { status: 502 },
+    );
   }
 
-  // Validate that the showId is actually in the candidate set
   const validIds = new Set(candidates.map((s) => s.id));
   if (!validIds.has(showId)) {
     return NextResponse.json(
-      { error: 'AI returned an unrecognised show ID. Try again.' },
+      { error: 'AI returned an unrecognised show ID. Try respin.' },
       { status: 502 },
     );
   }
