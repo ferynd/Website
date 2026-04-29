@@ -27,11 +27,14 @@ export default function WheelBase({ title, slices, rotationDeg, durationMs, dimm
   const prevRotationRef = useRef(rotationDeg);
   const currentLabelRef = useRef<string | null>(null);
 
-  // --- NEW: Real-time pointer tracking ---
+  // --- Real-time pointer tracking ---
   useEffect(() => {
     if (rotationDeg !== prevRotationRef.current && onPointerChange && svgRef.current) {
       let animationFrameId: number;
       const startTime = Date.now();
+
+      // Reset the current label so the ticker immediately picks up the starting slice
+      currentLabelRef.current = null;
 
       const checkRotation = () => {
         if (!svgRef.current) return;
@@ -69,17 +72,22 @@ export default function WheelBase({ title, slices, rotationDeg, durationMs, dimm
   }, [rotationDeg, durationMs, onPointerChange, laidOut]);
 
   return (
-    <div className={`space-y-2 transition-opacity ${dimmed ? 'opacity-30' : 'opacity-100'}`}>
-      <p className="text-sm font-medium text-text-2">{title}</p>
-      <div className="relative mx-auto w-[320px]">
+    <div className={`transition-opacity ${title ? 'space-y-2' : ''} ${dimmed ? 'opacity-30' : 'opacity-100'}`}>
+      {title && <p className="text-sm font-medium text-text-2">{title}</p>}
+      <div className="relative mx-auto w-[320px] max-w-full">
         <div className="absolute left-1/2 top-0 z-20 h-0 w-0 -translate-x-1/2 border-x-[12px] border-b-[22px] border-x-transparent border-b-accent drop-shadow-md" />
         <svg
           ref={svgRef}
           width={WHEEL_SIZE}
           height={WHEEL_SIZE}
           viewBox={`0 0 ${WHEEL_SIZE} ${WHEEL_SIZE}`}
-          className="rounded-full border-2 border-border bg-surface-2 shadow-2"
-          style={{ transform: `rotate(${rotationDeg}deg)`, transition: `transform ${durationMs}ms ${SPIN_EASING}` }}
+          className="rounded-full border-2 border-border bg-surface-2 shadow-2xl"
+          style={{
+            transform: `rotate(${rotationDeg}deg)`,
+            transformOrigin: 'center',
+            transformBox: 'fill-box',
+            transition: `transform ${durationMs}ms ${SPIN_EASING}`,
+          }}
         >
           {laidOut.map((slice, index) => {
             const sweep = slice.end - slice.start;
@@ -87,14 +95,11 @@ export default function WheelBase({ title, slices, rotationDeg, durationMs, dimm
             const x = WHEEL_SIZE / 2 + LABEL_RADIUS * Math.cos((angle * Math.PI) / 180);
             const y = WHEEL_SIZE / 2 + LABEL_RADIUS * Math.sin((angle * Math.PI) / 180);
             
-            // NEW: Rotate -90 degrees from the center to align parallel with the slice's radius.
-            // We flip the text on the left half (180 to 360 deg) so it reads inwards instead of upside-down.
             const textRotation = slice.center > 180 && slice.center < 360 
-              ? slice.center - 270 
+              ? slice.center + 90 
               : slice.center - 90;
               
-            // NEW: Text length is now constrained by the wheel radius.
-            const maxChars = sweep < 6 ? 0 : 18;
+            const maxChars = sweep < 6 ? 0 : sweep < 12 ? 8 : sweep < 20 ? 12 : 18;
             
             return (
               <g key={slice.id}>
