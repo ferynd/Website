@@ -82,6 +82,7 @@ interface DateNightContextValue {
   acceptCandidate: (candidate: RollCandidate, vetoCount: number) => Promise<void>;
   recordVeto: (candidate: RollCandidate) => Promise<void>;
   archivePendingRollWithoutReview: (rollId: string) => Promise<void>;
+  deleteRoll: (rollId: string) => Promise<void>;
   upsertReview: (rollId: string, slot: 'a' | 'b', review: Omit<DateNightReview, 'submittedAt'>) => Promise<void>;
   addPhoto: (rollId: string, file: File) => Promise<void>;
   markCompleted: (rollId: string) => Promise<void>;
@@ -89,6 +90,16 @@ interface DateNightContextValue {
 }
 
 const DateNightContext = createContext<DateNightContextValue | undefined>(undefined);
+
+
+const requireParticipantAccess = (user: User | null, couple: DateNightCoupleDoc | null) => {
+  const isDateNightParticipant = Boolean(
+    user && (isAdmin(user) || (couple?.participantUids ?? []).includes(user.uid)),
+  );
+  if (!isDateNightParticipant) {
+    throw new Error('Only Date Night participants can perform this action.');
+  }
+};
 
 const incrementCounters = async (
   kind: 'date' | 'modifier',
@@ -245,17 +256,25 @@ export function DateNightProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const archivePendingRollWithoutReview = useCallback(async (rollId: string) => {
+    requireParticipantAccess(user, couple);
     await updateDoc(rollDoc(rollId), { status: 'archived-no-review', updatedAt: serverTimestamp() });
-  }, []);
+  }, [couple, user]);
+
+  const deleteRoll = useCallback(async (rollId: string) => {
+    requireParticipantAccess(user, couple);
+    await deleteDoc(rollDoc(rollId));
+  }, [couple, user]);
 
   const upsertReview = useCallback(async (rollId: string, slot: 'a' | 'b', review: Omit<DateNightReview, 'submittedAt'>) => {
+    requireParticipantAccess(user, couple);
     await updateDoc(rollDoc(rollId), {
       [`reviews.${slot}`]: { ...review, submittedAt: new Date().toISOString() },
       updatedAt: serverTimestamp(),
     });
-  }, []);
+  }, [couple, user]);
 
   const addPhoto = useCallback(async (rollId: string, file: File) => {
+    requireParticipantAccess(user, couple);
     const prepared = await compressFile(file);
     const storagePath = `artifacts/date-night/uploads/${rollId}/${prepared.hash}.${prepared.extension}`;
     const objectRef = ref(storage, storagePath);
@@ -266,11 +285,12 @@ export function DateNightProvider({ children }: { children: ReactNode }) {
       photos: arrayUnion({ url, storagePath, uploadedAt: new Date().toISOString() }),
       updatedAt: serverTimestamp(),
     });
-  }, []);
+  }, [couple, user]);
 
   const markCompleted = useCallback(async (rollId: string) => {
+    requireParticipantAccess(user, couple);
     await updateDoc(rollDoc(rollId), { status: 'completed', updatedAt: serverTimestamp() });
-  }, []);
+  }, [couple, user]);
 
   const saveParticipant = useCallback(async (uid: string, displayName: string) => {
     const current = couple ?? { participantUids: [], displayNames: {} };
@@ -322,6 +342,7 @@ export function DateNightProvider({ children }: { children: ReactNode }) {
     acceptCandidate,
     recordVeto,
     archivePendingRollWithoutReview,
+    deleteRoll,
     upsertReview,
     addPhoto,
     markCompleted,
@@ -345,6 +366,7 @@ export function DateNightProvider({ children }: { children: ReactNode }) {
     acceptCandidate,
     recordVeto,
     archivePendingRollWithoutReview,
+    deleteRoll,
     upsertReview,
     addPhoto,
     markCompleted,
