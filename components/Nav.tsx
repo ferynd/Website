@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import Button from '@/components/Button';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: navigation links & classes                    */
@@ -18,13 +17,10 @@ const navLinks = [
 const linkBaseClass = 'transition-all duration-200 ease-in-out hover:text-text focus-ring';
 const activeLinkClass = 'text-text font-medium';
 const inactiveLinkClass = 'text-text-2';
-const mobileMenuTransition =
-  'transition-all duration-200 ease-in-out origin-top transform';
 const navShellClass =
   'sticky top-0 z-50 backdrop-blur-md bg-surface-2/80 border-b border-border shadow-sm';
 const navBarClass = 'container-tight flex items-center justify-between py-2 sm:py-3';
 const brandClass = 'text-base sm:text-lg font-semibold';
-const mobileToggleClass = 'md:hidden p-2 border border-border hover:border-accent';
 
 export default function Nav() {
   const pathname = usePathname();
@@ -35,16 +31,16 @@ export default function Nav() {
         <Link href="/" className={`${brandClass} ${linkBaseClass}`}>
           JB
         </Link>
-        <Button
+        {/* Plain button avoids Button component's py-4 (size="sm") bloating header height */}
+        <button
+          type="button"
           aria-label="Toggle menu"
           aria-expanded={open}
-          variant="ghost"
-          size="sm"
-          className={mobileToggleClass}
+          className="md:hidden inline-flex items-center justify-center rounded-lg border border-border bg-transparent text-text hover:border-accent p-2 min-h-[44px] min-w-[44px] transition-all duration-200 ease-in-out"
           onClick={() => setOpen(!open)}
         >
           {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-        </Button>
+        </button>
         <ul className="hidden md:flex gap-6">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
@@ -61,11 +57,10 @@ export default function Nav() {
           })}
         </ul>
       </nav>
+      {/* max-h transition collapses height to zero when closed; scale-y-0 left height in DOM flow */}
       <div
-        className={`md:hidden border-t border-border bg-surface-2 overflow-hidden ${mobileMenuTransition} ${
-          open
-            ? 'scale-y-100 opacity-100'
-            : 'scale-y-0 opacity-0 pointer-events-none'
+        className={`md:hidden border-t border-border bg-surface-2 overflow-hidden transition-all duration-200 ease-in-out ${
+          open ? 'max-h-80 opacity-100' : 'max-h-0 opacity-0 pointer-events-none'
         }`}
       >
         <ul className="px-4 py-4 space-y-4">
