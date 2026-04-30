@@ -16,6 +16,7 @@ This document is the **single source of truth** for automated assistants (Claude
   - `tools/trip-cost/**` Firebase-backed Trip Cost React app
   - `tools/trip-planner/**` Trip Planner scaffold (Firebase Auth + UI timeline)
   - `tools/date-night/**` Date Night Roulette (Firebase Auth + Firestore roller + reviews + batch CSV imports; split math in `lib/{decay,stacking,roller}.ts` with Vitest tests)
+  - `tools/conflict-tracker/**` Conflict Tracker (Firebase Auth + Firestore; two-person tracker groups, per-conflict reflections, shared section, trend dashboard; helpers in `lib/{firebase,db,types,tags}.ts`)
 - **/components** — Reusable UI (Button via CVA, Input, Select, Nav, ProjectCard)
 - **/public** — Static HTML/CSS/JS sub-sites and assets
   - `/games/**`, `/tools/**`, `/trips/**` each with their own `index.html`
@@ -55,12 +56,13 @@ This document is the **single source of truth** for automated assistants (Claude
 3. Follow Trip Cost patterns for context/state when needed.
 4. Update `app/tools/page.tsx` list so it appears in the Tools hub.
 
-## Trip Cost & Trip Planner specifics
+## Trip Cost, Trip Planner & Conflict Tracker specifics
 - Firebase config at `app/tools/trip-cost/firebaseConfig.ts` (admin email: `arkkahdarkkahd@gmail.com`).
 - Firestore collections rooted at `artifacts/trip-cost/**` (see `db.ts` helpers).
-- Authentication: Firebase Auth email/password; UI in `components/AuthForm.tsx` (reused by Trip Planner scaffold).
+- Authentication: Firebase Auth email/password; UI in `components/AuthForm.tsx` (reused by Trip Planner and Conflict Tracker).
 - Trip Planner now persists to Firestore under `artifacts/trip-planner/**`. Client helpers live in `app/tools/trip-planner/lib/{firebase,db,image}.ts` and real-time state comes from `PlanContext.tsx`.
 - Real-time reads via Firestore listeners in `TripContext.tsx` and screens under `components/TripDetail/**`.
+- Conflict Tracker persists to Firestore under `artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{personA|personB}`. Typed helpers in `app/tools/conflict-tracker/lib/`. Real-time state from `ConflictContext.tsx`. The tracker groups all conflicts for a two-person pair; each conflict has independent per-person reflections that are hidden until both sides submit.
 
 ## Documentation requirements (non-negotiable)
 Any **fundamental change** (routing, structure, build commands, data model, security rules, theming, component API) must update in the **same PR**:
