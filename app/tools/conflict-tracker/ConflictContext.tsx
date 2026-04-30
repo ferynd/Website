@@ -21,7 +21,7 @@ import { serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, isAdmin as isAdminUser } from './lib/firebase';
 import {
   addCustomTag,
-  claimPersonB,
+  claimPersonBSide,
   createConflict,
   createTracker,
   deleteConflict,
@@ -39,7 +39,23 @@ import {
 } from './lib/db';
 import { userDoc } from '../trip-cost/db';
 import { ADMIN_EMAIL } from '../trip-cost/firebaseConfig';
-import type { Conflict, Reflection, Tracker } from './lib/types';
+import type { Conflict, ReflectionInput, SharedSectionPatch, Tracker } from './lib/types';
+import type { Reflection } from './lib/types';
+
+// ── Side derivation ──────────────────────────────────────────────────────────
+
+/** Returns the side this user occupies in a tracker, or null if unclaimed. */
+export const deriveUserSide = (
+  tracker: Tracker | null,
+  uid: string,
+): 'personA' | 'personB' | null => {
+  if (!tracker) return null;
+  if (tracker.personAUid === uid) return 'personA';
+  if (tracker.personBUid === uid) return 'personB';
+  return null;
+};
+
+// ── Context shape ────────────────────────────────────────────────────────────
 
 interface ConflictContextValue {
   user: User | null;
@@ -52,6 +68,8 @@ interface ConflictContextValue {
   reflections: Reflection[];
   trackerLoading: boolean;
   conflictsLoading: boolean;
+  /** Current user's side in activeTracker, or null if unclaimed. */
+  userSide: 'personA' | 'personB' | null;
   selectTracker: (id: string | null) => void;
   selectConflict: (id: string | null) => void;
   createNewTracker: (input: {
@@ -60,6 +78,11 @@ interface ConflictContextValue {
     personBEmail: string | null;
     personBName: string;
   }) => Promise<string>;
+  /**
+   * Claim the Person B role in a tracker.
+   * Rejected if personBUid already set by another user, or the caller's email
+   * doesn't match the invitation (unless admin).
+   */
   claimSide: (trackerId: string) => Promise<void>;
   addConflict: (input: {
     title: string;
@@ -73,21 +96,27 @@ interface ConflictContextValue {
     patch: Partial<Pick<Conflict, 'title' | 'date' | 'severity' | 'tags' | 'summary'>>,
   ) => Promise<void>;
   removeConflict: (conflictId: string) => Promise<void>;
-  updateShared: (
-    conflictId: string,
-    patch: Partial<Pick<Conflict, 'sharedClarification' | 'personARealMeaning' | 'personBRealMeaning'>>,
-  ) => Promise<void>;
-  markResolved: (conflictId: string, side: 'personA' | 'personB', resolved: boolean) => Promise<void>;
-  saveDraft: (
-    conflictId: string,
-    side: 'personA' | 'personB',
-    data: Omit<Reflection, 'id' | 'conflictId' | 'submittedAt' | 'createdAt' | 'updatedAt'>,
-  ) => Promise<void>;
-  submitReflectionFn: (
-    conflictId: string,
-    side: 'personA' | 'personB',
-    data: Omit<Reflection, 'id' | 'conflictId' | 'submittedAt' | 'createdAt' | 'updatedAt'>,
-  ) => Promise<void>;
+  /**
+   * Update the shared section fields. Editable by the tracker creator (Person A)
+   * or admin. Person B can view but not edit.
+   */
+  updateShared: (conflictId: string, patch: SharedSectionPatch) => Promise<void>;
+  /**
+   * Mark the current user's side as resolved / unresolved.
+   * Normal users can only toggle their own side. Admins can override.
+   */
+  markResolved: (conflictId: string, resolved: boolean) => Promise<void>;
+  /**
+   * Save a reflection draft. Side is derived from the tracker; the user must
+   * have claimed a side (or be admin). On first save for an unclaimed user the
+   * claim is attempted automatically.
+   */
+  saveDraft: (conflictId: string, input: ReflectionInput) => Promise<void>;
+  /**
+   * Submit a reflection (locks it and triggers the reveal when partner also submits).
+   * Same side-derivation rules as saveDraft.
+   */
+  submitReflectionFn: (conflictId: string, input: ReflectionInput) => Promise<void>;
   addTrackerCustomTag: (tag: string) => Promise<void>;
   knownUsers: KnownUser[];
   signIn: (email: string, password: string) => Promise<void>;
@@ -96,6 +125,8 @@ interface ConflictContextValue {
 }
 
 const ConflictContext = createContext<ConflictContextValue | undefined>(undefined);
+
+// ── Provider ─────────────────────────────────────────────────────────────────
 
 export const ConflictProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(auth.currentUser);
@@ -116,34 +147,43 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     return () => { mountedRef.current = false; };
   }, []);
 
-  // Auth listener
+  // Auth listener — clears all derived state on sign-out
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       if (!mountedRef.current) return;
       setUser(firebaseUser);
       setAuthLoading(false);
+      if (!firebaseUser) {
+        setTrackers([]);
+        setActiveTrackerId(null);
+        setActiveTracker(null);
+        setConflicts([]);
+        setActiveConflictId(null);
+        setReflections([]);
+        setKnownUsers([]);
+      }
     });
     return () => unsub();
   }, []);
 
   // Load known users once after sign-in
   useEffect(() => {
-    if (!user) { setKnownUsers([]); return; }
+    if (!user) return;
     fetchKnownUsers().then((users) => {
       if (mountedRef.current) setKnownUsers(users);
     }).catch(() => { /* non-critical */ });
   }, [user]);
 
-  // Watch all trackers the user belongs to
+  // Watch all trackers this user belongs to (by UID and email)
   useEffect(() => {
     if (!user) { setTrackers([]); return; }
-    const unsub = watchUserTrackers(user.uid, (list) => {
+    const unsub = watchUserTrackers(user.uid, user.email, (list) => {
       if (mountedRef.current) setTrackers(list);
     });
     return () => unsub();
   }, [user]);
 
-  // Watch active tracker
+  // Watch active tracker document
   useEffect(() => {
     if (!activeTrackerId) { setActiveTracker(null); return; }
     setTrackerLoading(true);
@@ -181,15 +221,60 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     [conflicts, activeConflictId],
   );
 
+  const userSide = useMemo(
+    () => (user ? deriveUserSide(activeTracker, user.uid) : null),
+    [activeTracker, user],
+  );
+
+  // ── Guard helpers ──────────────────────────────────────────────────────────
+
   const requireUser = useCallback(() => {
-    if (!user) throw new Error('Must be signed in');
+    if (!user) throw new Error('Must be signed in.');
     return user;
   }, [user]);
 
   const requireTracker = useCallback(() => {
-    if (!activeTrackerId) throw new Error('No tracker selected');
+    if (!activeTrackerId) throw new Error('No tracker selected.');
     return activeTrackerId;
   }, [activeTrackerId]);
+
+  /** Resolves the effective side for the current user, enforcing ownership. */
+  const resolveSide = useCallback(
+    (actor: ReturnType<typeof requireUser>): 'personA' | 'personB' => {
+      if (isAdminUser(actor)) {
+        // Admin can act on either side; derive from tracker if possible
+        const derived = deriveUserSide(activeTracker, actor.uid);
+        if (derived) return derived;
+        // Admin with no claimed side defaults to personA for ops that need it
+        return 'personA';
+      }
+      const side = deriveUserSide(activeTracker, actor.uid);
+      if (!side) {
+        throw new Error(
+          'You have not claimed a side in this tracker. Save your reflection first to claim a side.',
+        );
+      }
+      return side;
+    },
+    [activeTracker],
+  );
+
+  /** Asserts the caller can edit the shared section (creator / Person A / admin). */
+  const assertSharedSectionEditor = useCallback(
+    (actor: ReturnType<typeof requireUser>) => {
+      if (!activeTracker) throw new Error('No tracker selected.');
+      const isCreator = activeTracker.createdBy === actor.uid;
+      const isPersonA = activeTracker.personAUid === actor.uid;
+      if (!isCreator && !isPersonA && !isAdminUser(actor)) {
+        throw new Error(
+          'Only the tracker creator, Person A, or an admin can edit the shared section.',
+        );
+      }
+    },
+    [activeTracker],
+  );
+
+  // ── Public actions ─────────────────────────────────────────────────────────
 
   const selectTracker = useCallback((id: string | null) => {
     setActiveTrackerId(id);
@@ -220,7 +305,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
 
   const claimSide = useCallback(async (trackerId: string) => {
     const actor = requireUser();
-    await claimPersonB(trackerId, actor.uid);
+    await claimPersonBSide(trackerId, actor.uid, actor.email, isAdminUser(actor));
   }, [requireUser]);
 
   const addConflict = useCallback(async (input: {
@@ -251,38 +336,72 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
 
   const updateShared = useCallback(async (
     conflictId: string,
-    patch: Partial<Pick<Conflict, 'sharedClarification' | 'personARealMeaning' | 'personBRealMeaning'>>,
+    patch: SharedSectionPatch,
   ) => {
+    const actor = requireUser();
+    assertSharedSectionEditor(actor);
     const tid = requireTracker();
-    await updateConflictShared(tid, conflictId, patch);
-  }, [requireTracker]);
+    await updateConflictShared(tid, conflictId, patch, actor.uid);
+  }, [requireUser, assertSharedSectionEditor, requireTracker]);
 
   const markResolved = useCallback(async (
     conflictId: string,
-    side: 'personA' | 'personB',
     resolved: boolean,
   ) => {
+    const actor = requireUser();
     const tid = requireTracker();
+    const side = resolveSide(actor);
     await setResolved(tid, conflictId, side, resolved);
-  }, [requireTracker]);
+  }, [requireUser, requireTracker, resolveSide]);
 
   const saveDraft = useCallback(async (
     conflictId: string,
-    side: 'personA' | 'personB',
-    data: Omit<Reflection, 'id' | 'conflictId' | 'submittedAt' | 'createdAt' | 'updatedAt'>,
+    input: ReflectionInput,
   ) => {
+    const actor = requireUser();
     const tid = requireTracker();
-    await saveReflectionDraft(tid, conflictId, side, data);
-  }, [requireTracker]);
+
+    let side = deriveUserSide(activeTracker, actor.uid);
+
+    // If this user hasn't claimed yet, attempt to claim Person B automatically
+    // (admin can also claim any side that's open)
+    if (!side) {
+      if (!activeTracker) throw new Error('No tracker selected.');
+      if (activeTracker.personBUid) {
+        throw new Error(
+          'Both sides are already claimed. You cannot add a reflection to this tracker.',
+        );
+      }
+      // Claim Person B (validate email match or admin)
+      await claimPersonBSide(tid, actor.uid, actor.email, isAdminUser(actor));
+      side = 'personB';
+    }
+
+    await saveReflectionDraft(tid, conflictId, side, actor.uid, input);
+  }, [requireUser, requireTracker, activeTracker]);
 
   const submitReflectionFn = useCallback(async (
     conflictId: string,
-    side: 'personA' | 'personB',
-    data: Omit<Reflection, 'id' | 'conflictId' | 'submittedAt' | 'createdAt' | 'updatedAt'>,
+    input: ReflectionInput,
   ) => {
+    const actor = requireUser();
     const tid = requireTracker();
-    await submitReflection(tid, conflictId, side, data);
-  }, [requireTracker]);
+
+    let side = deriveUserSide(activeTracker, actor.uid);
+
+    if (!side) {
+      if (!activeTracker) throw new Error('No tracker selected.');
+      if (activeTracker.personBUid) {
+        throw new Error(
+          'Both sides are already claimed. You cannot add a reflection to this tracker.',
+        );
+      }
+      await claimPersonBSide(tid, actor.uid, actor.email, isAdminUser(actor));
+      side = 'personB';
+    }
+
+    await submitReflection(tid, conflictId, side, actor.uid, input);
+  }, [requireUser, requireTracker, activeTracker]);
 
   const addTrackerCustomTag = useCallback(async (tag: string) => {
     const tid = requireTracker();
@@ -313,8 +432,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
 
   const signOutHandler = useCallback(async () => {
     await signOut(auth);
-    setActiveTrackerId(null);
-    setActiveConflictId(null);
+    // State cleared by the onAuthStateChanged listener above
   }, []);
 
   const value = useMemo<ConflictContextValue>(() => ({
@@ -328,6 +446,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     reflections,
     trackerLoading,
     conflictsLoading,
+    userSide,
     selectTracker,
     selectConflict,
     createNewTracker,
@@ -346,7 +465,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     signOut: signOutHandler,
   }), [
     user, authLoading, trackers, activeTracker, conflicts, activeConflict,
-    reflections, trackerLoading, conflictsLoading,
+    reflections, trackerLoading, conflictsLoading, userSide,
     selectTracker, selectConflict, createNewTracker, claimSide,
     addConflict, editConflict, removeConflict, updateShared, markResolved,
     saveDraft, submitReflectionFn, addTrackerCustomTag, knownUsers,

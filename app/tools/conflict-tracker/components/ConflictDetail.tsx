@@ -32,7 +32,15 @@ export default function ConflictDetail({
   isAdmin,
   onBack,
 }: Props) {
-  const { editConflict, removeConflict, updateShared, markResolved, saveDraft, submitReflectionFn } = useConflict();
+  const {
+    editConflict,
+    removeConflict,
+    updateShared,
+    markResolved,
+    saveDraft,
+    submitReflectionFn,
+    userSide,
+  } = useConflict();
 
   const [view, setView] = useState<'detail' | 'edit-conflict' | 'reflect'>('detail');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -44,9 +52,10 @@ export default function ConflictDetail({
   const isPersonA = tracker.personAUid === authorUid;
   const isPersonB = tracker.personBUid === authorUid;
 
-  const myReflection = isPersonA
+  // Own reflection based on the derived side
+  const myReflection = userSide === 'personA'
     ? reflections.find((r) => r.person === 'personA')
-    : isPersonB
+    : userSide === 'personB'
     ? reflections.find((r) => r.person === 'personB')
     : undefined;
 
@@ -54,11 +63,17 @@ export default function ConflictDetail({
   const reflectionB = reflections.find((r) => r.person === 'personB');
 
   const myReflectionSubmitted = !!myReflection?.submittedAt;
-  const bothSubmitted = conflict.hasReflectionA && conflict.hasReflectionB
-    && !!reflectionA?.submittedAt && !!reflectionB?.submittedAt;
+  const bothSubmitted =
+    conflict.hasReflectionA &&
+    conflict.hasReflectionB &&
+    !!reflectionA?.submittedAt &&
+    !!reflectionB?.submittedAt;
 
   const canEditConflict = isPersonA || isAdmin;
   const canDelete = isPersonA || isAdmin;
+
+  // Show the reflect CTA for anyone who has claimed a side, or anyone who could claim
+  const canReflect = isPersonA || isPersonB || (!tracker.personBUid && !isAdmin);
 
   const handleDelete = async () => {
     setDeleting(true);
@@ -81,18 +96,39 @@ export default function ConflictDetail({
   }
 
   if (view === 'reflect') {
+    // Extract only user-entered fields from an existing reflection (drop system fields)
+    const existingInput = myReflection
+      ? {
+          trigger: myReflection.trigger,
+          whatHappened: myReflection.whatHappened,
+          whatIFelt: myReflection.whatIFelt,
+          physicalOrEmotionalSignals: myReflection.physicalOrEmotionalSignals,
+          whatIThoughtTheyMeant: myReflection.whatIThoughtTheyMeant,
+          whatIFeltHurtBy: myReflection.whatIFeltHurtBy,
+          whatINeeded: myReflection.whatINeeded,
+          whatHelped: myReflection.whatHelped,
+          whatMadeItWorse: myReflection.whatMadeItWorse,
+          whatIAmOwning: myReflection.whatIAmOwning,
+          whatIWillDoDifferently: myReflection.whatIWillDoDifferently,
+          unresolvedPieces: myReflection.unresolvedPieces,
+          tags: myReflection.tags,
+          feelsResolved: myReflection.feelsResolved,
+        }
+      : undefined;
+
     return (
       <ReflectionForm
         tracker={tracker}
         authorUid={authorUid}
-        existingReflection={myReflection}
+        existingInput={existingInput}
         isSubmitted={myReflectionSubmitted}
-        onSaveDraft={async (side, data) => {
-          await saveDraft(conflict.id, side, data);
+        userSide={userSide}
+        onSaveDraft={async (input) => {
+          await saveDraft(conflict.id, input);
           setView('detail');
         }}
-        onSubmit={async (side, data) => {
-          await submitReflectionFn(conflict.id, side, data);
+        onSubmit={async (input) => {
+          await submitReflectionFn(conflict.id, input);
           setView('detail');
         }}
         onCancel={() => setView('detail')}
@@ -148,8 +184,12 @@ export default function ConflictDetail({
           </p>
           <div className="flex gap-3">
             <Button variant="ghost" onClick={() => setConfirmDelete(false)}>Cancel</Button>
-            <Button variant="primary" onClick={handleDelete} disabled={deleting}
-              className="bg-error hover:bg-error/80 border-error">
+            <Button
+              variant="primary"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="bg-error hover:bg-error/80 border-error"
+            >
               {deleting ? 'Deleting…' : 'Delete'}
             </Button>
           </div>
@@ -176,13 +216,13 @@ export default function ConflictDetail({
       <ResolutionPanel
         conflict={conflict}
         tracker={tracker}
-        authorUid={authorUid}
+        userSide={userSide}
         isAdmin={isAdmin}
-        onToggle={(side, resolved) => markResolved(conflict.id, side, resolved)}
+        onToggle={(resolved) => markResolved(conflict.id, resolved)}
       />
 
       {/* Reflect CTA */}
-      {(isPersonA || isPersonB) && (
+      {canReflect && (
         <div className="rounded-xl border border-border bg-surface-1 p-5 flex items-center justify-between gap-4">
           <div>
             <p className="font-medium text-text">
@@ -196,13 +236,16 @@ export default function ConflictDetail({
                 : 'Write privately. Only shared after your partner also submits.'}
             </p>
           </div>
-          <Button variant={myReflectionSubmitted ? 'secondary' : 'primary'} onClick={() => setView('reflect')}>
+          <Button
+            variant={myReflectionSubmitted ? 'secondary' : 'primary'}
+            onClick={() => setView('reflect')}
+          >
             {myReflectionSubmitted ? 'View / update' : myReflection ? 'Continue' : 'Reflect'}
           </Button>
         </div>
       )}
 
-      {/* Partner status (Phase 1) */}
+      {/* Reflection status (Phase 1 — locked view) */}
       {!bothSubmitted && (
         <div className="rounded-xl border border-border bg-surface-1/60 p-5">
           <h3 className="font-medium text-text mb-3">Reflection status</h3>
@@ -212,25 +255,33 @@ export default function ConflictDetail({
                 ? 'bg-green-900/30 text-green-300 border-green-700/40'
                 : 'bg-surface-2 text-text-3 border-border'
             }`}>
-              {aName} {conflict.hasReflectionA && reflectionA?.submittedAt ? '✓ submitted' : conflict.hasReflectionA ? '◑ draft' : '○ not started'}
+              {aName}{' '}
+              {conflict.hasReflectionA && reflectionA?.submittedAt
+                ? '✓ submitted'
+                : conflict.hasReflectionA
+                ? '◑ draft'
+                : '○ not started'}
             </span>
             <span className={`rounded-full px-3 py-1 border text-xs ${
               conflict.hasReflectionB && reflectionB?.submittedAt
                 ? 'bg-green-900/30 text-green-300 border-green-700/40'
                 : 'bg-surface-2 text-text-3 border-border'
             }`}>
-              {bName} {conflict.hasReflectionB && reflectionB?.submittedAt ? '✓ submitted' : conflict.hasReflectionB ? '◑ draft' : '○ not started'}
+              {bName}{' '}
+              {conflict.hasReflectionB && reflectionB?.submittedAt
+                ? '✓ submitted'
+                : conflict.hasReflectionB
+                ? '◑ draft'
+                : '○ not started'}
             </span>
           </div>
-          {!bothSubmitted && (
-            <p className="text-xs text-text-3 mt-3">
-              Reflections are hidden until both sides submit. Each person sees only their own draft.
-            </p>
-          )}
+          <p className="text-xs text-text-3 mt-3">
+            Reflections are hidden until both sides submit. Each person sees only their own draft.
+          </p>
         </div>
       )}
 
-      {/* Phase 2: both submitted — show side-by-side */}
+      {/* Phase 2: both submitted — side-by-side + interpretation comparison */}
       {bothSubmitted && reflectionA && reflectionB && (
         <div className="space-y-4">
           <div className="flex items-center gap-2">
@@ -247,7 +298,6 @@ export default function ConflictDetail({
             </div>
           </div>
 
-          {/* Interpretation comparison */}
           {(reflectionA.whatIThoughtTheyMeant || reflectionB.whatIThoughtTheyMeant) && (
             <div className="rounded-xl border border-border bg-surface-2/50 p-5 space-y-3">
               <h3 className="text-sm font-semibold text-text">What each thought the other meant</h3>

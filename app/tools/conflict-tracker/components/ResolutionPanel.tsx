@@ -11,20 +11,20 @@ const STATUS_LABEL: Record<Conflict['status'], string> = {
 interface Props {
   conflict: Conflict;
   tracker: Tracker;
-  authorUid: string;
+  /** The current user's derived side, or null if unclaimed. */
+  userSide: 'personA' | 'personB' | null;
   isAdmin: boolean;
-  onToggle: (side: 'personA' | 'personB', resolved: boolean) => Promise<void>;
+  /** Called when the current user toggles their own resolution. Context enforces ownership. */
+  onToggle: (resolved: boolean) => Promise<void>;
 }
 
-export default function ResolutionPanel({ conflict, tracker, authorUid, isAdmin, onToggle }: Props) {
+export default function ResolutionPanel({ conflict, tracker, userSide, isAdmin, onToggle }: Props) {
   const aName = tracker.personAName || 'Person A';
   const bName = tracker.personBName || 'Person B';
 
-  const isPersonA = tracker.personAUid === authorUid;
-  const isPersonB = tracker.personBUid === authorUid;
-
-  const canToggleA = isPersonA || isAdmin;
-  const canToggleB = isPersonB || isAdmin;
+  // A user can only toggle their own side. Admin can toggle either (defaults to their claimed side).
+  const canToggleA = userSide === 'personA' || isAdmin;
+  const canToggleB = userSide === 'personB' || isAdmin;
 
   return (
     <div className="rounded-xl border border-border bg-surface-1 p-5 space-y-4">
@@ -46,32 +46,32 @@ export default function ResolutionPanel({ conflict, tracker, authorUid, isAdmin,
       </p>
 
       <div className="space-y-3">
-        <label className={`flex items-center gap-3 cursor-pointer ${!canToggleA ? 'opacity-50 cursor-not-allowed' : ''}`}>
+        <label className={`flex items-center gap-3 ${canToggleA ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
           <input
             type="checkbox"
             disabled={!canToggleA}
             checked={conflict.personAResolved}
-            onChange={(e) => onToggle('personA', e.target.checked)}
+            onChange={(e) => onToggle(e.target.checked)}
             className="w-4 h-4 rounded border-border accent-accent"
           />
-          <span className="text-sm text-text">
-            {aName} feels resolved
-          </span>
+          <span className="text-sm text-text">{aName} feels resolved</span>
         </label>
 
-        <label className={`flex items-center gap-3 cursor-pointer ${!canToggleB ? 'opacity-50 cursor-not-allowed' : ''}`}>
+        <label className={`flex items-center gap-3 ${canToggleB ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}>
           <input
             type="checkbox"
             disabled={!canToggleB}
             checked={conflict.personBResolved}
-            onChange={(e) => onToggle('personB', e.target.checked)}
+            onChange={(e) => onToggle(e.target.checked)}
             className="w-4 h-4 rounded border-border accent-accent"
           />
-          <span className="text-sm text-text">
-            {bName} feels resolved
-          </span>
+          <span className="text-sm text-text">{bName} feels resolved</span>
         </label>
       </div>
+
+      {!userSide && !isAdmin && (
+        <p className="text-xs text-text-3">Claim a side to mark your resolution.</p>
+      )}
     </div>
   );
 }

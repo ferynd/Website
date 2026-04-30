@@ -3,13 +3,9 @@
 import { useState } from 'react';
 import Button from '@/components/Button';
 import { allTags, parseTags } from '../lib/tags';
-import type { Reflection, Tracker } from '../lib/types';
+import type { ReflectionInput, Tracker } from '../lib/types';
 
-type ReflectionDraft = Omit<Reflection, 'id' | 'conflictId' | 'submittedAt' | 'createdAt' | 'updatedAt'>;
-
-const EMPTY_DRAFT: ReflectionDraft = {
-  person: 'personA',
-  authorUid: '',
+const EMPTY_INPUT: ReflectionInput = {
   trigger: '',
   whatHappened: '',
   whatIFelt: '',
@@ -29,10 +25,13 @@ const EMPTY_DRAFT: ReflectionDraft = {
 interface Props {
   tracker: Tracker;
   authorUid: string;
-  existingReflection?: Partial<Reflection>;
+  /** Pre-populate from an existing draft/submission. */
+  existingInput?: Partial<ReflectionInput>;
   isSubmitted: boolean;
-  onSaveDraft: (side: 'personA' | 'personB', data: ReflectionDraft) => Promise<void>;
-  onSubmit: (side: 'personA' | 'personB', data: ReflectionDraft) => Promise<void>;
+  /** The side the current user occupies, or null if unclaimed (will be auto-claimed on save). */
+  userSide: 'personA' | 'personB' | null;
+  onSaveDraft: (input: ReflectionInput) => Promise<void>;
+  onSubmit: (input: ReflectionInput) => Promise<void>;
   onCancel: () => void;
 }
 
@@ -72,31 +71,16 @@ const TA = ({
 
 export default function ReflectionForm({
   tracker,
-  authorUid,
-  existingReflection,
+  existingInput,
   isSubmitted,
+  userSide,
   onSaveDraft,
   onSubmit,
   onCancel,
 }: Props) {
-  const canClaimA = !tracker.personAUid || tracker.personAUid === authorUid;
-  const canClaimB = !tracker.personBUid || tracker.personBUid === authorUid;
-
-  // Determine which side this user is
-  const defaultSide: 'personA' | 'personB' =
-    tracker.personAUid === authorUid ? 'personA'
-    : tracker.personBUid === authorUid ? 'personB'
-    : canClaimA ? 'personA'
-    : 'personB';
-
-  const [side, setSide] = useState<'personA' | 'personB'>(
-    existingReflection?.person ?? defaultSide,
-  );
-  const [draft, setDraft] = useState<ReflectionDraft>({
-    ...EMPTY_DRAFT,
-    ...existingReflection,
-    person: existingReflection?.person ?? defaultSide,
-    authorUid,
+  const [draft, setDraft] = useState<ReflectionInput>({
+    ...EMPTY_INPUT,
+    ...existingInput,
   });
   const [showOptional, setShowOptional] = useState(false);
   const [customTagInput, setCustomTagInput] = useState('');
@@ -104,12 +88,12 @@ export default function ReflectionForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const set = <K extends keyof ReflectionDraft>(key: K, value: ReflectionDraft[K]) =>
+  const set = <K extends keyof ReflectionInput>(key: K, value: ReflectionInput[K]) =>
     setDraft((prev) => ({ ...prev, [key]: value }));
 
   const aName = tracker.personAName || 'Person A';
   const bName = tracker.personBName || 'Person B';
-  const sideName = side === 'personA' ? aName : bName;
+  const sideName = userSide === 'personA' ? aName : userSide === 'personB' ? bName : 'your side';
   const available = allTags(tracker.customTags ?? []);
 
   const toggleTag = (tag: string) => {
@@ -128,17 +112,11 @@ export default function ReflectionForm({
     setCustomTagInput('');
   };
 
-  const buildData = (): ReflectionDraft => ({
-    ...draft,
-    person: side,
-    authorUid,
-  });
-
   const handleSaveDraft = async () => {
     setSaving(true);
     setError('');
     try {
-      await onSaveDraft(side, buildData());
+      await onSaveDraft(draft);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save draft.');
     } finally {
@@ -148,28 +126,25 @@ export default function ReflectionForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const required: (keyof ReflectionDraft)[] = [
+    const requiredFields: (keyof ReflectionInput)[] = [
       'whatHappened', 'whatIFelt', 'whatIThoughtTheyMeant',
       'whatINeeded', 'whatIAmOwning', 'whatIWillDoDifferently',
     ];
-    for (const field of required) {
+    for (const field of requiredFields) {
       if (!(draft[field] as string)?.trim()) {
-        setError(`Please fill in all required fields.`);
+        setError('Please fill in all required fields.');
         return;
       }
     }
     setSubmitting(true);
     setError('');
     try {
-      await onSubmit(side, buildData());
+      await onSubmit(draft);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not submit reflection.');
       setSubmitting(false);
     }
   };
-
-  // Side claiming: only show picker if neither side is already claimed by this user
-  const sideAlreadyClaimed = tracker.personAUid === authorUid || tracker.personBUid === authorUid;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -180,52 +155,20 @@ export default function ReflectionForm({
         </p>
       </div>
 
+      {/* Side indicator */}
+      <div className="rounded-lg bg-surface-2 border border-border px-4 py-3 text-sm text-text-2">
+        {userSide
+          ? <>Reflecting as <span className="font-medium text-text">{sideName}</span></>
+          : <>You haven&apos;t claimed a side yet. Saving will claim{' '}
+              <span className="font-medium text-text">
+                {!tracker.personBUid ? bName : 'a side'}
+              </span>
+              {' '}automatically.</>}
+      </div>
+
       {isSubmitted && (
         <div className="rounded-lg bg-blue-900/30 border border-blue-700/40 text-blue-300 px-4 py-3 text-sm">
           You have already submitted this reflection. Editing and re-submitting will replace it.
-        </div>
-      )}
-
-      {!sideAlreadyClaimed && (
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-text">I am</label>
-          <div className="flex gap-3">
-            {(canClaimA || side === 'personA') && (
-              <button
-                type="button"
-                onClick={() => { setSide('personA'); set('person', 'personA'); }}
-                className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors focus-ring ${
-                  side === 'personA'
-                    ? 'border-accent bg-accent/20 text-accent'
-                    : 'border-border bg-surface-2 text-text-2 hover:border-accent/40'
-                }`}
-              >
-                {aName}
-              </button>
-            )}
-            {(canClaimB || side === 'personB') && (
-              <button
-                type="button"
-                onClick={() => { setSide('personB'); set('person', 'personB'); }}
-                className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors focus-ring ${
-                  side === 'personB'
-                    ? 'border-accent bg-accent/20 text-accent'
-                    : 'border-border bg-surface-2 text-text-2 hover:border-accent/40'
-                }`}
-              >
-                {bName}
-              </button>
-            )}
-          </div>
-          <p className="text-xs text-text-3">
-            Once you save, your UID is linked to this side for this tracker.
-          </p>
-        </div>
-      )}
-
-      {sideAlreadyClaimed && (
-        <div className="rounded-lg bg-surface-2 border border-border px-4 py-3 text-sm text-text-2">
-          Reflecting as <span className="font-medium text-text">{sideName}</span>
         </div>
       )}
 
@@ -373,7 +316,7 @@ export default function ReflectionForm({
       <div className="space-y-2">
         <label className="block text-sm font-medium text-text">Does this feel resolved for you?</label>
         <div className="flex gap-3">
-          {(['yes', 'partially', 'no'] as Reflection['feelsResolved'][]).map((v) => (
+          {(['yes', 'partially', 'no'] as ReflectionInput['feelsResolved'][]).map((v) => (
             <button
               key={v}
               type="button"

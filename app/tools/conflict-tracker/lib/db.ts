@@ -4,9 +4,11 @@ export const ROOT_COLLECTION = 'artifacts';
 export const APP_ID = 'conflict-tracker';
 
 import {
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -21,7 +23,7 @@ import {
   type FirestoreError,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import type { Conflict, Reflection, Tracker } from './types';
+import type { Conflict, Reflection, ReflectionInput, SharedSectionPatch, Tracker } from './types';
 
 type Unsub = () => void;
 
@@ -78,6 +80,7 @@ export const createTracker = async (input: {
   personBName: string;
 }): Promise<string> => {
   const ref = doc(trackersCol());
+  const memberEmails = input.personBEmail ? [input.personBEmail] : [];
   await setDoc(ref, {
     name: input.name,
     personAUid: input.personAUid,
@@ -85,6 +88,8 @@ export const createTracker = async (input: {
     personBUid: null,
     personBEmail: input.personBEmail,
     personBName: input.personBName,
+    memberUids: [input.personAUid],
+    memberEmails,
     customTags: [],
     createdBy: input.personAUid,
     createdAt: serverTimestamp(),
@@ -93,12 +98,42 @@ export const createTracker = async (input: {
   return ref.id;
 };
 
-export const claimPersonB = async (
+/**
+ * Claim the Person B role for the given user.
+ * Rejected if:
+ *  - personBUid is already set (by a different user)
+ *  - the user email doesn't match personBEmail and they are not admin
+ */
+export const claimPersonBSide = async (
   trackerId: string,
   uid: string,
+  userEmail: string | null,
+  isAdmin: boolean,
 ): Promise<void> => {
+  const snap = await getDoc(trackerDoc(trackerId));
+  if (!snap.exists()) throw new Error('Tracker not found.');
+
+  const data = snap.data() as Tracker;
+
+  if (data.personBUid) {
+    if (data.personBUid === uid) return; // already claimed by this user — no-op
+    throw new Error('Person B has already been claimed by another user.');
+  }
+
+  const emailMatches =
+    userEmail && data.personBEmail
+      ? userEmail.toLowerCase() === data.personBEmail.toLowerCase()
+      : false;
+
+  if (!emailMatches && !isAdmin) {
+    throw new Error(
+      'You can only claim Person B if your email matches the invitation, or you are an admin.',
+    );
+  }
+
   await updateDoc(trackerDoc(trackerId), {
     personBUid: uid,
+    memberUids: arrayUnion(uid),
     updatedAt: serverTimestamp(),
   });
 };
@@ -107,9 +142,9 @@ export const addCustomTag = async (
   trackerId: string,
   tag: string,
 ): Promise<void> => {
-  const snap = await getDocs(query(trackersCol(), where('__name__', '==', trackerId)));
-  if (snap.empty) return;
-  const existing = ensureStringArray((snap.docs[0].data() as Record<string, unknown>).customTags);
+  const snap = await getDoc(trackerDoc(trackerId));
+  if (!snap.exists()) return;
+  const existing = ensureStringArray((snap.data() as Record<string, unknown>).customTags);
   if (existing.includes(tag)) return;
   await updateDoc(trackerDoc(trackerId), {
     customTags: [...existing, tag],
@@ -131,46 +166,59 @@ export const watchTracker = (
     (err) => onData(null, err),
   );
 
+/**
+ * Watch all trackers this user belongs to.
+ * Runs two parallel listeners:
+ *  1. memberUids array-contains uid  (accounts for UID-based membership)
+ *  2. memberEmails array-contains email  (accounts for invited-but-unclaimed)
+ * Results are merged and de-duplicated.
+ */
 export const watchUserTrackers = (
   uid: string,
+  email: string | null,
   onData: (trackers: Tracker[], error?: FirestoreError) => void,
 ): Unsub => {
-  const qA = query(trackersCol(), where('personAUid', '==', uid));
-  let aList: Tracker[] = [];
-  let bList: Tracker[] = [];
-  const initialized = { a: false, b: false };
+  let uidList: Tracker[] = [];
+  let emailList: Tracker[] = [];
+  const initialized = { uid: false, email: false };
 
   const merge = () => {
     const seen = new Set<string>();
     const merged: Tracker[] = [];
-    for (const t of [...aList, ...bList]) {
+    for (const t of [...uidList, ...emailList]) {
       if (!seen.has(t.id)) { seen.add(t.id); merged.push(t); }
     }
     onData(merged);
   };
 
-  const unsubA = onSnapshot(
-    qA,
+  const qUid = query(trackersCol(), where('memberUids', 'array-contains', uid));
+  const unsubUid = onSnapshot(
+    qUid,
     (snap) => {
-      aList = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Tracker, 'id'>) }));
-      initialized.a = true;
-      if (initialized.b) merge();
+      uidList = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Tracker, 'id'>) }));
+      initialized.uid = true;
+      if (initialized.email) merge();
     },
     (err) => onData([], err),
   );
 
-  const qB = query(trackersCol(), where('personBUid', '==', uid));
-  const unsubB = onSnapshot(
-    qB,
-    (snap) => {
-      bList = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Tracker, 'id'>) }));
-      initialized.b = true;
-      if (initialized.a) merge();
-    },
-    (err) => onData([], err),
-  );
+  if (email) {
+    const qEmail = query(trackersCol(), where('memberEmails', 'array-contains', email));
+    const unsubEmail = onSnapshot(
+      qEmail,
+      (snap) => {
+        emailList = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Tracker, 'id'>) }));
+        initialized.email = true;
+        if (initialized.uid) merge();
+      },
+      (err) => onData([], err),
+    );
+    return () => { unsubUid(); unsubEmail(); };
+  }
 
-  return () => { unsubA(); unsubB(); };
+  // No email — resolve immediately once uid listener fires
+  initialized.email = true;
+  return () => unsubUid();
 };
 
 // ── Conflict CRUD ───────────────────────────────────────────────────────────
@@ -194,9 +242,13 @@ export const createConflict = async (
     severity: input.severity,
     tags: input.tags,
     summary: input.summary,
-    sharedClarification: undefined,
     personARealMeaning: undefined,
     personBRealMeaning: undefined,
+    sharedClarification: undefined,
+    sharedOwnershipNotes: undefined,
+    sharedNextSteps: undefined,
+    sharedUpdatedBy: undefined,
+    sharedUpdatedAt: undefined,
     personAResolved: false,
     personBResolved: false,
     status: 'open' as Conflict['status'],
@@ -223,10 +275,13 @@ export const updateConflict = async (
 export const updateConflictShared = async (
   trackerId: string,
   conflictId: string,
-  patch: Partial<Pick<Conflict, 'sharedClarification' | 'personARealMeaning' | 'personBRealMeaning'>>,
+  patch: SharedSectionPatch,
+  updatedByUid: string,
 ): Promise<void> => {
   await updateDoc(conflictDoc(trackerId, conflictId), {
     ...stripUndefined(patch as Record<string, unknown>),
+    sharedUpdatedBy: updatedByUid,
+    sharedUpdatedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
 };
@@ -238,8 +293,8 @@ export const setResolved = async (
   resolved: boolean,
 ): Promise<void> => {
   const field = side === 'personA' ? 'personAResolved' : 'personBResolved';
-  const snap = await getDocs(query(conflictsCol(trackerId), where('__name__', '==', conflictId)));
-  const data = snap.empty ? null : (snap.docs[0].data() as Partial<Conflict>);
+  const snap = await getDoc(conflictDoc(trackerId, conflictId));
+  const data = snap.exists() ? (snap.data() as Partial<Conflict>) : null;
   const aResolved = side === 'personA' ? resolved : !!(data?.personAResolved);
   const bResolved = side === 'personB' ? resolved : !!(data?.personBResolved);
   await updateDoc(conflictDoc(trackerId, conflictId), {
@@ -284,23 +339,25 @@ export const saveReflectionDraft = async (
   trackerId: string,
   conflictId: string,
   side: 'personA' | 'personB',
-  data: Omit<Reflection, 'id' | 'conflictId' | 'submittedAt' | 'createdAt' | 'updatedAt'>,
+  authorUid: string,
+  input: ReflectionInput,
 ): Promise<void> => {
   const ref = reflectionDoc(trackerId, conflictId, side);
   await setDoc(
     ref,
     stripUndefined({
-      ...data,
+      ...input,
       id: side,
+      person: side,
       conflictId,
+      authorUid,
       submittedAt: null,
-      tags: ensureStringArray(data.tags),
+      tags: ensureStringArray(input.tags),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }),
     { merge: true },
   );
-  // mirror hasReflection flag on parent (draft counts as having started)
   const flag = side === 'personA' ? 'hasReflectionA' : 'hasReflectionB';
   await updateDoc(conflictDoc(trackerId, conflictId), {
     [flag]: true,
@@ -312,17 +369,20 @@ export const submitReflection = async (
   trackerId: string,
   conflictId: string,
   side: 'personA' | 'personB',
-  data: Omit<Reflection, 'id' | 'conflictId' | 'submittedAt' | 'createdAt' | 'updatedAt'>,
+  authorUid: string,
+  input: ReflectionInput,
 ): Promise<void> => {
   const ref = reflectionDoc(trackerId, conflictId, side);
   await setDoc(
     ref,
     stripUndefined({
-      ...data,
+      ...input,
       id: side,
+      person: side,
       conflictId,
+      authorUid,
       submittedAt: serverTimestamp(),
-      tags: ensureStringArray(data.tags),
+      tags: ensureStringArray(input.tags),
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }),
