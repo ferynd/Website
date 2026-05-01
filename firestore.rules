@@ -38,6 +38,15 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowed);
     }
 
+    // Conflict Tracker: member of a tracker (by UID or invited email)
+    function isConflictTrackerMember(trackerId) {
+      let tracker = get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data;
+      return isSignedIn() && (
+        request.auth.uid in tracker.memberUids ||
+        (tracker.memberEmails != null && request.auth.token.email in tracker.memberEmails)
+      );
+    }
+
     // Show Tracker: member of a list
     function isShowsListMember(listId) {
       return isSignedIn() &&
@@ -161,6 +170,39 @@ service cloud.firestore {
 
     match /artifacts/date-night/rolls/{docId} {
       allow read, create, update, delete: if isAdmin() || isDateNightParticipant();
+    }
+
+    /* ==================================================================================
+       CONFLICT TRACKER TOOL
+       ================================================================================== */
+
+    match /artifacts/conflict-tracker/trackers/{trackerId} {
+      allow read: if isAdmin() || isConflictTrackerMember(trackerId);
+
+      allow create: if isSignedIn()
+        && request.resource.data.personAUid == request.auth.uid
+        && request.auth.uid in request.resource.data.memberUids
+        && request.resource.data.createdBy == request.auth.uid;
+
+      // Members can update (add custom tags, claim personB side, etc.)
+      allow update: if isAdmin() || isConflictTrackerMember(trackerId);
+
+      allow delete: if isAdmin();
+    }
+
+    match /artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId} {
+      allow read: if isAdmin() || isConflictTrackerMember(trackerId);
+      allow create: if isConflictTrackerMember(trackerId)
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isAdmin() || isConflictTrackerMember(trackerId);
+      allow delete: if isAdmin() || isConflictTrackerMember(trackerId);
+    }
+
+    match /artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{reflectionId} {
+      allow read: if isAdmin() || isConflictTrackerMember(trackerId);
+      allow create, update: if isConflictTrackerMember(trackerId)
+        && request.resource.data.authorUid == request.auth.uid;
+      allow delete: if isAdmin();
     }
 
     /* ==================================================================================
