@@ -10,7 +10,7 @@ It showcases three hubs: **Games**, **Tools**, and **Trips**. Static sub-sites l
 - **Shared UI**: `/components/**` (Button with CVA variants, Input, Select, Nav, ProjectCard).
 - **Styling**: Tailwind + CSS variables in `app/globals.css`. Default theme is dark (`<html data-theme="dark">`).
 - **Static apps**: `/public/games|tools|trips/<Name>/index.html`.
-- **Firebase**: Trip Cost and Trip Planner share the Firebase Auth + Firestore project (config at `app/tools/trip-cost/firebaseConfig.ts`). Trip Planner now persists planners/events/ideas under `artifacts/trip-planner/**` with helpers in `app/tools/trip-planner/lib/`.
+- **Firebase**: Trip Cost, Trip Planner, and Conflict Tracker share the Firebase Auth + Firestore project (config at `app/tools/trip-cost/firebaseConfig.ts`). Trip Planner persists under `artifacts/trip-planner/**`; Conflict Tracker persists under `artifacts/conflict-tracker/**`.
 
 ## Commands
 ```bash
@@ -42,6 +42,7 @@ app/
   tools/trip-cost/** # Firebase-backed React app (Auth + Firestore)
   tools/trip-planner/** # Planner scaffold (Auth + UI, data layer pending)
   tools/date-night/** # Date Night Roulette (Auth + weighted roller + reviews + history, split math libs + Vitest tests)
+  tools/conflict-tracker/** # Conflict Tracker (Auth + Firestore, two-person reflections + trend dashboard)
 
 components/          # Reusable UI: Button, Input, Select, Nav, ProjectCard
 public/
@@ -50,12 +51,13 @@ public/
   trips/**           # Static itineraries (ChicagoTripItinerary)
 ```
 
-## Pointers for Trip Cost & Trip Planner
+## Pointers for Trip Cost, Trip Planner & Conflict Tracker
 - Firebase config: `app/tools/trip-cost/firebaseConfig.ts` (admin email: `arkkahdarkkahd@gmail.com`)
 - Firestore pathing: `artifacts/trip-cost/**` (see `app/tools/trip-cost/db.ts`)
 - Context/state: `app/tools/trip-cost/TripContext.tsx`
 - UI modules: `app/tools/trip-cost/components/**`
 - Trip Planner: `app/tools/trip-planner/page.tsx`, `PlanContext.tsx`, and `components/**` wire Firebase Auth, Firestore listeners, and the timeline/ideas/settings/map UI. Shared config + typed helpers live in `app/tools/trip-planner/lib/` alongside client image compression.
+- Conflict Tracker: `app/tools/conflict-tracker/page.tsx`, `ConflictContext.tsx`, and `components/**` implement two-person conflict logging with independent reflections, a shared section that unlocks once both submit, and a trend dashboard. Data lives under `artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{personA|personB}`. Typed helpers in `app/tools/conflict-tracker/lib/`.
 
 ---
 
