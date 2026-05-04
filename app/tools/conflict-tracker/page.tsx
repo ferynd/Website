@@ -267,7 +267,7 @@ const ConflictTrackerShell = () => {
     !activeTracker.personBUid &&
     activeTracker.personAUid !== user?.uid &&
     (activeTracker.personBEmail
-      ? activeTracker.personBEmail === user?.email
+      ? activeTracker.personBEmail.toLowerCase() === (user?.email ?? '').toLowerCase()
       : true);
 
   if (authLoading) {

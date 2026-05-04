@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { collection, getDocs, limit, query } from 'firebase/firestore';
 import { Shield, Trash2, UserMinus, CrownIcon, LogOut } from 'lucide-react';
 import Nav from '@/components/Nav';
+import { db } from '../lib/db';
 import { useShows } from '../ShowsContext';
 
 function ConfirmDialog({
@@ -58,6 +60,18 @@ export default function SettingsPage() {
   const [newListName, setNewListName] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [newName, setNewName] = useState(activeList?.name ?? '');
+  const [knownEmails, setKnownEmails] = useState<string[]>([]);
+
+  useEffect(() => {
+    getDocs(query(collection(db, 'artifacts', 'trip-cost', 'users'), limit(100)))
+      .then((snap) => {
+        const emails = snap.docs
+          .map((d) => (d.data() as Record<string, unknown>).email as string)
+          .filter(Boolean);
+        setKnownEmails(emails);
+      })
+      .catch(() => {});
+  }, []);
   const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -205,11 +219,17 @@ export default function SettingsPage() {
               <form onSubmit={handleInvite} className="flex gap-2 pt-1">
                 <input
                   type="email"
+                  list="shows-known-emails"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
                   placeholder="Add member by email"
                   className="flex-1 rounded-xl bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent min-h-[44px]"
                 />
+                <datalist id="shows-known-emails">
+                  {knownEmails
+                    .filter((e) => !members.some((m) => m.email === e))
+                    .map((e) => <option key={e} value={e} />)}
+                </datalist>
                 <button
                   type="submit"
                   disabled={saving === 'invite' || !inviteEmail.trim()}
