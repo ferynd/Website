@@ -107,6 +107,41 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     return unsub;
   }, []);
 
+  // Watch for new pending invites while already signed in and process them immediately.
+  // Without this, invites created after sign-in aren't consumed until the next sign-in.
+  useEffect(() => {
+    if (!user?.email) return;
+    const email = user.email.toLowerCase();
+    const q = query(pendingInvitesCol(), where('email', '==', email));
+    const unsub = onSnapshot(q, async (snap) => {
+      if (snap.empty) return;
+      for (const inviteSnap of snap.docs) {
+        const invite = inviteSnap.data();
+        const lRef = listDoc(invite.listId);
+        try {
+          const listSnap = await getDoc(lRef);
+          if (!listSnap.exists()) { await deleteDoc(inviteSnap.ref); continue; }
+          const listData = listSnap.data() as ShowList;
+          if (listData.memberUids?.includes(user.uid)) { await deleteDoc(inviteSnap.ref); continue; }
+          const member: ListMember = {
+            uid: user.uid,
+            email: user.email ?? '',
+            displayName: user.displayName ?? user.email ?? '',
+            role: 'member',
+            joinedAt: Timestamp.now(),
+          };
+          await updateDoc(lRef, {
+            members: arrayUnion(member),
+            memberUids: arrayUnion(user.uid),
+            updatedAt: serverTimestamp(),
+          });
+          await deleteDoc(inviteSnap.ref);
+        } catch { }
+      }
+    });
+    return unsub;
+  }, [user]);
+
   useEffect(() => {
     if (!user) return;
     const q = query(listsCol(), where('memberUids', 'array-contains', user.uid));

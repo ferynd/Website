@@ -80,13 +80,14 @@ export const createTracker = async (input: {
   personBName: string;
 }): Promise<string> => {
   const ref = doc(trackersCol());
-  const memberEmails = input.personBEmail ? [input.personBEmail] : [];
+  const normalizedEmail = input.personBEmail ? input.personBEmail.toLowerCase().trim() : null;
+  const memberEmails = normalizedEmail ? [normalizedEmail] : [];
   await setDoc(ref, {
     name: input.name,
     personAUid: input.personAUid,
     personAName: input.personAName,
     personBUid: null,
-    personBEmail: input.personBEmail,
+    personBEmail: normalizedEmail,
     personBName: input.personBName,
     memberUids: [input.personAUid],
     memberEmails,
