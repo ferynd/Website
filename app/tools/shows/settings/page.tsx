@@ -1,9 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { Shield, Trash2, UserMinus, CrownIcon, LogOut } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Shield, Trash2, UserMinus, CrownIcon, LogOut, UserPlus } from 'lucide-react';
+import { getDocs, collection } from 'firebase/firestore';
 import Nav from '@/components/Nav';
 import { useShows } from '../ShowsContext';
+import { db } from '../lib/db';
+
+interface KnownUser { uid: string; email: string; displayName: string; }
 
 function ConfirmDialog({
   message,
@@ -49,6 +53,7 @@ export default function SettingsPage() {
     renameList,
     deleteList,
     addMember,
+    addKnownMember,
     removeMember,
     promoteToAdmin,
     leaveList,
@@ -61,8 +66,27 @@ export default function SettingsPage() {
   const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [knownUsers, setKnownUsers] = useState<KnownUser[]>([]);
+  const [selectedUid, setSelectedUid] = useState('');
 
   const isAdmin = activeList?.adminUids?.includes(user?.uid ?? '') ?? false;
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    getDocs(collection(db, 'artifacts', 'trip-cost', 'users'))
+      .then((snap) => {
+        const users = snap.docs.map((d) => {
+          const data = d.data() as Record<string, unknown>;
+          return {
+            uid: d.id,
+            email: typeof data.email === 'string' ? data.email : '',
+            displayName: typeof data.displayName === 'string' ? data.displayName : d.id,
+          };
+        }).filter((u) => u.email);
+        setKnownUsers(users);
+      })
+      .catch(() => {});
+  }, [isAdmin]);
   const members = activeList?.members ?? [];
 
   async function withFeedback(key: string, fn: () => Promise<void>, msg: string) {
@@ -90,9 +114,22 @@ export default function SettingsPage() {
     await withFeedback(
       'invite',
       () => addMember(activeList.id, inviteEmail.trim()),
-      `Invite sent to ${inviteEmail.trim()}. They'll see this list when they sign in.`,
+      `Invite queued for ${inviteEmail.trim()}. They'll see this list next time they open the app.`,
     );
     setInviteEmail('');
+  }
+
+  async function handleAddKnown(e: React.FormEvent) {
+    e.preventDefault();
+    if (!activeList || !selectedUid) return;
+    const ku = knownUsers.find((u) => u.uid === selectedUid);
+    if (!ku) return;
+    await withFeedback(
+      'addKnown',
+      () => addKnownMember(activeList.id, ku.uid, ku.email, ku.displayName),
+      `${ku.displayName} added to the list.`,
+    );
+    setSelectedUid('');
   }
 
   async function handleCreateList(e: React.FormEvent) {
@@ -201,24 +238,56 @@ export default function SettingsPage() {
             </ul>
 
             {/* Add member */}
-            {isAdmin && (
-              <form onSubmit={handleInvite} className="flex gap-2 pt-1">
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="Add member by email"
-                  className="flex-1 rounded-xl bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent min-h-[44px]"
-                />
-                <button
-                  type="submit"
-                  disabled={saving === 'invite' || !inviteEmail.trim()}
-                  className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-bg disabled:opacity-50 min-h-[44px]"
-                >
-                  {saving === 'invite' ? '…' : 'Invite'}
-                </button>
-              </form>
-            )}
+            {isAdmin && (() => {
+              const alreadyMemberUids = new Set(activeList.memberUids ?? []);
+              const eligible = knownUsers.filter((u) => !alreadyMemberUids.has(u.uid));
+              return (
+                <div className="space-y-2 pt-1">
+                  {/* Picker: users who already have accounts */}
+                  {eligible.length > 0 && (
+                    <form onSubmit={handleAddKnown} className="flex gap-2">
+                      <select
+                        value={selectedUid}
+                        onChange={(e) => setSelectedUid(e.target.value)}
+                        className="flex-1 rounded-xl bg-surface-2 border border-border px-3 py-2.5 text-sm text-text focus:outline-none focus:border-accent min-h-[44px]"
+                      >
+                        <option value="">Add existing account…</option>
+                        {eligible.map((u) => (
+                          <option key={u.uid} value={u.uid}>
+                            {u.displayName} ({u.email})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="submit"
+                        disabled={saving === 'addKnown' || !selectedUid}
+                        className="rounded-xl bg-accent px-3 py-2.5 text-sm font-semibold text-bg disabled:opacity-50 min-h-[44px] flex items-center gap-1"
+                      >
+                        <UserPlus size={15} />
+                        {saving === 'addKnown' ? '…' : 'Add'}
+                      </button>
+                    </form>
+                  )}
+                  {/* Fallback: email invite for accounts not yet on the site */}
+                  <form onSubmit={handleInvite} className="flex gap-2">
+                    <input
+                      type="email"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      placeholder="Or invite by email (no account yet)"
+                      className="flex-1 rounded-xl bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent min-h-[44px]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={saving === 'invite' || !inviteEmail.trim()}
+                      className="rounded-xl bg-surface-2 border border-border px-4 py-2.5 text-sm font-semibold text-text disabled:opacity-50 min-h-[44px]"
+                    >
+                      {saving === 'invite' ? '…' : 'Invite'}
+                    </button>
+                  </form>
+                </div>
+              );
+            })()}
           </div>
         )}
 

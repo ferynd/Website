@@ -30,12 +30,15 @@ import {
   deleteDoc,
   getDocs,
   getDoc,
+  setDoc,
+  doc,
+  collection,
   serverTimestamp,
   arrayUnion,
   arrayRemove,
   Timestamp,
 } from 'firebase/firestore';
-import { auth } from './lib/db';
+import { auth, db } from './lib/db';
 import {
   listsCol,
   listDoc,
@@ -59,6 +62,7 @@ interface ShowsContextValue {
   renameList: (listId: string, name: string) => Promise<void>;
   deleteList: (listId: string) => Promise<void>;
   addMember: (listId: string, email: string) => Promise<void>;
+  addKnownMember: (listId: string, uid: string, email: string, displayName: string) => Promise<void>;
   removeMember: (listId: string, uid: string) => Promise<void>;
   promoteToAdmin: (listId: string, uid: string) => Promise<void>;
   leaveList: (listId: string) => Promise<void>;
@@ -90,11 +94,14 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u);
       if (u) {
-        setUserProfile({
-          uid: u.uid,
-          email: u.email ?? '',
-          displayName: u.displayName ?? u.email ?? '',
-        });
+        const displayName = u.displayName ?? u.email ?? '';
+        setUserProfile({ uid: u.uid, email: u.email ?? '', displayName });
+        // Register in shared user registry so this account appears in member pickers.
+        setDoc(
+          doc(collection(db, 'artifacts', 'trip-cost', 'users'), u.uid),
+          { uid: u.uid, email: u.email ?? '', displayName },
+          { merge: true },
+        ).catch(() => {});
         processPendingInvites(u).catch(() => {});
       } else {
         setUserProfile(null);
@@ -249,6 +256,24 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     });
   }, [user]);
 
+  // Add a user who already has an account directly by UID — no pending invite needed.
+  const addKnownMember = useCallback(async (
+    listId: string,
+    uid: string,
+    email: string,
+    displayName: string,
+  ) => {
+    const list = lists.find((l) => l.id === listId);
+    if (!list) throw new Error('List not found');
+    if (list.memberUids?.includes(uid)) return;
+    const member: ListMember = { uid, email, displayName, role: 'member', joinedAt: Timestamp.now() };
+    await updateDoc(listDoc(listId), {
+      members: arrayUnion(member),
+      memberUids: arrayUnion(uid),
+      updatedAt: serverTimestamp(),
+    });
+  }, [lists]);
+
   const removeMember = useCallback(async (listId: string, uid: string) => {
     const list = lists.find((l) => l.id === listId);
     if (!list) return;
@@ -329,7 +354,7 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
       value={{
         user, userProfile, authLoading, signIn, signUp, logOut,
         lists, activeList, setActiveListId, createList, renameList, deleteList,
-        addMember, removeMember, promoteToAdmin, leaveList,
+        addMember, addKnownMember, removeMember, promoteToAdmin, leaveList,
         shows, showsLoading, addShow, updateShow, deleteShow, updateMyRating,
       }}
     >
