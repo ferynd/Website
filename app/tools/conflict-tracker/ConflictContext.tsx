@@ -178,7 +178,13 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
   useEffect(() => {
     if (!user) { setTrackers([]); return; }
     const unsub = watchUserTrackers(user.uid, user.email, (list) => {
-      if (mountedRef.current) setTrackers(list);
+      if (!mountedRef.current) return;
+      setTrackers(list);
+      // Auto-select the first tracker if none is active yet (mirrors shows tracker behavior)
+      setActiveTrackerId((prev) => {
+        if (prev && list.some((t) => t.id === prev)) return prev;
+        return list[0]?.id ?? null;
+      });
     });
     return () => unsub();
   }, [user]);

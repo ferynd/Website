@@ -29,7 +29,6 @@ import {
   updateDoc,
   deleteDoc,
   getDocs,
-  getDoc,
   serverTimestamp,
   arrayUnion,
   arrayRemove,
@@ -118,25 +117,24 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
       for (const inviteSnap of snap.docs) {
         const invite = inviteSnap.data();
         const lRef = listDoc(invite.listId);
+        const member: ListMember = {
+          uid: user.uid,
+          email: user.email ?? '',
+          displayName: user.displayName ?? user.email ?? '',
+          role: 'member',
+          joinedAt: Timestamp.now(),
+        };
+        // Skip the pre-flight getDoc — the invited user isn't in memberUids yet so reading
+        // the list would fail with permission-denied and silently swallow the whole invite.
+        // The self-add security rule handles all the guards server-side.
         try {
-          const listSnap = await getDoc(lRef);
-          if (!listSnap.exists()) { await deleteDoc(inviteSnap.ref); continue; }
-          const listData = listSnap.data() as ShowList;
-          if (listData.memberUids?.includes(user.uid)) { await deleteDoc(inviteSnap.ref); continue; }
-          const member: ListMember = {
-            uid: user.uid,
-            email: user.email ?? '',
-            displayName: user.displayName ?? user.email ?? '',
-            role: 'member',
-            joinedAt: Timestamp.now(),
-          };
           await updateDoc(lRef, {
             members: arrayUnion(member),
             memberUids: arrayUnion(user.uid),
             updatedAt: serverTimestamp(),
           });
-          await deleteDoc(inviteSnap.ref);
-        } catch { }
+        } catch { /* list gone or user already a member — still clean up the invite */ }
+        try { await deleteDoc(inviteSnap.ref); } catch { }
       }
     });
     return unsub;
@@ -353,24 +351,23 @@ async function processPendingInvites(u: User) {
   for (const inviteSnap of snap.docs) {
     const invite = inviteSnap.data();
     const lRef = listDoc(invite.listId);
+    const member: ListMember = {
+      uid: u.uid,
+      email: u.email ?? '',
+      displayName: u.displayName ?? u.email ?? '',
+      role: 'member',
+      joinedAt: Timestamp.now(),
+    };
+    // Skip the pre-flight getDoc — the invited user isn't in memberUids yet so reading
+    // the list would fail with permission-denied and silently swallow the whole invite.
+    // The self-add security rule handles all the guards server-side.
     try {
-      const listSnap = await getDoc(lRef);
-      if (!listSnap.exists()) { await deleteDoc(inviteSnap.ref); continue; }
-      const listData = listSnap.data() as ShowList;
-      if (listData.memberUids?.includes(u.uid)) { await deleteDoc(inviteSnap.ref); continue; }
-      const member: ListMember = {
-        uid: u.uid,
-        email: u.email ?? '',
-        displayName: u.displayName ?? u.email ?? '',
-        role: 'member',
-        joinedAt: Timestamp.now(),
-      };
       await updateDoc(lRef, {
         members: arrayUnion(member),
         memberUids: arrayUnion(u.uid),
         updatedAt: serverTimestamp(),
       });
-      await deleteDoc(inviteSnap.ref);
-    } catch { }
+    } catch { /* list gone or user already a member — still clean up the invite */ }
+    try { await deleteDoc(inviteSnap.ref); } catch { }
   }
 }
