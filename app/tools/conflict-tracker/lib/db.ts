@@ -204,7 +204,7 @@ export const watchUserTrackers = (
   );
 
   if (email) {
-    const qEmail = query(trackersCol(), where('memberEmails', 'array-contains', email));
+    const qEmail = query(trackersCol(), where('memberEmails', 'array-contains', email.toLowerCase()));
     const unsubEmail = onSnapshot(
       qEmail,
       (snap) => {
