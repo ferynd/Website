@@ -89,3 +89,6 @@ Authority is enforced by Firestore Security Rules (see SECURITY.md).
 - Add static sub-sites under `/public` and link from the relevant page in `/app`.
 - For React tools, colocate components under `app/tools/<name>/**`, use client components when interactive.
 - Keep styles within the tokenized Tailwind system for consistency.
+
+
+> Firestore Security Rules source of truth: `firestore.rules` (repo root). Keep docs referencing this file rather than embedding duplicate rule blocks.

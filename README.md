@@ -485,3 +485,6 @@ In essence, any AI agent should mimic the patterns already present in the reposi
 ### Keep Documentation Up-to-Date
 
 Whenever changes or additions are made to the codebase, make sure to update this README accordingly. Whether it's a human developer or an AI assistant making the changes, the documentation should reflect the new state of the project. This practice keeps the project easy to understand and maintain for everyone.
+
+
+> Firestore Security Rules source of truth: `firestore.rules` (repo root). Keep docs referencing this file rather than embedding duplicate rule blocks.
