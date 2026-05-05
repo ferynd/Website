@@ -62,3 +62,6 @@ public/
 ---
 
 **Update this file** whenever structure, commands, or conventions change. Also update **README.md** and **AI_AGENTS.md**.
+
+
+> Firestore Security Rules source of truth: `firestore.rules` (repo root). Keep docs referencing this file rather than embedding duplicate rule blocks.

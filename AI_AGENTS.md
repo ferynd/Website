@@ -84,3 +84,6 @@ Add a short **“Docs”** section to the PR body summarizing what changed in th
 ---
 
 If in doubt, read **README.md** and **ARCHITECTURE.md** first, then ask for owner review before large changes.
+
+
+> Firestore Security Rules source of truth: `firestore.rules` (repo root). Keep docs referencing this file rather than embedding duplicate rule blocks.
