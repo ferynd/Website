@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { X, Sparkles, Loader2, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { X, Sparkles, Loader2, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Show, ShowType, ShowStatus, ShowList } from '../types';
 import { VIBE_CATEGORIES } from '../lib/vibeCategories';
 import VibeTagChip from './VibeTagChip';
@@ -9,7 +9,16 @@ import ScoreBlock from './ScoreBlock';
 import { useShows } from '../ShowsContext';
 
 const SERVICES = [
-  'Crunchyroll', 'Netflix', 'Hulu', 'Max', 'Prime', 'Disney+', 'Apple TV+', 'Other',
+  'Crunchyroll',
+  'Netflix',
+  'Hulu',
+  'Max',
+  'Prime',
+  'Disney+',
+  'Apple TV+',
+  'Peacock',
+  'Dropout',
+  'Other',
 ];
 
 const TYPE_LABELS: Record<ShowType, string> = {
@@ -17,6 +26,7 @@ const TYPE_LABELS: Record<ShowType, string> = {
   tv:             'TV Show',
   movie:          'Movie',
   animated_movie: 'Animated Movie',
+  cartoon:        'Cartoon',
 };
 
 const STATUS_LABELS: Record<ShowStatus, string> = {
@@ -27,8 +37,23 @@ const STATUS_LABELS: Record<ShowStatus, string> = {
   planned:   'Planned',
 };
 
+const BRAIN_POWER_LABELS: Record<number, string> = {
+  1: 'Braindead / background-friendly',
+  2: 'Easy watch',
+  3: 'Normal focus',
+  4: 'Pay attention',
+  5: 'Dense / thought-provoking',
+};
+
 function hasEpisodes(type: ShowType) {
-  return type === 'anime' || type === 'tv';
+  return type === 'anime' || type === 'tv' || type === 'cartoon';
+}
+
+/** Determine the initial service chip selection for a show being edited. */
+function resolveInitialService(show: Show | undefined): string {
+  if (!show?.service) return '';
+  if (SERVICES.includes(show.service)) return show.service;
+  return 'Other';
 }
 
 interface Props {
@@ -54,13 +79,34 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [totalSeasons, setTotalSeasons] = useState<string>(
     show?.totalSeasons?.toString() ?? '',
   );
-  const [service, setService] = useState<string>(show?.service ?? '');
-  const [customService, setCustomService] = useState('');
-  const [watchers, setWatchers] = useState<string[]>(
-    show?.watchers ?? (user ? [user.uid] : []),
+  const [service, setService] = useState<string>(resolveInitialService(show));
+  const [customService, setCustomService] = useState(
+    show?.service && !SERVICES.includes(show.service) ? show.service : '',
   );
+  const [brainPower, setBrainPower] = useState<number | null>(show?.brainPower ?? null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  // Watchers: default to all members on add; preserve existing watchers on edit
+  const watchersInitialized = useRef(isEdit);
+  const [watchers, setWatchers] = useState<string[]>(show?.watchers ?? []);
+  useEffect(() => {
+    if (!watchersInitialized.current && members.length > 0) {
+      setWatchers(members.map((m) => m.uid));
+      watchersInitialized.current = true;
+    }
+  }, [members]);
+
   const [description, setDescription] = useState(show?.description ?? '');
-  const [notes, setNotes] = useState(show?.notes ?? '');
+
+  // Per-person notes: prefer memberNotes, fall back to legacy notes for current user
+  const [memberNotes, setMemberNotes] = useState<Record<string, string>>(() => {
+    if (!show) return {};
+    if (show.memberNotes && Object.keys(show.memberNotes).length > 0) return show.memberNotes;
+    // Migrate legacy notes into the creating user's slot on first edit
+    if (show.notes && user?.uid) return { [user.uid]: show.notes };
+    return {};
+  });
+
   const [vibeTags, setVibeTags] = useState<string[]>(show?.vibeTags ?? []);
   const [classifying, setClassifying] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -75,7 +121,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [pendingRating, setPendingRating] = useState(myRating);
 
   useEffect(() => {
-    // Reset episode fields when type changes away from anime/tv
     if (!hasEpisodes(type)) {
       setCurrentSeason('');
       setCurrentEpisode('');
@@ -86,20 +131,25 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   async function classify() {
     if (!title.trim()) return;
     setClassifying(true);
+    setError('');
     try {
       const res = await fetch('/api/classify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title: title.trim(), type }),
       });
-      if (!res.ok) throw new Error('Classification failed');
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? 'Classification failed');
+      }
       const data = await res.json();
-      // AI owns type, vibes, and description — never touches notes
+      // AI owns canonicalTitle, type, vibes, and description — never touches notes
+      if (data.canonicalTitle) setTitle(data.canonicalTitle);
       if (data.type) setType(data.type);
       if (data.vibes?.length) setVibeTags(data.vibes);
       if (typeof data.description === 'string') setDescription(data.description);
-    } catch {
-      setError('Could not classify — check your connection and try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not classify — try again.');
     } finally {
       setClassifying(false);
     }
@@ -124,7 +174,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
     setVibeTags((prev) =>
       prev.includes(tag)
         ? prev.filter((t) => t !== tag)
-        : prev.length < 4
+        : prev.length < 6
         ? [...prev, tag]
         : prev,
     );
@@ -155,7 +205,9 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         service: resolvedService,
         watchers,
         description,
-        notes,
+        notes: show?.notes ?? '',
+        memberNotes,
+        brainPower,
         vibeTags,
         ratings: show?.ratings ?? {},
       };
@@ -222,7 +274,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
                 type="button"
                 onClick={classify}
                 disabled={classifying || !title.trim()}
-                title="Auto-suggest vibe tags"
+                title="Auto-classify with AI (fills type, vibes, description, and corrects title)"
                 className="rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-text-2 hover:text-accent hover:border-accent/40 disabled:opacity-40 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               >
                 {classifying ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
@@ -233,13 +285,13 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
           {/* Type */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-text-2">Type *</label>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {(Object.keys(TYPE_LABELS) as ShowType[]).map((t) => (
                 <button
                   key={t}
                   type="button"
                   onClick={() => setType(t)}
-                  className={`rounded-lg border py-2.5 text-sm font-medium transition-colors min-h-[44px] ${
+                  className={`rounded-lg border py-2.5 text-xs font-medium transition-colors min-h-[44px] ${
                     type === t
                       ? 'bg-accent/20 text-accent border-accent/40'
                       : 'bg-surface-2 text-text-2 border-border hover:border-accent/30'
@@ -340,32 +392,11 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             )}
           </div>
 
-          {/* Watchers */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium text-text-2">Watchers</label>
-            <div className="flex flex-wrap gap-2">
-              {members.map((m) => (
-                <button
-                  key={m.uid}
-                  type="button"
-                  onClick={() => toggleWatcher(m.uid)}
-                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
-                    watchers.includes(m.uid)
-                      ? 'bg-accent/20 text-accent border-accent/40'
-                      : 'bg-surface-2 text-text-2 border-border hover:border-accent/30'
-                  }`}
-                >
-                  {m.displayName}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Vibe tags */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-text-2">Vibe tags (2–4)</label>
-              <span className="text-xs text-text-3">{vibeTags.length}/4 selected</span>
+              <label className="text-sm font-medium text-text-2">Vibe tags (2–6)</label>
+              <span className="text-xs text-text-3">{vibeTags.length}/6 selected</span>
             </div>
             <div className="flex flex-wrap gap-1.5">
               {VIBE_CATEGORIES.map((tag) => (
@@ -377,6 +408,40 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
                 />
               ))}
             </div>
+          </div>
+
+          {/* Brain power */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-text-2">Brain power required</label>
+              <span className="text-xs text-text-3">
+                {brainPower !== null
+                  ? `${brainPower}/5 — ${BRAIN_POWER_LABELS[brainPower]}`
+                  : 'not set'}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={1}
+              value={brainPower ?? 3}
+              onChange={(e) => setBrainPower(Number(e.target.value))}
+              className="w-full h-2 accent-[hsl(var(--color-accent))] cursor-pointer"
+            />
+            <div className="flex justify-between text-xs text-text-3 px-0.5">
+              <span>Braindead</span>
+              <span>Dense</span>
+            </div>
+            {brainPower === null && (
+              <button
+                type="button"
+                onClick={() => setBrainPower(3)}
+                className="text-xs text-text-3 underline"
+              >
+                Set brain power
+              </button>
+            )}
           </div>
 
           {/* Description (AI-populated) */}
@@ -391,16 +456,70 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             />
           </div>
 
-          {/* Notes (user-only) */}
-          <div className="space-y-1.5">
+          {/* Per-person notes */}
+          <div className="space-y-2">
             <label className="text-sm font-medium text-text-2">Notes</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              placeholder="Your personal notes about this show."
-              className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent resize-none"
-            />
+            {/* Current user's editable note */}
+            {user && (
+              <div className="space-y-1">
+                <p className="text-xs text-text-3">
+                  {members.find((m) => m.uid === user.uid)?.displayName ?? 'You'}
+                </p>
+                <textarea
+                  value={memberNotes[user.uid] ?? ''}
+                  onChange={(e) =>
+                    setMemberNotes((prev) => ({ ...prev, [user.uid]: e.target.value }))
+                  }
+                  rows={2}
+                  placeholder="Your personal notes about this show."
+                  className="w-full rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent resize-none"
+                />
+              </div>
+            )}
+            {/* Other members' read-only notes */}
+            {members
+              .filter((m) => m.uid !== user?.uid && memberNotes[m.uid])
+              .map((m) => (
+                <div key={m.uid} className="space-y-1">
+                  <p className="text-xs text-text-3">{m.displayName}</p>
+                  <p className="rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text-2 min-h-[44px]">
+                    {memberNotes[m.uid]}
+                  </p>
+                </div>
+              ))}
+          </div>
+
+          {/* Advanced: Watchers — collapsed by default */}
+          <div className="border border-border rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-text-2 hover:text-text hover:bg-surface-2 transition-colors"
+            >
+              <span>Watchers ({watchers.length} / {members.length})</span>
+              {showAdvanced ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            {showAdvanced && (
+              <div className="px-4 pb-4 pt-1 space-y-2 border-t border-border">
+                <p className="text-xs text-text-3">Who plans to watch / is watching this show.</p>
+                <div className="flex flex-wrap gap-2">
+                  {members.map((m) => (
+                    <button
+                      key={m.uid}
+                      type="button"
+                      onClick={() => toggleWatcher(m.uid)}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors min-h-[36px] ${
+                        watchers.includes(m.uid)
+                          ? 'bg-accent/20 text-accent border-accent/40'
+                          : 'bg-surface-2 text-text-2 border-border hover:border-accent/30'
+                      }`}
+                    >
+                      {m.displayName}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Score blocks — visible on edit for all statuses */}
@@ -420,7 +539,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
               />
               {/* Other members — read-only */}
               {members
-                .filter((m) => m.uid !== user.uid && watchers.includes(m.uid))
+                .filter((m) => m.uid !== user.uid && show!.ratings[m.uid])
                 .map((m) => {
                   const r = show!.ratings[m.uid] ?? {
                     story: null, characters: null, vibes: null,

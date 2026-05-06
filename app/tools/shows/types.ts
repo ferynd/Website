@@ -1,6 +1,6 @@
 import { Timestamp } from 'firebase/firestore';
 
-export type ShowType = 'anime' | 'tv' | 'movie' | 'animated_movie';
+export type ShowType = 'anime' | 'tv' | 'movie' | 'animated_movie' | 'cartoon';
 export type ShowStatus = 'watching' | 'completed' | 'dropped' | 'on_hold' | 'planned';
 export type WouldRewatch = 'yes' | 'no' | 'maybe';
 export type MemberRole = 'admin' | 'member';
@@ -44,8 +44,13 @@ export interface Show {
   service: string | null;
   watchers: string[];
   description: string;
+  /** Legacy shared notes field. Prefer memberNotes for new writes. */
   notes: string;
+  /** Per-person notes. uid → note text. */
+  memberNotes?: Record<string, string>;
   vibeTags: string[];
+  /** 1–5: how much focus the show requires. 1 = braindead, 5 = dense. */
+  brainPower?: number | null;
   ratings: Record<string, MemberRating>;
   createdAt: Timestamp;
   updatedAt: Timestamp;

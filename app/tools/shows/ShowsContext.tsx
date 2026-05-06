@@ -51,6 +51,7 @@ interface ShowsContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   logOut: () => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
   lists: ShowList[];
   activeList: ShowList | null;
   setActiveListId: (id: string) => void;
@@ -320,12 +321,34 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     });
   }, [user, shows]);
 
+  const updateDisplayName = useCallback(async (displayName: string) => {
+    if (!user) throw new Error('Not signed in');
+    // Update Firebase Auth profile
+    await updateProfile(user, { displayName });
+    // Update local profile state
+    setUserProfile((prev) => prev ? { ...prev, displayName } : null);
+    // Propagate to all list member entries
+    await Promise.all(
+      lists.map(async (list) => {
+        const hasMember = list.members.some((m) => m.uid === user.uid);
+        if (!hasMember) return;
+        const updatedMembers = list.members.map((m) =>
+          m.uid === user.uid ? { ...m, displayName } : m,
+        );
+        await updateDoc(listDoc(list.id), {
+          members: updatedMembers,
+          updatedAt: serverTimestamp(),
+        });
+      }),
+    );
+  }, [user, lists]);
+
   const activeList = lists.find((l) => l.id === activeListId) ?? null;
 
   return (
     <ShowsContext.Provider
       value={{
-        user, userProfile, authLoading, signIn, signUp, logOut,
+        user, userProfile, authLoading, signIn, signUp, logOut, updateDisplayName,
         lists, activeList, setActiveListId, createList, renameList, deleteList,
         addMember, removeMember, promoteToAdmin, leaveList,
         shows, showsLoading, addShow, updateShow, deleteShow, updateMyRating,

@@ -16,6 +16,14 @@ export const VIBE_CATEGORIES = [
   'Epic',
   'Suspenseful',
   'Horror',
+  'Musical',
+  'Low-Stakes',
+  'Comfort Watch',
+  'Fast-Paced',
+  'Slow Burn',
+  'Thoughtful',
+  'Chaotic',
+  'Found Family',
 ] as const;
 
 export type VibeCategory = (typeof VIBE_CATEGORIES)[number];

@@ -45,9 +45,11 @@ function ConfirmDialog({
 export default function SettingsPage() {
   const {
     user,
+    userProfile,
     lists,
     activeList,
     logOut,
+    updateDisplayName,
     renameList,
     deleteList,
     addMember,
@@ -62,6 +64,12 @@ export default function SettingsPage() {
   const [newName, setNewName] = useState(activeList?.name ?? '');
   const [knownEmails, setKnownEmails] = useState<string[]>([]);
 
+  // Display name state
+  const [displayNameInput, setDisplayNameInput] = useState(userProfile?.displayName ?? '');
+  useEffect(() => {
+    setDisplayNameInput(userProfile?.displayName ?? '');
+  }, [userProfile?.displayName]);
+
   useEffect(() => {
     getDocs(query(collection(db, 'artifacts', 'trip-cost', 'users'), limit(100)))
       .then((snap) => {
@@ -72,6 +80,7 @@ export default function SettingsPage() {
       })
       .catch(() => {});
   }, []);
+
   const [confirm, setConfirm] = useState<{ message: string; action: () => void } | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -90,6 +99,16 @@ export default function SettingsPage() {
     } finally {
       setSaving(null);
     }
+  }
+
+  async function handleDisplayNameSave(e: React.FormEvent) {
+    e.preventDefault();
+    if (!displayNameInput.trim()) return;
+    await withFeedback(
+      'displayName',
+      () => updateDisplayName(displayNameInput.trim()),
+      'Display name updated.',
+    );
   }
 
   async function handleRename(e: React.FormEvent) {
@@ -133,6 +152,34 @@ export default function SettingsPage() {
             {feedback}
           </p>
         )}
+
+        {/* Display name */}
+        <div className="rounded-xl border border-border bg-surface-1 p-4 space-y-3">
+          <div>
+            <h2 className="font-semibold text-sm">Your display name</h2>
+            <p className="text-xs text-text-3 mt-0.5">
+              Shown in member lists, notes, watcher chips, and recommendations.
+            </p>
+          </div>
+          <form onSubmit={handleDisplayNameSave} className="flex gap-2">
+            <input
+              value={displayNameInput}
+              onChange={(e) => setDisplayNameInput(e.target.value)}
+              placeholder="e.g. Alex"
+              className="flex-1 rounded-xl bg-surface-2 border border-border px-3 py-2.5 text-sm text-text focus:outline-none focus:border-accent min-h-[44px]"
+            />
+            <button
+              type="submit"
+              disabled={saving === 'displayName' || !displayNameInput.trim()}
+              className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-bg disabled:opacity-50 min-h-[44px]"
+            >
+              {saving === 'displayName' ? '…' : 'Save'}
+            </button>
+          </form>
+          {user?.email && (
+            <p className="text-xs text-text-3">{user.email}</p>
+          )}
+        </div>
 
         {/* Rename list */}
         {activeList && isAdmin && (
