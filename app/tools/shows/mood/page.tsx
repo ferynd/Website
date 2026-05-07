@@ -25,14 +25,17 @@ export default function MoodPage() {
   const [presentUids, setPresentUids] = useState<string[]>([]);
   const [viewerPickerOpen, setViewerPickerOpen] = useState(false);
 
+  const listId = activeList?.id;
+
+  // Reset selection when the active list switches
   useEffect(() => {
-    // Initialize to all members; only set if not yet initialized or if list changed
+    setPresentUids([]);
+  }, [listId]);
+
+  // Fill from members once loaded (or after a reset)
+  useEffect(() => {
     if (members.length > 0) {
-      setPresentUids((prev) => {
-        // Keep existing selection if members are already set (avoid overwriting)
-        if (prev.length > 0) return prev;
-        return members.map((m) => m.uid);
-      });
+      setPresentUids((prev) => (prev.length === 0 ? members.map((m) => m.uid) : prev));
     }
   }, [members]);
 

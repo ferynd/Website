@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { buildHistory, candidateShows } from '../lib/recommendationContext';
+import { buildPrompt } from '../lib/buildRecommendPrompt';
 import type { Show, ShowList } from '../types';
+import type { MoodEntry, HistoryEntry } from '../lib/recommendationContext';
 import { Timestamp } from 'firebase/firestore';
 
 /* ------------------------------------------------------------ */
@@ -200,5 +202,149 @@ describe('recommendation payload structure', () => {
     const ids = new Set(candidates.map((s) => s.id));
     expect(ids.has('abc123')).toBe(true);
     expect(ids.has('def456')).toBe(true);
+  });
+});
+
+/* ------------------------------------------------------------ */
+/* candidateShows — tiered filtering                           */
+/* ------------------------------------------------------------ */
+
+describe('candidateShows tiered filtering', () => {
+  it('tier 1: prefers shows where all present viewers are watchers', () => {
+    const allPresent = makeShow({ id: 'all', status: 'planned', watchers: ['u1', 'u2'] });
+    const onePresent = makeShow({ id: 'one', status: 'planned', watchers: ['u1'] });
+    const result = candidateShows([allPresent, onePresent], ['u1', 'u2']);
+    // both present are in allPresent's watchers → tier 1
+    expect(result.map((s) => s.id)).toEqual(['all']);
+  });
+
+  it('tier 1 includes legacy (empty-watcher) shows before tier 2 overlap shows', () => {
+    const legacy = makeShow({ id: 'legacy', status: 'planned', watchers: [] });
+    const partial = makeShow({ id: 'partial', status: 'planned', watchers: ['u1'] });
+    const result = candidateShows([legacy, partial], ['u1', 'u2']);
+    // legacy is in tier 1 (empty watchers) → returned without partial
+    expect(result.map((s) => s.id)).toContain('legacy');
+    expect(result.map((s) => s.id)).not.toContain('partial');
+  });
+
+  it('tier 2: falls back to any-overlap when no all-present matches', () => {
+    const u1only = makeShow({ id: 'u1only', status: 'watching', watchers: ['u1'] });
+    const u2only = makeShow({ id: 'u2only', status: 'watching', watchers: ['u2'] });
+    const result = candidateShows([u1only, u2only], ['u1', 'u2']);
+    // neither has all of [u1,u2] → tier 2 → both appear
+    expect(result.map((s) => s.id)).toContain('u1only');
+    expect(result.map((s) => s.id)).toContain('u2only');
+  });
+
+  it('tier 3: falls back to all eligible when no viewer overlap', () => {
+    const u3show = makeShow({ id: 'u3', status: 'planned', watchers: ['u3'] });
+    const result = candidateShows([u3show], ['u1', 'u2']);
+    expect(result.map((s) => s.id)).toContain('u3');
+  });
+});
+
+/* ------------------------------------------------------------ */
+/* buildPrompt                                                  */
+/* ------------------------------------------------------------ */
+
+function makeMood(name: string, mood = ''): MoodEntry {
+  return { name, mood };
+}
+
+function makeHistory(name: string): HistoryEntry {
+  return { name, highScoringShows: [] };
+}
+
+describe('buildPrompt', () => {
+  it('includes candidate show ID in the prompt', () => {
+    const candidates = [makeShow({ id: 'show-xyz', status: 'watching' })];
+    const moods = { u1: makeMood('Alice', 'tired') };
+    const history = { u1: makeHistory('Alice') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('id:show-xyz');
+  });
+
+  it('includes mood display names in the WHO IS WATCHING section', () => {
+    const candidates = [makeShow({ status: 'watching' })];
+    const moods = { u1: makeMood('Alice', 'chill'), u2: makeMood('Bob', 'hyped') };
+    const history = { u1: makeHistory('Alice'), u2: makeHistory('Bob') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('Alice: chill');
+    expect(prompt).toContain('Bob: hyped');
+  });
+
+  it('labels per-person notes with display name, not UID', () => {
+    const uid = 'u1';
+    const candidates = [makeShow({
+      id: 'ns1',
+      status: 'watching',
+      memberNotes: { [uid]: 'love this series' },
+    })];
+    const moods = { [uid]: makeMood('Alice', 'chill') };
+    const history = { [uid]: makeHistory('Alice') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('[Alice]');
+    expect(prompt).toContain('love this series');
+    expect(prompt).not.toContain(`[${uid}]`);
+  });
+
+  it('falls back to UID label for notes from absent viewers', () => {
+    const candidates = [makeShow({
+      id: 'ns2',
+      status: 'watching',
+      memberNotes: { absentUid: 'a note from someone not watching tonight' },
+    })];
+    const moods = { u1: makeMood('Alice', 'chill') };
+    const history = { u1: makeHistory('Alice') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('[absentUid]');
+  });
+
+  it('includes brain power label when set', () => {
+    const candidates = [makeShow({ status: 'watching', brainPower: 1 })];
+    const moods = { u1: makeMood('Alice') };
+    const history = { u1: makeHistory('Alice') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('1/5');
+    expect(prompt).toContain('braindead');
+  });
+
+  it('shows "unknown" brain power when null', () => {
+    const candidates = [makeShow({ status: 'watching', brainPower: null })];
+    const moods = { u1: makeMood('Alice') };
+    const history = { u1: makeHistory('Alice') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('brain power: unknown');
+  });
+
+  it('includes service when present', () => {
+    const candidates = [makeShow({ status: 'watching', service: 'Crunchyroll' })];
+    const moods = { u1: makeMood('Alice') };
+    const history = { u1: makeHistory('Alice') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('service: Crunchyroll');
+  });
+
+  it('uses legacy notes field when memberNotes is absent', () => {
+    const candidates = [makeShow({
+      status: 'watching',
+      notes: 'old shared note',
+      memberNotes: undefined,
+    })];
+    const moods = { u1: makeMood('Alice') };
+    const history = { u1: makeHistory('Alice') };
+    const prompt = buildPrompt(moods, candidates, history);
+    expect(prompt).toContain('old shared note');
+  });
+
+  it('includes history high-scoring shows with vibes and score', () => {
+    const member = makeMember('u1', 'Alice');
+    const show = makeShow({ ratings: { u1: makeRating(9) }, vibeTags: ['Epic', 'Action'] });
+    const history = buildHistory([show], [member]);
+    const moods = { u1: makeMood('Alice') };
+    const prompt = buildPrompt(moods, [], history);
+    expect(prompt).toContain('Alice\'s high-scoring shows');
+    expect(prompt).toContain('Test Show');
+    expect(prompt).toContain('Epic');
   });
 });

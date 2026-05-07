@@ -414,26 +414,13 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium text-text-2">Brain power required</label>
-              <span className="text-xs text-text-3">
-                {brainPower !== null
-                  ? `${brainPower}/5 — ${BRAIN_POWER_LABELS[brainPower]}`
-                  : 'not set'}
-              </span>
+              {brainPower !== null && (
+                <span className="text-xs text-text-3">
+                  {brainPower}/5 — {BRAIN_POWER_LABELS[brainPower]}
+                </span>
+              )}
             </div>
-            <input
-              type="range"
-              min={1}
-              max={5}
-              step={1}
-              value={brainPower ?? 3}
-              onChange={(e) => setBrainPower(Number(e.target.value))}
-              className="w-full h-2 accent-[hsl(var(--color-accent))] cursor-pointer"
-            />
-            <div className="flex justify-between text-xs text-text-3 px-0.5">
-              <span>Braindead</span>
-              <span>Dense</span>
-            </div>
-            {brainPower === null && (
+            {brainPower === null ? (
               <button
                 type="button"
                 onClick={() => setBrainPower(3)}
@@ -441,6 +428,29 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
               >
                 Set brain power
               </button>
+            ) : (
+              <>
+                <input
+                  type="range"
+                  min={1}
+                  max={5}
+                  step={1}
+                  value={brainPower}
+                  onChange={(e) => setBrainPower(Number(e.target.value))}
+                  className="w-full h-2 accent-[hsl(var(--color-accent))] cursor-pointer"
+                />
+                <div className="flex justify-between text-xs text-text-3 px-0.5">
+                  <span>Braindead</span>
+                  <span>Dense</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setBrainPower(null)}
+                  className="text-xs text-text-3 underline"
+                >
+                  Clear
+                </button>
+              </>
             )}
           </div>
 

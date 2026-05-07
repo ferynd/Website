@@ -78,11 +78,11 @@ export async function POST(req: NextRequest) {
   // Validate type: if AI returns an unrecognised value, fall back to the user's hint.
   // Never default to 'anime' blindly.
   const rawType = typeof obj.type === 'string' ? obj.type.trim() : '';
-  const resolvedType: ShowType = ALLOWED_TYPES.has(rawType)
+  const resolvedType: ShowType | null = ALLOWED_TYPES.has(rawType)
     ? (rawType as ShowType)
     : ALLOWED_TYPES.has(type)
       ? (type as ShowType)
-      : null!;
+      : null;
 
   if (!resolvedType) {
     return NextResponse.json({ error: 'AI returned an unrecognised type.' }, { status: 502 });

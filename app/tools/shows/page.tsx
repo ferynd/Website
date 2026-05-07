@@ -12,7 +12,7 @@ import { groupComposite } from './lib/compositeScore';
 import type { FilterStatus, FilterType, Show, SortOption } from './types';
 
 export default function WatchlistPage() {
-  const { user, logOut, shows, showsLoading, activeList } = useShows();
+  const { user, userProfile, logOut, shows, showsLoading, activeList } = useShows();
 
   const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
   const [typeFilter, setTypeFilter] = useState<FilterType>('all');
@@ -74,7 +74,7 @@ export default function WatchlistPage() {
         {/* Greeting */}
         {user && (
           <p className="text-sm text-text-2">
-            Hey {user.displayName?.split(' ')[0] ?? user.email}
+            Hey {userProfile?.displayName?.split(' ')[0] ?? userProfile?.email ?? user.email}
             {activeList && <> · <span className="text-text">{activeList.name}</span></>}
           </p>
         )}

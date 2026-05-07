@@ -323,25 +323,14 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
 
   const updateDisplayName = useCallback(async (displayName: string) => {
     if (!user) throw new Error('Not signed in');
-    // Update Firebase Auth profile
+    // Update Firebase Auth profile and local state.
+    // List member snapshots are not updated here — Firestore rules cannot safely
+    // verify that only the caller's own array element changed, so we avoid the
+    // write and accept that stored displayNames in list docs may be slightly stale.
+    // The authoritative name comes from Firebase Auth (userProfile.displayName).
     await updateProfile(user, { displayName });
-    // Update local profile state
     setUserProfile((prev) => prev ? { ...prev, displayName } : null);
-    // Propagate to all list member entries
-    await Promise.all(
-      lists.map(async (list) => {
-        const hasMember = list.members.some((m) => m.uid === user.uid);
-        if (!hasMember) return;
-        const updatedMembers = list.members.map((m) =>
-          m.uid === user.uid ? { ...m, displayName } : m,
-        );
-        await updateDoc(listDoc(list.id), {
-          members: updatedMembers,
-          updatedAt: serverTimestamp(),
-        });
-      }),
-    );
-  }, [user, lists]);
+  }, [user]);
 
   const activeList = lists.find((l) => l.id === activeListId) ?? null;
 

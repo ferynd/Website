@@ -48,9 +48,11 @@ export function buildHistory(
 
 /**
  * Returns shows eligible for recommendation (watching / planned / on_hold).
- * When presentUids is provided, prefers shows whose watchers overlap with the
- * present viewers. Falls back to all eligible shows if no match to preserve
- * legacy behavior for older shows with missing watcher data.
+ *
+ * Tiered preference when presentUids is provided:
+ *   Tier 1 — empty-watcher shows (legacy) + shows where ALL present viewers are watchers
+ *   Tier 2 — shows where ANY present viewer is a watcher
+ *   Tier 3 — all eligible (fallback, ensures the picker is never empty)
  */
 export function candidateShows(shows: Show[], presentUids?: string[]): Show[] {
   const eligible = shows.filter(
@@ -60,12 +62,17 @@ export function candidateShows(shows: Show[], presentUids?: string[]): Show[] {
   if (!presentUids || presentUids.length === 0) return eligible;
 
   const present = new Set(presentUids);
-  const matched = eligible.filter(
-    // Shows with no watcher data (legacy) are included; otherwise require overlap
-    (s) => s.watchers.length === 0 || s.watchers.some((uid) => present.has(uid)),
-  );
 
-  // If nothing matches (all shows have explicit watchers for different people),
-  // fall back to all eligible so the user always gets a pick.
-  return matched.length > 0 ? matched : eligible;
+  // Tier 1: legacy shows (no watcher data) + shows every present viewer is watching
+  const tier1 = eligible.filter(
+    (s) => s.watchers.length === 0 || presentUids.every((uid) => s.watchers.includes(uid)),
+  );
+  if (tier1.length > 0) return tier1;
+
+  // Tier 2: at least one present viewer is a watcher
+  const tier2 = eligible.filter((s) => s.watchers.some((uid) => present.has(uid)));
+  if (tier2.length > 0) return tier2;
+
+  // Tier 3: fallback — all eligible
+  return eligible;
 }
