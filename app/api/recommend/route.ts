@@ -1,6 +1,6 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
-import type { MoodEntry, HistoryEntry } from '@/app/tools/shows/lib/recommendationContext';
+import type { MoodEntry, ViewerPreferenceProfile } from '@/app/tools/shows/lib/recommendationContext';
 import type { Show } from '@/app/tools/shows/types';
 import { buildPrompt } from '@/app/tools/shows/lib/buildRecommendPrompt';
 import { callGemini, RECOMMEND_TEMPERATURE } from '@/app/lib/aiConfig';
@@ -8,7 +8,8 @@ import { callGemini, RECOMMEND_TEMPERATURE } from '@/app/lib/aiConfig';
 interface RecommendBody {
   moods: Record<string, MoodEntry>;
   candidates: Show[];
-  history: Record<string, HistoryEntry>;
+  profiles: Record<string, ViewerPreferenceProfile>;
+  sharedMood?: string;
   excludeIds?: string[];
 }
 
@@ -25,11 +26,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body.' }, { status: 400 });
   }
 
-  const { moods, candidates: allCandidates, history, excludeIds = [] } = body;
+  const { moods, candidates: allCandidates, profiles, sharedMood, excludeIds = [] } = body;
 
-  if (!moods || !allCandidates || !history) {
+  if (!moods || !allCandidates || !profiles) {
     return NextResponse.json(
-      { error: 'moods, candidates, and history are required.' },
+      { error: 'moods, candidates, and profiles are required.' },
       { status: 400 },
     );
   }
@@ -43,7 +44,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const prompt = buildPrompt(moods, candidates, history);
+  const prompt = buildPrompt(moods, candidates, profiles, sharedMood);
 
   let raw: string;
   try {

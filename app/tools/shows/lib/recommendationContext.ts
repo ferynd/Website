@@ -1,4 +1,4 @@
-import type { Show, ShowList } from '../types';
+import type { Show, ShowList, WouldRewatch } from '../types';
 import { memberComposite } from './compositeScore';
 
 export interface MoodEntry {
@@ -6,44 +6,109 @@ export interface MoodEntry {
   mood: string;
 }
 
-export interface HistoryShow {
+/** A single show entry in a viewer's rated history. */
+export interface RatedShowEntry {
   title: string;
-  vibes: string[];
   composite: number;
-  description: string;
-  /** Member's personal note for this show (memberNotes[uid] ?? legacy notes). */
+  story: number | null;
+  characters: number | null;
+  vibes: number | null;
+  wouldRewatch: WouldRewatch | null;
+  vibeTags: string[];
+  brainPower: number | null;
   note: string;
+  description: string;
 }
 
-export interface HistoryEntry {
+/** A show with notes but no composite rating. */
+export interface NotedUnratedEntry {
+  title: string;
+  note: string;
+  vibeTags: string[];
+}
+
+/**
+ * Rich per-viewer preference profile built from all rated/noted shows.
+ *
+ * Rating bands:
+ *   8–10  → stronglyLiked        (clear positive signal)
+ *   6–7.9 → conditionallyLiked   (can still be great if tonight's mood matches)
+ *   4–5.9 → weaklyLiked          (use cautiously)
+ *   <4    → disliked             (negative signal unless notes explain otherwise)
+ *   unrated with note → notedButUnrated
+ */
+export interface ViewerPreferenceProfile {
+  uid: string;
   name: string;
-  highScoringShows: HistoryShow[];
+  stronglyLiked: RatedShowEntry[];
+  conditionallyLiked: RatedShowEntry[];
+  weaklyLiked: RatedShowEntry[];
+  disliked: RatedShowEntry[];
+  notedButUnrated: NotedUnratedEntry[];
 }
 
-export function buildHistory(
+function toRatedEntry(show: Show, uid: string, composite: number): RatedShowEntry {
+  const r = show.ratings[uid];
+  return {
+    title: show.title,
+    composite,
+    story: r?.story ?? null,
+    characters: r?.characters ?? null,
+    vibes: r?.vibes ?? null,
+    wouldRewatch: r?.wouldRewatch ?? null,
+    vibeTags: show.vibeTags,
+    brainPower: show.brainPower ?? null,
+    note: show.memberNotes?.[uid] ?? show.notes ?? '',
+    description: show.description ?? '',
+  };
+}
+
+/**
+ * Builds a rich preference profile for each present viewer using ALL rated
+ * and noted shows — not just high-scoring ones.
+ */
+export function buildViewerProfiles(
   shows: Show[],
   members: ShowList['members'],
-): Record<string, HistoryEntry> {
-  const history: Record<string, HistoryEntry> = {};
+): Record<string, ViewerPreferenceProfile> {
+  const profiles: Record<string, ViewerPreferenceProfile> = {};
+
   for (const member of members) {
-    const highScoringShows = shows.flatMap((show) => {
+    const profile: ViewerPreferenceProfile = {
+      uid: member.uid,
+      name: member.displayName,
+      stronglyLiked: [],
+      conditionallyLiked: [],
+      weaklyLiked: [],
+      disliked: [],
+      notedButUnrated: [],
+    };
+
+    for (const show of shows) {
       const rating = show.ratings[member.uid];
-      if (!rating) return [];
-      const composite = memberComposite(rating);
-      if (composite === null || composite < 7) return [];
-      // Prefer per-person note, fall back to legacy shared notes
+      const composite = rating ? memberComposite(rating) : null;
       const note = show.memberNotes?.[member.uid] ?? show.notes ?? '';
-      return [{
-        title: show.title,
-        vibes: show.vibeTags,
-        composite,
-        description: show.description ?? '',
-        note,
-      }];
-    });
-    history[member.uid] = { name: member.displayName, highScoringShows };
+
+      if (composite !== null) {
+        const entry = toRatedEntry(show, member.uid, composite);
+        if (composite >= 8) {
+          profile.stronglyLiked.push(entry);
+        } else if (composite >= 6) {
+          profile.conditionallyLiked.push(entry);
+        } else if (composite >= 4) {
+          profile.weaklyLiked.push(entry);
+        } else {
+          profile.disliked.push(entry);
+        }
+      } else if (note.trim()) {
+        profile.notedButUnrated.push({ title: show.title, note, vibeTags: show.vibeTags });
+      }
+    }
+
+    profiles[member.uid] = profile;
   }
-  return history;
+
+  return profiles;
 }
 
 /**
