@@ -51,6 +51,7 @@ interface ShowsContextValue {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   logOut: () => Promise<void>;
+  updateDisplayName: (displayName: string) => Promise<void>;
   lists: ShowList[];
   activeList: ShowList | null;
   setActiveListId: (id: string) => void;
@@ -144,7 +145,18 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     const q = query(listsCol(), where('memberUids', 'array-contains', user.uid));
     const unsub = onSnapshot(q, (snap) => {
-      const ls = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShowList);
+      const ls = snap.docs.map((d) => {
+        const list = { id: d.id, ...d.data() } as ShowList;
+        // Merge authoritative display names from the map into the members array
+        // so all consumers get current names without extra reads.
+        if (list.memberDisplayNames) {
+          list.members = list.members.map((m) => ({
+            ...m,
+            displayName: list.memberDisplayNames![m.uid] ?? m.displayName,
+          }));
+        }
+        return list;
+      });
       setLists(ls);
       const stored = typeof window !== 'undefined' ? localStorage.getItem('shows-active-list') : null;
       setActiveListIdRaw((prev) => {
@@ -320,12 +332,30 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     });
   }, [user, shows]);
 
+  const updateDisplayName = useCallback(async (displayName: string) => {
+    if (!user) throw new Error('Not signed in');
+    await updateProfile(user, { displayName });
+    setUserProfile((prev) => prev ? { ...prev, displayName } : null);
+    // Write the display name into each list's memberDisplayNames map using dot notation.
+    // The Firestore rule verifies only the caller's own key changes, so this is secure.
+    await Promise.all(
+      lists
+        .filter((list) => list.memberUids.includes(user.uid))
+        .map((list) =>
+          updateDoc(listDoc(list.id), {
+            [`memberDisplayNames.${user.uid}`]: displayName,
+            updatedAt: serverTimestamp(),
+          }),
+        ),
+    );
+  }, [user, lists]);
+
   const activeList = lists.find((l) => l.id === activeListId) ?? null;
 
   return (
     <ShowsContext.Provider
       value={{
-        user, userProfile, authLoading, signIn, signUp, logOut,
+        user, userProfile, authLoading, signIn, signUp, logOut, updateDisplayName,
         lists, activeList, setActiveListId, createList, renameList, deleteList,
         addMember, removeMember, promoteToAdmin, leaveList,
         shows, showsLoading, addShow, updateShow, deleteShow, updateMyRating,

@@ -56,6 +56,7 @@ const TYPE_OPTIONS: { value: FilterType; label: string }[] = [
   { value: 'tv',             label: 'TV Show' },
   { value: 'movie',          label: 'Movie' },
   { value: 'animated_movie', label: 'Animated Movie' },
+  { value: 'cartoon',        label: 'Cartoon' },
 ];
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [

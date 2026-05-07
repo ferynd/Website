@@ -233,13 +233,21 @@ service cloud.firestore {
         && request.auth.uid in request.resource.data.memberUids
         && request.auth.uid in request.resource.data.adminUids;
 
-      // Update: admins freely; OR self-add via invite flow (only allowed change is adding self)
+      // Update: admins freely; OR self-add via invite; OR member updating own display name
       allow update: if isAdmin()
         || isShowsListAdmin(listId)
+        // Self-add via invite flow (only allowed change: adding self to members + memberUids)
         || (isSignedIn()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'memberUids', 'updatedAt'])
             && request.auth.uid in request.resource.data.memberUids
-            && !(request.auth.uid in resource.data.memberUids));
+            && !(request.auth.uid in resource.data.memberUids))
+        // Member updating their own display name in the memberDisplayNames map.
+        // MapDiff.affectedKeys() verifies only the caller's UID key changed — unlike
+        // array diffs, Firestore can enforce per-key ownership on map fields.
+        || (isSignedIn()
+            && request.auth.uid in resource.data.memberUids
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberDisplayNames', 'updatedAt'])
+            && request.resource.data.memberDisplayNames.diff(resource.data.get('memberDisplayNames', {})).affectedKeys().hasOnly([request.auth.uid]));
 
       // Delete: list admin only
       allow delete: if isAdmin() || isShowsListAdmin(listId);

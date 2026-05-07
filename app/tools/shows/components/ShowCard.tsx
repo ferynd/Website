@@ -23,13 +23,15 @@ function serviceIcon(service: string | null): string {
   if (s.includes('prime') || s.includes('amazon')) return 'P';
   if (s.includes('disney')) return 'D+';
   if (s.includes('apple')) return '🍎';
+  if (s.includes('peacock')) return '🦚';
+  if (s.includes('dropout')) return 'DO';
   return service.slice(0, 2).toUpperCase();
 }
 
 export default function ShowCard({ show, members, onClick }: Props) {
   const composite = groupComposite(show);
   const hasEpisode =
-    (show.type === 'anime' || show.type === 'tv') &&
+    (show.type === 'anime' || show.type === 'tv' || show.type === 'cartoon') &&
     (show.status === 'watching' || show.status === 'on_hold') &&
     (show.currentEpisode !== null || show.currentSeason !== null);
 
