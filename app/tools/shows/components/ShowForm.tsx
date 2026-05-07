@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { X, Sparkles, Loader2, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Show, ShowType, ShowStatus, ShowList } from '../types';
 import { VIBE_CATEGORIES } from '../lib/vibeCategories';
+import type { DisambiguationOption } from '../lib/classifyTypes';
 import VibeTagChip from './VibeTagChip';
 import ScoreBlock from './ScoreBlock';
 import { useShows } from '../ShowsContext';
@@ -49,7 +50,6 @@ function hasEpisodes(type: ShowType) {
   return type === 'anime' || type === 'tv' || type === 'cartoon';
 }
 
-/** Determine the initial service chip selection for a show being edited. */
 function resolveInitialService(show: Show | undefined): string {
   if (!show?.service) return '';
   if (SERVICES.includes(show.service)) return show.service;
@@ -69,6 +69,8 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
 
   const [title, setTitle] = useState(show?.title ?? '');
   const [type, setType] = useState<ShowType>(show?.type ?? 'anime');
+  // typeTouched: only true when the user explicitly tapped a type button
+  const [typeTouched, setTypeTouched] = useState(isEdit);
   const [status, setStatus] = useState<ShowStatus>(show?.status ?? 'planned');
   const [currentSeason, setCurrentSeason] = useState<string>(
     show?.currentSeason?.toString() ?? '',
@@ -86,7 +88,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [brainPower, setBrainPower] = useState<number | null>(show?.brainPower ?? null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
-  // Watchers: default to all members on add; preserve existing watchers on edit
   const watchersInitialized = useRef(isEdit);
   const [watchers, setWatchers] = useState<string[]>(show?.watchers ?? []);
   useEffect(() => {
@@ -98,11 +99,9 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
 
   const [description, setDescription] = useState(show?.description ?? '');
 
-  // Per-person notes: prefer memberNotes, fall back to legacy notes for current user
   const [memberNotes, setMemberNotes] = useState<Record<string, string>>(() => {
     if (!show) return {};
     if (show.memberNotes && Object.keys(show.memberNotes).length > 0) return show.memberNotes;
-    // Migrate legacy notes into the creating user's slot on first edit
     if (show.notes && user?.uid) return { [user.uid]: show.notes };
     return {};
   });
@@ -114,7 +113,11 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [error, setError] = useState('');
 
-  // Local rating state for the current user (editable inline)
+  // Disambiguation state
+  const [disambigOptions, setDisambigOptions] = useState<DisambiguationOption[]>([]);
+  const [disambigMessage, setDisambigMessage] = useState('');
+  const [resolvingOption, setResolvingOption] = useState<string | null>(null); // sourceId being resolved
+
   const myRating = show?.ratings[user?.uid ?? ''] ?? {
     story: null, characters: null, vibes: null, wouldRewatch: null, ratedAt: null,
   };
@@ -128,30 +131,110 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
     }
   }, [type]);
 
+  function selectType(t: ShowType) {
+    setType(t);
+    setTypeTouched(true);
+  }
+
+  function clearDisambig() {
+    setDisambigOptions([]);
+    setDisambigMessage('');
+  }
+
   async function classify() {
     if (!title.trim()) return;
     setClassifying(true);
     setError('');
+    clearDisambig();
     try {
       const res = await fetch('/api/classify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim(), type }),
+        body: JSON.stringify({
+          title: title.trim(),
+          typeHint: typeTouched ? type : null,
+          typeHintWasUserSelected: typeTouched,
+        }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        throw new Error(data.error ?? 'Classification failed');
+        throw new Error((data as { error?: string }).error ?? 'Classification failed');
       }
-      const data = await res.json();
-      // AI owns canonicalTitle, type, vibes, and description — never touches notes
-      if (data.canonicalTitle) setTitle(data.canonicalTitle);
-      if (data.type) setType(data.type);
-      if (data.vibes?.length) setVibeTags(data.vibes);
-      if (typeof data.description === 'string') setDescription(data.description);
+      const data = await res.json() as {
+        status: string;
+        canonicalTitle?: string;
+        type?: ShowType;
+        vibes?: string[];
+        description?: string;
+        options?: DisambiguationOption[];
+        message?: string;
+      };
+
+      if (data.status === 'resolved') {
+        if (data.canonicalTitle) setTitle(data.canonicalTitle);
+        if (data.type) { setType(data.type); setTypeTouched(true); }
+        if (data.vibes?.length) setVibeTags(data.vibes);
+        if (typeof data.description === 'string') setDescription(data.description);
+        clearDisambig();
+      } else if (data.status === 'needs_selection') {
+        setDisambigOptions(data.options ?? []);
+        setDisambigMessage(data.message ?? 'Which one did you mean?');
+      } else if (data.status === 'not_found') {
+        setError(data.message ?? "Couldn't find that title. Try adding a year or more words.");
+      } else {
+        // Legacy shape fallback (direct-resolved without status field)
+        if (data.canonicalTitle) setTitle(data.canonicalTitle);
+        if (data.type) { setType(data.type); setTypeTouched(true); }
+        if (data.vibes?.length) setVibeTags(data.vibes);
+        if (typeof data.description === 'string') setDescription(data.description);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not classify — try again.');
     } finally {
       setClassifying(false);
+    }
+  }
+
+  async function resolveOption(option: DisambiguationOption) {
+    setResolvingOption(option.sourceId);
+    setError('');
+    try {
+      const res = await fetch('/api/classify/resolve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source: option.source,
+          sourceId: option.sourceId,
+          mediaKind: option.mediaKind,
+          title: option.title,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error((data as { error?: string }).error ?? 'Could not fetch details');
+      }
+      const data = await res.json() as {
+        status?: string;
+        canonicalTitle?: string;
+        type?: ShowType;
+        vibes?: string[];
+        description?: string;
+        message?: string;
+      };
+
+      if (data.status === 'resolved' || data.canonicalTitle) {
+        if (data.canonicalTitle) setTitle(data.canonicalTitle);
+        if (data.type) { setType(data.type); setTypeTouched(true); }
+        if (data.vibes?.length) setVibeTags(data.vibes);
+        if (typeof data.description === 'string') setDescription(data.description);
+        clearDisambig();
+      } else {
+        throw new Error(data.message ?? 'Resolve returned unexpected shape');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load that selection — try again.');
+    } finally {
+      setResolvingOption(null);
     }
   }
 
@@ -213,9 +296,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
       };
       if (isEdit && show) {
         await updateShow(show.id, payload);
-        if (user) {
-          await updateMyRating(show.id, pendingRating);
-        }
+        if (user) await updateMyRating(show.id, pendingRating);
       } else {
         await addShow(payload);
       }
@@ -265,7 +346,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             <div className="flex gap-2">
               <input
                 value={title}
-                onChange={(e) => setTitle(e.target.value)}
+                onChange={(e) => { setTitle(e.target.value); clearDisambig(); }}
                 placeholder="e.g. Frieren: Beyond Journey's End"
                 className="flex-1 rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent min-h-[44px]"
                 required
@@ -280,6 +361,61 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
                 {classifying ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
               </button>
             </div>
+
+            {/* Disambiguation panel */}
+            {disambigOptions.length > 0 && (
+              <div className="mt-2 rounded-xl border border-border bg-surface-2 overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+                  <p className="text-xs text-text-2">{disambigMessage}</p>
+                  <button
+                    type="button"
+                    onClick={clearDisambig}
+                    className="text-text-3 hover:text-text p-1"
+                    aria-label="Dismiss"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+                <div className="divide-y divide-border">
+                  {disambigOptions.map((opt) => {
+                    const isResolving = resolvingOption === opt.sourceId;
+                    return (
+                      <button
+                        key={`${opt.source}:${opt.sourceId}`}
+                        type="button"
+                        disabled={resolvingOption !== null}
+                        onClick={() => resolveOption(opt)}
+                        className="w-full text-left px-3 py-2.5 hover:bg-surface-1 transition-colors disabled:opacity-50 flex items-start gap-2 min-h-[52px]"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-medium text-text truncate">{opt.title}</span>
+                            {opt.year && (
+                              <span className="text-xs text-text-3 shrink-0">{opt.year}</span>
+                            )}
+                            <span className="text-xs text-accent/80 shrink-0 capitalize">
+                              {opt.derivedType.replace('_', ' ')}
+                            </span>
+                            <span className="text-xs text-text-3 shrink-0 uppercase">{opt.source}</span>
+                          </div>
+                          {opt.overview && (
+                            <p className="text-xs text-text-3 mt-0.5 line-clamp-2">{opt.overview}</p>
+                          )}
+                        </div>
+                        {isResolving && <Loader2 size={14} className="animate-spin text-accent shrink-0 mt-1" />}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={clearDisambig}
+                    className="w-full text-left px-3 py-2 text-xs text-text-3 hover:text-text hover:bg-surface-1 transition-colors"
+                  >
+                    None of these — try another search
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Type */}
@@ -290,7 +426,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
                 <button
                   key={t}
                   type="button"
-                  onClick={() => setType(t)}
+                  onClick={() => selectType(t)}
                   className={`rounded-lg border py-2.5 text-xs font-medium transition-colors min-h-[44px] ${
                     type === t
                       ? 'bg-accent/20 text-accent border-accent/40'
@@ -454,7 +590,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             )}
           </div>
 
-          {/* Description (AI-populated) */}
+          {/* Description */}
           <div className="space-y-1.5">
             <label className="text-sm font-medium text-text-2">Description</label>
             <textarea
@@ -469,7 +605,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
           {/* Per-person notes */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-text-2">Notes</label>
-            {/* Current user's editable note */}
             {user && (
               <div className="space-y-1">
                 <p className="text-xs text-text-3">
@@ -486,7 +621,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
                 />
               </div>
             )}
-            {/* Other members' read-only notes */}
             {members
               .filter((m) => m.uid !== user?.uid && memberNotes[m.uid])
               .map((m) => (
@@ -499,7 +633,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
               ))}
           </div>
 
-          {/* Advanced: Watchers — collapsed by default */}
+          {/* Advanced: Watchers */}
           <div className="border border-border rounded-xl overflow-hidden">
             <button
               type="button"
@@ -532,37 +666,23 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             )}
           </div>
 
-          {/* Score blocks — visible on edit for all statuses */}
+          {/* Score blocks */}
           {showScores && user && (
             <div className="space-y-2">
               <p className="text-sm font-medium text-text-2">Scores</p>
-              {/* Current user's editable block */}
               <ScoreBlock
-                memberName={
-                  members.find((m) => m.uid === user.uid)?.displayName ?? 'You'
-                }
+                memberName={members.find((m) => m.uid === user.uid)?.displayName ?? 'You'}
                 rating={pendingRating}
                 editable
-                onChange={(partial) =>
-                  setPendingRating((prev) => ({ ...prev, ...partial }))
-                }
+                onChange={(partial) => setPendingRating((prev) => ({ ...prev, ...partial }))}
               />
-              {/* Other members — read-only */}
               {members
                 .filter((m) => m.uid !== user.uid && show!.ratings[m.uid])
                 .map((m) => {
                   const r = show!.ratings[m.uid] ?? {
-                    story: null, characters: null, vibes: null,
-                    wouldRewatch: null, ratedAt: null,
+                    story: null, characters: null, vibes: null, wouldRewatch: null, ratedAt: null,
                   };
-                  return (
-                    <ScoreBlock
-                      key={m.uid}
-                      memberName={m.displayName}
-                      rating={r}
-                      editable={false}
-                    />
-                  );
+                  return <ScoreBlock key={m.uid} memberName={m.displayName} rating={r} editable={false} />;
                 })}
             </div>
           )}
@@ -601,7 +721,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         </form>
       </div>
 
-      {/* Delete confirmation dialog */}
+      {/* Delete confirmation */}
       {showDeleteConfirm && show && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div
