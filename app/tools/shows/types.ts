@@ -20,6 +20,8 @@ export interface ShowList {
   members: ListMember[];
   memberUids: string[];
   adminUids: string[];
+  /** Authoritative current display names, keyed by UID. Overrides members[].displayName. */
+  memberDisplayNames?: Record<string, string>;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

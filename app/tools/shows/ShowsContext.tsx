@@ -145,7 +145,18 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     const q = query(listsCol(), where('memberUids', 'array-contains', user.uid));
     const unsub = onSnapshot(q, (snap) => {
-      const ls = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ShowList);
+      const ls = snap.docs.map((d) => {
+        const list = { id: d.id, ...d.data() } as ShowList;
+        // Merge authoritative display names from the map into the members array
+        // so all consumers get current names without extra reads.
+        if (list.memberDisplayNames) {
+          list.members = list.members.map((m) => ({
+            ...m,
+            displayName: list.memberDisplayNames![m.uid] ?? m.displayName,
+          }));
+        }
+        return list;
+      });
       setLists(ls);
       const stored = typeof window !== 'undefined' ? localStorage.getItem('shows-active-list') : null;
       setActiveListIdRaw((prev) => {
@@ -323,14 +334,21 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
 
   const updateDisplayName = useCallback(async (displayName: string) => {
     if (!user) throw new Error('Not signed in');
-    // Update Firebase Auth profile and local state.
-    // List member snapshots are not updated here — Firestore rules cannot safely
-    // verify that only the caller's own array element changed, so we avoid the
-    // write and accept that stored displayNames in list docs may be slightly stale.
-    // The authoritative name comes from Firebase Auth (userProfile.displayName).
     await updateProfile(user, { displayName });
     setUserProfile((prev) => prev ? { ...prev, displayName } : null);
-  }, [user]);
+    // Write the display name into each list's memberDisplayNames map using dot notation.
+    // The Firestore rule verifies only the caller's own key changes, so this is secure.
+    await Promise.all(
+      lists
+        .filter((list) => list.memberUids.includes(user.uid))
+        .map((list) =>
+          updateDoc(listDoc(list.id), {
+            [`memberDisplayNames.${user.uid}`]: displayName,
+            updatedAt: serverTimestamp(),
+          }),
+        ),
+    );
+  }, [user, lists]);
 
   const activeList = lists.find((l) => l.id === activeListId) ?? null;
 
