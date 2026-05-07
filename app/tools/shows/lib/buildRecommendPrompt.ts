@@ -124,6 +124,9 @@ export function buildPrompt(
           const composite = memberComposite(rating);
           const scorePart = composite !== null ? `${composite.toFixed(1)}/10` : 'partial';
           const parts = [`${name}: ${scorePart}`];
+          if (rating.story != null) parts.push(`story:${rating.story}`);
+          if (rating.characters != null) parts.push(`chars:${rating.characters}`);
+          if (rating.vibes != null) parts.push(`vibes:${rating.vibes}`);
           if (rating.wouldRewatch) parts.push(`wr:${rating.wouldRewatch}`);
           if (note.trim()) parts.push(`note:"${note}"`);
           return parts.join(' ');
@@ -160,7 +163,7 @@ export function buildPrompt(
     `2. BRAIN POWER FIT: When anyone is tired, brain dead, or multitasking → strongly prefer brain power 1–2. ` +
     `A 6/10 show with brain power 1 beats a 9/10 show with brain power 5 when someone is exhausted. Unknown brain power is neutral.\n` +
     `3. MOOD AND VIBE MATCH: Match show vibe tags to inferred mood. ` +
-    `"funny" → Comedy/Humor/Lighthearted. "exciting" → Action/Thrilling. "chill" → Cozy/Relaxing. Strong vibe overlap = strong positive signal.\n` +
+    `"funny/comedy" → Funny/Lighthearted. "exciting/adventure" → Action-Packed/Adventurous/Fast-Paced/Intense. "chill/cozy" → Chill/Cozy/Comfort Watch. Strong vibe overlap = strong positive signal.\n` +
     `4. USE ALL RATING BANDS AS TASTE EVIDENCE:\n` +
     `   - 8–10 (Loved): strong signal they enjoy this show's style\n` +
     `   - 6–7.9 (Conditionally liked): excellent pick if tonight's mood matches this show's vibes\n` +

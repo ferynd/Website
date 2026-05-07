@@ -379,6 +379,21 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('7.5/10');
   });
 
+  it('includes story, characters, and vibes component scores in candidate per-viewer section', () => {
+    const uid = 'u1';
+    const candidates = [makeShow({
+      id: 'c1',
+      status: 'watching',
+      ratings: { [uid]: { story: 6, characters: 8, vibes: 9, wouldRewatch: null, ratedAt: null } },
+    })];
+    const moods = { [uid]: makeMood('Alice', 'chill') };
+    const profiles = { [uid]: makeProfile('Alice') };
+    const prompt = buildPrompt(moods, candidates, profiles);
+    expect(prompt).toContain('story:6');
+    expect(prompt).toContain('chars:8');
+    expect(prompt).toContain('vibes:9');
+  });
+
   it('includes wouldRewatch in candidate per-viewer section', () => {
     const uid = 'u1';
     const candidates = [makeShow({

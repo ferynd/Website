@@ -7,6 +7,7 @@ import {
   scoreViewerRatingFit,
   computeCandidatePreScore,
 } from '../lib/preScore';
+import { VIBE_CATEGORIES } from '../lib/vibeCategories';
 import type { Show } from '../types';
 import { Timestamp } from 'firebase/firestore';
 
@@ -53,6 +54,8 @@ function makeRating(composite: number) {
     ratedAt: null as null,
   };
 }
+
+const VALID_TAGS = new Set<string>(VIBE_CATEGORIES);
 
 /* ------------------------------------------------------------ */
 /* inferFocusLevel                                              */
@@ -105,43 +108,153 @@ describe('inferFocusLevel', () => {
 });
 
 /* ------------------------------------------------------------ */
-/* inferVibeKeywords                                            */
+/* inferVibeKeywords — real VIBE_CATEGORIES tags only           */
 /* ------------------------------------------------------------ */
 
 describe('inferVibeKeywords', () => {
-  it('detects funny → comedy tags', () => {
+  it('every returned tag exists in VIBE_CATEGORIES', () => {
+    const inputs = [
+      'wants something funny and exciting',
+      'brain dead, just wants chill background tv',
+      'romantic and wholesome night',
+      'mystery thriller noir',
+      'musical singing night',
+      'horror and dark',
+      'chaotic and wild',
+      'family and friendship heartwarming',
+      'slow burn psychological',
+      'fantasy epic world-building',
+    ];
+    for (const text of inputs) {
+      const tags = inferVibeKeywords(text);
+      for (const tag of tags) {
+        expect(VALID_TAGS.has(tag), `"${tag}" is not in VIBE_CATEGORIES`).toBe(true);
+      }
+    }
+  });
+
+  it('"funny" maps to Funny and Lighthearted', () => {
     const kw = inferVibeKeywords('wants something funny');
-    expect(kw).toContain('Comedy');
     expect(kw).toContain('Funny');
+    expect(kw).toContain('Lighthearted');
+    // Must NOT contain non-existent tags
+    expect(kw).not.toContain('Comedy');
+    expect(kw).not.toContain('Humor');
   });
 
-  it('detects exciting → action tags', () => {
+  it('"exciting" maps to Action-Packed, Adventurous, Fast-Paced, Intense, Suspenseful', () => {
     const kw = inferVibeKeywords('wants something exciting');
-    expect(kw).toContain('Action');
-    expect(kw).toContain('Exciting');
+    expect(kw).toContain('Action-Packed');
+    expect(kw).toContain('Adventurous');
+    expect(kw).toContain('Fast-Paced');
+    // Must NOT contain non-existent tags
+    expect(kw).not.toContain('Action');
+    expect(kw).not.toContain('Exciting');
+    expect(kw).not.toContain('Thrilling');
   });
 
-  it('detects chill → cozy tags', () => {
+  it('"mystery" maps to Mysterious, Suspenseful, Mind-Bending', () => {
+    const kw = inferVibeKeywords('wants a mystery');
+    expect(kw).toContain('Mysterious');
+    expect(kw).toContain('Suspenseful');
+    expect(kw).toContain('Mind-Bending');
+    // Must NOT contain non-existent tags
+    expect(kw).not.toContain('Mystery');
+    expect(kw).not.toContain('Thriller');
+    expect(kw).not.toContain('Crime');
+  });
+
+  it('"chill" maps to Chill, Cozy, Comfort Watch, Low-Stakes', () => {
     const kw = inferVibeKeywords('wants something chill');
     expect(kw).toContain('Chill');
     expect(kw).toContain('Cozy');
+    expect(kw).toContain('Comfort Watch');
+    // Must NOT contain non-existent tags
+    expect(kw).not.toContain('Relaxing');
+    expect(kw).not.toContain('Comfort');
   });
 
-  it('returns empty for unrecognized text', () => {
-    const kw = inferVibeKeywords('something completely different');
+  it('"romantic" maps to Romantic and Wholesome', () => {
+    const kw = inferVibeKeywords('romantic night');
+    expect(kw).toContain('Romantic');
+    expect(kw).toContain('Wholesome');
+    expect(kw).not.toContain('Romance');
+  });
+
+  it('"emotional" maps to Emotional and Thoughtful', () => {
+    const kw = inferVibeKeywords('something emotional and deep');
+    expect(kw).toContain('Emotional');
+    expect(kw).toContain('Thoughtful');
+    expect(kw).not.toContain('Drama');
+  });
+
+  it('"epic" maps to Epic and Adventurous', () => {
+    const kw = inferVibeKeywords('fantasy epic world-building');
+    expect(kw).toContain('Epic');
+    expect(kw).toContain('Adventurous');
+    expect(kw).not.toContain('Fantasy');
+  });
+
+  it('"chaotic" maps to Chaotic and Fast-Paced', () => {
+    const kw = inferVibeKeywords('something chaotic and wild');
+    expect(kw).toContain('Chaotic');
+    expect(kw).toContain('Fast-Paced');
+  });
+
+  it('"family" maps to Found Family and Wholesome', () => {
+    const kw = inferVibeKeywords('family friendship heartwarming');
+    expect(kw).toContain('Found Family');
+    expect(kw).toContain('Wholesome');
+  });
+
+  it('returns empty array for completely unrecognized text', () => {
+    const kw = inferVibeKeywords('something completely different blah');
     expect(kw).toHaveLength(0);
   });
 
-  it('detects multiple vibes', () => {
+  it('detects multiple vibes from combined text', () => {
     const kw = inferVibeKeywords('funny and exciting tonight');
-    expect(kw).toContain('Comedy');
-    expect(kw).toContain('Action');
+    expect(kw).toContain('Funny');
+    expect(kw).toContain('Action-Packed');
   });
 
   it('deduplicates tags', () => {
     const kw = inferVibeKeywords('funny humor comedy');
     const uniqueKw = new Set(kw);
     expect(uniqueKw.size).toBe(kw.length);
+  });
+});
+
+/* ------------------------------------------------------------ */
+/* scoreVibeFit — with real VIBE_CATEGORIES tags                */
+/* ------------------------------------------------------------ */
+
+describe('scoreVibeFit', () => {
+  it('returns 5 (neutral) when no vibe keywords', () => {
+    expect(scoreVibeFit(['Funny', 'Lighthearted'], [])).toBe(5);
+  });
+
+  it('returns higher score for matching real tags', () => {
+    const score = scoreVibeFit(['Action-Packed', 'Adventurous'], ['Action-Packed', 'Adventurous', 'Fast-Paced', 'Intense', 'Suspenseful']);
+    expect(score).toBeGreaterThan(5);
+  });
+
+  it('returns low score when no tags match', () => {
+    const score = scoreVibeFit(['Emotional', 'Thoughtful'], ['Funny', 'Lighthearted']);
+    expect(score).toBeLessThan(5);
+  });
+
+  it('score increases with more matching tags', () => {
+    const oneMatch = scoreVibeFit(['Action-Packed'], ['Action-Packed', 'Adventurous']);
+    const twoMatch = scoreVibeFit(['Action-Packed', 'Adventurous'], ['Action-Packed', 'Adventurous']);
+    expect(twoMatch).toBeGreaterThan(oneMatch);
+  });
+
+  it('Action-Packed show scores well against "exciting" inferred keywords', () => {
+    // inferred from "exciting" input
+    const excitingKeywords = ['Action-Packed', 'Adventurous', 'Fast-Paced', 'Intense', 'Suspenseful'];
+    const score = scoreVibeFit(['Action-Packed', 'Fast-Paced'], excitingKeywords);
+    expect(score).toBeGreaterThan(5);
   });
 });
 
@@ -183,32 +296,6 @@ describe('scoreBrainPower', () => {
     expect(scoreBrainPower(null, 'low')).toBe(5);
     expect(scoreBrainPower(null, 'normal')).toBe(5);
     expect(scoreBrainPower(null, 'high')).toBe(5);
-  });
-});
-
-/* ------------------------------------------------------------ */
-/* scoreVibeFit                                                 */
-/* ------------------------------------------------------------ */
-
-describe('scoreVibeFit', () => {
-  it('returns 5 (neutral) when no vibe keywords', () => {
-    expect(scoreVibeFit(['Comedy', 'Funny'], [])).toBe(5);
-  });
-
-  it('returns higher score for matching tags', () => {
-    const score = scoreVibeFit(['Comedy', 'Funny'], ['Comedy', 'Funny']);
-    expect(score).toBeGreaterThan(5);
-  });
-
-  it('returns low score when no tags match keywords', () => {
-    const score = scoreVibeFit(['Drama', 'Emotional'], ['Comedy', 'Funny']);
-    expect(score).toBeLessThan(5);
-  });
-
-  it('score increases with more matching tags', () => {
-    const oneMatch = scoreVibeFit(['Comedy'], ['Comedy', 'Funny']);
-    const twoMatch = scoreVibeFit(['Comedy', 'Funny'], ['Comedy', 'Funny']);
-    expect(twoMatch).toBeGreaterThan(oneMatch);
   });
 });
 
@@ -263,16 +350,18 @@ describe('computeCandidatePreScore', () => {
     expect(result.title).toBe('My Show');
   });
 
-  it('brain-dead show with bp=1 gets high overall score for low focus', () => {
-    const show = makeShow({ id: 's1', brainPower: 1, vibeTags: ['Comedy'] });
-    const result = computeCandidatePreScore(show, 'low', ['Comedy', 'Funny'], []);
+  it('brain-dead show with bp=1 and real funny tags gets high overall score for low focus', () => {
+    const show = makeShow({ id: 's1', brainPower: 1, vibeTags: ['Funny', 'Lighthearted'] });
+    const kw = inferVibeKeywords('brain dead and wants something funny');
+    const result = computeCandidatePreScore(show, 'low', kw, []);
     expect(result.brainPowerMatch).toBe(10);
     expect(result.overallPreScore).toBeGreaterThan(7);
   });
 
   it('dense show (bp=5) gets low overall score for low focus', () => {
-    const show = makeShow({ id: 's1', brainPower: 5, vibeTags: ['Drama'] });
-    const result = computeCandidatePreScore(show, 'low', ['Comedy'], []);
+    const show = makeShow({ id: 's1', brainPower: 5, vibeTags: ['Emotional', 'Thoughtful'] });
+    const kw = inferVibeKeywords('brain dead wants something funny');
+    const result = computeCandidatePreScore(show, 'low', kw, []);
     expect(result.brainPowerMatch).toBe(0);
     expect(result.overallPreScore).toBeLessThan(5);
   });

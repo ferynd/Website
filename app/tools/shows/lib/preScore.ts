@@ -1,4 +1,5 @@
 import type { Show } from '../types';
+import { VIBE_CATEGORIES } from './vibeCategories';
 import { memberComposite } from './compositeScore';
 
 const LOW_FOCUS_PHRASES = [
@@ -31,30 +32,39 @@ const HIGH_FOCUS_PHRASES = [
   'full attention',
 ];
 
+// All tags here must exist in VIBE_CATEGORIES; the filter at the end enforces this at runtime.
 const VIBE_KEYWORD_MAP: Array<{ keywords: string[]; tags: string[] }> = [
   {
     keywords: ['funny', 'comedy', 'humor', 'laugh', 'hilarious', 'comedic', 'lighthearted'],
-    tags: ['Comedy', 'Funny', 'Humor', 'Lighthearted'],
+    tags: ['Funny', 'Lighthearted'],
   },
   {
-    keywords: ['exciting', 'action', 'thriller', 'thrilling', 'adventure', 'intense', 'hype', 'hyped', 'adrenaline'],
-    tags: ['Action', 'Exciting', 'Thrilling', 'Adventure'],
+    keywords: ['exciting', 'action', 'thriller', 'thrilling', 'adventure', 'hype', 'hyped', 'adrenaline'],
+    tags: ['Action-Packed', 'Adventurous', 'Fast-Paced', 'Intense', 'Suspenseful'],
   },
   {
-    keywords: ['chill', 'cozy', 'comfort', 'relax', 'calm', 'mellow', 'slice of life'],
-    tags: ['Chill', 'Cozy', 'Relaxing', 'Comfort', 'Slice of life'],
+    keywords: ['chill', 'cozy', 'comfort', 'relax', 'calm', 'mellow', 'easy watch'],
+    tags: ['Chill', 'Cozy', 'Comfort Watch', 'Low-Stakes'],
+  },
+  {
+    keywords: ['slice of life'],
+    tags: ['Slice of Life', 'Chill', 'Cozy'],
   },
   {
     keywords: ['romantic', 'romance', 'sweet', 'love story'],
-    tags: ['Romantic', 'Romance'],
+    tags: ['Romantic', 'Wholesome'],
   },
   {
     keywords: ['drama', 'emotional', 'touching', 'moving', 'deep'],
-    tags: ['Drama', 'Emotional'],
+    tags: ['Emotional', 'Thoughtful'],
   },
   {
     keywords: ['mystery', 'suspense', 'crime', 'detective', 'noir', 'whodunit'],
-    tags: ['Mystery', 'Thriller', 'Suspense', 'Crime'],
+    tags: ['Mysterious', 'Suspenseful', 'Mind-Bending'],
+  },
+  {
+    keywords: ['mind bending', 'mind-bending', 'trippy', 'psychological', 'twist'],
+    tags: ['Mind-Bending', 'Thoughtful'],
   },
   {
     keywords: ['musical', 'music', 'singing'],
@@ -62,13 +72,31 @@ const VIBE_KEYWORD_MAP: Array<{ keywords: string[]; tags: string[] }> = [
   },
   {
     keywords: ['fantasy', 'magic', 'epic', 'world-building'],
-    tags: ['Fantasy', 'Epic'],
+    tags: ['Epic', 'Adventurous'],
   },
   {
-    keywords: ['sci-fi', 'scifi', 'futuristic', 'space'],
-    tags: ['Sci-Fi'],
+    keywords: ['horror', 'scary', 'creepy'],
+    tags: ['Horror', 'Dark', 'Suspenseful', 'Intense'],
+  },
+  {
+    keywords: ['dark', 'gritty'],
+    tags: ['Dark', 'Intense'],
+  },
+  {
+    keywords: ['chaotic', 'wild', 'crazy'],
+    tags: ['Chaotic', 'Fast-Paced'],
+  },
+  {
+    keywords: ['family', 'friendship', 'heartwarming', 'wholesome', 'feel good'],
+    tags: ['Found Family', 'Wholesome'],
+  },
+  {
+    keywords: ['slow burn', 'slow-burn'],
+    tags: ['Slow Burn', 'Thoughtful'],
   },
 ];
+
+const VALID_VIBE_TAGS = new Set<string>(VIBE_CATEGORIES);
 
 /** Infers focus level from free-form mood text. */
 export function inferFocusLevel(text: string): 'low' | 'normal' | 'high' {
@@ -78,7 +106,10 @@ export function inferFocusLevel(text: string): 'low' | 'normal' | 'high' {
   return 'normal';
 }
 
-/** Infers desired vibe tags from free-form mood text. */
+/**
+ * Infers desired vibe tags from free-form mood text.
+ * All returned values are guaranteed to exist in VIBE_CATEGORIES.
+ */
 export function inferVibeKeywords(text: string): string[] {
   const normalized = text.toLowerCase();
   const matched: string[] = [];
@@ -87,7 +118,8 @@ export function inferVibeKeywords(text: string): string[] {
       matched.push(...tags);
     }
   }
-  return [...new Set(matched)];
+  // Deduplicate and guard against any accidental non-canonical tag
+  return [...new Set(matched)].filter((t) => VALID_VIBE_TAGS.has(t));
 }
 
 /**
