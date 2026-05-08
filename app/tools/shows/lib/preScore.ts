@@ -122,7 +122,7 @@ export function inferViewerFocusLevel(
 
   if (sharedMood?.trim() && viewerName) {
     const name = viewerName.toLowerCase();
-    const clauses = sharedMood.split(/[.!?,;]+/);
+    const clauses = sharedMood.split(/[.!?,;]+|\s+(?:but|while|whereas)\s+/i);
     const relevant = clauses.filter((c) => c.toLowerCase().includes(name));
     if (relevant.length > 0) return inferFocusLevel(relevant.join(' '));
   }
@@ -225,7 +225,12 @@ function scoreBrainPowerForViewers(
     return scoreBrainPower(show.brainPower, 'normal');
   }
 
-  const scores = presentUids.map((uid) => {
+  // When any viewer is low-focus, only their estimates drive the brain-power score —
+  // a tired viewer's constraint should not be diluted by a normal-focus co-viewer.
+  const lowFocusUids = presentUids.filter((uid) => (viewerFocusLevels[uid] ?? 'normal') === 'low');
+  const scoringUids = lowFocusUids.length > 0 ? lowFocusUids : presentUids;
+
+  const scores = scoringUids.map((uid) => {
     const focus = viewerFocusLevels[uid] ?? 'normal';
     // Prefer the viewer's own per-person estimate; fall back to legacy show.brainPower
     const bp = show.ratings[uid]?.brainPower ?? show.brainPower ?? null;

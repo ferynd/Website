@@ -170,6 +170,30 @@ describe('inferViewerFocusLevel', () => {
       inferViewerFocusLevel('', 'Kait', 'Jimi is tired. Kait is ready to focus.'),
     ).toBe('high');
   });
+
+  it('splits on "but" so Kait is not low-focus when only Jimi is tired', () => {
+    expect(
+      inferViewerFocusLevel('', 'Kait', 'Jimi is tired from work but Kait is up for whatever'),
+    ).toBe('normal');
+  });
+
+  it('identifies Jimi as low-focus when split by "but"', () => {
+    expect(
+      inferViewerFocusLevel('', 'Jimi', 'Jimi is tired from work but Kait is up for whatever'),
+    ).toBe('low');
+  });
+
+  it('splits on "while" as a contrastive conjunction', () => {
+    expect(
+      inferViewerFocusLevel('', 'Kait', 'Jimi is exhausted while Kait is energized'),
+    ).toBe('normal');
+  });
+
+  it('splits on "whereas" as a contrastive conjunction', () => {
+    expect(
+      inferViewerFocusLevel('', 'Alice', 'Bob is brain dead whereas Alice is ready to focus'),
+    ).toBe('high');
+  });
 });
 
 /* ------------------------------------------------------------ */
@@ -477,9 +501,9 @@ describe('computeCandidatePreScore', () => {
 /* ------------------------------------------------------------ */
 
 describe('per-viewer brainpower scoring scenarios', () => {
-  it('Jimi low-focus brain:2, Kait normal brain:5 → reasonable brainpower fit', () => {
+  it('Jimi low-focus brain:2, Kait normal brain:5 → excellent brainpower fit (low-focus viewer drives score)', () => {
     // Jimi thinks the show is easy (bp=2), Kait thinks it is dense (bp=5)
-    // Jimi is tired, Kait is fine. Jimi's estimate should dominate his share.
+    // Only the low-focus viewer (Jimi) drives the brain-power score
     const show = makeShow({
       id: 's1',
       ratings: {
@@ -487,14 +511,14 @@ describe('per-viewer brainpower scoring scenarios', () => {
         kait: { ...makeRating(8), brainPower: 5 },
       },
     });
-    // jimi (low, bp=2) → 10; kait (normal, bp=5) → 4; avg = 7
+    // only low-focus viewer (jimi) scored: scoreBrainPower(2, 'low') = 10
     const result = computeCandidatePreScore(show, { jimi: 'low', kait: 'normal' }, [], ['jimi', 'kait']);
-    expect(result.brainPowerMatch).toBeGreaterThan(5);
+    expect(result.brainPowerMatch).toBe(10);
   });
 
-  it('Jimi low-focus brain:5, Kait normal brain:1 → poor brainpower fit', () => {
+  it('Jimi low-focus brain:5, Kait normal brain:1 → poor brainpower fit (low-focus viewer drives score)', () => {
     // Jimi is tired and thinks the show is dense — bad for Jimi
-    // Kait thinks it is easy, but Kait is not the constraint tonight
+    // Kait's easy-brain estimate is irrelevant because she is not the constraint
     const show = makeShow({
       id: 's1',
       ratings: {
@@ -502,9 +526,9 @@ describe('per-viewer brainpower scoring scenarios', () => {
         kait: { ...makeRating(8), brainPower: 1 },
       },
     });
-    // jimi (low, bp=5) → 0; kait (normal, bp=1) → 6; avg = 3
+    // only low-focus viewer (jimi) scored: scoreBrainPower(5, 'low') = 0
     const result = computeCandidatePreScore(show, { jimi: 'low', kait: 'normal' }, [], ['jimi', 'kait']);
-    expect(result.brainPowerMatch).toBeLessThan(5);
+    expect(result.brainPowerMatch).toBe(0);
   });
 
   it('both viewers low-focus with bp=1 → excellent brainpower fit', () => {
