@@ -107,6 +107,30 @@ export function inferFocusLevel(text: string): 'low' | 'normal' | 'high' {
 }
 
 /**
+ * Infers focus level for a single viewer.
+ * Uses their individual mood text first. When that is neutral and sharedMood is provided,
+ * it looks for clauses in sharedMood that contain the viewer's name and infers focus from those.
+ * This prevents one viewer's low-focus state from being attributed to another viewer.
+ */
+export function inferViewerFocusLevel(
+  individualMood: string,
+  viewerName: string,
+  sharedMood?: string,
+): 'low' | 'normal' | 'high' {
+  const focus = inferFocusLevel(individualMood);
+  if (focus !== 'normal') return focus;
+
+  if (sharedMood?.trim() && viewerName) {
+    const name = viewerName.toLowerCase();
+    const clauses = sharedMood.split(/[.!?,;]+|\s+(?:but|while|whereas)\s+/i);
+    const relevant = clauses.filter((c) => c.toLowerCase().includes(name));
+    if (relevant.length > 0) return inferFocusLevel(relevant.join(' '));
+  }
+
+  return 'normal';
+}
+
+/**
  * Infers desired vibe tags from free-form mood text.
  * All returned values are guaranteed to exist in VIBE_CATEGORIES.
  */
@@ -185,6 +209,37 @@ export function scoreViewerRatingFit(show: Show, presentUids: string[]): number 
   return Math.max(0, avg - 2);
 }
 
+/**
+ * Computes an aggregate brain power match score across all present viewers.
+ * Each viewer's focus level is compared against their own per-person brain power estimate
+ * (falling back to the legacy show-level brainPower when the viewer has not set their own).
+ * A tired viewer's constraint only applies to that viewer's estimate, not to other viewers'.
+ */
+function scoreBrainPowerForViewers(
+  show: Show,
+  viewerFocusLevels: Record<string, 'low' | 'normal' | 'high'>,
+  presentUids: string[],
+): number {
+  if (presentUids.length === 0) {
+    // No present viewers — fall back to legacy show-level value with neutral focus
+    return scoreBrainPower(show.brainPower, 'normal');
+  }
+
+  // When any viewer is low-focus, only their estimates drive the brain-power score —
+  // a tired viewer's constraint should not be diluted by a normal-focus co-viewer.
+  const lowFocusUids = presentUids.filter((uid) => (viewerFocusLevels[uid] ?? 'normal') === 'low');
+  const scoringUids = lowFocusUids.length > 0 ? lowFocusUids : presentUids;
+
+  const scores = scoringUids.map((uid) => {
+    const focus = viewerFocusLevels[uid] ?? 'normal';
+    // Prefer the viewer's own per-person estimate; fall back to legacy show.brainPower
+    const bp = show.ratings[uid]?.brainPower ?? show.brainPower ?? null;
+    return scoreBrainPower(bp, focus);
+  });
+
+  return scores.reduce((a, b) => a + b, 0) / scores.length;
+}
+
 export interface CandidatePreScore {
   showId: string;
   title: string;
@@ -196,15 +251,17 @@ export interface CandidatePreScore {
 
 /**
  * Computes a lightweight deterministic pre-score for a candidate show.
+ * Brain power is evaluated per viewer — a tired viewer's constraint applies only to their
+ * own brain power estimate for this show, not to other viewers'.
  * Brain power match weighted highest because it's the clearest "wrong night" signal.
  */
 export function computeCandidatePreScore(
   show: Show,
-  focusLevel: 'low' | 'normal' | 'high',
+  viewerFocusLevels: Record<string, 'low' | 'normal' | 'high'>,
   vibeKeywords: string[],
   presentUids: string[],
 ): CandidatePreScore {
-  const brainPowerMatch = scoreBrainPower(show.brainPower, focusLevel);
+  const brainPowerMatch = scoreBrainPowerForViewers(show, viewerFocusLevels, presentUids);
   const vibeFit = scoreVibeFit(show.vibeTags, vibeKeywords);
   const viewerRatingFit = scoreViewerRatingFit(show, presentUids);
 

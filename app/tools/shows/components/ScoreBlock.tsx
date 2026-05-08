@@ -16,6 +16,14 @@ const REWATCH_OPTIONS: { value: WouldRewatch; label: string }[] = [
   { value: 'no',    label: 'No' },
 ];
 
+const BRAIN_POWER_LABELS: Record<number, string> = {
+  1: 'Braindead / background-friendly',
+  2: 'Easy watch',
+  3: 'Normal focus',
+  4: 'Pay attention',
+  5: 'Dense / thought-provoking',
+};
+
 function Slider({
   label,
   value,
@@ -50,6 +58,8 @@ function Slider({
 
 export default function ScoreBlock({ memberName, rating, editable, onChange }: Props) {
   const composite = memberComposite(rating);
+  // Normalize undefined (from legacy Firestore docs) to null
+  const brainPower = rating.brainPower ?? null;
 
   return (
     <div className="rounded-xl border border-border bg-surface-1 p-4 space-y-3">
@@ -98,6 +108,56 @@ export default function ScoreBlock({ memberName, rating, editable, onChange }: P
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Brain power — visually separated; context only, never affects the numeric score */}
+      <div className="pt-3 mt-1 border-t border-border/50">
+        <div className="flex items-baseline gap-2 mb-2">
+          <p className="text-xs font-medium text-text-2">Brain power required</p>
+          <span className="text-xs text-text-3 italic">context only · does not affect score</span>
+        </div>
+
+        {brainPower !== null ? (
+          <>
+            <div className="flex justify-between text-xs mb-1">
+              <span className="text-text-3">{BRAIN_POWER_LABELS[brainPower]}</span>
+              <span className="font-medium text-text-2">{brainPower}/5</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={5}
+              step={1}
+              value={brainPower}
+              disabled={!editable}
+              onChange={(e) => onChange?.({ brainPower: Number(e.target.value) })}
+              className="w-full h-2 accent-[hsl(var(--color-accent))] disabled:opacity-40 cursor-pointer disabled:cursor-default"
+            />
+            <div className="flex justify-between text-xs text-text-3 px-0.5 mt-1">
+              <span>Braindead</span>
+              <span>Dense</span>
+            </div>
+            {editable && (
+              <button
+                type="button"
+                onClick={() => onChange?.({ brainPower: null })}
+                className="text-xs text-text-3 underline mt-1"
+              >
+                Clear
+              </button>
+            )}
+          </>
+        ) : editable ? (
+          <button
+            type="button"
+            onClick={() => onChange?.({ brainPower: 3 })}
+            className="text-xs text-text-3 underline"
+          >
+            Set brain power
+          </button>
+        ) : (
+          <p className="text-xs text-text-3">Not set</p>
+        )}
       </div>
     </div>
   );

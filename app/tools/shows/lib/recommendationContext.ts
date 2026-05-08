@@ -57,7 +57,8 @@ function toRatedEntry(show: Show, uid: string, composite: number): RatedShowEntr
     vibes: r?.vibes ?? null,
     wouldRewatch: r?.wouldRewatch ?? null,
     vibeTags: show.vibeTags,
-    brainPower: show.brainPower ?? null,
+    // Use the viewer's own per-person estimate; fall back to legacy show-level brainPower
+    brainPower: r?.brainPower ?? show.brainPower ?? null,
     note: show.memberNotes?.[uid] ?? show.notes ?? '',
     description: show.description ?? '',
   };

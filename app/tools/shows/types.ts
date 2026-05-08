@@ -31,6 +31,8 @@ export interface MemberRating {
   characters: number | null;
   vibes: number | null;
   wouldRewatch: WouldRewatch | null;
+  /** 1–5: how much focus this viewer thinks the show requires. Context only — never affects the score. */
+  brainPower: number | null;
   ratedAt: Timestamp | null;
 }
 

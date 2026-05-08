@@ -1,14 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   inferFocusLevel,
+  inferViewerFocusLevel,
   inferVibeKeywords,
   scoreBrainPower,
   scoreVibeFit,
   scoreViewerRatingFit,
   computeCandidatePreScore,
 } from '../lib/preScore';
+import { memberComposite } from '../lib/compositeScore';
 import { VIBE_CATEGORIES } from '../lib/vibeCategories';
-import type { Show } from '../types';
+import type { Show, MemberRating } from '../types';
 import { Timestamp } from 'firebase/firestore';
 
 /* ------------------------------------------------------------ */
@@ -45,17 +47,40 @@ function makeShow(patch: Partial<Show> = {}): Show {
   };
 }
 
-function makeRating(composite: number) {
+function makeRating(composite: number): MemberRating {
   return {
     story: composite,
     characters: composite,
     vibes: composite,
-    wouldRewatch: null as null,
-    ratedAt: null as null,
+    wouldRewatch: null,
+    brainPower: null,
+    ratedAt: null,
   };
 }
 
 const VALID_TAGS = new Set<string>(VIBE_CATEGORIES);
+
+/* ------------------------------------------------------------ */
+/* memberComposite ignores brainPower                           */
+/* ------------------------------------------------------------ */
+
+describe('memberComposite', () => {
+  it('ignores brainPower when computing composite score', () => {
+    const base: MemberRating = {
+      story: 8, characters: 8, vibes: 8, wouldRewatch: null, brainPower: 1, ratedAt: null,
+    };
+    const high: MemberRating = { ...base, brainPower: 5 };
+    expect(memberComposite(base)).toBe(memberComposite(high));
+    expect(memberComposite(base)).toBeCloseTo(8);
+  });
+
+  it('ignores null brainPower', () => {
+    const base: MemberRating = {
+      story: 7, characters: 9, vibes: 8, wouldRewatch: null, brainPower: null, ratedAt: null,
+    };
+    expect(memberComposite(base)).toBeCloseTo(8);
+  });
+});
 
 /* ------------------------------------------------------------ */
 /* inferFocusLevel                                              */
@@ -104,6 +129,70 @@ describe('inferFocusLevel', () => {
 
   it('returns normal for empty string', () => {
     expect(inferFocusLevel('')).toBe('normal');
+  });
+});
+
+/* ------------------------------------------------------------ */
+/* inferViewerFocusLevel                                        */
+/* ------------------------------------------------------------ */
+
+describe('inferViewerFocusLevel', () => {
+  it('uses individual mood when provided and it is non-neutral', () => {
+    expect(inferViewerFocusLevel('tired', 'Alice')).toBe('low');
+  });
+
+  it('returns normal for empty individual mood with no sharedMood', () => {
+    expect(inferViewerFocusLevel('', 'Alice')).toBe('normal');
+  });
+
+  it('extracts focus from sharedMood when individual mood is empty and name matches', () => {
+    expect(inferViewerFocusLevel('', 'Jimi', 'Jimi is brain dead after work')).toBe('low');
+  });
+
+  it('does not apply another viewer\'s focus from sharedMood', () => {
+    // Only Jimi is brain dead; Kait's clause has no low-focus phrases
+    expect(
+      inferViewerFocusLevel('', 'Kait', 'Jimi is brain dead after work, Kait is up for anything'),
+    ).toBe('normal');
+  });
+
+  it('individual mood overrides sharedMood when individual mood is non-neutral', () => {
+    // Individual says high focus, shared says brain dead — individual wins
+    expect(inferViewerFocusLevel('ready to focus', 'Alice', 'Alice is brain dead')).toBe('high');
+  });
+
+  it('returns normal when name is not mentioned in sharedMood', () => {
+    expect(inferViewerFocusLevel('', 'Bob', 'Alice is tired tonight')).toBe('normal');
+  });
+
+  it('handles high focus from sharedMood name mention', () => {
+    expect(
+      inferViewerFocusLevel('', 'Kait', 'Jimi is tired. Kait is ready to focus.'),
+    ).toBe('high');
+  });
+
+  it('splits on "but" so Kait is not low-focus when only Jimi is tired', () => {
+    expect(
+      inferViewerFocusLevel('', 'Kait', 'Jimi is tired from work but Kait is up for whatever'),
+    ).toBe('normal');
+  });
+
+  it('identifies Jimi as low-focus when split by "but"', () => {
+    expect(
+      inferViewerFocusLevel('', 'Jimi', 'Jimi is tired from work but Kait is up for whatever'),
+    ).toBe('low');
+  });
+
+  it('splits on "while" as a contrastive conjunction', () => {
+    expect(
+      inferViewerFocusLevel('', 'Kait', 'Jimi is exhausted while Kait is energized'),
+    ).toBe('normal');
+  });
+
+  it('splits on "whereas" as a contrastive conjunction', () => {
+    expect(
+      inferViewerFocusLevel('', 'Alice', 'Bob is brain dead whereas Alice is ready to focus'),
+    ).toBe('high');
   });
 });
 
@@ -345,23 +434,23 @@ describe('scoreViewerRatingFit', () => {
 describe('computeCandidatePreScore', () => {
   it('returns correct showId and title', () => {
     const show = makeShow({ id: 'abc', title: 'My Show', brainPower: 1 });
-    const result = computeCandidatePreScore(show, 'low', [], []);
+    const result = computeCandidatePreScore(show, {}, [], []);
     expect(result.showId).toBe('abc');
     expect(result.title).toBe('My Show');
   });
 
-  it('brain-dead show with bp=1 and real funny tags gets high overall score for low focus', () => {
+  it('brain-dead show with bp=1 and real funny tags gets high overall score for low-focus viewer', () => {
     const show = makeShow({ id: 's1', brainPower: 1, vibeTags: ['Funny', 'Lighthearted'] });
     const kw = inferVibeKeywords('brain dead and wants something funny');
-    const result = computeCandidatePreScore(show, 'low', kw, []);
+    const result = computeCandidatePreScore(show, { u1: 'low' }, kw, ['u1']);
     expect(result.brainPowerMatch).toBe(10);
     expect(result.overallPreScore).toBeGreaterThan(7);
   });
 
-  it('dense show (bp=5) gets low overall score for low focus', () => {
+  it('dense show (bp=5) gets low overall score for low-focus viewer', () => {
     const show = makeShow({ id: 's1', brainPower: 5, vibeTags: ['Emotional', 'Thoughtful'] });
     const kw = inferVibeKeywords('brain dead wants something funny');
-    const result = computeCandidatePreScore(show, 'low', kw, []);
+    const result = computeCandidatePreScore(show, { u1: 'low' }, kw, ['u1']);
     expect(result.brainPowerMatch).toBe(0);
     expect(result.overallPreScore).toBeLessThan(5);
   });
@@ -369,15 +458,99 @@ describe('computeCandidatePreScore', () => {
   it('overall score accounts for viewer ratings', () => {
     const showHigh = makeShow({ id: 's1', brainPower: 1, ratings: { u1: makeRating(9) } });
     const showLow = makeShow({ id: 's2', brainPower: 1, ratings: { u1: makeRating(2) } });
-    const scoreHigh = computeCandidatePreScore(showHigh, 'low', [], ['u1']).overallPreScore;
-    const scoreLow = computeCandidatePreScore(showLow, 'low', [], ['u1']).overallPreScore;
+    const scoreHigh = computeCandidatePreScore(showHigh, { u1: 'low' }, [], ['u1']).overallPreScore;
+    const scoreLow = computeCandidatePreScore(showLow, { u1: 'low' }, [], ['u1']).overallPreScore;
     expect(scoreHigh).toBeGreaterThan(scoreLow);
   });
 
   it('overallPreScore is between 0 and 10', () => {
     const show = makeShow({ id: 's1', brainPower: 3, vibeTags: ['Chill'] });
-    const result = computeCandidatePreScore(show, 'normal', ['Chill'], ['u1']);
+    const result = computeCandidatePreScore(show, { u1: 'normal' }, ['Chill'], ['u1']);
     expect(result.overallPreScore).toBeGreaterThanOrEqual(0);
     expect(result.overallPreScore).toBeLessThanOrEqual(10);
+  });
+
+  it('uses per-person brainPower from rating when available, ignoring show-level', () => {
+    // Viewer has their own brain estimate of 2 (easy), but show-level says 5 (dense)
+    const show = makeShow({
+      id: 's1',
+      brainPower: 5,
+      ratings: { u1: { ...makeRating(7), brainPower: 2 } },
+    });
+    // Low-focus viewer with their own bp=2 → should score well
+    const result = computeCandidatePreScore(show, { u1: 'low' }, [], ['u1']);
+    expect(result.brainPowerMatch).toBe(10); // scoreBrainPower(2, 'low') = 10
+  });
+
+  it('falls back to show-level brainPower when viewer has not set their own', () => {
+    // No per-person rating, show-level bp=1
+    const show = makeShow({ id: 's1', brainPower: 1 });
+    const result = computeCandidatePreScore(show, { u1: 'low' }, [], ['u1']);
+    expect(result.brainPowerMatch).toBe(10); // scoreBrainPower(1, 'low') = 10
+  });
+
+  it('returns neutral (5) for no-viewer scenario when show brainPower is null', () => {
+    const show = makeShow({ id: 's1', brainPower: null });
+    const result = computeCandidatePreScore(show, {}, [], []);
+    expect(result.brainPowerMatch).toBe(5);
+  });
+});
+
+/* ------------------------------------------------------------ */
+/* Per-viewer brainpower scenarios                              */
+/* ------------------------------------------------------------ */
+
+describe('per-viewer brainpower scoring scenarios', () => {
+  it('Jimi low-focus brain:2, Kait normal brain:5 → excellent brainpower fit (low-focus viewer drives score)', () => {
+    // Jimi thinks the show is easy (bp=2), Kait thinks it is dense (bp=5)
+    // Only the low-focus viewer (Jimi) drives the brain-power score
+    const show = makeShow({
+      id: 's1',
+      ratings: {
+        jimi: { ...makeRating(7), brainPower: 2 },
+        kait: { ...makeRating(8), brainPower: 5 },
+      },
+    });
+    // only low-focus viewer (jimi) scored: scoreBrainPower(2, 'low') = 10
+    const result = computeCandidatePreScore(show, { jimi: 'low', kait: 'normal' }, [], ['jimi', 'kait']);
+    expect(result.brainPowerMatch).toBe(10);
+  });
+
+  it('Jimi low-focus brain:5, Kait normal brain:1 → poor brainpower fit (low-focus viewer drives score)', () => {
+    // Jimi is tired and thinks the show is dense — bad for Jimi
+    // Kait's easy-brain estimate is irrelevant because she is not the constraint
+    const show = makeShow({
+      id: 's1',
+      ratings: {
+        jimi: { ...makeRating(7), brainPower: 5 },
+        kait: { ...makeRating(8), brainPower: 1 },
+      },
+    });
+    // only low-focus viewer (jimi) scored: scoreBrainPower(5, 'low') = 0
+    const result = computeCandidatePreScore(show, { jimi: 'low', kait: 'normal' }, [], ['jimi', 'kait']);
+    expect(result.brainPowerMatch).toBe(0);
+  });
+
+  it('both viewers low-focus with bp=1 → excellent brainpower fit', () => {
+    const show = makeShow({
+      id: 's1',
+      ratings: {
+        u1: { ...makeRating(8), brainPower: 1 },
+        u2: { ...makeRating(7), brainPower: 2 },
+      },
+    });
+    // u1 (low, bp=1) → 10; u2 (low, bp=2) → 10; avg = 10
+    const result = computeCandidatePreScore(show, { u1: 'low', u2: 'low' }, [], ['u1', 'u2']);
+    expect(result.brainPowerMatch).toBe(10);
+  });
+
+  it('Kait\'s low-focus does not penalize because she rated it easy', () => {
+    // Kait is tired, but she rated the show as easy (bp=1) — should still score well
+    const show = makeShow({
+      id: 's1',
+      ratings: { kait: { ...makeRating(8), brainPower: 1 } },
+    });
+    const result = computeCandidatePreScore(show, { kait: 'low' }, [], ['kait']);
+    expect(result.brainPowerMatch).toBe(10);
   });
 });
