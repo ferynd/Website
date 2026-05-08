@@ -379,7 +379,9 @@ async function searchOneQuery(
   query: string,
   tmdbConfig?: TmdbConfig,
 ): Promise<MetadataCandidate[]> {
-  const cacheKey = `q:${query}`;
+  // Include credential mode so bearer, api_key, and none results don't cross-contaminate.
+  const tmdbMode = tmdbConfig?.mode ?? 'none';
+  const cacheKey = `q:${tmdbMode}:${query}`;
   const cached = queryCache.get(cacheKey);
   if (cached) return cached;
 

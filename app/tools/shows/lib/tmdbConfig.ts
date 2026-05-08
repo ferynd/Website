@@ -17,7 +17,18 @@ export type TmdbConfig =
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
-/** Read TMDb credentials from the runtime environment (Cloudflare Secrets). */
+/**
+ * Read TMDb credentials from the runtime environment (Cloudflare Secrets).
+ *
+ * On Cloudflare Pages/Workers the `next-on-pages` adapter bridges
+ * `env.SECRET_NAME` → `process.env.SECRET_NAME` for edge-runtime routes
+ * (routes that declare `export const runtime = 'edge'`). This is the same
+ * mechanism used by GEMINI_API_KEY in /api/recommend/route.ts, so the
+ * approach is validated by that existing working route.
+ *
+ * No .env.local file is used or expected. Secrets are bound in the
+ * Cloudflare Pages dashboard under Settings → Environment variables.
+ */
 export function getTmdbConfig(): TmdbConfig {
   const token = process.env.TMDB_READ_ACCESS_TOKEN;
   if (token) return { mode: 'bearer', token };

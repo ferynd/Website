@@ -96,6 +96,8 @@ export interface ClassifyRequestBody {
 export interface ResolveRequestBody {
   source: MetadataSource;
   sourceId: string;
+  mediaKind?: MediaKind;
+  title?: string;
 }
 
 // ─── Gemini expansion output ─────────────────────────────────────────────────

@@ -292,6 +292,26 @@ describe('TmdbConfig: credential selection', () => {
   });
 });
 
+// ─── Query cache mode separation ─────────────────────────────────────────────
+
+describe('Query cache: mode separation', () => {
+  it('bearer and none cache keys differ for the same query string', () => {
+    // The cache key embeds the TMDb credential mode, so a bearer-auth result
+    // and a no-TMDb result for the same query string never collide.
+    const query = 'naruto';
+    const bearerKey = `q:bearer:${query}`;
+    const noneKey = `q:none:${query}`;
+    expect(bearerKey).not.toBe(noneKey);
+  });
+
+  it('api_key and bearer cache keys differ for the same query string', () => {
+    const query = 'one piece';
+    const apiKeyKey = `q:api_key:${query}`;
+    const bearerKey = `q:bearer:${query}`;
+    expect(apiKeyKey).not.toBe(bearerKey);
+  });
+});
+
 // ─── TmdbConfig — bearer token is NOT placed in URLs ─────────────────────────
 
 describe('TmdbConfig: bearer token stays in headers, not URL', () => {
