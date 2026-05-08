@@ -7,6 +7,9 @@ export type MetadataSource = 'tmdb' | 'anilist' | 'jikan' | 'tvmaze';
 
 export type MediaKind = 'tv' | 'movie';
 
+// How this candidate was matched — used to apply appropriate score bonuses.
+export type MatchedBy = 'title' | 'character' | 'gemini_expansion';
+
 // ─── raw candidate from any provider ────────────────────────────────────────
 
 export interface MetadataCandidate {
@@ -29,8 +32,8 @@ export interface MetadataCandidate {
   /** whether the provider tagged this as animation */
   isAnimation: boolean;
   confidence: number;
-  /** true when this candidate came from a Gemini-expanded query, not the user's direct input */
-  fromGeminiExpansion?: boolean;
+  /** How this candidate was found — influences scoring. */
+  matchedBy?: MatchedBy;
 }
 
 // ─── scored candidate (after scoring pipeline) ──────────────────────────────

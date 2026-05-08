@@ -1,6 +1,7 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveTitle } from '@/app/tools/shows/lib/titleResolver';
+import { getTmdbConfig } from '@/app/tools/shows/lib/tmdbConfig';
 import type { ClassifyRequestBody } from '@/app/tools/shows/lib/classifyTypes';
 import type { ShowType } from '@/app/tools/shows/types';
 
@@ -19,19 +20,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'title is required.' }, { status: 400 });
   }
 
-  // Determine if the type hint was explicitly chosen by the user
-  const typeHintWasUserSelected =
-    body.typeHintWasUserSelected === true ||
-    // legacy field: if sent as typeHintWasUserSelected explicitly
-    false;
-
+  // Only trust the type hint if the user explicitly selected it in the UI.
+  // Treat the form default ("anime") as absent when typeHintWasUserSelected is false.
+  const typeHintWasUserSelected = body.typeHintWasUserSelected === true;
   const rawTypeHint = body.typeHint ?? (body.type as string | undefined) ?? null;
   const typeHint: ShowType | null =
     rawTypeHint && ALLOWED_TYPES.has(rawTypeHint) && typeHintWasUserSelected
       ? (rawTypeHint as ShowType)
       : null;
 
-  const tmdbApiKey = process.env.TMDB_API_KEY;
+  // Credentials come from Cloudflare Secrets (accessed as process.env on the edge runtime).
+  // TMDB_READ_ACCESS_TOKEN is preferred; TMDB_API_KEY is used as fallback.
+  // GEMINI_API_KEY is optional — only used for title expansion when no strong match is found.
+  const tmdbConfig = getTmdbConfig();
   const geminiApiKey = process.env.GEMINI_API_KEY;
 
   try {
@@ -39,14 +40,16 @@ export async function POST(req: NextRequest) {
       title: rawTitle,
       typeHint,
       typeHintWasUserSelected,
-      tmdbApiKey,
+      tmdbConfig,
       geminiApiKey,
     });
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Classification failed.';
-    // Never expose API keys in error messages
-    const safe = message.replace(/key=[^&\s]*/gi, 'key=***');
+    // Sanitize any credential fragments that might appear in error messages.
+    const safe = message
+      .replace(/api_key=[^&\s]*/gi, 'api_key=***')
+      .replace(/Bearer [A-Za-z0-9._-]{8,}/g, 'Bearer ***');
     return NextResponse.json({ error: safe }, { status: 500 });
   }
 }

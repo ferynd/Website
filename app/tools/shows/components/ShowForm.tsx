@@ -172,7 +172,9 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
 
       if (data.status === 'resolved') {
         if (data.canonicalTitle) setTitle(data.canonicalTitle);
-        if (data.type) { setType(data.type); setTypeTouched(true); }
+        // Fill type from metadata but do NOT set typeTouched — that is reserved for
+        // explicit user taps. A subsequent classify click must not treat this as a hint.
+        if (data.type) setType(data.type);
         if (data.vibes?.length) setVibeTags(data.vibes);
         if (typeof data.description === 'string') setDescription(data.description);
         clearDisambig();
@@ -184,7 +186,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
       } else {
         // Legacy shape fallback (direct-resolved without status field)
         if (data.canonicalTitle) setTitle(data.canonicalTitle);
-        if (data.type) { setType(data.type); setTypeTouched(true); }
+        if (data.type) setType(data.type);
         if (data.vibes?.length) setVibeTags(data.vibes);
         if (typeof data.description === 'string') setDescription(data.description);
       }
@@ -224,7 +226,8 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
 
       if (data.status === 'resolved' || data.canonicalTitle) {
         if (data.canonicalTitle) setTitle(data.canonicalTitle);
-        if (data.type) { setType(data.type); setTypeTouched(true); }
+        // Fill type from metadata without setting typeTouched.
+        if (data.type) setType(data.type);
         if (data.vibes?.length) setVibeTags(data.vibes);
         if (typeof data.description === 'string') setDescription(data.description);
         clearDisambig();

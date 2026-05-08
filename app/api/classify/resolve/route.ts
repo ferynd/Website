@@ -1,12 +1,13 @@
 export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  searchAnilistCandidates,
-  searchJikanCandidates,
-  searchTvMazeCandidates,
   fetchTmdbDetails,
+  fetchAnilistById,
+  fetchJikanById,
+  fetchTvMazeById,
 } from '@/app/tools/shows/lib/mediaMetadata';
 import { buildResolvedClassification } from '@/app/tools/shows/lib/titleResolver';
+import { getTmdbConfig, hasTmdbCredentials } from '@/app/tools/shows/lib/tmdbConfig';
 import type { ResolveRequestBody, MediaKind, MetadataCandidate } from '@/app/tools/shows/lib/classifyTypes';
 
 const ALLOWED_SOURCES = new Set<string>(['tmdb', 'anilist', 'jikan', 'tvmaze']);
@@ -26,17 +27,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'source and sourceId are required.' }, { status: 400 });
   }
 
-  // mediaKind is needed for TMDb fetch; the UI sends it from the disambiguation option
+  // mediaKind is needed for TMDb (TV vs movie endpoint differ).
+  // The UI sends it from the disambiguation option.
   const mediaKind: MediaKind =
     typeof body.mediaKind === 'string' && body.mediaKind === 'movie' ? 'movie' : 'tv';
 
-  const tmdbApiKey = process.env.TMDB_API_KEY;
+  // Cloudflare Secrets: TMDB_READ_ACCESS_TOKEN (preferred) or TMDB_API_KEY (fallback).
+  const tmdbConfig = getTmdbConfig();
 
   try {
     let candidate: MetadataCandidate | null = null;
 
-    if (source === 'tmdb' && tmdbApiKey) {
-      const details = await fetchTmdbDetails(sourceId, mediaKind, tmdbApiKey);
+    if (source === 'tmdb') {
+      if (!hasTmdbCredentials(tmdbConfig)) {
+        return NextResponse.json(
+          { status: 'not_found', message: 'TMDb credentials are not configured.' },
+          { status: 404 },
+        );
+      }
+      const details = await fetchTmdbDetails(sourceId, mediaKind, tmdbConfig);
       if (details.title) {
         candidate = {
           source: 'tmdb',
@@ -55,25 +64,14 @@ export async function POST(req: NextRequest) {
         };
       }
     } else if (source === 'anilist') {
-      // Re-search AniList by ID isn't a simple REST call; we search by title stored in the option.
-      // The UI should send `title` for non-TMDb sources.
-      const titleHint = typeof body.title === 'string' ? body.title : '';
-      if (titleHint) {
-        const results = await searchAnilistCandidates(titleHint);
-        candidate = results.find((c) => c.sourceId === sourceId) ?? results[0] ?? null;
-      }
+      // Direct lookup by AniList numeric ID — no title-search fallback.
+      candidate = await fetchAnilistById(sourceId);
     } else if (source === 'jikan') {
-      const titleHint = typeof body.title === 'string' ? body.title : '';
-      if (titleHint) {
-        const results = await searchJikanCandidates(titleHint);
-        candidate = results.find((c) => c.sourceId === sourceId) ?? results[0] ?? null;
-      }
+      // Direct lookup by MAL ID via Jikan v4.
+      candidate = await fetchJikanById(sourceId);
     } else if (source === 'tvmaze') {
-      const titleHint = typeof body.title === 'string' ? body.title : '';
-      if (titleHint) {
-        const results = await searchTvMazeCandidates(titleHint);
-        candidate = results.find((c) => c.sourceId === sourceId) ?? results[0] ?? null;
-      }
+      // Direct lookup by TVMaze show ID.
+      candidate = await fetchTvMazeById(sourceId);
     }
 
     if (!candidate) {
@@ -84,11 +82,13 @@ export async function POST(req: NextRequest) {
     }
 
     candidate.confidence = 1.0;
-    const resolved = await buildResolvedClassification(candidate, tmdbApiKey);
+    const resolved = await buildResolvedClassification(candidate, tmdbConfig);
     return NextResponse.json(resolved);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Resolve failed.';
-    const safe = message.replace(/key=[^&\s]*/gi, 'key=***');
+    const safe = message
+      .replace(/api_key=[^&\s]*/gi, 'api_key=***')
+      .replace(/Bearer [A-Za-z0-9._-]{8,}/g, 'Bearer ***');
     return NextResponse.json({ error: safe }, { status: 500 });
   }
 }
