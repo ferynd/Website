@@ -1,15 +1,7 @@
 import type { Show } from '../types';
 import type { MoodEntry, ViewerPreferenceProfile, RatedShowEntry } from './recommendationContext';
 import { memberComposite } from './compositeScore';
-import { inferFocusLevel, inferVibeKeywords, computeCandidatePreScore } from './preScore';
-
-const BRAIN_POWER_LABELS: Record<number, string> = {
-  1: 'braindead/background',
-  2: 'easy watch',
-  3: 'normal focus',
-  4: 'pay attention',
-  5: 'dense/thought-provoking',
-};
+import { inferViewerFocusLevel, inferVibeKeywords, computeCandidatePreScore } from './preScore';
 
 function formatRatedEntry(e: RatedShowEntry): string {
   const parts = [`"${e.title}"`, `score:${e.composite.toFixed(1)}`];
@@ -35,9 +27,14 @@ export function buildPrompt(
     uidToName[uid] = entry.name;
   }
 
-  // Infer combined focus level and vibe preferences from all mood text
+  // Per-viewer focus levels — each viewer's tiredness only applies to their own brain power estimate
+  const viewerFocusLevels: Record<string, 'low' | 'normal' | 'high'> = {};
+  for (const [uid, entry] of Object.entries(moods)) {
+    viewerFocusLevels[uid] = inferViewerFocusLevel(entry.mood, entry.name, sharedMood);
+  }
+
+  // Vibe keywords from combined mood text (shared across viewers for vibe matching)
   const allMoodText = [sharedMood ?? '', ...Object.values(moods).map((m) => m.mood)].join(' ');
-  const focusLevel = inferFocusLevel(allMoodText);
   const vibeKeywords = inferVibeKeywords(allMoodText);
 
   // --- SHARED VIBE (highest priority) ---
@@ -104,29 +101,33 @@ export function buildPrompt(
           ? ` S${s.currentSeason ?? '?'}E${s.currentEpisode ?? '?'}`
           : '';
       const vibes = s.vibeTags.length > 0 ? s.vibeTags.join(', ') : 'none';
-      const bp =
-        s.brainPower != null
-          ? `${s.brainPower}/5 (${BRAIN_POWER_LABELS[s.brainPower] ?? ''})`
-          : 'unknown';
 
-      const preScore = computeCandidatePreScore(s, focusLevel, vibeKeywords, presentUids);
+      const preScore = computeCandidatePreScore(s, viewerFocusLevels, vibeKeywords, presentUids);
       const preScoreStr = `preScore: brain=${preScore.brainPowerMatch.toFixed(0)} vibe=${preScore.vibeFit.toFixed(0)} overall=${preScore.overallPreScore.toFixed(1)}`;
 
-      // Per-viewer rating signals
+      // Per-viewer rating signals — brain power is shown per viewer, not as a global value
       const viewerSignals = presentUids
         .map((uid) => {
           const rating = s.ratings[uid];
           const name = uidToName[uid] ?? uid;
           const note = s.memberNotes?.[uid] ?? s.notes ?? '';
+          // Prefer per-person brain power; fall back to legacy show.brainPower
+          const viewerBp = rating?.brainPower ?? s.brainPower ?? null;
+
           if (!rating) {
-            return note.trim() ? `${name}: unrated note:"${note}"` : `${name}: unrated`;
+            const parts = [`${name}: unrated`];
+            if (viewerBp != null) parts.push(`brain:${viewerBp}/5`);
+            if (note.trim()) parts.push(`note:"${note}"`);
+            return parts.join(' ');
           }
+
           const composite = memberComposite(rating);
           const scorePart = composite !== null ? `${composite.toFixed(1)}/10` : 'partial';
           const parts = [`${name}: ${scorePart}`];
           if (rating.story != null) parts.push(`story:${rating.story}`);
           if (rating.characters != null) parts.push(`chars:${rating.characters}`);
           if (rating.vibes != null) parts.push(`vibes:${rating.vibes}`);
+          if (viewerBp != null) parts.push(`brain:${viewerBp}/5`);
           if (rating.wouldRewatch) parts.push(`wr:${rating.wouldRewatch}`);
           if (note.trim()) parts.push(`note:"${note}"`);
           return parts.join(' ');
@@ -141,7 +142,7 @@ export function buildPrompt(
         .join(' / ');
 
       const lines = [
-        `  - id:${s.id} | "${s.title}" (${s.type}) | vibes: ${vibes} | brain: ${bp} | status: ${s.status}${ep}`,
+        `  - id:${s.id} | "${s.title}" (${s.type}) | vibes: ${vibes} | status: ${s.status}${ep}`,
         `    viewers: ${viewerSignals}`,
         `    ${preScoreStr}`,
       ];
@@ -157,11 +158,14 @@ export function buildPrompt(
   const rules =
     `DECISION RULES (apply in this order):\n` +
     `1. PARSE TONIGHT'S VIBE FIRST: From the shared vibe text, identify each named person's energy and mood. ` +
-    `"brain dead", "tired", "drained", "multitasking", "background", "low focus", "low energy" → strong LOW brain-power signal. ` +
+    `"brain dead", "tired", "drained", "multitasking", "background", "low focus", "low energy" → strong LOW brain-power signal for that person. ` +
     `"funny", "exciting", "chill", "romantic", etc. → vibe preferences. ` +
     `When two viewers want different things, pick the best compromise.\n` +
-    `2. BRAIN POWER FIT: When anyone is tired, brain dead, or multitasking → strongly prefer brain power 1–2. ` +
-    `A 6/10 show with brain power 1 beats a 9/10 show with brain power 5 when someone is exhausted. Unknown brain power is neutral.\n` +
+    `2. BRAIN POWER FIT (per viewer): Brain power is rated individually — each viewer line shows their own brain:X/5 estimate. ` +
+    `When a named viewer is tired, brain dead, or multitasking, use THAT viewer's own brain power value to judge fit. ` +
+    `Do NOT penalize a show just because another viewer rated it high brain power, unless that viewer is also low-focus. ` +
+    `Example: if Jimi is brain dead and rated a show brain:2/5, the show is a good fit for tonight even if Kait rated it brain:4/5. ` +
+    `A 6/10 show with brain:1–2 for the tired viewer beats a 9/10 show with brain:4–5 for that same viewer. Unknown brain power is neutral.\n` +
     `3. MOOD AND VIBE MATCH: Match show vibe tags to inferred mood. ` +
     `"funny/comedy" → Funny/Lighthearted. "exciting/adventure" → Action-Packed/Adventurous/Fast-Paced/Intense. "chill/cozy" → Chill/Cozy/Comfort Watch. Strong vibe overlap = strong positive signal.\n` +
     `4. USE ALL RATING BANDS AS TASTE EVIDENCE:\n` +

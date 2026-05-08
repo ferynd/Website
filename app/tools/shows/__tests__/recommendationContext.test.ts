@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildViewerProfiles, candidateShows } from '../lib/recommendationContext';
 import { buildPrompt } from '../lib/buildRecommendPrompt';
-import type { Show, ShowList } from '../types';
+import type { Show, ShowList, MemberRating } from '../types';
 import type { MoodEntry, ViewerPreferenceProfile } from '../lib/recommendationContext';
 import { Timestamp } from 'firebase/firestore';
 
@@ -43,13 +43,14 @@ function makeMember(uid: string, displayName: string): ShowList['members'][numbe
   return { uid, email: `${uid}@test.com`, displayName, role: 'member', joinedAt: ts() };
 }
 
-function makeRating(composite: number) {
+function makeRating(composite: number): MemberRating {
   return {
     story: composite,
     characters: composite,
     vibes: composite,
-    wouldRewatch: null as null,
-    ratedAt: null as null,
+    wouldRewatch: null,
+    brainPower: null,
+    ratedAt: null,
   };
 }
 
@@ -157,16 +158,47 @@ describe('buildViewerProfiles', () => {
     expect(profiles.u2.name).toBe('Bob');
   });
 
-  it('includes brainPower and wouldRewatch in rated entries', () => {
+  it('includes wouldRewatch in rated entries', () => {
     const member = makeMember('u1', 'Alice');
     const show = makeShow({
       id: 's1',
-      ratings: { u1: { story: 8, characters: 8, vibes: 8, wouldRewatch: 'yes', ratedAt: null } },
+      ratings: { u1: { story: 8, characters: 8, vibes: 8, wouldRewatch: 'yes', brainPower: null, ratedAt: null } },
+    });
+    const profiles = buildViewerProfiles([show], [member]);
+    expect(profiles.u1.stronglyLiked[0].wouldRewatch).toBe('yes');
+  });
+
+  it('uses per-person brainPower from rating (not legacy show.brainPower)', () => {
+    const member = makeMember('u1', 'Alice');
+    const show = makeShow({
+      id: 's1',
+      ratings: { u1: { story: 8, characters: 8, vibes: 8, wouldRewatch: null, brainPower: 3, ratedAt: null } },
+      brainPower: 5, // legacy fallback — should NOT be used when per-person is set
+    });
+    const profiles = buildViewerProfiles([show], [member]);
+    expect(profiles.u1.stronglyLiked[0].brainPower).toBe(3);
+  });
+
+  it('falls back to legacy show.brainPower when per-person brainPower is null', () => {
+    const member = makeMember('u1', 'Alice');
+    const show = makeShow({
+      id: 's1',
+      ratings: { u1: { story: 8, characters: 8, vibes: 8, wouldRewatch: null, brainPower: null, ratedAt: null } },
       brainPower: 2,
     });
     const profiles = buildViewerProfiles([show], [member]);
     expect(profiles.u1.stronglyLiked[0].brainPower).toBe(2);
-    expect(profiles.u1.stronglyLiked[0].wouldRewatch).toBe('yes');
+  });
+
+  it('brainPower in rated entry is null when neither per-person nor legacy is set', () => {
+    const member = makeMember('u1', 'Alice');
+    const show = makeShow({
+      id: 's1',
+      ratings: { u1: makeRating(9) },
+      brainPower: null,
+    });
+    const profiles = buildViewerProfiles([show], [member]);
+    expect(profiles.u1.stronglyLiked[0].brainPower).toBeNull();
   });
 });
 
@@ -343,11 +375,19 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('multitasking');
   });
 
+  it('decision rules instruct per-viewer brain power evaluation', () => {
+    const candidates = [makeShow({ status: 'watching' })];
+    const moods = { u1: makeMood('Alice') };
+    const profiles = { u1: makeProfile('Alice') };
+    const prompt = buildPrompt(moods, candidates, profiles);
+    expect(prompt).toContain('per viewer');
+  });
+
   it('includes all rating bands in viewer profiles, not only high scores', () => {
     const member = makeMember('u1', 'Alice');
     const highShow = makeShow({ id: 's1', ratings: { u1: makeRating(9) }, vibeTags: ['Epic'] });
     const midShow = makeShow({ id: 's2', title: 'Mid Show', ratings: { u1: makeRating(6.5) }, vibeTags: ['Chill'] });
-    const lowShow = makeShow({ id: 's3', title: 'Low Show', ratings: { u1: makeRating(3) }, vibeTags: ['Drama'] });
+    const lowShow = makeShow({ id: 's3', title: 'Low Show', ratings: { u1: makeRating(3) }, vibeTags: ['Dark'] });
     const profiles = buildViewerProfiles([highShow, midShow, lowShow], [member]);
     const moods = { u1: makeMood('Alice', 'tired') };
     const prompt = buildPrompt(moods, [], profiles);
@@ -384,7 +424,7 @@ describe('buildPrompt', () => {
     const candidates = [makeShow({
       id: 'c1',
       status: 'watching',
-      ratings: { [uid]: { story: 6, characters: 8, vibes: 9, wouldRewatch: null, ratedAt: null } },
+      ratings: { [uid]: { story: 6, characters: 8, vibes: 9, wouldRewatch: null, brainPower: null, ratedAt: null } },
     })];
     const moods = { [uid]: makeMood('Alice', 'chill') };
     const profiles = { [uid]: makeProfile('Alice') };
@@ -394,12 +434,54 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('vibes:9');
   });
 
+  it('includes per-viewer brainPower in candidate viewer signal', () => {
+    const uid = 'u1';
+    const candidates = [makeShow({
+      id: 'c1',
+      status: 'watching',
+      ratings: { [uid]: { story: 8, characters: 8, vibes: 8, wouldRewatch: null, brainPower: 2, ratedAt: null } },
+    })];
+    const moods = { [uid]: makeMood('Alice', 'tired') };
+    const profiles = { [uid]: makeProfile('Alice') };
+    const prompt = buildPrompt(moods, candidates, profiles);
+    expect(prompt).toContain('brain:2/5');
+  });
+
+  it('falls back to legacy show.brainPower in viewer signal when per-person brainPower is null', () => {
+    const candidates = [makeShow({ status: 'watching', brainPower: 1 })];
+    const moods = { u1: makeMood('Alice') };
+    const profiles = { u1: makeProfile('Alice') };
+    const prompt = buildPrompt(moods, candidates, profiles);
+    // Legacy brainPower=1 appears in viewer signal (unrated viewer with legacy fallback)
+    expect(prompt).toContain('brain:1/5');
+  });
+
+  it('no brain in viewer signal when both per-person and legacy brainPower are null', () => {
+    const candidates = [makeShow({ status: 'watching', brainPower: null })];
+    const moods = { u1: makeMood('Alice') };
+    const profiles = { u1: makeProfile('Alice') };
+    const prompt = buildPrompt(moods, candidates, profiles);
+    // Old global format must be gone
+    expect(prompt).not.toContain('brain: unknown');
+    // No brain:N/5 should appear in any viewer signal (the digit distinguishes from rules text)
+    expect(prompt).not.toMatch(/Alice:.*brain:\d/);
+  });
+
+  it('does not show a global brain power header line in the candidate section', () => {
+    const candidates = [makeShow({ status: 'watching', brainPower: 3 })];
+    const moods = { u1: makeMood('Alice') };
+    const profiles = { u1: makeProfile('Alice') };
+    const prompt = buildPrompt(moods, candidates, profiles);
+    // Old format "brain: X/5 (label)" should be gone from the candidate header
+    expect(prompt).not.toContain('| brain: 3/5');
+  });
+
   it('includes wouldRewatch in candidate per-viewer section', () => {
     const uid = 'u1';
     const candidates = [makeShow({
       id: 'c1',
       status: 'watching',
-      ratings: { [uid]: { story: 8, characters: 8, vibes: 8, wouldRewatch: 'yes', ratedAt: null } },
+      ratings: { [uid]: { story: 8, characters: 8, vibes: 8, wouldRewatch: 'yes', brainPower: null, ratedAt: null } },
     })];
     const moods = { [uid]: makeMood('Alice', 'chill') };
     const profiles = { [uid]: makeProfile('Alice') };
@@ -432,23 +514,6 @@ describe('buildPrompt', () => {
     const profiles = { u1: makeProfile('Alice') };
     const prompt = buildPrompt(moods, candidates, profiles);
     expect(prompt).toContain('[absentUid]');
-  });
-
-  it('includes brain power in candidate section when set', () => {
-    const candidates = [makeShow({ status: 'watching', brainPower: 1 })];
-    const moods = { u1: makeMood('Alice') };
-    const profiles = { u1: makeProfile('Alice') };
-    const prompt = buildPrompt(moods, candidates, profiles);
-    expect(prompt).toContain('1/5');
-    expect(prompt).toContain('braindead');
-  });
-
-  it('shows unknown brain power when null', () => {
-    const candidates = [makeShow({ status: 'watching', brainPower: null })];
-    const moods = { u1: makeMood('Alice') };
-    const profiles = { u1: makeProfile('Alice') };
-    const prompt = buildPrompt(moods, candidates, profiles);
-    expect(prompt).toContain('brain: unknown');
   });
 
   it('includes service when present', () => {
@@ -487,11 +552,28 @@ describe('buildPrompt', () => {
   });
 
   it('includes pre-score for each candidate', () => {
-    const candidates = [makeShow({ id: 'c1', status: 'watching', brainPower: 1, vibeTags: ['Comedy'] })];
+    const candidates = [makeShow({ id: 'c1', status: 'watching', brainPower: 1, vibeTags: ['Funny', 'Lighthearted'] })];
     const moods = { u1: makeMood('Alice', 'brain dead and want something funny') };
     const profiles = { u1: makeProfile('Alice') };
     const prompt = buildPrompt(moods, candidates, profiles);
     expect(prompt).toContain('preScore:');
     expect(prompt).toContain('overall=');
+  });
+
+  it('per-viewer brainPower differs between viewers in the same candidate line', () => {
+    // Jimi thinks the show is easy (bp=2), Kait thinks it is dense (bp=4)
+    const candidates = [makeShow({
+      id: 'c1',
+      status: 'watching',
+      ratings: {
+        jimi: { story: 8, characters: 8, vibes: 8, wouldRewatch: null, brainPower: 2, ratedAt: null },
+        kait: { story: 7, characters: 7, vibes: 7, wouldRewatch: null, brainPower: 4, ratedAt: null },
+      },
+    })];
+    const moods = { jimi: makeMood('Jimi', 'brain dead'), kait: makeMood('Kait', 'up for anything') };
+    const profiles = { jimi: makeProfile('Jimi'), kait: makeProfile('Kait') };
+    const prompt = buildPrompt(moods, candidates, profiles);
+    expect(prompt).toContain('brain:2/5');
+    expect(prompt).toContain('brain:4/5');
   });
 });

@@ -323,7 +323,7 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     if (!user) return;
     const show = shows.find((s) => s.id === showId);
     const existing: MemberRating = show?.ratings[user.uid] ?? {
-      story: null, characters: null, vibes: null, wouldRewatch: null, ratedAt: null,
+      story: null, characters: null, vibes: null, wouldRewatch: null, brainPower: null, ratedAt: null,
     };
     await updateDoc(showDoc(showId), {
       [`ratings.${user.uid}`]: { ...existing, ...rating, ratedAt: serverTimestamp() },

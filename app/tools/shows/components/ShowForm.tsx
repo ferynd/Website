@@ -38,14 +38,6 @@ const STATUS_LABELS: Record<ShowStatus, string> = {
   planned:   'Planned',
 };
 
-const BRAIN_POWER_LABELS: Record<number, string> = {
-  1: 'Braindead / background-friendly',
-  2: 'Easy watch',
-  3: 'Normal focus',
-  4: 'Pay attention',
-  5: 'Dense / thought-provoking',
-};
-
 function hasEpisodes(type: ShowType) {
   return type === 'anime' || type === 'tv' || type === 'cartoon';
 }
@@ -85,7 +77,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [customService, setCustomService] = useState(
     show?.service && !SERVICES.includes(show.service) ? show.service : '',
   );
-  const [brainPower, setBrainPower] = useState<number | null>(show?.brainPower ?? null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const watchersInitialized = useRef(isEdit);
@@ -118,8 +109,14 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   const [disambigMessage, setDisambigMessage] = useState('');
   const [resolvingOption, setResolvingOption] = useState<string | null>(null); // sourceId being resolved
 
-  const myRating = show?.ratings[user?.uid ?? ''] ?? {
-    story: null, characters: null, vibes: null, wouldRewatch: null, ratedAt: null,
+  const existingRating = show?.ratings[user?.uid ?? ''];
+  const myRating = {
+    story: existingRating?.story ?? null,
+    characters: existingRating?.characters ?? null,
+    vibes: existingRating?.vibes ?? null,
+    wouldRewatch: existingRating?.wouldRewatch ?? null,
+    brainPower: existingRating?.brainPower ?? null,
+    ratedAt: existingRating?.ratedAt ?? null,
   };
   const [pendingRating, setPendingRating] = useState(myRating);
 
@@ -293,7 +290,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         description,
         notes: show?.notes ?? '',
         memberNotes,
-        brainPower,
         vibeTags,
         ratings: show?.ratings ?? {},
       };
@@ -547,50 +543,6 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
                 />
               ))}
             </div>
-          </div>
-
-          {/* Brain power */}
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-text-2">Brain power required</label>
-              {brainPower !== null && (
-                <span className="text-xs text-text-3">
-                  {brainPower}/5 — {BRAIN_POWER_LABELS[brainPower]}
-                </span>
-              )}
-            </div>
-            {brainPower === null ? (
-              <button
-                type="button"
-                onClick={() => setBrainPower(3)}
-                className="text-xs text-text-3 underline"
-              >
-                Set brain power
-              </button>
-            ) : (
-              <>
-                <input
-                  type="range"
-                  min={1}
-                  max={5}
-                  step={1}
-                  value={brainPower}
-                  onChange={(e) => setBrainPower(Number(e.target.value))}
-                  className="w-full h-2 accent-[hsl(var(--color-accent))] cursor-pointer"
-                />
-                <div className="flex justify-between text-xs text-text-3 px-0.5">
-                  <span>Braindead</span>
-                  <span>Dense</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setBrainPower(null)}
-                  className="text-xs text-text-3 underline"
-                >
-                  Clear
-                </button>
-              </>
-            )}
           </div>
 
           {/* Description */}
