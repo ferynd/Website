@@ -69,6 +69,7 @@ try {
 let wireFunction, cacheDomFunction, stateObject;
 let showMessageFunction, handleErrorFunction;
 let ensureDateInputFunction, loadUserDataFunction;
+let initializeTabsFunction;
 let authFunctions = {};
 
 try {
@@ -126,6 +127,7 @@ try {
     }),
 
     import('./ui/dashboard.js').then(module => {
+      initializeTabsFunction = module.initializeTabs;
       debugLog('IMPORT-TEST', '✅ dashboard.js imported successfully');
     }).catch(error => {
       errorLog('IMPORT-DASHBOARD', error, 'Failed to import dashboard.js');
@@ -168,6 +170,12 @@ function startApp() {
     debugLog('APP-START', 'Testing event wiring...');
     wireFunction();
     debugLog('APP-START', '✅ Event wiring successful');
+
+    // Initialize tab shell (reads hash/localStorage, no data render yet)
+    if (initializeTabsFunction) {
+      initializeTabsFunction();
+      debugLog('APP-START', '✅ Tab shell initialized');
+    }
 
     // Show loader
     debugLog('APP-START', 'Setting up UI state...');

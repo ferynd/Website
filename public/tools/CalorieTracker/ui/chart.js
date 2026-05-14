@@ -115,7 +115,8 @@ export function initializeChartControls() {
     const show7DayAvg = document.getElementById('show-7day-avg');
 
     if (!chartNutrients) {
-      throw new Error('Chart nutrients selector not found');
+      debugLog('init-controls', 'Chart nutrients selector not in DOM – skipping init');
+      return;
     }
 
     // Populate nutrient selector
@@ -399,7 +400,8 @@ export function updateChart() {
     const show7DayAvg = document.getElementById('show-7day-avg');
     
     if (!chartNutrients) {
-      throw new Error('Chart nutrients selector not found');
+      debugLog('update-chart', 'Chart nutrients selector not in DOM – skipping update');
+      return;
     }
 
     const selectedNutrients = Array.from(chartNutrients.selectedOptions).map(o => o.value);
@@ -416,7 +418,8 @@ export function updateChart() {
     const canvas = document.getElementById('nutrition-chart');
     
     if (!canvas) {
-      throw new Error('Chart canvas not found');
+      debugLog('update-chart', 'Chart canvas not in DOM – skipping update');
+      return;
     }
 
     // Destroy existing chart

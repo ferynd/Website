@@ -40,6 +40,9 @@ export const state = {
   // The index of the currently highlighted item in the food search dropdown.
   selectedDropdownIndex: -1,
 
+  // Active tab name — persisted to localStorage as 'ct-active-tab'.
+  activeTab: 'today',
+
   // An object to cache frequently accessed DOM elements.
   dom: {},
 };

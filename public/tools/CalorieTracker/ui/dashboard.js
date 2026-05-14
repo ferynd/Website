@@ -397,27 +397,179 @@ export function calculateMicronutrientMetrics(dateStr) {
 }
 
 // =========================
+// TAB MANAGEMENT
+// =========================
+
+const VALID_TABS = ['today', 'nutrients', 'energy', 'profile', 'settings'];
+
+/**
+ * Initialize tabs from URL hash or localStorage without triggering data renders.
+ * Call this once after wire() but before data loads.
+ */
+export function initializeTabs() {
+  try {
+    const hash = location.hash.replace(/^#tab-/, '').replace(/^#/, '');
+    const stored = localStorage.getItem('ct-active-tab');
+    const initial = VALID_TABS.includes(hash) ? hash
+                  : VALID_TABS.includes(stored) ? stored
+                  : 'today';
+
+    state.activeTab = initial;
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const isActive = btn.dataset.tab === initial;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+      panel.classList.toggle('hidden', panel.id !== `tab-${initial}`);
+    });
+
+    const macroHeader = document.getElementById('today-macro-header');
+    if (macroHeader) macroHeader.classList.toggle('hidden', initial !== 'today');
+
+    debugLog('init-tabs', `Initial tab: ${initial}`);
+  } catch (error) {
+    handleError('init-tabs', error, 'Failed to initialize tabs');
+  }
+}
+
+/**
+ * Activate a tab, update URL hash, persist to localStorage, and render content.
+ * @param {string} name - Tab name (today|nutrients|energy|profile|settings)
+ */
+export function activateTab(name) {
+  try {
+    if (!VALID_TABS.includes(name)) return;
+
+    state.activeTab = name;
+    localStorage.setItem('ct-active-tab', name);
+
+    if (history.replaceState) {
+      history.replaceState(null, '', `#tab-${name}`);
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const isActive = btn.dataset.tab === name;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+      panel.classList.toggle('hidden', panel.id !== `tab-${name}`);
+    });
+
+    const macroHeader = document.getElementById('today-macro-header');
+    if (macroHeader) macroHeader.classList.toggle('hidden', name !== 'today');
+
+    if (!state.userId || Object.keys(state.baselineTargets).length === 0) return;
+
+    if (name === 'nutrients') renderNutrientsOutput();
+    else if (name === 'energy') renderEnergyOutput();
+    else if (name === 'settings') populateSettingsForm();
+
+    debugLog('activate-tab', `Activated tab: ${name}`);
+  } catch (error) {
+    handleError('activate-tab', error, 'Failed to activate tab');
+  }
+}
+
+// =========================
+// TAB CONTENT RENDERERS
+// =========================
+
+/**
+ * Render the compact 4-cell macro progress bar into #today-macro-header.
+ */
+function renderTodayMacroHeader(bankingData) {
+  const el = document.getElementById('today-macro-header');
+  if (!el) return;
+
+  const { todayKcalTarget, proteinG, fatG, carbsG } = bankingData;
+
+  const totals = state.dailyFoodItems.reduce((acc, item) => {
+    const q = parseFloat(item.quantity ?? 0) || 0;
+    acc.cal  += q * (parseFloat(item.calories) || 0);
+    acc.pro  += q * (parseFloat(item.protein)  || 0);
+    acc.fat  += q * (parseFloat(item.fat)      || 0);
+    acc.carb += q * (parseFloat(item.carbs)    || 0);
+    return acc;
+  }, { cal: 0, pro: 0, fat: 0, carb: 0 });
+
+  const cell = (label, actual, target) => {
+    const pct = Math.max(0, Math.min(150, target > 0 ? (actual / target) * 100 : 0));
+    const cls = pct >= 100 ? 'good' : pct >= 66 ? 'warn' : 'bad';
+    return `
+      <div class="macro-cell">
+        <span class="macro-cell-label">${label}</span>
+        <span class="macro-cell-value ${pct > 110 ? 'text-negative' : ''}">${Math.round(actual)}/${Math.round(target)}</span>
+        <div class="hbar"><div class="hbar-fill ${cls}" style="width:${pct.toFixed(1)}%"></div></div>
+      </div>`;
+  };
+
+  el.innerHTML =
+    cell('Cal',     totals.cal,  todayKcalTarget) +
+    cell('Protein', totals.pro,  proteinG)        +
+    cell('Fat',     totals.fat,  fatG)            +
+    cell('Carbs',   totals.carb, carbsG);
+}
+
+/**
+ * Render chart + micronutrients into #nutrients-content.
+ */
+function renderNutrientsOutput() {
+  const container = document.getElementById('nutrients-content');
+  if (!container) return;
+
+  if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
+    container.innerHTML = '<p class="text-muted text-center py-8">Log in and set targets to see nutrient data.</p>';
+    return;
+  }
+
+  const dateStr = state.dom.dateInput?.value;
+  if (!dateStr) return;
+
+  const micronutrientMetrics = calculateMicronutrientMetrics(dateStr);
+  container.innerHTML = renderChartSection() + renderMicronutrientSections(micronutrientMetrics);
+
+  initializeChartControls();
+}
+
+/**
+ * Render weight/energy analysis into #energy-content.
+ */
+function renderEnergyOutput() {
+  const container = document.getElementById('energy-content');
+  if (!container) return;
+
+  if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
+    container.innerHTML = '<p class="text-muted text-center py-8">Log in and set targets to see energy analysis.</p>';
+    return;
+  }
+
+  container.innerHTML = renderAnalysisSection();
+  initAnalysisEvents();
+}
+
+// =========================
 // MAIN DASHBOARD UPDATE
 // =========================
 
 /**
- * Main dashboard update function
+ * Main dashboard update function.
+ * Always re-renders the Today tab output (#dashboard + macro header).
+ * Also re-renders the currently active secondary tab.
  */
 export function updateDashboard() {
   try {
     debugLog('update-start', 'Starting dashboard update');
-    
+
     const { dashboard } = state.dom;
+    if (!dashboard) throw new Error('Dashboard container not found');
 
-    if (!dashboard) {
-      throw new Error('Dashboard container not found');
-    }
-
-    // Clear any previous errors
     const errorContainer = document.getElementById('dashboard-errors');
-    if (errorContainer) {
-      errorContainer.innerHTML = '';
-    }
+    if (errorContainer) errorContainer.innerHTML = '';
 
     if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
       dashboard.innerHTML = `
@@ -434,23 +586,21 @@ export function updateDashboard() {
     const dateStr = state.dom.dateInput.value;
     const todaysEntry = state.dailyEntries.get(dateStr) || {};
     const bankingData = calculateBankingData(dateStr);
-    const micronutrientMetrics = calculateMicronutrientMetrics(dateStr);
 
     dashboard.innerHTML = `
       <div id="dashboard-errors"></div>
       ${renderInfoBox()}
       ${renderBankingPanel(bankingData)}
       ${renderTodaysPlanPanel(bankingData, todaysEntry)}
-      ${renderChartSection()}
-      ${renderAnalysisSection()}
-      ${renderMicronutrientSections(micronutrientMetrics)}
     `;
 
-    initializeChartControls();
-    initAnalysisEvents();
-
-    // Set up event handlers for collapsible sections
+    renderTodayMacroHeader(bankingData);
     setupCollapsibleHandlers();
+
+    // Re-render the active secondary tab so it stays fresh
+    const activeTab = state.activeTab || 'today';
+    if (activeTab === 'nutrients') renderNutrientsOutput();
+    else if (activeTab === 'energy') renderEnergyOutput();
 
     debugLog('update-complete', 'Dashboard update completed successfully');
 

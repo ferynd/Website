@@ -14,7 +14,7 @@ import { saveFoodItemToDatabase } from '../food/save.js';
 import { handleLogin, handleSignUp, handleGuestLogin, handleLogout } from '../main.js';
 import { saveTargets, saveDailyEntry } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
-import { updateDashboard } from '../ui/dashboard.js';
+import { updateDashboard, activateTab } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { debugLog, handleError } from '../utils/ui.js';
 
@@ -43,7 +43,8 @@ export function wire() {
     wireStagingEvents();
     wireFoodDatabaseEvents();
     wireExportEvents();
-    
+    wireTabs();
+
     // Expose global functions for inline HTML onclick handlers
     exposeGlobalFunctions();
 
@@ -91,15 +92,8 @@ function wireAuthEvents() {
 function wireModalEvents() {
   try {
     const openSettingsBtn = document.getElementById('open-settings-btn');
-    const closeSettingsBtn = document.getElementById('close-settings-btn');
-
-    if (openSettingsBtn) openSettingsBtn.addEventListener('click', () => {
-      if (state.dom.settingsModal) state.dom.settingsModal.classList.remove('hidden');
-    });
-    
-    if (closeSettingsBtn) closeSettingsBtn.addEventListener('click', () => {
-      if (state.dom.settingsModal) state.dom.settingsModal.classList.add('hidden');
-    });
+    // Settings are now inline in the Settings tab – navigate there instead of opening a modal.
+    if (openSettingsBtn) openSettingsBtn.addEventListener('click', () => activateTab('settings'));
 
     debugLog('wire', 'Modal events wired');
   } catch (error) {
@@ -136,10 +130,9 @@ function wireSettingsEvents() {
           }
 
           await saveTargets(newTargets);
-          
-          if (state.dom.settingsModal) {
-            state.dom.settingsModal.classList.add('hidden');
-          }
+
+          // Navigate back to Today tab after saving
+          activateTab('today');
 
           // Refresh UI to reflect new targets
           updateDashboard();
@@ -320,6 +313,23 @@ function wireExportEvents() {
     debugLog('wire', 'Export events wired');
   } catch (error) {
     handleError('wire-exports', error, 'Failed to wire export events');
+  }
+}
+
+/**
+ * Wire up tab button click handlers
+ */
+function wireTabs() {
+  try {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tabName = btn.dataset.tab;
+        if (tabName) activateTab(tabName);
+      });
+    });
+    debugLog('wire', 'Tab events wired');
+  } catch (error) {
+    handleError('wire-tabs', error, 'Failed to wire tab events');
   }
 }
 
