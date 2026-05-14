@@ -50,11 +50,11 @@
       </header>
 
       <nav class="tab-bar" role="tablist" aria-label="App sections">
-        <button class="tab-btn active" data-tab="today"    role="tab" aria-selected="true"  aria-controls="tab-today">Today</button>
-        <button class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients">Nutrients</button>
-        <button class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy">Energy</button>
-        <button class="tab-btn"        data-tab="profile"   role="tab" aria-selected="false" aria-controls="tab-profile">Profile &amp; Goals</button>
-        <button class="tab-btn"        data-tab="settings"  role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
+        <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today">Today</button>
+        <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients">Nutrients</button>
+        <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy">Energy</button>
+        <button id="tab-btn-profile"   class="tab-btn"        data-tab="profile"   role="tab" aria-selected="false" aria-controls="tab-profile">Profile &amp; Goals</button>
+        <button id="tab-btn-settings"  class="tab-btn"        data-tab="settings"  role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
       </nav>
 
       <!-- Compact macro progress bar (Today tab only) -->
@@ -131,12 +131,13 @@
               <button type="button" id="parse-btn" class="w-full mt-2 btn btn-primary">
                 <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
               </button>
+              <div id="parse-missing-warning" class="hidden mt-2 p-2 rounded text-xs text-warning surface-2 border border-warning"></div>
             </div>
           </details>
 
           <!-- Collapsible: Manual Nutrient Input -->
           <details class="collapsible">
-            <summary>Manual Nutrient Input</summary>
+            <summary>Review / edit parsed nutrients</summary>
             <div class="pt-3 pb-2">
 
               <div class="flex gap-2 mb-4 flex-wrap">

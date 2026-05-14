@@ -37,7 +37,7 @@ const CHART_CONFIG = {
   // Chart behavior
   DEFAULT_NUTRIENT: 'calories',
   DEFAULT_TIMEFRAME: 'week',
-  ENABLE_DEBUG_LOGGING: true
+  ENABLE_DEBUG_LOGGING: false
 };
 
 // Pull border color token for target line

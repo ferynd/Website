@@ -4,7 +4,7 @@
  */
 
 // ===== DEBUGGING CONFIGURATION =====
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 const SHOW_ALL_ERRORS = true;
 
 // Read CSS variables from :root

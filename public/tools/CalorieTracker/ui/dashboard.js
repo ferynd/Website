@@ -24,8 +24,8 @@ import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisU
 // =========================
 const DASHBOARD_CONFIG = {
   // Debug settings
-  ENABLE_BANKING_DEBUG: true, // Set to false to disable banking debug logs
-  LOG_CALCULATION_STEPS: true, // Log detailed calculation steps
+  ENABLE_BANKING_DEBUG: false,
+  LOG_CALCULATION_STEPS: false,
 
   // UI behavior settings
   DEFAULT_COLLAPSED_DETAILS: true, // Start with bank details collapsed
@@ -548,8 +548,114 @@ function renderEnergyOutput() {
     return;
   }
 
-  container.innerHTML = renderAnalysisSection();
+  const dateStr = state.dom.dateInput?.value;
+  let bankingHtml = '';
+  if (dateStr) {
+    const bankingData = calculateBankingData(dateStr);
+    bankingHtml = renderInfoBox() + renderBankingPanel(bankingData) + renderCalcDetailsPanel(bankingData);
+  }
+
+  container.innerHTML = bankingHtml + renderAnalysisSection();
+  setupCollapsibleHandlers();
   initAnalysisEvents();
+}
+
+/**
+ * Render the calculation formula panel for Energy tab.
+ */
+function renderCalcDetailsPanel(bankingData) {
+  const {
+    baseKcal, todaysTrainingBump, bankBalance,
+    sumPast6Actual, sumPastTargets, windowBudget, todayKcalTarget, trainingIntensity
+  } = bankingData;
+
+  return `
+    <div class="section-card p-4 mb-6">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-3">🧮 How Today's Target Was Calculated</h3>
+      <div class="grid grid-cols-1 gap-2 text-sm">
+        <div class="flex justify-between items-center p-2 surface-1 rounded border">
+          <span>7-day window budget:</span>
+          <span class="font-medium">${windowBudget} kcal</span>
+        </div>
+        <div class="flex justify-between items-center p-2 surface-1 rounded border">
+          <span>Past 6 days target:</span>
+          <span class="font-medium">${sumPastTargets} kcal</span>
+        </div>
+        <div class="flex justify-between items-center p-2 surface-1 rounded border">
+          <span>Past 6 days consumed:</span>
+          <span class="font-medium">${sumPast6Actual} kcal</span>
+        </div>
+        ${todaysTrainingBump > 0 ? `
+          <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
+        ` : ''}
+        ${bankBalance !== 0 ? `
+          <div class="flex justify-between items-center p-2 rounded border surface-2">
+            <span>Rolling balance adjustment:</span>
+            <span class="font-medium ${bankBalance > 0 ? 'text-positive' : 'text-negative'}">${bankBalance > 0 ? '+' : ''}${bankBalance} kcal</span>
+          </div>
+        ` : ''}
+        <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
+          <div>${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal today</strong></div>
+          <div>Hit this target and tomorrow resets to ${baseKcal} kcal (rest day).</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render compact calorie + macro summary for the Today tab.
+ */
+function renderTodayCompact(bankingData) {
+  const { todayKcalTarget, proteinG, fatG, carbsG } = bankingData;
+
+  const totals = state.dailyFoodItems.reduce((acc, item) => {
+    const q = parseFloat(item.quantity ?? 0) || 0;
+    acc.calories += q * (parseFloat(item.calories) || 0);
+    acc.protein  += q * (parseFloat(item.protein)  || 0);
+    acc.fat      += q * (parseFloat(item.fat)      || 0);
+    acc.carbs    += q * (parseFloat(item.carbs)    || 0);
+    return acc;
+  }, { calories: 0, protein: 0, fat: 0, carbs: 0 });
+
+  const remaining = todayKcalTarget - totals.calories;
+  const remainColor = remaining >= 0 ? 'text-positive' : 'text-negative';
+
+  const macroRow = (label, actual, target) => {
+    const rem = target - actual;
+    return `
+      <div class="kpi-row">
+        <div class="meta">
+          <span class="label">${label}</span>
+          <span class="current">${Math.round(actual)}g</span>
+          <span class="target">target ${Math.round(target)}g</span>
+          <span class="remain ${remainClass(rem)}">
+            ${rem > 0 ? `${Math.round(rem)}g left` : rem < 0 ? `${Math.abs(Math.round(rem))}g over` : '0g'}
+          </span>
+        </div>
+        <div class="hbar">
+          <div class="hbar-fill ${pctClass(actual, target)}" style="width:${pctWidth(actual, target)}"></div>
+          <div class="hbar-marker" style="left:${markerLeft}"></div>
+        </div>
+      </div>`;
+  };
+
+  return `
+    <div class="mb-4 p-4 surface-2 rounded-lg border text-center">
+      <div class="text-xs text-muted uppercase tracking-wide mb-1">Calories Remaining</div>
+      <div class="text-4xl font-bold ${remainColor}">${Math.round(remaining)}</div>
+      <div class="text-xs text-muted mt-1">${Math.round(totals.calories)} eaten · ${todayKcalTarget} target</div>
+      <div class="hbar mt-2">
+        <div class="hbar-fill ${pctClass(totals.calories, todayKcalTarget)}" style="width:${pctWidth(totals.calories, todayKcalTarget)}"></div>
+        <div class="hbar-marker" style="left:${markerLeft}"></div>
+      </div>
+    </div>
+    <div class="divide-y">
+      ${macroRow('Protein', totals.protein, proteinG)}
+      ${macroRow('Fat (min)', totals.fat, fatG)}
+      ${macroRow('Carbs', totals.carbs, carbsG)}
+    </div>
+  `;
 }
 
 // =========================
@@ -584,18 +690,14 @@ export function updateDashboard() {
     }
 
     const dateStr = state.dom.dateInput.value;
-    const todaysEntry = state.dailyEntries.get(dateStr) || {};
     const bankingData = calculateBankingData(dateStr);
 
     dashboard.innerHTML = `
       <div id="dashboard-errors"></div>
-      ${renderInfoBox()}
-      ${renderBankingPanel(bankingData)}
-      ${renderTodaysPlanPanel(bankingData, todaysEntry)}
+      ${renderTodayCompact(bankingData)}
     `;
 
     renderTodayMacroHeader(bankingData);
-    setupCollapsibleHandlers();
 
     // Re-render the active secondary tab so it stays fresh
     const activeTab = state.activeTab || 'today';

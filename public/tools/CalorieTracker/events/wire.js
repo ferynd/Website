@@ -317,16 +317,34 @@ function wireExportEvents() {
 }
 
 /**
- * Wire up tab button click handlers
+ * Wire up tab button click handlers and keyboard navigation
  */
 function wireTabs() {
   try {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    const tabBtns = Array.from(document.querySelectorAll('.tab-btn'));
+    tabBtns.forEach(btn => {
       btn.addEventListener('click', () => {
         const tabName = btn.dataset.tab;
         if (tabName) activateTab(tabName);
       });
     });
+
+    const tabBar = document.querySelector('.tab-bar');
+    if (tabBar) {
+      tabBar.addEventListener('keydown', (e) => {
+        const current = tabBtns.findIndex(b => b.classList.contains('active'));
+        let next = current;
+        if (e.key === 'ArrowRight') next = (current + 1) % tabBtns.length;
+        else if (e.key === 'ArrowLeft') next = (current - 1 + tabBtns.length) % tabBtns.length;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = tabBtns.length - 1;
+        else return;
+        e.preventDefault();
+        tabBtns[next].focus();
+        activateTab(tabBtns[next].dataset.tab);
+      });
+    }
+
     debugLog('wire', 'Tab events wired');
   } catch (error) {
     handleError('wire-tabs', error, 'Failed to wire tab events');

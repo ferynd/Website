@@ -246,14 +246,16 @@ input:focus, textarea:focus, select:focus {
 
 /* 44 px touch targets on mobile */
 @media (max-width: 767px) {
-  .btn       { min-height: 44px; }
-  .icon-btn  { min-height: 44px; min-width: 44px; }
-  .btn-sm    { min-height: 40px; }
+  .btn        { min-height: 44px; }
+  .icon-btn   { min-height: 44px; min-width: 44px; }
+  .btn-sm     { min-height: 44px; }
+  .btn-subtle { min-height: 44px; }
 }
 
 /* ── Toast message state colors ─────────────────────────────── */
-.bg-green-500 { border-color: hsl(var(--success)) !important; }
-.bg-red-500   { border-color: hsl(var(--error))   !important; }
+.bg-green-500    { border-color: hsl(var(--success)) !important; }
+.bg-red-500      { border-color: hsl(var(--error))   !important; }
+.border-warning  { border-color: hsl(var(--warning)) !important; }
 
 /* ============================================================
    SITE NAV

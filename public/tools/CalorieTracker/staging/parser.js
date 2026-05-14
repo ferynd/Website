@@ -4,7 +4,7 @@
  */
 
 import { nutrientMap, allNutrients } from '../constants.js';
-import { showMessage } from '../utils/ui.js';
+import { showMessage, formatNutrientName } from '../utils/ui.js';
 import { state } from '../state/store.js';
 import { saveDailyEntry, saveTargets } from '../services/firebase.js';
 import { clearStagingArea, updateFoodItemsList } from '../services/data.js';
@@ -23,10 +23,16 @@ const PARSER_CONFIG = {
  */
 export function parseAndStage() {
   const text = document.getElementById('paste-area').value;
-  if (!text) return showMessage('Paste area is empty.', true);
+  const warningEl = document.getElementById('parse-missing-warning');
+
+  if (!text) {
+    if (warningEl) { warningEl.textContent = ''; warningEl.classList.add('hidden'); }
+    return showMessage('Paste area is empty.', true);
+  }
 
   const lines = text.split('\n');
   let valuesFound = 0;
+  const parsed = new Set();
 
   lines.forEach(line => {
     const lowerLine = line.toLowerCase();
@@ -43,12 +49,25 @@ export function parseAndStage() {
           if (element) {
             element.value = parseFloat(match[0]);
             valuesFound++;
+            parsed.add(nutrientKey);
           }
           break; // Move to the next line once a nutrient is found on this one.
         }
       }
     }
   });
+
+  // Show a warning for nutrients not found in the pasted text
+  if (warningEl) {
+    const absent = allNutrients.filter(n => !parsed.has(n));
+    if (absent.length > 0) {
+      warningEl.textContent = `No value detected for: ${absent.map(formatNutrientName).join(', ')}`;
+      warningEl.classList.remove('hidden');
+    } else {
+      warningEl.textContent = '';
+      warningEl.classList.add('hidden');
+    }
+  }
 
   if (valuesFound > 0) {
     showMessage(`Parsed and staged ${valuesFound} fields.`);

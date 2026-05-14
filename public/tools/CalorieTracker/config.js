@@ -38,7 +38,7 @@ export const CONFIG = {
   MAX_DROPDOWN_ITEMS: 10,
 
   // Flag to enable or disable console logging for debugging.
-  DEBUG_MODE: true,
+  DEBUG_MODE: false,
 
   // Duration for UI animations in milliseconds.
   ANIMATION_DURATION: 300,
