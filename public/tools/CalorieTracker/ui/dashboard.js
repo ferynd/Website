@@ -24,8 +24,8 @@ import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisU
 // =========================
 const DASHBOARD_CONFIG = {
   // Debug settings
-  ENABLE_BANKING_DEBUG: true, // Set to false to disable banking debug logs
-  LOG_CALCULATION_STEPS: true, // Log detailed calculation steps
+  ENABLE_BANKING_DEBUG: false,
+  LOG_CALCULATION_STEPS: false,
 
   // UI behavior settings
   DEFAULT_COLLAPSED_DETAILS: true, // Start with bank details collapsed
@@ -397,27 +397,285 @@ export function calculateMicronutrientMetrics(dateStr) {
 }
 
 // =========================
+// TAB MANAGEMENT
+// =========================
+
+const VALID_TABS = ['today', 'nutrients', 'energy', 'profile', 'settings'];
+
+/**
+ * Initialize tabs from URL hash or localStorage without triggering data renders.
+ * Call this once after wire() but before data loads.
+ */
+export function initializeTabs() {
+  try {
+    const hash = location.hash.replace(/^#tab-/, '').replace(/^#/, '');
+    const stored = localStorage.getItem('ct-active-tab');
+    const initial = VALID_TABS.includes(hash) ? hash
+                  : VALID_TABS.includes(stored) ? stored
+                  : 'today';
+
+    state.activeTab = initial;
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const isActive = btn.dataset.tab === initial;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+      panel.classList.toggle('hidden', panel.id !== `tab-${initial}`);
+    });
+
+    const macroHeader = document.getElementById('today-macro-header');
+    if (macroHeader) macroHeader.classList.toggle('hidden', initial !== 'today');
+
+    debugLog('init-tabs', `Initial tab: ${initial}`);
+  } catch (error) {
+    handleError('init-tabs', error, 'Failed to initialize tabs');
+  }
+}
+
+/**
+ * Activate a tab, update URL hash, persist to localStorage, and render content.
+ * @param {string} name - Tab name (today|nutrients|energy|profile|settings)
+ */
+export function activateTab(name) {
+  try {
+    if (!VALID_TABS.includes(name)) return;
+
+    state.activeTab = name;
+    localStorage.setItem('ct-active-tab', name);
+
+    if (history.replaceState) {
+      history.replaceState(null, '', `#tab-${name}`);
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      const isActive = btn.dataset.tab === name;
+      btn.classList.toggle('active', isActive);
+      btn.setAttribute('aria-selected', String(isActive));
+    });
+
+    document.querySelectorAll('.tab-panel').forEach(panel => {
+      panel.classList.toggle('hidden', panel.id !== `tab-${name}`);
+    });
+
+    const macroHeader = document.getElementById('today-macro-header');
+    if (macroHeader) macroHeader.classList.toggle('hidden', name !== 'today');
+
+    if (!state.userId || Object.keys(state.baselineTargets).length === 0) return;
+
+    if (name === 'nutrients') renderNutrientsOutput();
+    else if (name === 'energy') renderEnergyOutput();
+    else if (name === 'settings') populateSettingsForm();
+
+    debugLog('activate-tab', `Activated tab: ${name}`);
+  } catch (error) {
+    handleError('activate-tab', error, 'Failed to activate tab');
+  }
+}
+
+// =========================
+// TAB CONTENT RENDERERS
+// =========================
+
+/**
+ * Render the compact 4-cell macro progress bar into #today-macro-header.
+ */
+function renderTodayMacroHeader(bankingData) {
+  const el = document.getElementById('today-macro-header');
+  if (!el) return;
+
+  const { todayKcalTarget, proteinG, fatG, carbsG } = bankingData;
+
+  const totals = state.dailyFoodItems.reduce((acc, item) => {
+    const q = parseFloat(item.quantity ?? 0) || 0;
+    acc.cal  += q * (parseFloat(item.calories) || 0);
+    acc.pro  += q * (parseFloat(item.protein)  || 0);
+    acc.fat  += q * (parseFloat(item.fat)      || 0);
+    acc.carb += q * (parseFloat(item.carbs)    || 0);
+    return acc;
+  }, { cal: 0, pro: 0, fat: 0, carb: 0 });
+
+  const cell = (label, actual, target) => {
+    const pct = Math.max(0, Math.min(150, target > 0 ? (actual / target) * 100 : 0));
+    const cls = pct >= 100 ? 'good' : pct >= 66 ? 'warn' : 'bad';
+    return `
+      <div class="macro-cell">
+        <span class="macro-cell-label">${label}</span>
+        <span class="macro-cell-value ${pct > 110 ? 'text-negative' : ''}">${Math.round(actual)}/${Math.round(target)}</span>
+        <div class="hbar"><div class="hbar-fill ${cls}" style="width:${pct.toFixed(1)}%"></div></div>
+      </div>`;
+  };
+
+  el.innerHTML =
+    cell('Cal',     totals.cal,  todayKcalTarget) +
+    cell('Protein', totals.pro,  proteinG)        +
+    cell('Fat',     totals.fat,  fatG)            +
+    cell('Carbs',   totals.carb, carbsG);
+}
+
+/**
+ * Render chart + micronutrients into #nutrients-content.
+ */
+function renderNutrientsOutput() {
+  const container = document.getElementById('nutrients-content');
+  if (!container) return;
+
+  if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
+    container.innerHTML = '<p class="text-muted text-center py-8">Log in and set targets to see nutrient data.</p>';
+    return;
+  }
+
+  const dateStr = state.dom.dateInput?.value;
+  if (!dateStr) return;
+
+  const micronutrientMetrics = calculateMicronutrientMetrics(dateStr);
+  container.innerHTML = renderChartSection() + renderMicronutrientSections(micronutrientMetrics);
+
+  initializeChartControls();
+}
+
+/**
+ * Render weight/energy analysis into #energy-content.
+ */
+function renderEnergyOutput() {
+  const container = document.getElementById('energy-content');
+  if (!container) return;
+
+  if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
+    container.innerHTML = '<p class="text-muted text-center py-8">Log in and set targets to see energy analysis.</p>';
+    return;
+  }
+
+  const dateStr = state.dom.dateInput?.value;
+  let bankingHtml = '';
+  if (dateStr) {
+    const bankingData = calculateBankingData(dateStr);
+    bankingHtml = renderInfoBox() + renderBankingPanel(bankingData) + renderCalcDetailsPanel(bankingData);
+  }
+
+  container.innerHTML = bankingHtml + renderAnalysisSection();
+  setupCollapsibleHandlers();
+  initAnalysisEvents();
+}
+
+/**
+ * Render the calculation formula panel for Energy tab.
+ */
+function renderCalcDetailsPanel(bankingData) {
+  const {
+    baseKcal, todaysTrainingBump, bankBalance,
+    sumPast6Actual, sumPastTargets, windowBudget, todayKcalTarget, trainingIntensity
+  } = bankingData;
+
+  return `
+    <div class="section-card p-4 mb-6">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-3">🧮 How Today's Target Was Calculated</h3>
+      <div class="grid grid-cols-1 gap-2 text-sm">
+        <div class="flex justify-between items-center p-2 surface-1 rounded border">
+          <span>7-day window budget:</span>
+          <span class="font-medium">${windowBudget} kcal</span>
+        </div>
+        <div class="flex justify-between items-center p-2 surface-1 rounded border">
+          <span>Past 6 days target:</span>
+          <span class="font-medium">${sumPastTargets} kcal</span>
+        </div>
+        <div class="flex justify-between items-center p-2 surface-1 rounded border">
+          <span>Past 6 days consumed:</span>
+          <span class="font-medium">${sumPast6Actual} kcal</span>
+        </div>
+        ${todaysTrainingBump > 0 ? `
+          <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
+        ` : ''}
+        ${bankBalance !== 0 ? `
+          <div class="flex justify-between items-center p-2 rounded border surface-2">
+            <span>Rolling balance adjustment:</span>
+            <span class="font-medium ${bankBalance > 0 ? 'text-positive' : 'text-negative'}">${bankBalance > 0 ? '+' : ''}${bankBalance} kcal</span>
+          </div>
+        ` : ''}
+        <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
+          <div>${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal today</strong></div>
+          <div>Hit this target and tomorrow resets to ${baseKcal} kcal (rest day).</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render compact calorie + macro summary for the Today tab.
+ */
+function renderTodayCompact(bankingData) {
+  const { todayKcalTarget, proteinG, fatG, carbsG } = bankingData;
+
+  const totals = state.dailyFoodItems.reduce((acc, item) => {
+    const q = parseFloat(item.quantity ?? 0) || 0;
+    acc.calories += q * (parseFloat(item.calories) || 0);
+    acc.protein  += q * (parseFloat(item.protein)  || 0);
+    acc.fat      += q * (parseFloat(item.fat)      || 0);
+    acc.carbs    += q * (parseFloat(item.carbs)    || 0);
+    return acc;
+  }, { calories: 0, protein: 0, fat: 0, carbs: 0 });
+
+  const remaining = todayKcalTarget - totals.calories;
+  const remainColor = remaining >= 0 ? 'text-positive' : 'text-negative';
+
+  const macroRow = (label, actual, target) => {
+    const rem = target - actual;
+    return `
+      <div class="kpi-row">
+        <div class="meta">
+          <span class="label">${label}</span>
+          <span class="current">${Math.round(actual)}g</span>
+          <span class="target">target ${Math.round(target)}g</span>
+          <span class="remain ${remainClass(rem)}">
+            ${rem > 0 ? `${Math.round(rem)}g left` : rem < 0 ? `${Math.abs(Math.round(rem))}g over` : '0g'}
+          </span>
+        </div>
+        <div class="hbar">
+          <div class="hbar-fill ${pctClass(actual, target)}" style="width:${pctWidth(actual, target)}"></div>
+          <div class="hbar-marker" style="left:${markerLeft}"></div>
+        </div>
+      </div>`;
+  };
+
+  return `
+    <div class="mb-4 p-4 surface-2 rounded-lg border text-center">
+      <div class="text-xs text-muted uppercase tracking-wide mb-1">Calories Remaining</div>
+      <div class="text-4xl font-bold ${remainColor}">${Math.round(remaining)}</div>
+      <div class="text-xs text-muted mt-1">${Math.round(totals.calories)} eaten · ${todayKcalTarget} target</div>
+      <div class="hbar mt-2">
+        <div class="hbar-fill ${pctClass(totals.calories, todayKcalTarget)}" style="width:${pctWidth(totals.calories, todayKcalTarget)}"></div>
+        <div class="hbar-marker" style="left:${markerLeft}"></div>
+      </div>
+    </div>
+    <div class="divide-y">
+      ${macroRow('Protein', totals.protein, proteinG)}
+      ${macroRow('Fat (min)', totals.fat, fatG)}
+      ${macroRow('Carbs', totals.carbs, carbsG)}
+    </div>
+  `;
+}
+
+// =========================
 // MAIN DASHBOARD UPDATE
 // =========================
 
 /**
- * Main dashboard update function
+ * Main dashboard update function.
+ * Always re-renders the Today tab output (#dashboard + macro header).
+ * Also re-renders the currently active secondary tab.
  */
 export function updateDashboard() {
   try {
     debugLog('update-start', 'Starting dashboard update');
-    
+
     const { dashboard } = state.dom;
+    if (!dashboard) throw new Error('Dashboard container not found');
 
-    if (!dashboard) {
-      throw new Error('Dashboard container not found');
-    }
-
-    // Clear any previous errors
     const errorContainer = document.getElementById('dashboard-errors');
-    if (errorContainer) {
-      errorContainer.innerHTML = '';
-    }
+    if (errorContainer) errorContainer.innerHTML = '';
 
     if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
       dashboard.innerHTML = `
@@ -432,25 +690,19 @@ export function updateDashboard() {
     }
 
     const dateStr = state.dom.dateInput.value;
-    const todaysEntry = state.dailyEntries.get(dateStr) || {};
     const bankingData = calculateBankingData(dateStr);
-    const micronutrientMetrics = calculateMicronutrientMetrics(dateStr);
 
     dashboard.innerHTML = `
       <div id="dashboard-errors"></div>
-      ${renderInfoBox()}
-      ${renderBankingPanel(bankingData)}
-      ${renderTodaysPlanPanel(bankingData, todaysEntry)}
-      ${renderChartSection()}
-      ${renderAnalysisSection()}
-      ${renderMicronutrientSections(micronutrientMetrics)}
+      ${renderTodayCompact(bankingData)}
     `;
 
-    initializeChartControls();
-    initAnalysisEvents();
+    renderTodayMacroHeader(bankingData);
 
-    // Set up event handlers for collapsible sections
-    setupCollapsibleHandlers();
+    // Re-render the active secondary tab so it stays fresh
+    const activeTab = state.activeTab || 'today';
+    if (activeTab === 'nutrients') renderNutrientsOutput();
+    else if (activeTab === 'energy') renderEnergyOutput();
 
     debugLog('update-complete', 'Dashboard update completed successfully');
 

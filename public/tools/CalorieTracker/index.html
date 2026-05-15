@@ -7,416 +7,329 @@
 
   <!-- UI libs -->
   <link rel="stylesheet" href="/shared-styles.css">
+  <link rel="stylesheet" href="./styles.css">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 
   <!-- Use Poppins to match main site -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-
-  <style>
-    /* ------------------------------------------------------------ */
-    /* CONFIGURATION: Dark theme colors matching main site          */
-    /* ------------------------------------------------------------ */
-    :root {
-      --shadow-1: 0 1px 2px 0 rgb(0 0 0 / 0.30);
-      --shadow-2: 0 6px 24px rgb(0 0 0 / 0.50);
-      --shadow-glow: 0 0 0 2px hsl(var(--accent) / 0.35), 0 0 24px 4px hsl(var(--accent) / 0.35);
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      font-family: 'Poppins', sans-serif;
-      background: hsl(var(--bg));
-      color: hsl(var(--text));
-      margin: 0;
-    }
-
-    /* Utilities used in markup without Tailwind */
-    .p-2 { padding: .5rem; }
-    .p-3 { padding: .75rem; }
-    .p-4 { padding: 1rem; }
-    .p-6 { padding: 1.5rem; }
-    .p-8 { padding: 2rem; }
-    .px-3 { padding-left: .75rem; padding-right: .75rem; }
-    .px-4 { padding-left: 1rem; padding-right: 1rem; }
-    .px-6 { padding-left: 1.5rem; padding-right: 1.5rem; }
-    .py-2 { padding-top: .5rem; padding-bottom: .5rem; }
-    .py-3 { padding-top: .75rem; padding-bottom: .75rem; }
-    .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
-    .pt-2 { padding-top: .5rem; }
-    .pt-3 { padding-top: .75rem; }
-    .pt-4 { padding-top: 1rem; }
-    .pt-6 { padding-top: 1.5rem; }
-    .pr-2 { padding-right: .5rem; }
-    .pr-4 { padding-right: 1rem; }
-
-    .m-0 { margin: 0; }
-    .mb-1 { margin-bottom: .25rem; }
-    .mb-2 { margin-bottom: .5rem; }
-    .mb-3 { margin-bottom: .75rem; }
-    .mb-4 { margin-bottom: 1rem; }
-    .mb-6 { margin-bottom: 1.5rem; }
-    .mb-8 { margin-bottom: 2rem; }
-    .mt-2 { margin-top: .5rem; }
-    .mt-3 { margin-top: .75rem; }
-    .mt-4 { margin-top: 1rem; }
-    .mt-6 { margin-top: 1.5rem; }
-    .mt-8 { margin-top: 2rem; }
-    .my-4 { margin-top: 1rem; margin-bottom: 1rem; }
-
-    .text-sm { font-size: .875rem; }
-    .text-md { font-size: 1rem; }
-    .text-lg { font-size: 1.125rem; }
-    .text-xl { font-size: 1.25rem; }
-    .text-2xl { font-size: 1.5rem; }
-    .text-3xl { font-size: 1.875rem; }
-    .font-medium { font-weight: 500; }
-    .font-semibold { font-weight: 600; }
-    .font-bold { font-weight: 700; }
-
-    .rounded-md { border-radius: .375rem; }
-    .rounded-lg { border-radius: .5rem; }
-    .rounded-xl { border-radius: .75rem; }
-    .rounded-2xl { border-radius: 1rem; }
-
-    .shadow-1 { box-shadow: var(--shadow-1); }
-    .shadow-2 { box-shadow: var(--shadow-2); }
-    .shadow-glow { box-shadow: var(--shadow-glow); }
-
-    .border { border: 1px solid hsl(var(--border)); }
-    .border-b { border-bottom: 1px solid hsl(var(--border)); }
-
-    .flex { display: flex; }
-    .flex-col { flex-direction: column; }
-    .items-center { align-items: center; }
-    .justify-center { justify-content: center; }
-    .justify-between { justify-content: space-between; }
-    .justify-end { justify-content: flex-end; }
-    .flex-grow { flex: 1 1 auto; }
-    .flex-shrink-0 { flex-shrink: 0; }
-    .gap-2 { gap: .5rem; }
-    .gap-4 { gap: 1rem; }
-    .space-x-2 > * + * { margin-left: .5rem; }
-    .space-x-4 > * + * { margin-left: 1rem; }
-    .space-y-2 > * + * { margin-top: .5rem; }
-
-    .grid { display: grid; }
-    .grid-cols-1 { grid-template-columns: repeat(1, minmax(0, 1fr)); }
-    .gap-8 { gap: 2rem; }
-    @media (min-width: 1024px) {
-      .lg\:grid-cols-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-      .lg\:col-span-2 { grid-column: span 2 / span 2; }
-      .lg\:col-span-3 { grid-column: span 3 / span 3; }
-    }
-
-    .hidden { display: none; }
-    .h-fit { height: fit-content; }
-    .h-screen { height: 100vh; }
-    .w-full { width: 100%; }
-    .w-10 { width: 2.5rem; }
-    .h-10 { height: 2.5rem; }
-
-    .relative { position: relative; }
-    .absolute { position: absolute; }
-    .fixed { position: fixed; }
-    .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
-    .top-0 { top: 0; }
-    .top-2 { top: .5rem; }
-    .top-4 { top: 1rem; }
-    .right-4 { right: 1rem; }
-    .bottom-5 { bottom: 1.25rem; }
-    .right-5 { right: 1.25rem; }
-    .z-50 { z-index: 50; }
-
-    /* Custom scrollbar matching dark theme */
-    ::-webkit-scrollbar { width: 8px; }
-    ::-webkit-scrollbar-track { background: hsl(var(--surface-2)); }
-    ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 10px; }
-    ::-webkit-scrollbar-thumb:hover { background: hsl(var(--accent) / 0.5); }
-
-    /* Progress bar animation */
-    .progress-bar-bg { background-color: hsl(var(--surface-3)); }
-    .progress-bar-fill {
-      transition: width .5s ease-in-out;
-      background: linear-gradient(90deg, hsl(var(--accent)), hsl(var(--purple)));
-      height: 8px;
-      border-radius: 999px;
-    }
-
-    /* Card hover effects */
-    .nutrient-card {
-      background: hsl(var(--surface-1));
-      border: 1px solid hsl(var(--border));
-      transition: all .3s ease-in-out;
-      border-radius: .75rem;
-    }
-    .nutrient-card:hover {
-      transform: translateY(-5px);
-      box-shadow: var(--shadow-2);
-      border-color: hsl(var(--accent) / 0.5);
-    }
-
-    /* Chart container */
-    .chart-container { position: relative; height: 400px; margin: 20px 0; }
-
-    /* Food dropdown styling */
-    .food-dropdown { position: relative; }
-    .food-dropdown-list {
-      position: absolute;
-      top: 100%; left: 0; right: 0;
-      background: hsl(var(--surface-2));
-      border: 1px solid hsl(var(--border));
-      border-top: none;
-      border-radius: 0 0 .375rem .375rem;
-      max-height: 200px;
-      overflow-y: auto;
-      z-index: 10;
-      box-shadow: var(--shadow-2);
-    }
-    .food-dropdown-item {
-      padding: 8px 12px;
-      cursor: pointer;
-      border-bottom: 1px solid hsl(var(--border));
-      transition: background-color .2s;
-      color: hsl(var(--text));
-    }
-    .food-dropdown-item:hover { background-color: hsl(var(--surface-3)); }
-    .food-dropdown-item.highlighted {
-      background-color: hsl(var(--accent) / 0.1);
-      border-left: 2px solid hsl(var(--accent));
-    }
-
-    /* Input styling for dark theme */
-    input[type="number"],
-    input[type="text"],
-    input[type="email"],
-    input[type="password"],
-    input[type="date"],
-    textarea,
-    select {
-      background: hsl(var(--surface-2));
-      border: 1px solid hsl(var(--border));
-      color: hsl(var(--text));
-      padding: 0.5rem;
-      border-radius: 0.5rem;
-      transition: all 0.2s;
-      width: 100%;
-    }
-    input::placeholder, textarea::placeholder { color: hsl(var(--text-3)); }
-    input:focus, textarea:focus, select:focus {
-      outline: none;
-      border-color: hsl(var(--accent));
-      box-shadow: 0 0 0 3px hsl(var(--accent) / 0.1);
-    }
-
-    /* Modal styling */
-    .modal-backdrop {
-      background: rgba(0, 0, 0, 0.8);
-      backdrop-filter: blur(4px);
-    }
-    .modal-content {
-      background: hsl(var(--surface-1));
-      border: 1px solid hsl(var(--border));
-      box-shadow: var(--shadow-2);
-    }
-
-    /* Section backgrounds */
-    .section-card {
-      background: hsl(var(--surface-1));
-      border: 1px solid hsl(var(--border));
-      border-radius: 1rem;
-      padding: 1.5rem;
-      box-shadow: var(--shadow-1);
-    }
-
-    /* Staging area styling */
-    .staging-section {
-      background: hsl(var(--surface-2) / 0.5);
-      border: 2px dashed hsl(var(--accent) / 0.3);
-      border-radius: 0.75rem;
-      padding: 1rem;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .staging-section.drag-over {
-      border-color: hsl(var(--accent));
-      background: hsl(var(--accent) / 0.08);
-    }
-
-    /* Food items container */
-    .food-items-container {
-      min-height: 120px;
-      background: hsl(var(--surface-2) / 0.3);
-      border: 1px solid hsl(var(--border));
-      border-radius: 0.5rem;
-    }
-
-    #message-box {
-      background: hsl(var(--surface-1));
-      border: 1px solid hsl(var(--accent));
-      box-shadow: var(--shadow-glow);
-      border-radius: .75rem;
-    }
-
-    /* Sticky headings background fix */
-    .sticky { position: sticky; }
-    .top-0 { top: 0; }
-    .max-h-\[45vh\] { max-height: 45vh; }
-    .max-h-\[70vh\] { max-height: 70vh; }
-    .max-h-\[90vh\] { max-height: 90vh; }
-    .overflow-y-auto { overflow-y: auto; }
-  </style>
 </head>
 
 <body>
-  <nav class="surface-1 text-primary p-4 border-b border-default">
+  <nav class="site-nav">
     <a href="/" class="text-accent" style="text-decoration:none;">
       ← Back to Hub
     </a>
   </nav>
 
-  <!-- Main Application Body -->
+  <!-- Loading spinner -->
   <div id="loader" class="flex justify-center items-center h-screen">
     <i class="fas fa-spinner fa-spin fa-3x text-accent"></i>
   </div>
 
-  <div id="main-content" class="hidden surface-1 text-primary">
-    <header class="section-card surface-1 text-primary p-6 mb-8 flex justify-between items-center">
-      <div class="flex items-center">
-        <i class="fas fa-chart-pie text-3xl text-accent" style="margin-right:.75rem;"></i>
-        <h1 class="text-2xl font-bold">Rolling Balance Nutrition Tracker</h1>
-      </div>
-      <div class="flex items-center space-x-4">
-        <span id="user-status" class="text-primary text-sm hidden"></span>
-        <button id="open-login-btn" class="btn btn-primary">Login / Sign Up</button>
-        <button id="logout-btn" class="hidden btn btn-secondary">Logout</button>
-        <button id="open-settings-btn" class="btn btn-secondary" title="Settings"><i class="fas fa-cog"></i></button>
-      </div>
-    </header>
+  <!-- ====================================================
+       MAIN APPLICATION
+       ==================================================== -->
+  <div id="main-content" class="hidden">
 
-    <main class="p-4 grid grid-cols-1 lg:grid-cols-5 gap-8 text-primary">
-      <!-- LEFT COLUMN -->
-      <div class="lg:col-span-2 section-card surface-1 text-primary h-fit">
-        <h2 class="text-2xl font-bold mb-4 text-secondary">Daily Log</h2>
-
-        <div class="mb-4">
-          <label for="date-input" class="block text-sm font-medium text-primary mb-1">Date</label>
-          <input type="date" id="date-input">
+    <!-- STICKY APP BAR: header + tabs + macro summary -->
+    <div id="app-bar">
+      <header class="app-header">
+        <div class="app-header-title">
+          <i class="fas fa-chart-pie text-accent" style="font-size:1.25rem;flex-shrink:0;"></i>
+          <h1 class="text-primary">Rolling Balance Nutrition Tracker</h1>
         </div>
-
-        <div class="mb-4">
-          <label for="training-bump" class="block text-sm font-medium text-primary mb-1">Training Bump</label>
-          <select id="training-bump">
-            <option value="0">Rest Day (0 kcal)</option>
-            <option value="100">Light Lift ≤45min (+100 kcal)</option>
-            <option value="280">Hard Lift 60-90min (+280 kcal)</option>
-            <option value="400">HIIT/Endurance ≥60min (+400 kcal)</option>
-          </select>
-        </div>
-
-        <div class="mb-4">
-          <label for="paste-area" class="block text-sm font-medium text-primary mb-1">Paste Log to Stage</label>
-          <textarea id="paste-area" rows="4" placeholder="Paste your log here..."></textarea>
-          <button type="button" id="parse-btn" class="w-full mt-2 btn btn-primary">
-            <i class="fas fa-arrow-down" style="margin-right:.5rem;"></i>Parse to Staging Area
+        <div class="app-header-controls">
+          <span id="user-status" class="text-secondary text-sm hidden"></span>
+          <button id="open-login-btn" class="btn btn-primary btn-sm">Login / Sign Up</button>
+          <button id="logout-btn" class="hidden btn btn-secondary btn-sm">Logout</button>
+          <button id="open-settings-btn" class="btn btn-secondary icon-btn" title="Settings" aria-label="Settings">
+            <i class="fas fa-cog"></i>
           </button>
         </div>
+      </header>
 
-        <hr class="my-4 border-default">
-        <h3 class="text-xl font-semibold mb-2 text-secondary">Staging Area</h3>
+      <nav class="tab-bar" role="tablist" aria-label="App sections">
+        <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today">Today</button>
+        <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients">Nutrients</button>
+        <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy">Energy</button>
+        <button id="tab-btn-profile"   class="tab-btn"        data-tab="profile"   role="tab" aria-selected="false" aria-controls="tab-profile">Profile &amp; Goals</button>
+        <button id="tab-btn-settings"  class="tab-btn"        data-tab="settings"  role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
+      </nav>
 
-        <div class="flex justify-between items-center mb-4">
-          <div class="flex gap-2">
-            <button type="button" id="replace-day-btn" class="btn btn-secondary text-sm" title="Replace today's entire log with staged values">Replace Day</button>
-            <button type="button" id="stage-to-targets-btn" class="btn btn-secondary text-sm" title="Update your baseline targets with staged values">Update Targets</button>
+      <!-- Compact macro progress bar (Today tab only) -->
+      <div id="today-macro-header" class="macro-summary-bar hidden" aria-live="polite"></div>
+    </div><!-- /#app-bar -->
+
+
+    <!-- ══════════════════════════════════════════════════
+         TODAY TAB
+         ══════════════════════════════════════════════════ -->
+    <div id="tab-today" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-today">
+      <div class="today-layout">
+
+        <!-- ── Input column ── -->
+        <div class="today-inputs">
+          <h2 class="text-xl font-bold mb-4 text-secondary">Daily Log</h2>
+
+          <!-- Date -->
+          <div class="mb-4">
+            <label for="date-input" class="block text-sm font-medium text-primary mb-1">Date</label>
+            <input type="date" id="date-input">
           </div>
-        </div>
 
-        <!-- Food Database -->
-        <div class="mb-4 p-3 staging-section">
-          <div class="flex justify-between items-center mb-3">
-            <label class="block text-sm font-medium text-primary">Food Item Database</label>
-            <div class="flex gap-2">
-              <button type="button" id="save-food-item-btn" class="btn btn-primary text-sm">
-                <i class="fas fa-save" style="margin-right:.375rem;"></i>Save Food
-              </button>
-              <button type="button" id="open-food-manager-btn" class="btn btn-secondary text-sm">
-                <i class="fas fa-list" style="margin-right:.375rem;"></i>Manage Foods
-              </button>
+          <!-- Training Bump -->
+          <div class="mb-4">
+            <label for="training-bump" class="block text-sm font-medium text-primary mb-1">Training Bump</label>
+            <select id="training-bump">
+              <option value="0">Rest Day (0 kcal)</option>
+              <option value="100">Light Lift ≤45min (+100 kcal)</option>
+              <option value="280">Hard Lift 60-90min (+280 kcal)</option>
+              <option value="400">HIIT/Endurance ≥60min (+400 kcal)</option>
+            </select>
+          </div>
+
+          <!-- Food Log -->
+          <div class="mb-2 staging-section">
+            <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
+              <label class="block text-sm font-medium text-primary">Food Item Database</label>
+              <div class="flex gap-2">
+                <button type="button" id="save-food-item-btn" class="btn btn-primary btn-sm">
+                  <i class="fas fa-save mr-2"></i>Save
+                </button>
+                <button type="button" id="open-food-manager-btn" class="btn btn-secondary btn-sm">
+                  <i class="fas fa-list mr-2"></i>Manage
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div class="action-buttons-row mb-3 flex gap-2">
-            <div class="food-input-container flex-grow">
-              <div class="food-dropdown">
+            <div class="flex gap-2 mb-3">
+              <div class="food-dropdown flex-1 min-w-0">
                 <input type="text" id="food-item-input" placeholder="Enter or select food name...">
                 <div id="food-dropdown" class="food-dropdown-list hidden"></div>
               </div>
+              <button type="button" id="add-day-btn" class="btn btn-primary icon-btn shrink-0" title="Add to log" aria-label="Add to log">
+                <i class="fas fa-plus"></i>
+              </button>
+              <button type="button" id="subtract-day-btn" class="btn btn-secondary icon-btn shrink-0" title="Subtract from log" aria-label="Subtract from log">
+                <i class="fas fa-minus"></i>
+              </button>
             </div>
-            <button type="button" id="add-day-btn" class="btn btn-primary icon-btn" title="Add" aria-label="Add">
-              <i class="fas fa-plus"></i>
-            </button>
-            <button type="button" id="subtract-day-btn" class="btn btn-secondary icon-btn" title="Subtract" aria-label="Subtract">
-              <i class="fas fa-minus"></i>
-            </button>
+
+            <div>
+              <h4 class="text-sm font-semibold text-secondary mb-2">Today's Food Items:</h4>
+              <div id="food-items-list" class="food-items-container space-y-2 overflow-y-auto p-2"></div>
+            </div>
           </div>
 
-          <div class="mt-3">
-            <h4 class="text-sm font-semibold text-secondary mb-2">Today's Food Items:</h4>
-            <div id="food-items-list" class="food-items-container space-y-2 overflow-y-auto p-2"></div>
-          </div>
+          <!-- Collapsible: Paste & Parse -->
+          <details class="collapsible">
+            <summary>Paste &amp; Parse</summary>
+            <div class="pt-3 pb-2">
+              <label for="paste-area" class="block text-sm font-medium text-primary mb-1">Paste Log to Stage</label>
+              <textarea id="paste-area" rows="4" placeholder="Paste your log here..."></textarea>
+              <button type="button" id="parse-btn" class="w-full mt-2 btn btn-primary">
+                <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
+              </button>
+              <div id="parse-missing-warning" class="hidden mt-2 p-2 rounded text-xs text-warning surface-2 border border-warning"></div>
+            </div>
+          </details>
+
+          <!-- Collapsible: Manual Nutrient Input -->
+          <details class="collapsible">
+            <summary>Review / edit parsed nutrients</summary>
+            <div class="pt-3 pb-2">
+
+              <div class="flex gap-2 mb-4 flex-wrap">
+                <button type="button" id="replace-day-btn" class="btn btn-secondary btn-sm"
+                  title="Replace today's entire log with staged values">Replace Day</button>
+                <button type="button" id="stage-to-targets-btn" class="btn btn-secondary btn-sm"
+                  title="Update your baseline targets with staged values">Update Targets</button>
+              </div>
+
+              <div class="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
+                <h4 class="text-lg font-semibold text-secondary staging-sticky">Macros</h4>
+                <div>
+                  <label for="actual-quantity" class="block text-sm font-medium text-secondary mb-1">Qty</label>
+                  <input id="actual-quantity" type="number" step="0.01" min="0" value="1">
+                </div>
+                <div><label for="actual-calories" class="block text-sm font-medium text-primary mb-1">Calories</label><input type="number" step="any" id="actual-calories"></div>
+                <div><label for="actual-protein"  class="block text-sm font-medium text-primary mb-1">Protein (g)</label><input type="number" step="any" id="actual-protein"></div>
+                <div><label for="actual-carbs"    class="block text-sm font-medium text-primary mb-1">Carbs (g)</label><input type="number" step="any" id="actual-carbs"></div>
+                <div><label for="actual-fat"      class="block text-sm font-medium text-primary mb-1">Fat (g)</label><input type="number" step="any" id="actual-fat"></div>
+
+                <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Daily Vitamins</h4>
+                <div><label for="actual-vitaminB12" class="block text-sm font-medium text-primary mb-1">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12"></div>
+                <div><label for="actual-folate"     class="block text-sm font-medium text-primary mb-1">Folate (mcg)</label><input type="number" step="any" id="actual-folate"></div>
+                <div><label for="actual-vitaminC"   class="block text-sm font-medium text-primary mb-1">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC"></div>
+                <div><label for="actual-vitaminB6"  class="block text-sm font-medium text-primary mb-1">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6"></div>
+
+                <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Averaged Vitamins</h4>
+                <div><label for="actual-vitaminA" class="block text-sm font-medium text-primary mb-1">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA"></div>
+                <div><label for="actual-vitaminD" class="block text-sm font-medium text-primary mb-1">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD"></div>
+                <div><label for="actual-vitaminE" class="block text-sm font-medium text-primary mb-1">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE"></div>
+                <div><label for="actual-vitaminK" class="block text-sm font-medium text-primary mb-1">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK"></div>
+
+                <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Daily Minerals</h4>
+                <div><label for="actual-iron"      class="block text-sm font-medium text-primary mb-1">Iron (mg)</label><input type="number" step="any" id="actual-iron"></div>
+                <div><label for="actual-calcium"   class="block text-sm font-medium text-primary mb-1">Calcium (mg)</label><input type="number" step="any" id="actual-calcium"></div>
+                <div><label for="actual-magnesium" class="block text-sm font-medium text-primary mb-1">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium"></div>
+                <div><label for="actual-zinc"      class="block text-sm font-medium text-primary mb-1">Zinc (mg)</label><input type="number" step="any" id="actual-zinc"></div>
+                <div><label for="actual-potassium" class="block text-sm font-medium text-primary mb-1">Potassium (mg)</label><input type="number" step="any" id="actual-potassium"></div>
+                <div><label for="actual-sodium"    class="block text-sm font-medium text-primary mb-1">Sodium (mg)</label><input type="number" step="any" id="actual-sodium"></div>
+
+                <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Averaged Minerals</h4>
+                <div><label for="actual-selenium"   class="block text-sm font-medium text-primary mb-1">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium"></div>
+                <div><label for="actual-iodine"     class="block text-sm font-medium text-primary mb-1">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine"></div>
+                <div><label for="actual-phosphorus" class="block text-sm font-medium text-primary mb-1">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus"></div>
+
+                <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Optional</h4>
+                <div><label for="actual-omega3"  class="block text-sm font-medium text-primary mb-1">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3"></div>
+                <div><label for="actual-fiber"   class="block text-sm font-medium text-primary mb-1">Fiber (g)</label><input type="number" step="any" id="actual-fiber"></div>
+                <div><label for="actual-choline" class="block text-sm font-medium text-primary mb-1">Choline (mg)</label><input type="number" step="any" id="actual-choline"></div>
+              </div>
+            </div>
+          </details>
+        </div><!-- /.today-inputs -->
+
+        <!-- ── Dashboard output column ── -->
+        <div class="today-output">
+          <div id="dashboard" class="text-primary"></div>
         </div>
 
-        <!-- Staging inputs -->
-        <div class="space-y-3 max-h-[45vh] overflow-y-auto pr-2">
-          <h4 class="text-lg font-semibold text-secondary pt-2 sticky top-0" style="background: hsl(var(--surface-1));">Macros</h4>
-          <div><label for="actual-calories" class="block text-sm font-medium text-primary">Calories</label><input type="number" step="any" id="actual-calories"></div>
-          <div>
-            <label for="actual-quantity" class="block text-sm font-medium text-secondary">Qty</label>
-            <input id="actual-quantity" type="number" step="0.01" min="0" value="1" class="input">
+      </div><!-- /.today-layout -->
+    </div><!-- /#tab-today -->
+
+
+    <!-- ══════════════════════════════════════════════════
+         NUTRIENTS TAB
+         ══════════════════════════════════════════════════ -->
+    <div id="tab-nutrients" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-nutrients">
+      <div class="tab-content-inner">
+        <div id="nutrients-content" class="text-primary"></div>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         ENERGY TAB
+         ══════════════════════════════════════════════════ -->
+    <div id="tab-energy" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-energy">
+      <div class="tab-content-inner">
+        <div id="energy-content" class="text-primary"></div>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         PROFILE & GOALS TAB
+         ══════════════════════════════════════════════════ -->
+    <div id="tab-profile" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-profile">
+      <div class="tab-content-inner text-center py-8">
+        <i class="fas fa-user-circle text-accent" style="font-size:3rem;"></i>
+        <h2 class="text-xl font-semibold text-secondary mt-4 mb-2">Profile &amp; Goals</h2>
+        <p class="text-muted">Body metrics and goal controls coming soon.</p>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         SETTINGS TAB  (was a modal)
+         ══════════════════════════════════════════════════ -->
+    <div id="tab-settings" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-settings">
+      <div class="settings-panel">
+        <h2 class="text-2xl font-bold mb-6 text-secondary">Set Baseline Targets &amp; Configuration</h2>
+
+        <form id="settings-form" class="space-y-4">
+
+          <div class="settings-section">
+            <h3 class="text-lg font-semibold text-secondary mb-4">Macros</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-calories" class="block text-sm font-medium text-primary mb-1">Calories</label><input type="number" step="any" id="target-calories"></div>
+              <div><label for="target-protein"  class="block text-sm font-medium text-primary mb-1">Protein (g)</label><input type="number" step="any" id="target-protein"></div>
+              <div><label for="target-carbs"    class="block text-sm font-medium text-primary mb-1">Carbs (g)</label><input type="number" step="any" id="target-carbs"></div>
+              <div><label for="target-fat"      class="block text-sm font-medium text-primary mb-1">Fat (g)</label><input type="number" step="any" id="target-fat"></div>
+            </div>
           </div>
-          <div><label for="actual-protein" class="block text-sm font-medium text-primary">Protein (g)</label><input type="number" step="any" id="actual-protein"></div>
-          <div><label for="actual-carbs" class="block text-sm font-medium text-primary">Carbs (g)</label><input type="number" step="any" id="actual-carbs"></div>
-          <div><label for="actual-fat" class="block text-sm font-medium text-primary">Fat (g)</label><input type="number" step="any" id="actual-fat"></div>
 
-          <h4 class="text-lg font-semibold text-secondary pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Daily Vitamins</h4>
-          <div><label for="actual-vitaminB12" class="block text-sm font-medium text-primary">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12"></div>
-          <div><label for="actual-folate" class="block text-sm font-medium text-primary">Folate (mcg)</label><input type="number" step="any" id="actual-folate"></div>
-          <div><label for="actual-vitaminC" class="block text-sm font-medium text-primary">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC"></div>
-          <div><label for="actual-vitaminB6" class="block text-sm font-medium text-primary">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6"></div>
+          <div class="settings-section">
+            <h3 class="text-lg font-semibold text-secondary mb-4">Additional Macro Settings</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div>
+                <label for="target-fatMinimum" class="block text-sm font-medium text-primary mb-1">Minimum Fat (g)</label>
+                <input type="number" step="any" id="target-fatMinimum" title="Minimum daily fat intake in grams (default: 50)">
+              </div>
+            </div>
+          </div>
 
-          <h4 class="text-lg font-semibold text-secondary pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Averaged Vitamins</h4>
-          <div><label for="actual-vitaminA" class="block text-sm font-medium text-primary">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA"></div>
-          <div><label for="actual-vitaminD" class="block text-sm font-medium text-primary">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD"></div>
-          <div><label for="actual-vitaminE" class="block text-sm font-medium text-primary">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE"></div>
-          <div><label for="actual-vitaminK" class="block text-sm font-medium text-primary">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK"></div>
+          <div class="settings-section">
+            <h3 class="text-lg font-semibold text-secondary mb-4">Daily Vitamins (Water-Soluble)</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-vitaminB12" class="block text-sm font-medium text-primary mb-1">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12"></div>
+              <div><label for="target-folate"     class="block text-sm font-medium text-primary mb-1">Folate (mcg)</label><input type="number" step="any" id="target-folate"></div>
+              <div><label for="target-vitaminC"   class="block text-sm font-medium text-primary mb-1">Vitamin C (mg)</label><input type="number" step="any" id="target-vitaminC"></div>
+              <div><label for="target-vitaminB6"  class="block text-sm font-medium text-primary mb-1">Vitamin B6 (mg)</label><input type="number" step="any" id="target-vitaminB6"></div>
+            </div>
+          </div>
 
-          <h4 class="text-lg font-semibold text-secondary pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Daily Minerals</h4>
-          <div><label for="actual-iron" class="block text-sm font-medium text-primary">Iron (mg)</label><input type="number" step="any" id="actual-iron"></div>
-          <div><label for="actual-calcium" class="block text-sm font-medium text-primary">Calcium (mg)</label><input type="number" step="any" id="actual-calcium"></div>
-          <div><label for="actual-magnesium" class="block text-sm font-medium text-primary">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium"></div>
-          <div><label for="actual-zinc" class="block text-sm font-medium text-primary">Zinc (mg)</label><input type="number" step="any" id="actual-zinc"></div>
-          <div><label for="actual-potassium" class="block text-sm font-medium text-primary">Potassium (mg)</label><input type="number" step="any" id="actual-potassium"></div>
-          <div><label for="actual-sodium" class="block text-sm font-medium text-primary">Sodium (mg)</label><input type="number" step="any" id="actual-sodium"></div>
+          <div class="settings-section">
+            <h3 class="text-lg font-semibold text-secondary mb-4">Averaged Vitamins (Fat-Soluble)</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-vitaminA" class="block text-sm font-medium text-primary mb-1">Vitamin A (mcg)</label><input type="number" step="any" id="target-vitaminA"></div>
+              <div><label for="target-vitaminD" class="block text-sm font-medium text-primary mb-1">Vitamin D (mcg)</label><input type="number" step="any" id="target-vitaminD"></div>
+              <div><label for="target-vitaminE" class="block text-sm font-medium text-primary mb-1">Vitamin E (mg)</label><input type="number" step="any" id="target-vitaminE"></div>
+              <div><label for="target-vitaminK" class="block text-sm font-medium text-primary mb-1">Vitamin K (mcg)</label><input type="number" step="any" id="target-vitaminK"></div>
+            </div>
+          </div>
 
-          <h4 class="text-lg font-semibold text-secondary pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Averaged Minerals</h4>
-          <div><label for="actual-selenium" class="block text-sm font-medium text-primary">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium"></div>
-          <div><label for="actual-iodine" class="block text-sm font-medium text-primary">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine"></div>
-          <div><label for="actual-phosphorus" class="block text-sm font-medium text-primary">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus"></div>
+          <div class="settings-section">
+            <h3 class="text-lg font-semibold text-secondary mb-4">Daily Minerals</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-iron"      class="block text-sm font-medium text-primary mb-1">Iron (mg)</label><input type="number" step="any" id="target-iron"></div>
+              <div><label for="target-calcium"   class="block text-sm font-medium text-primary mb-1">Calcium (mg)</label><input type="number" step="any" id="target-calcium"></div>
+              <div><label for="target-magnesium" class="block text-sm font-medium text-primary mb-1">Magnesium (mg)</label><input type="number" step="any" id="target-magnesium"></div>
+              <div><label for="target-zinc"      class="block text-sm font-medium text-primary mb-1">Zinc (mg)</label><input type="number" step="any" id="target-zinc"></div>
+              <div><label for="target-potassium" class="block text-sm font-medium text-primary mb-1">Potassium (mg)</label><input type="number" step="any" id="target-potassium"></div>
+              <div><label for="target-sodium"    class="block text-sm font-medium text-primary mb-1">Sodium (mg)</label><input type="number" step="any" id="target-sodium"></div>
+            </div>
+          </div>
 
-          <h4 class="text-lg font-semibold text-secondary pt-4 sticky top-0" style="background: hsl(var(--surface-1));">Optional</h4>
-          <div><label for="actual-omega3" class="block text-sm font-medium text-primary">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3"></div>
-          <div><label for="actual-fiber" class="block text-sm font-medium text-primary">Fiber (g)</label><input type="number" step="any" id="actual-fiber"></div>
-          <div><label for="actual-choline" class="block text-sm font-medium text-primary">Choline (mg)</label><input type="number" step="any" id="actual-choline"></div>
-        </div>
-      </div>
+          <div class="settings-section">
+            <h3 class="text-lg font-semibold text-secondary mb-4">Averaged Minerals</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-selenium"   class="block text-sm font-medium text-primary mb-1">Selenium (mcg)</label><input type="number" step="any" id="target-selenium"></div>
+              <div><label for="target-iodine"     class="block text-sm font-medium text-primary mb-1">Iodine (mcg)</label><input type="number" step="any" id="target-iodine"></div>
+              <div><label for="target-phosphorus" class="block text-sm font-medium text-primary mb-1">Phosphorus (mg)</label><input type="number" step="any" id="target-phosphorus"></div>
+            </div>
+          </div>
 
-      <!-- RIGHT COLUMN -->
-      <div class="lg:col-span-3">
-        <div id="dashboard" class="surface-1 text-primary"></div>
-      </div>
-    </main>
-  </div>
+          <div class="settings-section">
+            <h3 class="text-lg font-semibold text-secondary mb-4">Optional Nutrients</h3>
+            <div class="grid grid-cols-1 gap-4">
+              <div><label for="target-omega3"  class="block text-sm font-medium text-primary mb-1">Omega-3 (g)</label><input type="number" step="any" id="target-omega3"></div>
+              <div><label for="target-fiber"   class="block text-sm font-medium text-primary mb-1">Fiber (g)</label><input type="number" step="any" id="target-fiber"></div>
+              <div><label for="target-choline" class="block text-sm font-medium text-primary mb-1">Choline (mg)</label><input type="number" step="any" id="target-choline"></div>
+            </div>
+          </div>
+
+          <!-- Actions row -->
+          <div class="flex justify-between items-center flex-wrap gap-3">
+            <button type="button" id="export-targets-json-btn"    class="btn btn-secondary btn-sm">Export Targets (JSON)</button>
+            <button type="button" id="export-saved-foods-csv-btn" class="btn btn-secondary btn-sm">Export Saved Foods (CSV)</button>
+            <button type="button" id="export-all-data-btn"        class="btn btn-secondary btn-sm">Export Daily Log (CSV)</button>
+            <button type="submit" class="btn btn-primary">Save Targets</button>
+          </div>
+
+        </form>
+      </div><!-- /.settings-panel -->
+    </div><!-- /#tab-settings -->
+
+  </div><!-- /#main-content -->
+
+
+  <!-- ====================================================
+       MODALS (login, food manager, duplicate, blank name, confirm)
+       ==================================================== -->
 
   <!-- Login Modal -->
   <div id="login-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
@@ -426,119 +339,25 @@
 
       <form id="auth-form" class="space-y-4">
         <div>
-          <label for="email-input" class="block text-sm font-medium text-primary">Email</label>
-          <input type="email" id="email-input" required>
+          <label for="email-input"    class="block text-sm font-medium text-primary mb-1">Email</label>
+          <input type="email"    id="email-input"    required>
         </div>
         <div>
-          <label for="password-input" class="block text-sm font-medium text-primary">Password</label>
+          <label for="password-input" class="block text-sm font-medium text-primary mb-1">Password</label>
           <input type="password" id="password-input" required>
         </div>
         <div class="flex space-x-2 pt-2">
-          <button type="button" id="login-btn" class="w-full btn btn-secondary">Login</button>
+          <button type="button" id="login-btn"  class="w-full btn btn-secondary">Login</button>
           <button type="button" id="signup-btn" class="w-full btn btn-primary">Sign Up</button>
         </div>
       </form>
 
       <div class="my-4 flex items-center">
-        <hr class="flex-grow border-b border-default">
+        <hr class="flex-1" style="border-color:hsl(var(--border))">
         <span class="mx-2 text-muted text-sm">OR</span>
-        <hr class="flex-grow border-b border-default">
+        <hr class="flex-1" style="border-color:hsl(var(--border))">
       </div>
       <button id="guest-btn" class="w-full btn btn-muted">Continue as Guest</button>
-    </div>
-  </div>
-
-  <!-- Settings Modal -->
-  <div id="settings-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
-    <div class="modal-content surface-1 text-primary rounded-xl p-8 w-full max-w-4xl max-h-[90vh] relative">
-      <button id="close-settings-btn" class="absolute top-4 right-4 btn btn-ghost icon-btn" title="Close" aria-label="Close">&times;</button>
-      <h2 class="text-2xl font-bold mb-6 text-secondary">Set Baseline Targets & Configuration</h2>
-
-      <form id="settings-form" class="overflow-y-auto max-h-[70vh] pr-4">
-        <div class="grid grid-cols-1 gap-4">
-          <!-- Macros -->
-          <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Macros</h3>
-            <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-calories" class="block text-sm font-medium text-primary">Calories</label><input type="number" step="any" id="target-calories"></div>
-              <div><label for="target-protein" class="block text-sm font-medium text-primary">Protein (g)</label><input type="number" step="any" id="target-protein"></div>
-              <div><label for="target-carbs" class="block text-sm font-medium text-primary">Carbs (g)</label><input type="number" step="any" id="target-carbs"></div>
-              <div><label for="target-fat" class="block text-sm font-medium text-primary">Fat (g)</label><input type="number" step="any" id="target-fat"></div>
-            </div>
-          </div>
-
-          <!-- Additional Macro Settings -->
-          <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Additional Macro Settings</h3>
-            <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-fatMinimum" class="block text-sm font-medium text-primary">Minimum Fat (g)</label><input type="number" step="any" id="target-fatMinimum" title="Minimum daily fat intake in grams (default: 50)"></div>
-            </div>
-          </div>
-
-          <!-- Daily Vitamins -->
-          <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Daily Vitamins (Water-Soluble)</h3>
-            <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-vitaminB12" class="block text-sm font-medium text-primary">Vitamin B12 (mcg)</label><input type="number" step="any" id="target-vitaminB12"></div>
-              <div><label for="target-folate" class="block text-sm font-medium text-primary">Folate (mcg)</label><input type="number" step="any" id="target-folate"></div>
-              <div><label for="target-vitaminC" class="block text-sm font-medium text-primary">Vitamin C (mg)</label><input type="number" step="any" id="target-vitaminC"></div>
-              <div><label for="target-vitaminB6" class="block text-sm font-medium text-primary">Vitamin B6 (mg)</label><input type="number" step="any" id="target-vitaminB6"></div>
-            </div>
-          </div>
-
-          <!-- Averaged Vitamins -->
-          <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Averaged Vitamins (Fat-Soluble)</h3>
-            <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-vitaminA" class="block text-sm font-medium text-primary">Vitamin A (mcg)</label><input type="number" step="any" id="target-vitaminA"></div>
-              <div><label for="target-vitaminD" class="block text-sm font-medium text-primary">Vitamin D (mcg)</label><input type="number" step="any" id="target-vitaminD"></div>
-              <div><label for="target-vitaminE" class="block text-sm font-medium text-primary">Vitamin E (mg)</label><input type="number" step="any" id="target-vitaminE"></div>
-              <div><label for="target-vitaminK" class="block text-sm font-medium text-primary">Vitamin K (mcg)</label><input type="number" step="any" id="target-vitaminK"></div>
-            </div>
-          </div>
-
-          <!-- Daily Minerals -->
-          <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Daily Minerals</h3>
-            <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-iron" class="block text-sm font-medium text-primary">Iron (mg)</label><input type="number" step="any" id="target-iron"></div>
-              <div><label for="target-calcium" class="block text-sm font-medium text-primary">Calcium (mg)</label><input type="number" step="any" id="target-calcium"></div>
-              <div><label for="target-magnesium" class="block text-sm font-medium text-primary">Magnesium (mg)</label><input type="number" step="any" id="target-magnesium"></div>
-              <div><label for="target-zinc" class="block text-sm font-medium text-primary">Zinc (mg)</label><input type="number" step="any" id="target-zinc"></div>
-              <div><label for="target-potassium" class="block text-sm font-medium text-primary">Potassium (mg)</label><input type="number" step="any" id="target-potassium"></div>
-              <div><label for="target-sodium" class="block text-sm font-medium text-primary">Sodium (mg)</label><input type="number" step="any" id="target-sodium"></div>
-            </div>
-          </div>
-
-          <!-- Averaged Minerals -->
-          <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Averaged Minerals</h3>
-            <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-selenium" class="block text-sm font-medium text-primary">Selenium (mcg)</label><input type="number" step="any" id="target-selenium"></div>
-              <div><label for="target-iodine" class="block text-sm font-medium text-primary">Iodine (mcg)</label><input type="number" step="any" id="target-iodine"></div>
-              <div><label for="target-phosphorus" class="block text-sm font-medium text-primary">Phosphorus (mg)</label><input type="number" step="any" id="target-phosphorus"></div>
-            </div>
-          </div>
-
-          <!-- Optional Nutrients -->
-          <div class="section-card surface-1 text-primary">
-            <h3 class="text-lg font-semibold text-secondary mb-2">Optional Nutrients</h3>
-            <div class="grid grid-cols-1 gap-4">
-              <div><label for="target-omega3" class="block text-sm font-medium text-primary">Omega-3 (g)</label><input type="number" step="any" id="target-omega3"></div>
-              <div><label for="target-fiber" class="block text-sm font-medium text-primary">Fiber (g)</label><input type="number" step="any" id="target-fiber"></div>
-              <div><label for="target-choline" class="block text-sm font-medium text-primary">Choline (mg)</label><input type="number" step="any" id="target-choline"></div>
-            </div>
-          </div>
-
-          <!-- Actions -->
-          <div class="flex justify-between items-center">
-            <button type="button" id="export-targets-json-btn" class="btn btn-secondary text-sm">Export Targets (JSON)</button>
-            <button type="button" id="export-saved-foods-csv-btn" class="btn btn-secondary text-sm">Export Saved Foods (CSV)</button>
-            <button type="button" id="export-all-data-btn" class="btn btn-secondary text-sm">Export Daily Log (CSV)</button>
-            <button type="submit" class="btn btn-primary">Save Targets</button>
-          </div>
-        </div>
-      </form>
     </div>
   </div>
 
@@ -570,14 +389,14 @@
         <p class="mb-4">The food name is blank. Would you like to save it as "(blank)" or enter a name?</p>
         <div class="flex justify-center gap-4">
           <button id="confirm-blank-name-btn" class="btn btn-secondary">Save as (blank)</button>
-          <button id="enter-name-btn" class="btn btn-primary">Enter Name</button>
+          <button id="enter-name-btn"         class="btn btn-primary">Enter Name</button>
         </div>
       </div>
       <div id="blank-food-name-input-container" class="hidden mt-4">
         <label for="blank-food-name-input" class="block text-sm font-medium text-primary mb-1">Enter New Food Name</label>
         <input type="text" id="blank-food-name-input" placeholder="e.g., Unlabeled Snack">
         <div class="flex justify-end gap-4 mt-4">
-          <button id="cancel-blank-name-btn" class="btn btn-secondary">Cancel</button>
+          <button id="cancel-blank-name-btn"    class="btn btn-secondary">Cancel</button>
           <button id="submit-new-food-name-btn" class="btn btn-primary">Submit</button>
         </div>
       </div>
@@ -592,12 +411,12 @@
 
       <div id="prompt-input-container" class="mt-4 hidden">
         <label for="prompt-input" class="block text-sm font-medium text-primary mb-1">Enter Value:</label>
-        <input type="text" id="prompt-input" />
+        <input type="text" id="prompt-input">
       </div>
 
       <div class="flex justify-center gap-4 mt-6">
         <button id="confirm-action-btn" class="btn btn-primary">Confirm</button>
-        <button id="cancel-action-btn" class="btn btn-secondary">Cancel</button>
+        <button id="cancel-action-btn"  class="btn btn-secondary">Cancel</button>
       </div>
     </div>
   </div>

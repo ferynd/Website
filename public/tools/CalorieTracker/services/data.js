@@ -24,7 +24,7 @@ const DATA_CONFIG = {
   MAX_FOOD_ITEMS_DISPLAY: 50, // Maximum food items to show before scrolling
   FOOD_ITEM_ANIMATION_DURATION: 200, // Animation for adding/removing items
   AUTO_SCROLL_TO_NEW_ITEMS: true, // Scroll to newly added items
-  DEBUG_FOOD_OPERATIONS: true, // Log food item operations
+  DEBUG_FOOD_OPERATIONS: false,
   QUANTITY_UPDATE_DEBOUNCE_MS: 400 // Delay (ms) before persisting qty edits
 };
 
@@ -278,13 +278,20 @@ export function clearStagingArea() {
     pasteArea.value = '';
     clearedCount++;
   }
-  
+
   const foodInput = document.getElementById('food-item-input');
   if (foodInput && foodInput.value) {
     foodInput.value = '';
     clearedCount++;
   }
-  
+
+  const warningEl = document.getElementById('parse-missing-warning');
+  if (warningEl) {
+    warningEl.textContent = '';
+    warningEl.removeAttribute('title');
+    warningEl.classList.add('hidden');
+  }
+
   debugLog('data-ui', 'Staging area cleared', { fieldsCleared: clearedCount });
 }
 
