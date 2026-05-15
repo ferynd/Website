@@ -115,8 +115,8 @@ export function initAnalysisEvents() {
       progressEl.classList.add('hidden');
     }
 
-    // Show diagnostics summary in status line (supplement the toast)
-    if (result.diagnostics && result.parsed > 0) {
+    // Show diagnostics summary in status line when the batch save succeeded fully
+    if (result.diagnostics && result.parsed > 0 && !result.partialFailure) {
       const d = result.diagnostics;
       const skipStr = d.skippedRows > 0
         ? ` | Skipped: ${d.skippedRows} (${Object.keys(d.skippedReasons).join(', ')})`
@@ -262,7 +262,7 @@ export function initAnalysisEvents() {
 function renderUploadArea() {
   const hasData = state.weightEntries.size > 0;
   const statusMsg = hasData
-    ? `${state.weightEntries.size} weight readings loaded. Upload your full export anytime — duplicates are auto-skipped.`
+    ? `${state.weightEntries.size} weight readings loaded. Re-uploading the same export will update matching rows without creating duplicates.`
     : 'Export your scale data as CSV/TSV and upload it here. Supports comma, tab, and semicolon delimiters, kg or lb columns, and most date formats.';
 
   return `
@@ -271,12 +271,12 @@ function renderUploadArea() {
       <button id="weight-upload-btn" class="btn btn-primary">
         <i class="fas fa-upload" style="margin-right:.5rem;"></i>${hasData ? 'Re-upload' : 'Upload'} Weight CSV
       </button>
-      <p id="weight-upload-status" class="text-xs text-muted mt-2">${statusMsg}</p>
-      <div id="weight-upload-progress" class="mt-2 hidden">
-        <div class="rounded-full overflow-hidden h-2" style="background:rgba(128,128,128,0.2);">
-          <div id="weight-upload-bar" class="h-full transition-all duration-300" style="width:0%;background:var(--color-accent,#6366f1);"></div>
+      <p id="weight-upload-status" class="text-xs text-muted mt-2" style="word-break:break-word;">${statusMsg}</p>
+      <div id="weight-upload-progress" class="mt-2 hidden" style="max-width:100%;box-sizing:border-box;">
+        <div class="progress-bar-bg" style="overflow:hidden;border-radius:999px;">
+          <div id="weight-upload-bar" class="progress-bar-fill" style="width:0%;"></div>
         </div>
-        <p id="weight-upload-progress-text" class="text-xs text-muted mt-1"></p>
+        <p id="weight-upload-progress-text" class="text-xs text-muted mt-2" style="word-break:break-word;"></p>
       </div>
     </div>
   `;

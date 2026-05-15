@@ -348,14 +348,14 @@ export async function saveWeightEntries(entries) {
  *   importedAt: string,
  * }>} entries
  * @param {{ onProgress?: (saved: number, total: number, batchIdx: number, totalBatches: number) => void }} [opts]
- * @returns {Promise<{ saved: number, skipped: number }>}
+ * @returns {Promise<{ saved: number, skipped: number, partialFailure: boolean }>}
  */
 export async function saveWeightEntriesBatch(entries, opts = {}) {
   if (!state.userId) {
     showMessage('Cannot save weight data. Not authenticated.', true);
-    return { saved: 0, skipped: entries.length };
+    return { saved: 0, skipped: entries.length, partialFailure: false };
   }
-  if (entries.length === 0) return { saved: 0, skipped: 0 };
+  if (entries.length === 0) return { saved: 0, skipped: 0, partialFailure: false };
 
   const BATCH_SIZE = 450;
   const chunks = [];
@@ -392,11 +392,12 @@ export async function saveWeightEntriesBatch(entries, opts = {}) {
     }
   } catch (e) {
     handleError('weight-batch-save', e, 'Failed to save weight entries.');
-    return { saved: totalSaved, skipped: entries.length - totalSaved };
+    // Return partial results — already-committed batches are in local state
+    return { saved: totalSaved, skipped: entries.length - totalSaved, partialFailure: true };
   }
 
   debugLog('firebase-weight', `Saved ${totalSaved} weight entries in ${chunks.length} batch(es)`);
-  return { saved: totalSaved, skipped: 0 };
+  return { saved: totalSaved, skipped: 0, partialFailure: false };
 }
 
 /**

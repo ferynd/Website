@@ -89,17 +89,39 @@ export async function handleWeightUpload(file, opts = {}) {
   const rangeFrom = diagnostics.detectedDateRange.from || '?';
   const rangeTo   = diagnostics.detectedDateRange.to   || '?';
 
-  onStatus(
-    `Upload complete: ${result.saved} entries saved ` +
-    `(${totalInDB} total in database, ` +
-    `date range: ${rangeFrom} → ${rangeTo}).`,
-    false,
-    8000,
-  );
+  if (result.partialFailure) {
+    // Some batches failed — already-saved batches are in local state
+    const unsaved = result.skipped;
+    if (result.saved === 0) {
+      onStatus(
+        `Upload failed: 0 of ${entries.length} entries saved. ` +
+        `Check your connection and try again.`,
+        true,
+        12000,
+      );
+    } else {
+      onStatus(
+        `Partial upload: ${result.saved} of ${entries.length} entries saved` +
+        ` (${unsaved} not saved — connection error). Re-uploading will retry the missing rows.`,
+        true,
+        12000,
+      );
+    }
+  } else {
+    onStatus(
+      `Upload complete: ${result.saved} entries saved ` +
+      `(${totalInDB} total in database, ` +
+      `date range: ${rangeFrom} → ${rangeTo}).`,
+      false,
+      8000,
+    );
+  }
 
   debugLog('weight-upload', 'Upload complete', {
     parsed: entries.length,
     saved: result.saved,
+    skipped: result.skipped,
+    partialFailure: result.partialFailure,
     totalInDB,
     diagnostics,
   });
@@ -108,6 +130,8 @@ export async function handleWeightUpload(file, opts = {}) {
     total: diagnostics.totalRows,
     parsed: entries.length,
     saved: result.saved,
+    skipped: result.skipped,
+    partialFailure: result.partialFailure,
     diagnostics,
   };
 }

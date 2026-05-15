@@ -138,8 +138,8 @@ function parseExplicitDate(s) {
     return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
   }
 
-  // MM/DD/YYYY [HH:mm[:ss] AM/PM]
-  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm]))?$/);
+  // MM/DD/YYYY [HH:mm[:ss] [AM/PM]]  — optional 12-hour suffix; bare 24-hour also accepted
+  m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp][Mm])?)?$/);
   if (m) {
     let h = +(m[4] || 0), mi = +(m[5] || 0), sec = +(m[6] || 0);
     if (m[7]) {
@@ -393,10 +393,14 @@ export function parseWeightCSV(raw, opts = {}) {
   diag.parsedRows = entries.length;
 
   if (entries.length > 0) {
-    diag.detectedDateRange = {
-      from: entries[0].date,
-      to: entries[entries.length - 1].date,
-    };
+    // Use min/max so newest-first exports still report the correct range
+    let minDate = entries[0].date;
+    let maxDate = entries[0].date;
+    for (const e of entries) {
+      if (e.date < minDate) minDate = e.date;
+      if (e.date > maxDate) maxDate = e.date;
+    }
+    diag.detectedDateRange = { from: minDate, to: maxDate };
   }
 
   return { entries, diagnostics: diag };

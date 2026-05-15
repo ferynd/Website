@@ -156,6 +156,20 @@ describe('date format variants', () => {
     expect(entries[0].time_min).toBe(14 * 60 + 30);
   });
 
+  it('MM/DD/YYYY HH:mm:ss (24-hour, no AM/PM)', () => {
+    const { entries } = parseWeightCSV(singleRow('06/15/2023 14:30:00'));
+    ok(entries, 1, 'MM/DD/YYYY 24h');
+    expect(entries[0].date).toBe('2023-06-15');
+    expect(entries[0].time_min).toBe(14 * 60 + 30);
+  });
+
+  it('MM/DD/YYYY HH:mm (24-hour, no seconds, no AM/PM)', () => {
+    const { entries } = parseWeightCSV(singleRow('06/15/2023 14:30'));
+    ok(entries, 1, 'MM/DD/YYYY 24h no-sec');
+    expect(entries[0].date).toBe('2023-06-15');
+    expect(entries[0].time_min).toBe(14 * 60 + 30);
+  });
+
   it('Jul 13 2017 07:20:13 AM (no comma)', () => {
     const { entries } = parseWeightCSV(singleRow('Jul 13 2017 07:20:13 AM'));
     ok(entries, 1, 'month-name no-comma');
@@ -181,6 +195,24 @@ describe('date format variants', () => {
     const { entries } = parseWeightCSV(singleRow('Jul 13 2017 12:00:00 AM'));
     ok(entries, 1, '12 AM midnight');
     expect(entries[0].time_min).toBe(0);
+  });
+});
+
+// ── 5b. Newest-first CSV — date range must still be correct ──────────────────
+
+describe('newest-first export date range', () => {
+  // Many apps (e.g. Garmin, Withings) export most-recent row first
+  const csv = [
+    'Weight (lb),Date/Time',
+    '183.0,2023-12-01 07:00:00',  // newest
+    '184.0,2023-06-15 07:00:00',
+    '185.0,2023-01-10 07:00:00',  // oldest
+  ].join('\n');
+
+  it('reports correct from/to regardless of row order', () => {
+    const { diagnostics } = parseWeightCSV(csv);
+    expect(diagnostics.detectedDateRange.from).toBe('2023-01-10');
+    expect(diagnostics.detectedDateRange.to).toBe('2023-12-01');
   });
 });
 
