@@ -80,8 +80,9 @@ export function initAnalysisEvents() {
   const barEl       = document.getElementById('weight-upload-bar');
   const progressTxt = document.getElementById('weight-upload-progress-text');
 
-  /** Update the inline status line */
+  /** Update the inline status line and persist across re-renders. */
   function onStatus(msg, isErr = false) {
+    state.lastWeightUploadStatus = { message: msg, isError: isErr };
     if (!statusEl) return;
     statusEl.textContent = msg;
     statusEl.className = `text-xs mt-2 ${isErr ? 'text-negative' : 'text-muted'}`;
@@ -261,9 +262,16 @@ export function initAnalysisEvents() {
 
 function renderUploadArea() {
   const hasData = state.weightEntries.size > 0;
-  const statusMsg = hasData
-    ? `${state.weightEntries.size} weight readings loaded. Re-uploading the same export will update matching rows without creating duplicates.`
-    : 'Export your scale data as CSV/TSV and upload it here. Supports comma, tab, and semicolon delimiters, kg or lb columns, and most date formats.';
+
+  // Use the persisted upload status if one exists (survives dashboard re-renders).
+  // Fall back to the default count/hint text when no upload has happened yet.
+  const stored = state.lastWeightUploadStatus;
+  const statusMsg = stored
+    ? stored.message
+    : hasData
+      ? `${state.weightEntries.size} weight readings loaded. Re-uploading the same export will update matching rows without creating duplicates.`
+      : 'Export your scale data as CSV/TSV and upload it here. Supports comma, tab, and semicolon delimiters, kg or lb columns, and most date formats.';
+  const statusClass = stored?.isError ? 'text-negative' : 'text-muted';
 
   return `
     <div id="weight-upload-area" class="mb-6 p-4 staging-section" style="text-align:center;">
@@ -271,7 +279,7 @@ function renderUploadArea() {
       <button id="weight-upload-btn" class="btn btn-primary">
         <i class="fas fa-upload" style="margin-right:.5rem;"></i>${hasData ? 'Re-upload' : 'Upload'} Weight CSV
       </button>
-      <p id="weight-upload-status" class="text-xs text-muted mt-2" style="word-break:break-word;">${statusMsg}</p>
+      <p id="weight-upload-status" class="text-xs mt-2 ${statusClass}" style="word-break:break-word;">${statusMsg}</p>
       <div id="weight-upload-progress" class="mt-2 hidden" style="max-width:100%;box-sizing:border-box;">
         <div class="progress-bar-bg" style="overflow:hidden;border-radius:999px;">
           <div id="weight-upload-bar" class="progress-bar-fill" style="width:0%;"></div>
