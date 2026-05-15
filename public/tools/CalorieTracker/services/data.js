@@ -124,6 +124,7 @@ export async function loadUserData() {
     // Once all data is loaded, populate the UI.
     loadDailyFoodItems();
     populateSettingsForm();
+    if (window.__populateProfileForm) window.__populateProfileForm();
     updateDashboard();
     updateChart();
     

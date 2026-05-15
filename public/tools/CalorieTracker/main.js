@@ -132,6 +132,15 @@ try {
     }).catch(error => {
       errorLog('IMPORT-DASHBOARD', error, 'Failed to import dashboard.js');
       throw error;
+    }),
+
+    import('./targets/targetUI.js').then(module => {
+      window.__wireProfileTab   = module.wireProfileTab;
+      window.__populateProfileForm = module.populateProfileForm;
+      debugLog('IMPORT-TEST', '✅ targetUI.js imported successfully');
+    }).catch(error => {
+      errorLog('IMPORT-TARGET-UI', error, 'Failed to import targetUI.js (non-fatal)');
+      // Non-fatal: profile tab will be inert if this fails
     })
 
   ]).then(() => {
@@ -170,6 +179,12 @@ function startApp() {
     debugLog('APP-START', 'Testing event wiring...');
     wireFunction();
     debugLog('APP-START', '✅ Event wiring successful');
+
+    // Wire profile tab
+    if (window.__wireProfileTab) {
+      window.__wireProfileTab();
+      debugLog('APP-START', '✅ Profile tab wired');
+    }
 
     // Initialize tab shell (reads hash/localStorage, no data render yet)
     if (initializeTabsFunction) {
