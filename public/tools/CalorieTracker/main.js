@@ -497,6 +497,8 @@ export async function handleLogout() {
     stateObject.savedFoodItems.clear();
     stateObject.weightEntries.clear();
     stateObject.analysisResults = null;
+    stateObject.userProfile = {};
+    stateObject.goalSettings = {};
 
     if (stateObject.chartInstance) {
       stateObject.chartInstance.destroy();

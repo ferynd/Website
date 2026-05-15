@@ -294,6 +294,84 @@ export async function deleteFoodItem(foodId) {
   }
 }
 
+// ---------- USER PROFILE ----------
+
+/**
+ * Fetches the user's profile document from Firestore.
+ * Returns {} if the document does not exist (first-time user).
+ * The caller is responsible for passing the raw result through
+ * normalizeUserProfile() in services/data.js before storing it in state.
+ * @returns {Promise<object>}
+ */
+export async function fetchUserProfile() {
+  if (!state.userId) return {};
+  try {
+    const ref = doc(db, `artifacts/${appId}/users/${state.userId}/profile/userProfile`);
+    const snap = await getDoc(ref);
+    const result = snap.exists() ? snap.data() : {};
+    debugLog('firebase-fetch', 'User profile fetched');
+    return result;
+  } catch (e) {
+    return handleError('profile-fetch', e, 'Failed to fetch user profile.') || {};
+  }
+}
+
+/**
+ * Saves the user's profile document to Firestore and updates state.userProfile.
+ * @param {object} profile - The normalized profile object to persist.
+ */
+export async function saveUserProfile(profile) {
+  if (!state.userId) return showMessage('Cannot save profile. Not authenticated.', true);
+  try {
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/profile/userProfile`), profile);
+    state.userProfile = profile;
+    showMessage('Profile saved!');
+    debugLog('firebase-save', 'User profile saved');
+  } catch (e) {
+    handleError('profile-save', e, 'Failed to save profile.');
+    throw e;
+  }
+}
+
+// ---------- GOAL SETTINGS ----------
+
+/**
+ * Fetches the user's goal settings document from Firestore.
+ * Returns {} if the document does not exist (first-time user).
+ * The caller is responsible for passing the raw result through
+ * normalizeGoalSettings() in services/data.js before storing it in state.
+ * @returns {Promise<object>}
+ */
+export async function fetchGoalSettings() {
+  if (!state.userId) return {};
+  try {
+    const ref = doc(db, `artifacts/${appId}/users/${state.userId}/goals/goalSettings`);
+    const snap = await getDoc(ref);
+    const result = snap.exists() ? snap.data() : {};
+    debugLog('firebase-fetch', 'Goal settings fetched');
+    return result;
+  } catch (e) {
+    return handleError('goals-fetch', e, 'Failed to fetch goal settings.') || {};
+  }
+}
+
+/**
+ * Saves the user's goal settings document to Firestore and updates state.goalSettings.
+ * @param {object} goals - The normalized goal settings object to persist.
+ */
+export async function saveGoalSettings(goals) {
+  if (!state.userId) return showMessage('Cannot save goal settings. Not authenticated.', true);
+  try {
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/goals/goalSettings`), goals);
+    state.goalSettings = goals;
+    showMessage('Goals saved!');
+    debugLog('firebase-save', 'Goal settings saved');
+  } catch (e) {
+    handleError('goals-save', e, 'Failed to save goal settings.');
+    throw e;
+  }
+}
+
 // ---------- WEIGHT ENTRIES ----------
 
 /**

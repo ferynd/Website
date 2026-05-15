@@ -661,15 +661,34 @@ export function getBlankDaysForPopulation(rows, dailyEntries, baselineTargets) {
         ...avgMicros,
       };
 
+      const now = new Date().toISOString();
+
       // Build the entry with nutrient totals mirroring qty=1 × foodItem values.
+      // schemaVersion=2 marks this as a v2 entry; entryType='estimate' lets the
+      // UI and export layer distinguish it from manually-logged days.
       const entry = {
         date: r.date,
+        schemaVersion: 2,
+        entryType: 'estimate',
         calories: estCals,
         protein: avgProtein,
         fat: avgFat,
         carbs: carbsG,
         trainingBump,
         foodItems: [foodItem],
+        exerciseSessions: [],
+        dayActivityLevel: null,
+        manualLock: false,
+        calorieAdjustmentItems: [],
+        estimateMeta: {
+          method: 'tdee_weight_delta',
+          modelVersion: '1.0',
+          confidence: 'medium',
+          sourceDataWindow: ANALYSIS_CONFIG.TDEE_BLOCK_DAYS,
+          createdAt: now,
+          updatedAt: now,
+          locked: false,
+        },
         ...avgMicros,
       };
 

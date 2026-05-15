@@ -5,10 +5,23 @@
 import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import { handleError, debugLog } from '../utils/ui.js';
-import { fetchTargets, fetchRecentEntries, loadSavedFoodItems, saveDailyEntry, fetchWeightEntries } from './firebase.js';
+import {
+  fetchTargets,
+  fetchRecentEntries,
+  loadSavedFoodItems,
+  saveDailyEntry,
+  fetchWeightEntries,
+  fetchUserProfile,
+  fetchGoalSettings,
+} from './firebase.js';
 import { updateDashboard, populateSettingsForm } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
-import { allNutrients } from '../constants.js';
+import {
+  allNutrients,
+  DEFAULT_USER_PROFILE,
+  DEFAULT_GOAL_SETTINGS,
+  SCHEMA_VERSIONS,
+} from '../constants.js';
 
 // Helper to safely generate IDs across environments
 function safeId() {
@@ -17,6 +30,72 @@ function safeId() {
   } catch (e) {
     return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
   }
+}
+
+// =============================================================================
+// NORMALIZATION — read-time only, never writes back to Firestore
+// =============================================================================
+
+/**
+ * Normalize a raw daily entry to the v2 schema, adding any missing fields.
+ * Old fields — calories, protein, carbs, fat, trainingBump, foodItems — are
+ * always preserved unchanged.  Call this at read time (never before writing).
+ *
+ * Schema history:
+ *   v0 (schemaVersion absent) — original shape, macros + trainingBump only
+ *   v1 — intermediate, still no schemaVersion written to Firestore
+ *   v2 — adds entryType, exerciseSessions, dayActivityLevel, manualLock,
+ *         calorieAdjustmentItems, estimateMeta
+ *
+ * @param {object} entry - Raw entry from Firestore
+ * @returns {object} Entry with all v2 fields present
+ */
+export function normalizeEntry(entry) {
+  if (!entry) return entry;
+  const out = { ...entry };
+  // 0 = written before versioning existed
+  if (out.schemaVersion === undefined) out.schemaVersion = 0;
+  // Legacy entries are treated as manually logged
+  if (out.entryType === undefined) out.entryType = 'logged';
+  if (!Array.isArray(out.exerciseSessions)) out.exerciseSessions = [];
+  if (out.dayActivityLevel === undefined) out.dayActivityLevel = null;
+  if (out.manualLock === undefined) out.manualLock = false;
+  if (!Array.isArray(out.calorieAdjustmentItems)) out.calorieAdjustmentItems = [];
+  // estimateMeta is only set on entryType === 'estimate' entries
+  if (out.estimateMeta === undefined) out.estimateMeta = null;
+  return out;
+}
+
+/**
+ * Normalize a raw userProfile document, filling every missing field with its
+ * default value.  Safe to call on an empty object (first-time user).
+ * @param {object} raw - Raw Firestore document or {}
+ * @returns {object} Profile with all DEFAULT_USER_PROFILE fields present
+ */
+export function normalizeUserProfile(raw) {
+  return { ...DEFAULT_USER_PROFILE, ...raw };
+}
+
+/**
+ * Normalize a raw goalSettings document, filling every missing field with its
+ * default value.  manualTargetOverrides keys are merged (not replaced) so that
+ * existing per-nutrient overrides are never silently dropped, and so that the
+ * defaults never wipe out what the user already saved.
+ * @param {object} raw - Raw Firestore document or {}
+ * @returns {object} Goal settings with all DEFAULT_GOAL_SETTINGS fields present
+ */
+export function normalizeGoalSettings(raw) {
+  const base = { ...DEFAULT_GOAL_SETTINGS };
+  if (!raw || Object.keys(raw).length === 0) return base;
+  return {
+    ...base,
+    ...raw,
+    // Merge overrides rather than replacing so no existing key is lost
+    manualTargetOverrides: {
+      ...base.manualTargetOverrides,
+      ...(raw.manualTargetOverrides || {}),
+    },
+  };
 }
 
 // Configuration at top of file
@@ -68,16 +147,37 @@ export async function loadUserData() {
     debugLog('data-load', 'Starting parallel data fetch for user', state.userId);
     
     // Fetch all necessary data in parallel for better performance.
-    const [targets, entries, weightEntries] = await Promise.all([
+    // Profile and goals return {} for first-time users (no document yet).
+    const [targets, entries, weightEntries, rawProfile, rawGoals] = await Promise.all([
       fetchTargets(),
       fetchRecentEntries(),
       fetchWeightEntries(),
+      fetchUserProfile(),
+      fetchGoalSettings(),
     ]);
 
     state.baselineTargets = targets;
-    state.dailyEntries = entries;
     state.weightEntries = weightEntries;
-    debugLog('data-load', 'Core data loaded', { targetsCount: Object.keys(targets).length, entriesCount: entries.size, weightCount: weightEntries.size });
+
+    // Normalize every entry at read time so all v2 fields are present in memory.
+    // We never write back just because we read — this is a pure in-memory upgrade.
+    const normalizedEntries = new Map();
+    for (const [dateStr, entry] of entries) {
+      normalizedEntries.set(dateStr, normalizeEntry(entry));
+    }
+    state.dailyEntries = normalizedEntries;
+
+    // Profile and goals are normalized to ensure every field has a safe default.
+    state.userProfile = normalizeUserProfile(rawProfile);
+    state.goalSettings = normalizeGoalSettings(rawGoals);
+
+    debugLog('data-load', 'Core data loaded', {
+      targetsCount: Object.keys(targets).length,
+      entriesCount: normalizedEntries.size,
+      weightCount: weightEntries.size,
+      hasProfile: Object.keys(rawProfile).length > 0,
+      hasGoals: Object.keys(rawGoals).length > 0,
+    });
 
     // Load food items after initial data is fetched.
     await loadSavedFoodItems();
@@ -325,14 +425,22 @@ export function getCurrentDailyEntry() {
   if (!entry) {
     entry = {
       date: dateStr,
-      foodItems: []
+      foodItems: [],
+      // v2 schema fields — present on all new entries from this point forward
+      schemaVersion: SCHEMA_VERSIONS.ENTRY,
+      entryType: 'logged',
+      exerciseSessions: [],
+      dayActivityLevel: null,
+      manualLock: false,
+      calorieAdjustmentItems: [],
+      estimateMeta: null,
     };
-    
+
     // Initialize all nutrients to 0
     allNutrients.forEach(nutrient => {
       entry[nutrient] = 0;
     });
-    
+
     state.dailyEntries.set(dateStr, entry);
     debugLog('data-entry', 'Created new daily entry', { date: dateStr });
   }

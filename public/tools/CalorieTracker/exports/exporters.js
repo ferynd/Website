@@ -80,14 +80,33 @@ export async function exportDailyLogCsv() {
   const entries = await fetchAllEntries();
   if (!entries.length) return showMessage('No daily log data to export.', true);
 
-  const headers = ['date', ...allNutrients, 'foodItems'];
+  // Core columns are unchanged for backward compatibility with existing importers.
+  // v2 columns (entryType … exerciseSessions) are appended at the end so old
+  // tools that stop reading at 'foodItems' are unaffected.
+  const coreHeaders = ['date', ...allNutrients, 'foodItems'];
+  const v2Headers = ['entryType', 'dayActivityLevel', 'manualLock', 'exerciseSessions'];
+  const headers = [...coreHeaders, ...v2Headers];
   let csv = headers.map(h => `"${h}"`).join(',') + '\n';
 
   entries.forEach(e => {
     const row = headers.map(h => {
-      // Serialize the foodItems array into a JSON string for the CSV.
+      // Serialize array/object fields as JSON strings inside the CSV cell.
       if (h === 'foodItems') {
         return `"${JSON.stringify(e.foodItems || []).replace(/"/g, '""')}"`;
+      }
+      if (h === 'exerciseSessions') {
+        return `"${JSON.stringify(e.exerciseSessions || []).replace(/"/g, '""')}"`;
+      }
+      if (h === 'entryType') {
+        const v = e.entryType ?? 'logged';
+        return `"${String(v).replace(/"/g, '""')}"`;
+      }
+      if (h === 'dayActivityLevel') {
+        const v = e.dayActivityLevel ?? '';
+        return `"${String(v).replace(/"/g, '""')}"`;
+      }
+      if (h === 'manualLock') {
+        return e.manualLock ? 'true' : 'false';
       }
       let v = e[h] ?? '0';
       if (typeof v === 'string') v = `"${v.replace(/"/g, '""')}"`;
