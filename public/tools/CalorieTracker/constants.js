@@ -176,6 +176,51 @@ export const nutrientMap = {
   
 };
 
+// =============================================================================
+// SCHEMA VERSIONS
+// Bump a version when the stored document shape changes in a non-backward-
+// compatible way.  Documents without a schemaVersion field are treated as v0
+// and normalized at read time by the functions in services/data.js.
+// =============================================================================
+export const SCHEMA_VERSIONS = {
+  ENTRY: 2,    // daily entry documents (v1 pre-dates the schemaVersion field)
+  PROFILE: 1,  // userProfile document
+  GOAL: 1,     // goalSettings document
+};
+
+// Default shape for a new userProfile document.
+// Every field is optional/nullable — an empty object is valid for a first-time
+// user.  normalizeUserProfile() in services/data.js merges this at read time.
+export const DEFAULT_USER_PROFILE = {
+  schemaVersion: SCHEMA_VERSIONS.PROFILE,
+  sex: null,                               // 'male' | 'female' | null
+  birthDate: null,                         // 'YYYY-MM-DD' | null
+  age: null,                               // numeric fallback when birthDate absent
+  heightValue: null,                       // number
+  heightUnit: 'in',                        // 'in' | 'cm'
+  manualWeightOverrideLb: null,            // overrides uploaded weight when set
+  manualWeightOverrideDate: null,          // 'YYYY-MM-DD' | null
+  useUploadedWeightForCurrentWeight: true,
+  bodyFatPercent: null,
+  preferredWeighInStartMin: null,          // minutes from midnight
+  preferredWeighInEndMin: null,
+  baselineActivityLevel: null,             // 'sedentary'|'light'|'moderate'|'active'|'very_active'
+};
+
+// Default shape for a new goalSettings document.
+// manualTargetOverrides is intentionally empty — only explicitly set keys are
+// applied; it never silently wipes the user's baselineTargets.
+// normalizeGoalSettings() in services/data.js merges this at read time.
+export const DEFAULT_GOAL_SETTINGS = {
+  schemaVersion: SCHEMA_VERSIONS.GOAL,
+  goalType: 'maintenance',   // 'fatLoss'|'maintenance'|'recomp'|'muscleGain'|'performance'
+  targetWeightLb: null,
+  targetDate: null,          // 'YYYY-MM-DD' | null
+  priority: 'maintenance',
+  useRollingBanking: true,
+  manualTargetOverrides: {}, // { [nutrientKey]: number } — sparse, never auto-populated
+};
+
 // Helper functions for banking calculations
 export const BankingHelpers = {
   /**

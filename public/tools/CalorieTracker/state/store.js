@@ -40,6 +40,15 @@ export const state = {
   // The index of the currently highlighted item in the food search dropdown.
   selectedDropdownIndex: -1,
 
+  // The user's physical profile and goal preferences.
+  // Both are populated by loadUserData() via the normalize* functions in
+  // services/data.js.  An empty object is the valid pre-load state — callers
+  // should treat missing keys as unset rather than checking for null/undefined
+  // at call sites (normalizeUserProfile / normalizeGoalSettings guarantee all
+  // keys are present after the initial data load).
+  userProfile: {},
+  goalSettings: {},
+
   // Active tab name — persisted to localStorage as 'ct-active-tab'.
   activeTab: 'today',
 

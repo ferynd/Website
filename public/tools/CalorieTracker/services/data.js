@@ -5,10 +5,27 @@
 import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import { handleError, debugLog } from '../utils/ui.js';
-import { fetchTargets, fetchRecentEntries, loadSavedFoodItems, saveDailyEntry, fetchWeightEntries } from './firebase.js';
+import {
+  fetchTargets,
+  fetchRecentEntries,
+  loadSavedFoodItems,
+  saveDailyEntry,
+  fetchWeightEntries,
+  fetchUserProfile,
+  fetchGoalSettings,
+} from './firebase.js';
 import { updateDashboard, populateSettingsForm } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
-import { allNutrients } from '../constants.js';
+import { allNutrients, SCHEMA_VERSIONS } from '../constants.js';
+import {
+  normalizeEntry,
+  normalizeUserProfile,
+  normalizeGoalSettings,
+} from '../state/schema.js';
+
+// Re-export so other modules that imported normalize functions from data.js
+// keep working without changes.
+export { normalizeEntry, normalizeUserProfile, normalizeGoalSettings };
 
 // Helper to safely generate IDs across environments
 function safeId() {
@@ -68,16 +85,37 @@ export async function loadUserData() {
     debugLog('data-load', 'Starting parallel data fetch for user', state.userId);
     
     // Fetch all necessary data in parallel for better performance.
-    const [targets, entries, weightEntries] = await Promise.all([
+    // Profile and goals return {} for first-time users (no document yet).
+    const [targets, entries, weightEntries, rawProfile, rawGoals] = await Promise.all([
       fetchTargets(),
       fetchRecentEntries(),
       fetchWeightEntries(),
+      fetchUserProfile(),
+      fetchGoalSettings(),
     ]);
 
     state.baselineTargets = targets;
-    state.dailyEntries = entries;
     state.weightEntries = weightEntries;
-    debugLog('data-load', 'Core data loaded', { targetsCount: Object.keys(targets).length, entriesCount: entries.size, weightCount: weightEntries.size });
+
+    // Normalize every entry at read time so all v2 fields are present in memory.
+    // We never write back just because we read — this is a pure in-memory upgrade.
+    const normalizedEntries = new Map();
+    for (const [dateStr, entry] of entries) {
+      normalizedEntries.set(dateStr, normalizeEntry(entry));
+    }
+    state.dailyEntries = normalizedEntries;
+
+    // Profile and goals are normalized to ensure every field has a safe default.
+    state.userProfile = normalizeUserProfile(rawProfile);
+    state.goalSettings = normalizeGoalSettings(rawGoals);
+
+    debugLog('data-load', 'Core data loaded', {
+      targetsCount: Object.keys(targets).length,
+      entriesCount: normalizedEntries.size,
+      weightCount: weightEntries.size,
+      hasProfile: Object.keys(rawProfile).length > 0,
+      hasGoals: Object.keys(rawGoals).length > 0,
+    });
 
     // Load food items after initial data is fetched.
     await loadSavedFoodItems();
@@ -325,14 +363,23 @@ export function getCurrentDailyEntry() {
   if (!entry) {
     entry = {
       date: dateStr,
-      foodItems: []
+      foodItems: [],
+      // v2 schema fields — present on all new entries from this point forward
+      schemaVersion: SCHEMA_VERSIONS.ENTRY,
+      entryType: 'logged',
+      exerciseSessions: [],
+      dayActivityLevel: null,
+      vacationDayType: null,
+      manualLock: false,
+      calorieAdjustmentItems: [],
+      estimateMeta: null,
     };
-    
+
     // Initialize all nutrients to 0
     allNutrients.forEach(nutrient => {
       entry[nutrient] = 0;
     });
-    
+
     state.dailyEntries.set(dateStr, entry);
     debugLog('data-entry', 'Created new daily entry', { date: dateStr });
   }
@@ -384,7 +431,7 @@ window.updateItemQuantity = (id, value) => {
   if (item.quantity !== newQty) item.quantity = newQty;
 
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
-  const entry = state.dailyEntries.get(dateStr) || { date: dateStr };
+  const entry = getCurrentDailyEntry(); // always returns a v2-shaped entry
   entry.foodItems = state.dailyFoodItems;
   allNutrients.forEach(n => {
     entry[n] = state.dailyFoodItems.reduce((sum, fi) => {

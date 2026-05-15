@@ -3,11 +3,11 @@
  * @description Handles parsing nutrient text and managing the staging area actions.
  */
 
-import { nutrientMap, allNutrients } from '../constants.js';
+import { nutrientMap, allNutrients, SCHEMA_VERSIONS } from '../constants.js';
 import { showMessage, formatNutrientName } from '../utils/ui.js';
 import { state } from '../state/store.js';
 import { saveDailyEntry, saveTargets } from '../services/firebase.js';
-import { clearStagingArea, updateFoodItemsList } from '../services/data.js';
+import { clearStagingArea, updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
@@ -114,7 +114,8 @@ export function getStagedValues() {
 export async function addStagedNutrientsToDailyLog() {
   const staged = getStagedValues();
   const dateStr = state.dom.dateInput.value;
-  const todayEntry = state.dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+  // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
+  const todayEntry = getCurrentDailyEntry();
   const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
 
   // Add staged values to the existing daily totals with quantity.
@@ -141,7 +142,8 @@ export async function addStagedNutrientsToDailyLog() {
 export async function subtractStagedNutrientsFromDailyLog() {
   const staged = getStagedValues();
   const dateStr = state.dom.dateInput.value;
-  const todayEntry = state.dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+  // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
+  const todayEntry = getCurrentDailyEntry();
   const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
 
   // Subtract staged values, ensuring totals don't go below zero.
@@ -185,7 +187,18 @@ export function handleStagingAction(mode) {
   if (mode === 'replace') {
     showConfirmationModal(`Replace all of ${dateStr} with staged values? This will overwrite existing data for this day.`, async () => {
       const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
-      const newEntry = { date: dateStr };
+      // Start with v2 defaults so the replaced entry retains schema compliance.
+      const newEntry = {
+        date: dateStr,
+        schemaVersion: SCHEMA_VERSIONS.ENTRY,
+        entryType: 'logged',
+        exerciseSessions: [],
+        dayActivityLevel: null,
+        vacationDayType: null,
+        manualLock: false,
+        calorieAdjustmentItems: [],
+        estimateMeta: null,
+      };
       allNutrients.forEach(n => newEntry[n] = qty * (staged[n] || 0));
 
       // Create a single food item record representing the entire day's replacement.

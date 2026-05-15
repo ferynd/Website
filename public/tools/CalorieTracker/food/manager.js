@@ -7,7 +7,7 @@ import { state } from '../state/store.js';
 import { allNutrients } from '../constants.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { saveDailyEntry, deleteFoodItem } from '../services/firebase.js';
-import { updateFoodItemsList } from '../services/data.js';
+import { updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
 import { showMessage, handleError } from '../utils/ui.js';
 import { hideFoodDropdown } from './dropdown.js';
 import { updateDashboard } from '../ui/dashboard.js';
@@ -59,7 +59,8 @@ export async function removeFoodItem(index) {
   showConfirmationModal(`Remove "${itemToRemove.name || '(blank)'}"? This will subtract its nutrients from today's totals.`, async () => {
     try {
       const dateStr = state.dom.dateInput.value;
-      const todayEntry = state.dailyEntries.get(dateStr) || { date: dateStr, foodItems: [] };
+      // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
+      const todayEntry = getCurrentDailyEntry();
 
       // Subtract the nutrients of the removed item from the daily total.
       allNutrients.forEach(n => {
