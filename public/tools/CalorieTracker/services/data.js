@@ -369,6 +369,7 @@ export function getCurrentDailyEntry() {
       entryType: 'logged',
       exerciseSessions: [],
       dayActivityLevel: null,
+      vacationDayType: null,
       manualLock: false,
       calorieAdjustmentItems: [],
       estimateMeta: null,

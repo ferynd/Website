@@ -90,6 +90,7 @@ export function normalizeEntry(entry) {
   if (out.entryType === undefined) out.entryType = 'logged';
 
   // Array fields — always arrays, never undefined/null.
+  if (!Array.isArray(out.foodItems)) out.foodItems = [];
   if (!Array.isArray(out.exerciseSessions)) out.exerciseSessions = [];
   if (!Array.isArray(out.calorieAdjustmentItems)) out.calorieAdjustmentItems = [];
 

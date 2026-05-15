@@ -147,6 +147,24 @@ describe('normalizeEntry', () => {
     expect(twice.calories).toBe(2000);
     expect(twice.exerciseSessions).toEqual([]);
   });
+
+  it('converts missing foodItems to an empty array', () => {
+    const entry = { date: '2024-01-01' };
+    expect(normalizeEntry(entry).foodItems).toEqual([]);
+  });
+
+  it('converts null foodItems to an empty array', () => {
+    const entry = { date: '2024-01-01', foodItems: null };
+    expect(normalizeEntry(entry).foodItems).toEqual([]);
+  });
+
+  it('preserves an existing non-empty foodItems array', () => {
+    const items = [{ id: 'f1', name: 'Oats', calories: 150, quantity: 1 }];
+    const entry = { date: '2024-01-01', foodItems: items };
+    const n = normalizeEntry(entry);
+    expect(n.foodItems).toHaveLength(1);
+    expect(n.foodItems[0].id).toBe('f1');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -247,6 +265,11 @@ describe('prepareEntryForSave', () => {
     expect(saved.calories).toBe(2000);
     expect(saved.protein).toBe(155);
     expect(saved.trainingBump).toBe(100);
+  });
+
+  it('save-ready entry always includes vacationDayType: null', () => {
+    const saved = prepareEntryForSave({ date: '2024-01-01' });
+    expect(saved).toHaveProperty('vacationDayType', null);
   });
 });
 
