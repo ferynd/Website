@@ -278,13 +278,20 @@ export function clearStagingArea() {
     pasteArea.value = '';
     clearedCount++;
   }
-  
+
   const foodInput = document.getElementById('food-item-input');
   if (foodInput && foodInput.value) {
     foodInput.value = '';
     clearedCount++;
   }
-  
+
+  const warningEl = document.getElementById('parse-missing-warning');
+  if (warningEl) {
+    warningEl.textContent = '';
+    warningEl.removeAttribute('title');
+    warningEl.classList.add('hidden');
+  }
+
   debugLog('data-ui', 'Staging area cleared', { fieldsCleared: clearedCount });
 }
 

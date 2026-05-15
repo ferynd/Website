@@ -21,14 +21,23 @@ const PARSER_CONFIG = {
  * Parses text from the paste area and populates the staging input fields.
  * It uses a map of synonyms to identify nutrient names.
  */
+const WARN_MAX_SHOWN = 10;
+
 export function parseAndStage() {
   const text = document.getElementById('paste-area').value;
   const warningEl = document.getElementById('parse-missing-warning');
 
   if (!text) {
-    if (warningEl) { warningEl.textContent = ''; warningEl.classList.add('hidden'); }
+    if (warningEl) { warningEl.textContent = ''; warningEl.removeAttribute('title'); warningEl.classList.add('hidden'); }
     return showMessage('Paste area is empty.', true);
   }
+
+  // Clear stale nutrient values so fields absent from the new text don't linger.
+  // actual-quantity is intentionally preserved (user sets serving size separately).
+  allNutrients.forEach(n => {
+    const input = document.getElementById(`actual-${n}`);
+    if (input) input.value = '';
+  });
 
   const lines = text.split('\n');
   let valuesFound = 0;
@@ -49,7 +58,7 @@ export function parseAndStage() {
           if (element) {
             element.value = parseFloat(match[0]);
             valuesFound++;
-            parsed.add(nutrientKey);
+            parsed.add(nutrientKey); // includes explicit zeros — they are present, not missing
           }
           break; // Move to the next line once a nutrient is found on this one.
         }
@@ -57,14 +66,24 @@ export function parseAndStage() {
     }
   });
 
-  // Show a warning for nutrients not found in the pasted text
+  // Show a compact warning for nutrients absent from the pasted text.
   if (warningEl) {
     const absent = allNutrients.filter(n => !parsed.has(n));
     if (absent.length > 0) {
-      warningEl.textContent = `No value detected for: ${absent.map(formatNutrientName).join(', ')}`;
+      const shown = absent.slice(0, WARN_MAX_SHOWN).map(formatNutrientName).join(', ');
+      const overflow = absent.length - WARN_MAX_SHOWN;
+      const suffix = overflow > 0 ? ` (+ ${overflow} more)` : '';
+      warningEl.textContent =
+        `No value detected for: ${shown}${suffix}. Review parsed nutrients before adding if this looks wrong.`;
+      if (overflow > 0) {
+        warningEl.title = `All missing: ${absent.map(formatNutrientName).join(', ')}`;
+      } else {
+        warningEl.removeAttribute('title');
+      }
       warningEl.classList.remove('hidden');
     } else {
       warningEl.textContent = '';
+      warningEl.removeAttribute('title');
       warningEl.classList.add('hidden');
     }
   }
