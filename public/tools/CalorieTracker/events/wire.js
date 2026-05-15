@@ -4,7 +4,7 @@
  */
 
 import { state } from '../state/store.js';
-import { ensureDateInput, loadUserData, loadDailyFoodItems } from '../services/data.js';
+import { ensureDateInput, loadUserData, loadDailyFoodItems, getCurrentDailyEntry } from '../services/data.js';
 import { setupFoodDropdown } from '../food/dropdown.js';
 import { parseAndStage, addStagedNutrientsToDailyLog, subtractStagedNutrientsFromDailyLog, handleStagingAction } from '../staging/parser.js';
 import { exportTargetsJson, exportSavedFoodsCsv, exportDailyLogCsv } from '../exports/exporters.js';
@@ -185,14 +185,9 @@ function wireMainControls() {
           if (!dateStr) return;
           
           const trainingBump = parseFloat(e.target.value) || 0;
-          
-          // Get or create today's entry
-          let entry = state.dailyEntries.get(dateStr) || { 
-            date: dateStr, 
-            foodItems: state.dailyFoodItems || [] 
-          };
-          
-          // Update training bump
+
+          // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
+          const entry = getCurrentDailyEntry();
           entry.trainingBump = trainingBump;
           
           // Save to local state and Firebase

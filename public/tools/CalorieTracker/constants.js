@@ -192,7 +192,7 @@ export const SCHEMA_VERSIONS = {
 // Every field is optional/nullable — an empty object is valid for a first-time
 // user.  normalizeUserProfile() in services/data.js merges this at read time.
 export const DEFAULT_USER_PROFILE = {
-  schemaVersion: 1,
+  schemaVersion: SCHEMA_VERSIONS.PROFILE,
   sex: null,                               // 'male' | 'female' | null
   birthDate: null,                         // 'YYYY-MM-DD' | null
   age: null,                               // numeric fallback when birthDate absent
@@ -212,7 +212,7 @@ export const DEFAULT_USER_PROFILE = {
 // applied; it never silently wipes the user's baselineTargets.
 // normalizeGoalSettings() in services/data.js merges this at read time.
 export const DEFAULT_GOAL_SETTINGS = {
-  schemaVersion: 1,
+  schemaVersion: SCHEMA_VERSIONS.GOAL,
   goalType: 'maintenance',   // 'fatLoss'|'maintenance'|'recomp'|'muscleGain'|'performance'
   targetWeightLb: null,
   targetDate: null,          // 'YYYY-MM-DD' | null

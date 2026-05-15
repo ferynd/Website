@@ -7,6 +7,14 @@
 import { appId } from '../config.js';
 import { state, coerceQuantity } from '../state/store.js';
 import { handleError, debugLog, showMessage } from '../utils/ui.js';
+import {
+  normalizeEntry,
+  normalizeUserProfile,
+  normalizeGoalSettings,
+  prepareEntryForSave,
+  prepareProfileForSave,
+  prepareGoalSettingsForSave,
+} from '../state/schema.js';
 
 // FIXED: Import from the correct relative path
 import { firebaseConfig as importedConfig } from '../firebaseConfig.js';
@@ -104,14 +112,18 @@ export async function fetchTargets() {
 export async function saveDailyEntry(dateStr, entry) {
   if (!state.userId) return showMessage('Cannot save entry. Not authenticated.', true);
   try {
-    // Ensure the food items list for the day is included in the saved document.
-    entry.foodItems = state.dailyFoodItems.map(it => ({
+    // Always snapshot state.dailyFoodItems into the saved document.
+    const foodItems = state.dailyFoodItems.map(it => ({
       ...it,
       id: it.id || safeId(),
-      quantity: coerceQuantity(it).quantity
+      quantity: coerceQuantity(it).quantity,
     }));
-    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), entry);
-    state.dailyEntries.set(dateStr, entry); // Update local state
+    // prepareEntryForSave guarantees all v2 schema fields are present,
+    // strips the diagnostic _storedSchemaVersion, and sets schemaVersion
+    // to SCHEMA_VERSIONS.ENTRY regardless of what the caller passed in.
+    const toSave = prepareEntryForSave({ ...entry, foodItems });
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), toSave);
+    state.dailyEntries.set(dateStr, toSave);
     debugLog('firebase-save', 'Daily entry saved successfully', dateStr);
   } catch (e) {
     handleError('daily-entry-save', e, 'Failed to save entry.');
@@ -130,12 +142,26 @@ export async function saveDailyEntry(dateStr, entry) {
 export async function saveEstimatedEntry(dateStr, entry) {
   if (!state.userId) return showMessage('Cannot save entry. Not authenticated.', true);
   try {
-    // Ensure every food item has an id.
-    if (Array.isArray(entry.foodItems)) {
-      entry.foodItems = entry.foodItems.map(it => ({ ...it, id: it.id || safeId() }));
+    // Does NOT overwrite foodItems from state.dailyFoodItems — caller provides them.
+    const foodItems = Array.isArray(entry.foodItems)
+      ? entry.foodItems.map(it => ({ ...it, id: it.id || safeId() }))
+      : [];
+    // Preserve caller-supplied entryType; default to 'estimate' if absent.
+    const toSave = prepareEntryForSave(
+      { ...entry, foodItems },
+      { entryType: entry.entryType || 'estimate' },
+    );
+    // Guard: estimate entries must have a complete estimateMeta object.
+    if (toSave.entryType === 'estimate' && toSave.estimateMeta === null) {
+      const now = new Date().toISOString();
+      toSave.estimateMeta = {
+        method: null, modelVersion: null, confidence: null,
+        sourceDataWindow: null, createdAt: now, updatedAt: now,
+        locked: false, previousEstimate: null,
+      };
     }
-    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), entry);
-    state.dailyEntries.set(dateStr, entry);
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), toSave);
+    state.dailyEntries.set(dateStr, toSave);
     debugLog('firebase-save', 'Estimated entry saved', dateStr);
   } catch (e) {
     handleError('estimated-entry-save', e, 'Failed to save estimated entry.');
@@ -155,13 +181,15 @@ export async function fetchAllEntries() {
     const qs = await getDocs(qy);
     qs.forEach(d => {
       const data = d.data();
-        if (Array.isArray(data.foodItems)) {
-          data.foodItems = data.foodItems.map(it => {
-            if (!it.id) it.id = safeId();
-            return coerceQuantity(it);
-          });
-        }
-      rows.push(data);
+      if (Array.isArray(data.foodItems)) {
+        data.foodItems = data.foodItems.map(it => {
+          if (!it.id) it.id = safeId();
+          return coerceQuantity(it);
+        });
+      }
+      // Normalize to v2 shape so every consumer (including the CSV exporter)
+      // receives entries with all v2 fields present.
+      rows.push(normalizeEntry(data));
     });
     debugLog('firebase-fetch', 'All entries fetched successfully', rows.length);
   } catch (e) {
@@ -266,10 +294,10 @@ export async function fetchEntriesInRange(startDate, endDate) {
             return coerceQuantity(it);
           });
         }
-        entries.set(dateStr, data);
+        entries.set(dateStr, normalizeEntry(data));
       }
     });
-    
+
     debugLog('firebase-fetch', 'Range entries fetched successfully', entries.size);
     return entries;
   } catch (e) {
@@ -320,11 +348,14 @@ export async function fetchUserProfile() {
  * Saves the user's profile document to Firestore and updates state.userProfile.
  * @param {object} profile - The normalized profile object to persist.
  */
-export async function saveUserProfile(profile) {
+export async function saveUserProfile(incoming) {
   if (!state.userId) return showMessage('Cannot save profile. Not authenticated.', true);
   try {
-    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/profile/userProfile`), profile);
-    state.userProfile = profile;
+    // Merge: defaults → current state → incoming, then force schemaVersion.
+    // This prevents a partial update from wiping fields the caller didn't include.
+    const toSave = prepareProfileForSave(incoming, state.userProfile);
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/profile/userProfile`), toSave);
+    state.userProfile = normalizeUserProfile(toSave);
     showMessage('Profile saved!');
     debugLog('firebase-save', 'User profile saved');
   } catch (e) {
@@ -359,11 +390,14 @@ export async function fetchGoalSettings() {
  * Saves the user's goal settings document to Firestore and updates state.goalSettings.
  * @param {object} goals - The normalized goal settings object to persist.
  */
-export async function saveGoalSettings(goals) {
+export async function saveGoalSettings(incoming) {
   if (!state.userId) return showMessage('Cannot save goal settings. Not authenticated.', true);
   try {
-    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/goals/goalSettings`), goals);
-    state.goalSettings = goals;
+    // Merge: defaults → current state → incoming, then force schemaVersion.
+    // manualTargetOverrides is key-merged so no existing override is dropped.
+    const toSave = prepareGoalSettingsForSave(incoming, state.goalSettings);
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/goals/goalSettings`), toSave);
+    state.goalSettings = normalizeGoalSettings(toSave);
     showMessage('Goals saved!');
     debugLog('firebase-save', 'Goal settings saved');
   } catch (e) {

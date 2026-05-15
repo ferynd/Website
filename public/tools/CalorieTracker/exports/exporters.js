@@ -80,33 +80,47 @@ export async function exportDailyLogCsv() {
   const entries = await fetchAllEntries();
   if (!entries.length) return showMessage('No daily log data to export.', true);
 
-  // Core columns are unchanged for backward compatibility with existing importers.
-  // v2 columns (entryType … exerciseSessions) are appended at the end so old
-  // tools that stop reading at 'foodItems' are unaffected.
+  // Core columns are unchanged — old importers that stop reading at 'foodItems'
+  // are unaffected by the v2 columns appended afterwards.
   const coreHeaders = ['date', ...allNutrients, 'foodItems'];
-  const v2Headers = ['entryType', 'dayActivityLevel', 'manualLock', 'exerciseSessions'];
+  // Full v2 column set, in a stable order for diffable exports.
+  const v2Headers = [
+    'schemaVersion',
+    'entryType',
+    'dayActivityLevel',
+    'vacationDayType',
+    'manualLock',
+    'exerciseSessions',
+    'calorieAdjustmentItems',
+    'estimateMeta',
+  ];
   const headers = [...coreHeaders, ...v2Headers];
   let csv = headers.map(h => `"${h}"`).join(',') + '\n';
 
+  // entries from fetchAllEntries() are already normalized, so all v2 fields exist.
   entries.forEach(e => {
     const row = headers.map(h => {
-      // Serialize array/object fields as JSON strings inside the CSV cell.
+      // Arrays and objects are serialized as JSON strings inside the CSV cell.
       if (h === 'foodItems') {
         return `"${JSON.stringify(e.foodItems || []).replace(/"/g, '""')}"`;
       }
       if (h === 'exerciseSessions') {
         return `"${JSON.stringify(e.exerciseSessions || []).replace(/"/g, '""')}"`;
       }
-      if (h === 'entryType') {
-        const v = e.entryType ?? 'logged';
-        return `"${String(v).replace(/"/g, '""')}"`;
+      if (h === 'calorieAdjustmentItems') {
+        return `"${JSON.stringify(e.calorieAdjustmentItems || []).replace(/"/g, '""')}"`;
       }
-      if (h === 'dayActivityLevel') {
-        const v = e.dayActivityLevel ?? '';
-        return `"${String(v).replace(/"/g, '""')}"`;
+      if (h === 'estimateMeta') {
+        return `"${JSON.stringify(e.estimateMeta ?? null).replace(/"/g, '""')}"`;
       }
-      if (h === 'manualLock') {
-        return e.manualLock ? 'true' : 'false';
+      // Boolean
+      if (h === 'manualLock') return e.manualLock ? 'true' : 'false';
+      // Numeric schema version
+      if (h === 'schemaVersion') return e.schemaVersion ?? '0';
+      // Nullable string fields
+      if (h === 'entryType' || h === 'dayActivityLevel' || h === 'vacationDayType') {
+        const v = e[h] ?? '';
+        return `"${String(v).replace(/"/g, '""')}"`;
       }
       let v = e[h] ?? '0';
       if (typeof v === 'string') v = `"${v.replace(/"/g, '""')}"`;
