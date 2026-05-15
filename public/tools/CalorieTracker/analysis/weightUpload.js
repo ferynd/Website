@@ -1,180 +1,137 @@
 /**
  * @file analysis/weightUpload.js
- * @description Parses weight CSV/TSV files and saves to Firestore with automatic dedup.
+ * @description Handles weight CSV upload: parse → preview → batch-save → state update.
  *
- * Expected CSV format (tab-delimited from smart scale export):
- *   Weight (lb)\tBody Fat\tMuscle Mass\tWater\tBMI\tBone Mass\tDate/Time
- *   185.8\t19.80%\t43.10%\t59.20%\t25.9\t0%\tJul 13 2017 07:20:13 AM
- *
- * Only date/time and weight are used — everything else is ignored.
- * Re-uploading the full CSV is safe: deterministic Firestore doc IDs mean
- * existing rows are overwritten, not duplicated.
+ * Uses the robust parser from weightParser.js and saves to Firestore in
+ * batched writes (≤450 per batch) for performance. Local state is updated
+ * inline after each batch — no extra full refetch needed.
  */
 
 import { state } from '../state/store.js';
-import { saveWeightEntries, fetchWeightEntries } from '../services/firebase.js';
+import { saveWeightEntriesBatch } from '../services/firebase.js';
 import { showMessage, debugLog } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
+import { parseWeightCSV } from './weightParser.js';
 
-/**
- * Format a Date in the app's local timezone as YYYY-MM-DD.
- * Mirrors the approach used by nutrition entries (en-CA locale = YYYY-MM-DD).
- * @param {Date} d
- * @returns {string}
- */
-function localDateStr(d) {
-  try {
-    return d.toLocaleDateString('en-CA', { timeZone: CONFIG.TIMEZONE });
-  } catch {
-    // Fallback: manual local-time formatting
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  }
-}
-
-/**
- * Build a deterministic, timezone-stable timestamp string for Firestore doc IDs.
- * Uses local time components so re-uploads always produce the same ID
- * regardless of daylight-saving shifts in toISOString().
- * @param {Date} d
- * @returns {string} e.g. "2017-07-13T07-20-13"
- */
-function localTimestamp(d) {
-  const y = d.getFullYear();
-  const mo = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const h = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const s = String(d.getSeconds()).padStart(2, '0');
-  return `${y}-${mo}-${day}T${h}-${mi}-${s}`;
-}
-
-/**
- * Split a single CSV row respecting RFC-4180 double-quote rules.
- *
- * A naive split(',') breaks when a field like "Jul 13, 2017 07:20:13 AM" is
- * surrounded by quotes — the embedded comma is split into separate columns,
- * causing the date parser to receive a partial string and silently drop the row.
- *
- * For tab-delimited files the split is always naive because tabs never appear
- * inside quoted date/time fields from common scale exports.
- *
- * @param {string} line  - A single row from the file.
- * @param {string} delim - ',' or '\t'.
- * @returns {string[]}
- */
-function splitCsvRow(line, delim) {
-  if (delim !== ',') return line.split(delim);
-
-  const fields = [];
-  let current = '';
-  let inQuotes = false;
-
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        // Escaped double-quote inside a quoted field ("" → ")
-        current += '"';
-        i++;
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (ch === ',' && !inQuotes) {
-      fields.push(current.trim());
-      current = '';
-    } else {
-      current += ch;
-    }
-  }
-  fields.push(current.trim());
-  return fields;
-}
-
-/**
- * Parse a weight CSV/TSV string into structured entries.
- * @param {string} raw - The raw file content.
- * @returns {Array<{date: string, weight_lb: number, time_min: number, timestamp: string}>}
- */
-export function parseWeightCSV(raw) {
-  const lines = raw.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return [];
-
-  // Detect delimiter: tab or comma
-  const header = lines[0];
-  const delim = header.includes('\t') ? '\t' : ',';
-  // Use splitCsvRow so that a quoted header cell (rare but valid) is handled correctly.
-  const cols = splitCsvRow(header, delim).map(c => c.toLowerCase());
-
-  // Find the weight and date/time column indices
-  const weightIdx = cols.findIndex(c => c.startsWith('weight'));
-  const dateIdx = cols.findIndex(c => c.includes('date') || c.includes('time'));
-
-  if (weightIdx === -1 || dateIdx === -1) {
-    showMessage('CSV must have "Weight" and "Date/Time" columns.', true);
-    return [];
-  }
-
-  const entries = [];
-
-  for (let i = 1; i < lines.length; i++) {
-    const parts = splitCsvRow(lines[i], delim);
-    if (parts.length <= Math.max(weightIdx, dateIdx)) continue;
-
-    const weightStr = parts[weightIdx].trim();
-    const dateStr = parts[dateIdx].trim();
-
-    const weight_lb = parseFloat(weightStr);
-    if (isNaN(weight_lb) || weight_lb < 50 || weight_lb > 600) continue;
-
-    const parsed = new Date(dateStr);
-    if (isNaN(parsed.getTime())) continue;
-
-    // Use local time (matches nutrition entry dates) — NOT UTC via toISOString()
-    const date = localDateStr(parsed);
-    const time_min = parsed.getHours() * 60 + parsed.getMinutes();
-    const timestamp = localTimestamp(parsed);
-
-    entries.push({ date, weight_lb, time_min, timestamp });
-  }
-
-  return entries;
-}
+// Re-export so any legacy import of parseWeightCSV from this file still works.
+export { parseWeightCSV } from './weightParser.js';
 
 /**
  * Handle the weight CSV file upload.
- * Parses the file, saves to Firestore (dedup via doc ID), refreshes state.
- * @param {File} file - The uploaded file.
- * @returns {Promise<{total: number, saved: number}>}
+ * Parses the file, shows inline diagnostics, saves in batched Firestore writes,
+ * then updates local state — no full refetch unless saving fails.
+ *
+ * @param {File} file - The uploaded File object.
+ * @param {object} [opts]
+ * @param {(msg: string, isError?: boolean, duration?: number) => void} [opts.onStatus]
+ *   Called to display status messages. Defaults to the global showMessage toast.
+ * @param {(saved: number, total: number, batchIdx: number, totalBatches: number) => void} [opts.onProgress]
+ *   Called after each batch completes.
+ * @returns {Promise<{
+ *   total: number,
+ *   parsed: number,
+ *   saved: number,
+ *   diagnostics: object | null,
+ * }>}
  */
-export async function handleWeightUpload(file) {
+export async function handleWeightUpload(file, opts = {}) {
+  const { onStatus = showMessage, onProgress } = opts;
+
   if (!state.userId) {
-    showMessage('Please log in before uploading weight data.', true);
-    return { total: 0, saved: 0 };
+    onStatus('Please log in before uploading weight data.', true);
+    return { total: 0, parsed: 0, saved: 0, diagnostics: null };
   }
 
-  showMessage('Parsing weight file...', false, 10000);
+  onStatus('Reading file…', false, 5000);
 
-  const raw = await file.text();
-  const entries = parseWeightCSV(raw);
+  let raw;
+  try {
+    raw = await file.text();
+  } catch (e) {
+    onStatus(`Failed to read file: ${e.message}`, true);
+    return { total: 0, parsed: 0, saved: 0, diagnostics: null };
+  }
+
+  onStatus('Parsing CSV…', false, 8000);
+  const { entries, diagnostics } = parseWeightCSV(raw, { timezone: CONFIG.TIMEZONE });
+  debugLog('weight-upload', 'Parse complete', diagnostics);
 
   if (entries.length === 0) {
-    showMessage('No valid weight entries found in file. Check format.', true);
-    return { total: 0, saved: 0 };
+    const reasonParts = Object.entries(diagnostics.skippedReasons)
+      .map(([r, n]) => `${r.replace(/_/g, ' ')}: ${n}`)
+      .join('; ');
+    const noColMsg = diagnostics.skippedReasons['no_weight_column']
+      ? 'No weight column found — expected "Weight", "Weight (lb)", "Weight(kg)", or "Body Weight".'
+      : diagnostics.skippedReasons['no_date_column']
+        ? 'No date column found — expected "Date/Time", "Timestamp", "Date", "Measured At", or "Created At".'
+        : `No valid rows found. ${reasonParts || 'Check column names and date format.'}`;
+    onStatus(noColMsg, true, 12000);
+    return { total: diagnostics.totalRows, parsed: 0, saved: 0, diagnostics };
   }
 
-  debugLog('weight-upload', `Parsed ${entries.length} weight entries from CSV`);
-  showMessage(`Uploading ${entries.length} weight entries (duplicates auto-skipped)...`, false, 15000);
+  const totalBatches = Math.ceil(entries.length / 450);
+  onStatus(
+    `Parsed ${entries.length} entries from ${diagnostics.totalRows} rows ` +
+    `(${diagnostics.skippedRows} skipped, delimiter: ${diagnostics.detectedDelimiter}). ` +
+    `Saving in ${totalBatches} batch${totalBatches === 1 ? '' : 'es'}…`,
+    false,
+    30000,
+  );
 
-  const result = await saveWeightEntries(entries);
+  const result = await saveWeightEntriesBatch(entries, {
+    onProgress: (saved, total, bi, bt) => {
+      if (onProgress) onProgress(saved, total, bi, bt);
+      debugLog('weight-upload', `Batch ${bi}/${bt}: ${saved}/${total} saved`);
+    },
+  });
 
-  // Refresh the full weight dataset from Firestore
-  state.weightEntries = await fetchWeightEntries();
+  const totalInDB = state.weightEntries.size;
+  const rangeFrom = diagnostics.detectedDateRange.from || '?';
+  const rangeTo   = diagnostics.detectedDateRange.to   || '?';
 
-  showMessage(`Upload complete: ${result.saved} entries saved (${state.weightEntries.size} total in database).`);
-  debugLog('weight-upload', `Upload complete`, { parsed: entries.length, saved: result.saved, totalInDB: state.weightEntries.size });
+  if (result.partialFailure) {
+    // Some batches failed — already-saved batches are in local state
+    const unsaved = result.skipped;
+    if (result.saved === 0) {
+      onStatus(
+        `Upload failed: 0 of ${entries.length} entries saved. ` +
+        `Check your connection and try again.`,
+        true,
+        12000,
+      );
+    } else {
+      onStatus(
+        `Partial upload: ${result.saved} of ${entries.length} entries saved` +
+        ` (${unsaved} not saved — connection error). Re-uploading will retry the missing rows.`,
+        true,
+        12000,
+      );
+    }
+  } else {
+    onStatus(
+      `Upload complete: ${result.saved} entries saved ` +
+      `(${totalInDB} total in database, ` +
+      `date range: ${rangeFrom} → ${rangeTo}).`,
+      false,
+      8000,
+    );
+  }
 
-  return { total: entries.length, saved: result.saved };
+  debugLog('weight-upload', 'Upload complete', {
+    parsed: entries.length,
+    saved: result.saved,
+    skipped: result.skipped,
+    partialFailure: result.partialFailure,
+    totalInDB,
+    diagnostics,
+  });
+
+  return {
+    total: diagnostics.totalRows,
+    parsed: entries.length,
+    saved: result.saved,
+    skipped: result.skipped,
+    partialFailure: result.partialFailure,
+    diagnostics,
+  };
 }

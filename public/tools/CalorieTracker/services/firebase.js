@@ -32,7 +32,8 @@ import {
   query,
   orderBy,
   limit,
-  deleteDoc
+  deleteDoc,
+  writeBatch,
 } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 // Helper to safely generate IDs across environments
@@ -327,6 +328,76 @@ export async function saveWeightEntries(entries) {
     handleError('weight-save', e, 'Failed to save weight entries.');
   }
   return { saved, skipped: entries.length - saved };
+}
+
+/**
+ * Save weight entries in batched Firestore writes (≤450 per batch).
+ * Re-uploading the same CSV is idempotent: existing docs are overwritten.
+ * Local state (state.weightEntries) is updated inline after each batch,
+ * so no extra full-refetch is needed after the call completes.
+ *
+ * @param {Array<{
+ *   docId: string,
+ *   date: string,
+ *   weight_lb: number,
+ *   time_min: number,
+ *   timestamp: string,
+ *   originalUnit: string,
+ *   parserVersion: string,
+ *   sourceHash: string,
+ *   importedAt: string,
+ * }>} entries
+ * @param {{ onProgress?: (saved: number, total: number, batchIdx: number, totalBatches: number) => void }} [opts]
+ * @returns {Promise<{ saved: number, skipped: number, partialFailure: boolean }>}
+ */
+export async function saveWeightEntriesBatch(entries, opts = {}) {
+  if (!state.userId) {
+    showMessage('Cannot save weight data. Not authenticated.', true);
+    return { saved: 0, skipped: entries.length, partialFailure: false };
+  }
+  if (entries.length === 0) return { saved: 0, skipped: 0, partialFailure: false };
+
+  const BATCH_SIZE = 450;
+  const chunks = [];
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    chunks.push(entries.slice(i, i + BATCH_SIZE));
+  }
+
+  let totalSaved = 0;
+  try {
+    for (let ci = 0; ci < chunks.length; ci++) {
+      const chunk = chunks[ci];
+      const batch = writeBatch(db);
+
+      for (const entry of chunk) {
+        const { docId, ...docData } = entry;
+        const ref = doc(db, `artifacts/${appId}/users/${state.userId}/weightEntries`, docId);
+        batch.set(ref, docData);
+      }
+
+      await batch.commit();
+      totalSaved += chunk.length;
+
+      // Update local state immediately so the UI reflects progress without a refetch
+      for (const entry of chunk) {
+        const { docId, ...docData } = entry;
+        state.weightEntries.set(docId, docData);
+      }
+
+      if (opts.onProgress) {
+        opts.onProgress(totalSaved, entries.length, ci + 1, chunks.length);
+      }
+
+      debugLog('firebase-weight', `Batch ${ci + 1}/${chunks.length} committed (${chunk.length} docs)`);
+    }
+  } catch (e) {
+    handleError('weight-batch-save', e, 'Failed to save weight entries.');
+    // Return partial results — already-committed batches are in local state
+    return { saved: totalSaved, skipped: entries.length - totalSaved, partialFailure: true };
+  }
+
+  debugLog('firebase-weight', `Saved ${totalSaved} weight entries in ${chunks.length} batch(es)`);
+  return { saved: totalSaved, skipped: 0, partialFailure: false };
 }
 
 /**

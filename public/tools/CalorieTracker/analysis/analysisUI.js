@@ -73,34 +73,87 @@ export function renderAnalysisSection() {
 export function initAnalysisEvents() {
   // Wire CSV upload
   const uploadInput = document.getElementById('weight-csv-input');
-  const uploadBtn = document.getElementById('weight-upload-btn');
-  const uploadArea = document.getElementById('weight-upload-area');
+  const uploadBtn   = document.getElementById('weight-upload-btn');
+  const uploadArea  = document.getElementById('weight-upload-area');
+  const statusEl    = document.getElementById('weight-upload-status');
+  const progressEl  = document.getElementById('weight-upload-progress');
+  const barEl       = document.getElementById('weight-upload-bar');
+  const progressTxt = document.getElementById('weight-upload-progress-text');
+
+  /** Update the inline status line and persist across re-renders. */
+  function onStatus(msg, isErr = false) {
+    state.lastWeightUploadStatus = { message: msg, isError: isErr };
+    if (!statusEl) return;
+    statusEl.textContent = msg;
+    statusEl.className = `text-xs mt-2 ${isErr ? 'text-negative' : 'text-muted'}`;
+  }
+
+  /** Update the progress bar */
+  function onProgress(saved, total, bi, bt) {
+    if (!progressEl || !barEl || !progressTxt) return;
+    const pct = total > 0 ? Math.round((saved / total) * 100) : 0;
+    progressEl.classList.remove('hidden');
+    barEl.style.width = `${pct}%`;
+    progressTxt.textContent = `Batch ${bi}/${bt} — ${saved}/${total} entries (${pct}%)`;
+  }
+
+  /** Shared handler used by both file picker and drag-and-drop */
+  async function runUpload(file) {
+    if (!file) return;
+    if (uploadBtn) uploadBtn.disabled = true;
+    if (progressEl) { progressEl.classList.remove('hidden'); }
+    if (barEl) barEl.style.width = '0%';
+    if (progressTxt) progressTxt.textContent = '';
+
+    const result = await handleWeightUpload(file, { onStatus, onProgress });
+
+    if (uploadBtn) uploadBtn.disabled = false;
+    if (progressEl && result.saved > 0) {
+      // Show final bar at 100% briefly then hide
+      if (barEl) barEl.style.width = '100%';
+      setTimeout(() => { if (progressEl) progressEl.classList.add('hidden'); }, 3000);
+    } else if (progressEl) {
+      progressEl.classList.add('hidden');
+    }
+
+    // Show diagnostics summary in status line when the batch save succeeded fully
+    if (result.diagnostics && result.parsed > 0 && !result.partialFailure) {
+      const d = result.diagnostics;
+      const skipStr = d.skippedRows > 0
+        ? ` | Skipped: ${d.skippedRows} (${Object.keys(d.skippedReasons).join(', ')})`
+        : '';
+      const rangeStr = d.detectedDateRange.from
+        ? ` | Range: ${d.detectedDateRange.from} → ${d.detectedDateRange.to}`
+        : '';
+      onStatus(
+        `Saved ${result.saved}/${result.total} rows${skipStr}${rangeStr}`,
+        false,
+      );
+    }
+
+    // Re-render dashboard to reflect new weight data
+    const { updateDashboard } = await import('../ui/dashboard.js');
+    updateDashboard();
+  }
 
   if (uploadBtn && uploadInput) {
     uploadBtn.addEventListener('click', () => uploadInput.click());
-
     uploadInput.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
-      if (!file) return;
-      await handleWeightUpload(file);
-      // Re-render dashboard to reflect new data
-      const { updateDashboard } = await import('../ui/dashboard.js');
-      updateDashboard();
+      // Reset so the same file can be re-selected
+      uploadInput.value = '';
+      await runUpload(file);
     });
   }
 
-  // Drag and drop
+  // Drag and drop — same runUpload path
   if (uploadArea) {
     uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
     uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
     uploadArea.addEventListener('drop', async (e) => {
       e.preventDefault();
       uploadArea.classList.remove('drag-over');
-      const file = e.dataTransfer?.files?.[0];
-      if (!file) return;
-      await handleWeightUpload(file);
-      const { updateDashboard } = await import('../ui/dashboard.js');
-      updateDashboard();
+      await runUpload(e.dataTransfer?.files?.[0]);
     });
   }
 
@@ -209,18 +262,30 @@ export function initAnalysisEvents() {
 
 function renderUploadArea() {
   const hasData = state.weightEntries.size > 0;
+
+  // Use the persisted upload status if one exists (survives dashboard re-renders).
+  // Fall back to the default count/hint text when no upload has happened yet.
+  const stored = state.lastWeightUploadStatus;
+  const statusMsg = stored
+    ? stored.message
+    : hasData
+      ? `${state.weightEntries.size} weight readings loaded. Re-uploading the same export will update matching rows without creating duplicates.`
+      : 'Export your scale data as CSV/TSV and upload it here. Supports comma, tab, and semicolon delimiters, kg or lb columns, and most date formats.';
+  const statusClass = stored?.isError ? 'text-negative' : 'text-muted';
+
   return `
     <div id="weight-upload-area" class="mb-6 p-4 staging-section" style="text-align:center;">
       <input type="file" id="weight-csv-input" accept=".csv,.tsv,.txt" class="hidden">
       <button id="weight-upload-btn" class="btn btn-primary">
         <i class="fas fa-upload" style="margin-right:.5rem;"></i>${hasData ? 'Re-upload' : 'Upload'} Weight CSV
       </button>
-      <p class="text-xs text-muted mt-2">
-        ${hasData
-          ? `${state.weightEntries.size} weight readings loaded. Upload your full export anytime — duplicates are auto-skipped.`
-          : 'Export your scale data as CSV/TSV and upload it here. Only date/time and weight are used.'
-        }
-      </p>
+      <p id="weight-upload-status" class="text-xs mt-2 ${statusClass}" style="word-break:break-word;">${statusMsg}</p>
+      <div id="weight-upload-progress" class="mt-2 hidden" style="max-width:100%;box-sizing:border-box;">
+        <div class="progress-bar-bg" style="overflow:hidden;border-radius:999px;">
+          <div id="weight-upload-bar" class="progress-bar-fill" style="width:0%;"></div>
+        </div>
+        <p id="weight-upload-progress-text" class="text-xs text-muted mt-2" style="word-break:break-word;"></p>
+      </div>
     </div>
   `;
 }

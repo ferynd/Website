@@ -43,6 +43,11 @@ export const state = {
   // Active tab name — persisted to localStorage as 'ct-active-tab'.
   activeTab: 'today',
 
+  // Last weight upload status — persisted across dashboard re-renders so the
+  // final success/error message is not wiped when the Energy tab repaints.
+  // Shape: { message: string, isError: boolean } | null
+  lastWeightUploadStatus: null,
+
   // An object to cache frequently accessed DOM elements.
   dom: {},
 };
