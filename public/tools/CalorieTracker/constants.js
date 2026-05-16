@@ -221,6 +221,22 @@ export const DEFAULT_GOAL_SETTINGS = {
   manualTargetOverrides: {}, // { [nutrientKey]: number } — sparse, never auto-populated
 };
 
+// Analysis horizons (in days) for multi-window TDEE estimates
+export const ENERGY_HORIZONS = {
+  QUICK: 14,
+  PRIMARY: 28,
+  STABILITY_1: 42,
+  STABILITY_2: 56,
+};
+
+// Data sufficiency labels for confidence reporting
+export const DATA_SUFFICIENCY = {
+  NOT_ENOUGH: 'not_enough',
+  ROUGH: 'rough',
+  MODERATE: 'moderate',
+  HIGH: 'high',
+};
+
 // Helper functions for banking calculations
 export const BankingHelpers = {
   /**

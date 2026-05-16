@@ -97,6 +97,17 @@ export async function loadUserData() {
     state.baselineTargets = targets;
     state.weightEntries = weightEntries;
 
+    // Build multi-weigh-in map: all readings grouped by calendar date so the
+    // analysis engine can apply preferred-window selection when multiple readings
+    // exist for the same day (e.g. morning + evening scale syncs).
+    const multiMap = new Map();
+    for (const entry of weightEntries.values()) {
+      const d = entry.date;
+      if (!multiMap.has(d)) multiMap.set(d, []);
+      multiMap.get(d).push(entry);
+    }
+    state.weightEntriesMulti = multiMap;
+
     // Normalize every entry at read time so all v2 fields are present in memory.
     // We never write back just because we read — this is a pure in-memory upgrade.
     const normalizedEntries = new Map();

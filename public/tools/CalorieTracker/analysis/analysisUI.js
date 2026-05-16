@@ -1,7 +1,7 @@
 /**
  * @file analysis/analysisUI.js
- * @description Renders the Analysis tab within the dashboard: weight chart,
- * KPIs, TDEE/BMR cards, imputation table, and plateau status.
+ * @description Renders the Analysis tab: weight chart, KPIs, TDEE/BMR cards,
+ * confidence, imputation table, and plateau status.
  */
 
 import { state } from '../state/store.js';
@@ -11,24 +11,21 @@ import { debugLog, showMessage } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
 import { saveEstimatedEntry } from '../services/firebase.js';
 
-// Chart instance for the weight trend chart (separate from nutrition chart)
 let weightChartInstance = null;
 
 // ==========================================
 // MAIN ENTRY: render + wire
 // ==========================================
 
-/**
- * Render the full analysis section HTML and initialize its chart/events.
- * Call this from updateDashboard() in dashboard.js.
- * @returns {string} HTML string for the analysis section
- */
 export function renderAnalysisSection() {
-  // Run analysis pipeline (cached result stored in state for other consumers)
-  const results = runAnalysis(state.weightEntries, state.dailyEntries);
+  const results = runAnalysis(
+    state.weightEntries,
+    state.dailyEntries,
+    state.userProfile || null,
+    state.weightEntriesMulti || null,
+  );
   state.analysisResults = results;
 
-  // Pre-compute blank days once so both the table and event handler can use them.
   state._blankDaysForPopulation = results.error
     ? []
     : getBlankDaysForPopulation(results.rows, state.dailyEntries, state.baselineTargets);
@@ -37,28 +34,17 @@ export function renderAnalysisSection() {
     <div class="mb-8">
       <h2 class="text-responsive-2xl font-bold text-secondary mb-4">📈 Weight & Energy Analysis</h2>
 
-      <!-- CSV Upload -->
       ${renderUploadArea()}
 
       ${results.error
         ? renderNoDataMessage(results.error)
         : `
-          <!-- KPI Cards -->
           ${renderKPICards(results)}
-
-          <!-- Weight Trend Chart -->
+          ${renderConfidenceCard(results.confidence, results)}
           ${renderWeightChart()}
-
-          <!-- Plateau Status -->
           ${renderPlateauStatus(results.plateau)}
-
-          <!-- TDEE / BMR Detail -->
-          ${renderEnergyDetail(results.bmrModel)}
-
-          <!-- Imputation Table -->
+          ${renderEnergyDetail(results)}
           ${renderImputationTable(results.rows)}
-
-          <!-- Fill Blank Days -->
           ${renderBlankDaysSection(state._blankDaysForPopulation)}
         `
       }
@@ -66,12 +52,7 @@ export function renderAnalysisSection() {
   `;
 }
 
-/**
- * Initialize chart and wire events after the HTML has been inserted into the DOM.
- * Must be called after renderAnalysisSection()'s HTML is in the page.
- */
 export function initAnalysisEvents() {
-  // Wire CSV upload
   const uploadInput = document.getElementById('weight-csv-input');
   const uploadBtn   = document.getElementById('weight-upload-btn');
   const uploadArea  = document.getElementById('weight-upload-area');
@@ -80,7 +61,6 @@ export function initAnalysisEvents() {
   const barEl       = document.getElementById('weight-upload-bar');
   const progressTxt = document.getElementById('weight-upload-progress-text');
 
-  /** Update the inline status line and persist across re-renders. */
   function onStatus(msg, isErr = false) {
     state.lastWeightUploadStatus = { message: msg, isError: isErr };
     if (!statusEl) return;
@@ -88,7 +68,6 @@ export function initAnalysisEvents() {
     statusEl.className = `text-xs mt-2 ${isErr ? 'text-negative' : 'text-muted'}`;
   }
 
-  /** Update the progress bar */
   function onProgress(saved, total, bi, bt) {
     if (!progressEl || !barEl || !progressTxt) return;
     const pct = total > 0 ? Math.round((saved / total) * 100) : 0;
@@ -97,11 +76,10 @@ export function initAnalysisEvents() {
     progressTxt.textContent = `Batch ${bi}/${bt} — ${saved}/${total} entries (${pct}%)`;
   }
 
-  /** Shared handler used by both file picker and drag-and-drop */
   async function runUpload(file) {
     if (!file) return;
     if (uploadBtn) uploadBtn.disabled = true;
-    if (progressEl) { progressEl.classList.remove('hidden'); }
+    if (progressEl) progressEl.classList.remove('hidden');
     if (barEl) barEl.style.width = '0%';
     if (progressTxt) progressTxt.textContent = '';
 
@@ -109,14 +87,12 @@ export function initAnalysisEvents() {
 
     if (uploadBtn) uploadBtn.disabled = false;
     if (progressEl && result.saved > 0) {
-      // Show final bar at 100% briefly then hide
       if (barEl) barEl.style.width = '100%';
       setTimeout(() => { if (progressEl) progressEl.classList.add('hidden'); }, 3000);
     } else if (progressEl) {
       progressEl.classList.add('hidden');
     }
 
-    // Show diagnostics summary in status line when the batch save succeeded fully
     if (result.diagnostics && result.parsed > 0 && !result.partialFailure) {
       const d = result.diagnostics;
       const skipStr = d.skippedRows > 0
@@ -125,13 +101,9 @@ export function initAnalysisEvents() {
       const rangeStr = d.detectedDateRange.from
         ? ` | Range: ${d.detectedDateRange.from} → ${d.detectedDateRange.to}`
         : '';
-      onStatus(
-        `Saved ${result.saved}/${result.total} rows${skipStr}${rangeStr}`,
-        false,
-      );
+      onStatus(`Saved ${result.saved}/${result.total} rows${skipStr}${rangeStr}`, false);
     }
 
-    // Re-render dashboard to reflect new weight data
     const { updateDashboard } = await import('../ui/dashboard.js');
     updateDashboard();
   }
@@ -140,13 +112,11 @@ export function initAnalysisEvents() {
     uploadBtn.addEventListener('click', () => uploadInput.click());
     uploadInput.addEventListener('change', async (e) => {
       const file = e.target.files?.[0];
-      // Reset so the same file can be re-selected
       uploadInput.value = '';
       await runUpload(file);
     });
   }
 
-  // Drag and drop — same runUpload path
   if (uploadArea) {
     uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
     uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
@@ -157,12 +127,10 @@ export function initAnalysisEvents() {
     });
   }
 
-  // Draw weight chart if data exists
   if (state.analysisResults && !state.analysisResults.error) {
     drawWeightChart(state.analysisResults.rows);
   }
 
-  // Wire timeframe selector
   const timeframeSelect = document.getElementById('weight-chart-timeframe');
   if (timeframeSelect) {
     timeframeSelect.addEventListener('change', () => {
@@ -172,11 +140,10 @@ export function initAnalysisEvents() {
     });
   }
 
-  // ── Blank-day population controls ──────────────────────────────────────────
+  // Blank-day population controls
   const blankDays = state._blankDaysForPopulation || [];
   if (blankDays.length === 0) return;
 
-  /** Refresh the fill-button label based on checked count. */
   function updateFillBtn() {
     const checked = document.querySelectorAll('.blank-day-check:checked').length;
     const btn = document.getElementById('blank-fill-btn');
@@ -185,35 +152,25 @@ export function initAnalysisEvents() {
     if (countEl) countEl.textContent = checked;
   }
 
-  // Checkbox: update button on every change
   document.getElementById('blank-days-tbody')?.addEventListener('change', e => {
     if (e.target.classList.contains('blank-day-check')) updateFillBtn();
   });
-
-  // Select-all header checkbox
   document.getElementById('blank-check-all')?.addEventListener('change', e => {
-    document.querySelectorAll('.blank-day-check')
-      .forEach(cb => { cb.checked = e.target.checked; });
+    document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = e.target.checked; });
     updateFillBtn();
   });
-
-  // Select-all button
   document.getElementById('blank-select-all-btn')?.addEventListener('click', () => {
     document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = true; });
     const allBox = document.getElementById('blank-check-all');
     if (allBox) allBox.checked = true;
     updateFillBtn();
   });
-
-  // Deselect-all button
   document.getElementById('blank-deselect-all-btn')?.addEventListener('click', () => {
     document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = false; });
     const allBox = document.getElementById('blank-check-all');
     if (allBox) allBox.checked = false;
     updateFillBtn();
   });
-
-  // Select-range button
   document.getElementById('blank-select-range-btn')?.addEventListener('click', () => {
     const fromVal = document.getElementById('blank-range-from')?.value;
     const toVal   = document.getElementById('blank-range-to')?.value;
@@ -224,14 +181,12 @@ export function initAnalysisEvents() {
     updateFillBtn();
   });
 
-  // Fill selected days
   document.getElementById('blank-fill-btn')?.addEventListener('click', async () => {
     const selectedDates = Array.from(document.querySelectorAll('.blank-day-check:checked'))
       .map(cb => cb.dataset.date);
     if (selectedDates.length === 0) return;
 
     const blankMap = new Map(blankDays.map(d => [d.date, d]));
-
     const fillBtn = document.getElementById('blank-fill-btn');
     if (fillBtn) fillBtn.disabled = true;
     showMessage(`Filling ${selectedDates.length} blank day(s)…`, false, 30000);
@@ -249,8 +204,6 @@ export function initAnalysisEvents() {
     }
 
     showMessage(`Filled ${savedCount} blank day(s) with estimated values.`);
-
-    // Re-render dashboard (dynamic import avoids circular dependency)
     const { updateDashboard } = await import('../ui/dashboard.js');
     updateDashboard();
   });
@@ -262,9 +215,6 @@ export function initAnalysisEvents() {
 
 function renderUploadArea() {
   const hasData = state.weightEntries.size > 0;
-
-  // Use the persisted upload status if one exists (survives dashboard re-renders).
-  // Fall back to the default count/hint text when no upload has happened yet.
   const stored = state.lastWeightUploadStatus;
   const statusMsg = stored
     ? stored.message
@@ -311,10 +261,16 @@ function renderKPICards(results) {
     const color = s.totalWeightChange <= 0 ? 'text-positive' : 'text-warning';
     cards.push(kpiCard('Total Change', `${sign}${s.totalWeightChange} lb`, 'fa-arrow-trend-down', color));
   }
-  if (s.tdee != null) {
-    cards.push(kpiCard('Est. TDEE', `${s.tdee} kcal`, 'fa-fire', 'text-warning'));
+
+  // Prefer observed TDEE over model TDEE for the top KPI
+  const displayTdee = s.observedTdee ?? s.tdee;
+  if (displayTdee != null) {
+    cards.push(kpiCard('Observed TDEE', `${displayTdee} kcal`, 'fa-fire', 'text-warning'));
   }
-  if (s.bmr != null) {
+
+  if (s.restDayCaloriesOut != null) {
+    cards.push(kpiCard('Rest-Day Burn', `${s.restDayCaloriesOut} kcal`, 'fa-couch', 'text-accent'));
+  } else if (s.bmr != null) {
     cards.push(kpiCard('Est. BMR', `${s.bmr} kcal`, 'fa-heart-pulse', 'text-accent'));
   }
 
@@ -336,6 +292,58 @@ function kpiCard(label, value, icon, colorClass) {
     </div>
   `;
 }
+
+// ==========================================
+// CONFIDENCE CARD
+// ==========================================
+
+function renderConfidenceCard(confidence, results) {
+  if (!confidence) return '';
+
+  const { label, score, reasons } = confidence;
+
+  const configs = {
+    not_enough: { icon: 'fa-circle-question', color: 'text-muted',    bar: 'bg-muted',     title: 'Not enough data yet',          subtitle: 'Upload weight data and log food consistently to enable estimates.' },
+    rough:      { icon: 'fa-circle-exclamation', color: 'text-warning', bar: 'bg-warning',   title: 'Rough estimate',               subtitle: 'Early data. Treat numbers as ballpark figures, not precision targets.' },
+    moderate:   { icon: 'fa-circle-check', color: 'text-accent',       bar: 'bg-accent',     title: 'Moderate confidence',          subtitle: 'Reasonable estimates. Keep logging for better accuracy.' },
+    high:       { icon: 'fa-circle-check', color: 'text-positive',     bar: 'bg-positive',   title: 'High confidence',              subtitle: 'Strong data history. Estimates are likely within 5–10% of reality.' },
+  };
+  const cfg = configs[label] || configs.not_enough;
+
+  const reasonList = reasons.map(r => `<li class="text-xs text-muted">${r}</li>`).join('');
+
+  // Uncertainty footnote
+  let uncertaintyNote = '';
+  if (results.waterWeightUncertaintyLb != null) {
+    uncertaintyNote = `<p class="text-xs text-muted mt-2">Day-to-day water weight noise: ±${results.waterWeightUncertaintyLb} lb. This sets a floor on how precisely any single weigh-in can be interpreted.</p>`;
+  }
+
+  return `
+    <div class="mb-6 surface-2 rounded-lg border p-4">
+      <div class="flex items-center gap-3 mb-3">
+        <i class="fas ${cfg.icon} ${cfg.color} text-xl"></i>
+        <div>
+          <div class="font-semibold">${cfg.title}</div>
+          <div class="text-xs text-muted">${cfg.subtitle}</div>
+        </div>
+        <div class="ml-auto text-right">
+          <div class="text-xs text-muted mb-1">${score}%</div>
+          <div class="w-24 h-2 rounded-full surface-1 overflow-hidden">
+            <div class="${cfg.bar} h-full rounded-full transition-all" style="width:${score}%;"></div>
+          </div>
+        </div>
+      </div>
+      <ul class="space-y-1 pl-1">
+        ${reasonList}
+      </ul>
+      ${uncertaintyNote}
+    </div>
+  `;
+}
+
+// ==========================================
+// WEIGHT CHART
+// ==========================================
 
 function renderWeightChart() {
   return `
@@ -373,89 +381,206 @@ function renderPlateauStatus(plateau) {
   `;
 }
 
-function renderEnergyDetail(bmrModel) {
-  if (!bmrModel || bmrModel.error) {
-    return `
-      <div class="mb-6 p-4 surface-2 rounded-lg border">
-        <div class="text-sm text-muted">
-          <i class="fas fa-info-circle mr-2"></i>${bmrModel?.error || 'Energy estimates not yet available.'}
-        </div>
-      </div>
-    `;
+// ==========================================
+// ENERGY DETAIL CARD
+// ==========================================
+
+function renderEnergyDetail(results) {
+  const { bmrModel, tdeeByHorizon, loggingResidual, waterWeightUncertaintyLb, profileRmr } = results;
+
+  if (!bmrModel) {
+    return `<div class="mb-6 p-4 surface-2 rounded-lg border"><div class="text-sm text-muted">Energy estimates not yet available.</div></div>`;
   }
 
-  // Detect confusing inversion: light PAL > hard PAL
-  const palLight = bmrModel.pals[100];
-  const palHard  = bmrModel.pals[280];
-  const palInverted = palLight != null && palHard != null && palLight > palHard;
+  const hasError = !!bmrModel.error;
+  const isFallback = bmrModel.source === 'profile_prior';
 
-  const palRows = Object.entries(bmrModel.pals)
+  // ── Section: TDEE horizon table ──────────────────────────────────────────
+  const horizonRows = Object.entries(tdeeByHorizon || {})
     .sort(([a], [b]) => Number(a) - Number(b))
-    .map(([bump, pal]) => {
-      const labels = { '0': 'Rest day', '100': 'Light lift (+100 kcal)', '280': 'Hard lift (+280 kcal)', '400': 'HIIT (+400 kcal)' };
-      const label = labels[bump] || `+${bump} kcal`;
-      const tdee = Math.round(bmrModel.bmr_current * pal);
-      return `<tr>
-        <td class="px-3 py-2 text-sm">${label}</td>
-        <td class="px-3 py-2 text-sm text-center">${pal.toFixed(2)}</td>
-        <td class="px-3 py-2 text-sm text-center">${tdee} kcal</td>
-      </tr>`;
+    .map(([days, info]) => {
+      if (!info.available) return `
+        <tr>
+          <td class="px-3 py-2 text-sm">${days}-day window</td>
+          <td class="px-3 py-2 text-sm text-center text-muted" colspan="2">Not enough data yet</td>
+        </tr>`;
+      return `
+        <tr>
+          <td class="px-3 py-2 text-sm">${days}-day window</td>
+          <td class="px-3 py-2 text-sm text-center font-semibold">${info.tdee} kcal</td>
+          <td class="px-3 py-2 text-sm text-center text-muted">${info.daysUsed} block estimates</td>
+        </tr>`;
     }).join('');
 
-  const adaptationSign = bmrModel.adaptation > 0 ? '+' : '';
-  const adaptationColor = bmrModel.adaptation < 0 ? 'text-negative' : 'text-positive';
-  const sd = bmrModel.adaptationSD ?? '?';
-
-  return `
-    <div class="mb-6 card p-6 shadow-lg">
-      <h3 class="text-responsive-xl font-bold text-secondary mb-4">Energy Model Detail</h3>
-
-      <!-- BMR cards -->
-      <div class="grid grid-cols-1 gap-4 mb-4" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
-        <div class="surface-2 rounded-lg border p-4">
-          <div class="text-sm text-muted mb-1">Baseline BMR (weight-based)</div>
-          <div class="font-bold text-lg">${bmrModel.bmr_baseline} kcal</div>
-          <div class="text-xs text-muted mt-1">Predicted by the BMR ~ a + b × weight_kg regression fit to your historical data.</div>
-        </div>
-        <div class="surface-2 rounded-lg border p-4">
-          <div class="text-sm text-muted mb-1">BMR Model Residual (last 21 days)</div>
-          <div class="font-bold text-lg ${adaptationColor}">${adaptationSign}${bmrModel.adaptation} <span class="font-normal text-base">± ${sd} kcal</span></div>
-          <div class="text-xs text-muted mt-1 space-y-1">
-            <p>Median gap between what the weight-regression predicts for your BMR and what your weight-change + calorie data implies. A negative value means the model over-predicts your burn rate; positive means it under-predicts.</p>
-            <p class="text-warning">The ±${sd} kcal spread is a combined uncertainty — it includes both real day-to-day variation in output <em>and</em> logging noise (missed entries, incorrect amounts, or unmeasured water weight). The two cannot be separated from scale + food-log data alone, so treat this figure as a rough signal, not a precise metabolic measurement.</p>
-          </div>
-        </div>
-        <div class="surface-2 rounded-lg border p-4">
-          <div class="text-sm text-muted mb-1">Adjusted BMR</div>
-          <div class="font-bold text-lg text-accent">${bmrModel.bmr_current} kcal</div>
-          <div class="text-xs text-muted mt-1">= Baseline + Residual. Used as the base for TDEE estimates below. Carry the ±${sd} kcal uncertainty forward when interpreting those numbers.</div>
-        </div>
-      </div>
-
-      <!-- PAL table -->
-      <h4 class="font-semibold text-secondary mb-2 text-sm uppercase tracking-wide">Retrospective TDEE by Activity Level</h4>
-      <div class="mb-3 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
-        <p><strong>What this table is:</strong> A data-fitted model. The PAL (Physical Activity Level) multiplier for each training-bump category was chosen by a grid search that minimises BMR volatility in your historical data. It tells you what your actual total energy expenditure appears to have been on days of each type.</p>
-        <p><strong>Two separate systems:</strong> The TDEE estimates here are a <em>retrospective analysis</em> tool. The <em>prospective</em> calorie target you see each day is driven by your base goal + the flat training bump you select (Rest +0, Light +100, Hard +280, HIIT +400 kcal) — not by the PAL multipliers. Changing the activity toggle adjusts your daily budget by exactly that flat amount, which is intentional and diet-plan-consistent.</p>
-        ${palInverted ? `
-        <p class="text-warning"><strong>Why does Light show a higher TDEE than Hard?</strong> This reflects a pattern in your actual data, not a bug. Hard training days often coincide with higher sodium/carb intake and glycogen-driven water retention, which temporarily inflates your scale weight. The EWMA smoother partially absorbs this noise, but if the retention is systematic it makes hard-day weight changes look smaller (or even positive) relative to calories — which pushes the implied TDEE lower, causing the grid search to assign a lower PAL. In short: the model is telling you that your hard days produce less apparent fat loss per calorie than your light days, which is real but primarily a water/glycogen effect. Use the flat bumps in your daily plan; treat the PAL table as a curiosity rather than an action item.
-        </p>` : ''}
-      </div>
+  const horizonSection = Object.keys(tdeeByHorizon || {}).length > 0 ? `
+    <div class="mb-6">
+      <h4 class="font-semibold text-secondary mb-2 text-sm uppercase tracking-wide">Observed TDEE at Different Horizons</h4>
+      <p class="text-xs text-muted mb-2">Each number is a trimmed average of 14-day rolling block estimates in that window. Longer windows are more stable; short windows react faster to recent changes. Do not act on differences smaller than ~100 kcal — that is within normal noise.</p>
       <div class="overflow-x-auto">
         <table class="w-full border rounded-lg">
           <thead class="surface-2">
             <tr>
-              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Activity (flat budget bump)</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Window</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">TDEE</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Data points</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y">${horizonRows}</tbody>
+        </table>
+      </div>
+    </div>` : '';
+
+  // ── Section: BMR / RMR cards ─────────────────────────────────────────────
+  let bmrSection = '';
+
+  if (!hasError || isFallback) {
+    const profileRmrNote = profileRmr
+      ? `<div class="surface-2 rounded-lg border p-4">
+          <div class="text-sm text-muted mb-1">Profile-predicted RMR</div>
+          <div class="font-bold text-lg">${profileRmr.rmr} kcal</div>
+          <div class="text-xs text-muted mt-1">${profileRmr.note}. Used as a starting point before enough data exists.</div>
+        </div>`
+      : '';
+
+    const adaptationSign = bmrModel.adaptation > 0 ? '+' : '';
+    const adaptationColor = bmrModel.adaptation < 0 ? 'text-negative' : 'text-positive';
+    const sd = bmrModel.adaptationSD ?? '?';
+
+    const bmrCards = isFallback
+      ? `${profileRmrNote}
+         <div class="surface-2 rounded-lg border p-4 text-sm text-warning">
+           <i class="fas fa-info-circle mr-2"></i>${bmrModel.error}
+         </div>`
+      : `
+        ${profileRmrNote}
+        <div class="surface-2 rounded-lg border p-4">
+          <div class="text-sm text-muted mb-1">Fitted BMR (weight-based regression)</div>
+          <div class="font-bold text-lg">${bmrModel.bmr_baseline} kcal</div>
+          <div class="text-xs text-muted mt-1">Weight-only prediction from BMR ~ a + b × weight_kg regression on your historical data.</div>
+        </div>
+        <div class="surface-2 rounded-lg border p-4">
+          <div class="text-sm text-muted mb-1">Model residual (last 21 days)</div>
+          <div class="font-bold text-lg ${adaptationColor}">${adaptationSign}${bmrModel.adaptation} <span class="font-normal text-base">± ${sd} kcal</span></div>
+          <div class="text-xs text-muted mt-1 space-y-1">
+            <p>Gap between the regression prediction and what your weight-change + calories data implies. A negative value means the model over-predicts your burn; positive means it under-predicts.</p>
+            <p class="text-warning">The ±${sd} kcal spread combines biological variation with logging noise (missed entries, incorrect amounts, water weight). These cannot be separated from scale data alone — do not read this as "metabolic adaptation" specifically.</p>
+            ${bmrModel.loggingResidualNote ? `<p class="text-warning">${bmrModel.loggingResidualNote}</p>` : ''}
+          </div>
+        </div>
+        <div class="surface-2 rounded-lg border p-4">
+          <div class="text-sm text-muted mb-1">Adjusted BMR (used in daily plan)</div>
+          <div class="font-bold text-lg text-accent">${bmrModel.bmr_current} kcal</div>
+          <div class="text-xs text-muted mt-1">= Fitted baseline + residual. Carry the ±${sd} kcal uncertainty when reading TDEE estimates.</div>
+        </div>`;
+
+    bmrSection = `
+      <div class="grid grid-cols-1 gap-4 mb-6" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+        ${bmrCards}
+      </div>`;
+  } else {
+    bmrSection = `
+      <div class="mb-6 p-4 surface-2 rounded-lg border text-sm text-muted">
+        <i class="fas fa-info-circle mr-2"></i>${bmrModel.error}
+      </div>`;
+  }
+
+  // ── Section: Rest-day vs total spend ────────────────────────────────────
+  let expenditureRow = '';
+  if (bmrModel.empiricalRestDayExp != null || bmrModel.observedTdee != null) {
+    const restVal = bmrModel.empiricalRestDayExp != null
+      ? `${bmrModel.empiricalRestDayExp} kcal <span class="font-normal text-xs text-muted">(from ${results.summary?.daysWithCalories ?? '?'} data days)</span>`
+      : '<span class="text-muted">Not enough rest-day data</span>';
+    const totalVal = bmrModel.observedTdee != null
+      ? `${bmrModel.observedTdee} kcal`
+      : '<span class="text-muted">Estimating…</span>';
+
+    expenditureRow = `
+      <div class="mb-6 surface-2 rounded-lg border p-4">
+        <h4 class="font-semibold text-secondary mb-3 text-sm uppercase tracking-wide">Calories Out — Observed</h4>
+        <div class="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <div class="text-muted text-xs mb-1">Rest-day expenditure</div>
+            <div class="font-semibold">${restVal}</div>
+            <div class="text-xs text-muted mt-1">Average of all block estimates on rest/low-activity days. Your floor calorie burn.</div>
+          </div>
+          <div>
+            <div class="text-muted text-xs mb-1">Overall average TDEE</div>
+            <div class="font-semibold">${totalVal}</div>
+            <div class="text-xs text-muted mt-1">Trimmed mean across all available 14-day blocks. Includes all activity levels.</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── Section: Logging residual ────────────────────────────────────────────
+  let residualSection = '';
+  if (loggingResidual) {
+    const sign = loggingResidual.medianKcalPerDay > 0 ? '+' : '';
+    const color = Math.abs(loggingResidual.medianKcalPerDay) < 100 ? 'text-positive' : 'text-warning';
+    residualSection = `
+      <div class="mb-6 surface-2 rounded-lg border p-4">
+        <h4 class="font-semibold text-secondary mb-2 text-sm uppercase tracking-wide">Model vs Observed Gap</h4>
+        <div class="font-semibold ${color} mb-1">${sign}${loggingResidual.medianKcalPerDay} kcal/day median gap (±${loggingResidual.sdKcalPerDay})</div>
+        <p class="text-xs text-muted">${loggingResidual.note}</p>
+      </div>`;
+  }
+
+  // ── Section: PAL table (only for fitted model) ────────────────────────────
+  let palSection = '';
+  if (!hasError && !isFallback && bmrModel.pals) {
+    const palLight = bmrModel.pals[100];
+    const palHard  = bmrModel.pals[280];
+    const palInverted = palLight != null && palHard != null && palLight > palHard;
+
+    const palRows = Object.entries(bmrModel.pals)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([bump, pal]) => {
+        const labels = { '0': 'Rest day', '100': 'Light lift (+100 kcal)', '280': 'Hard lift (+280 kcal)', '400': 'HIIT (+400 kcal)' };
+        const label = labels[bump] || `+${bump} kcal`;
+        const tdee = Math.round(bmrModel.bmr_current * pal);
+        return `<tr>
+          <td class="px-3 py-2 text-sm">${label}</td>
+          <td class="px-3 py-2 text-sm text-center">${pal.toFixed(2)}</td>
+          <td class="px-3 py-2 text-sm text-center">${tdee} kcal</td>
+        </tr>`;
+      }).join('');
+
+    palSection = `
+      <h4 class="font-semibold text-secondary mb-2 text-sm uppercase tracking-wide">Retrospective TDEE by Activity Level</h4>
+      <div class="mb-3 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
+        <p><strong>What this table is:</strong> A data-fitted model. The PAL multiplier for each training-bump category was chosen by minimising BMR volatility across your history. It reflects what your total expenditure appears to have been on days of each type.</p>
+        <p><strong>Prospective budgets are separate:</strong> Your daily calorie target uses a fixed flat bump (Rest +0, Light +100, Hard +280, HIIT +400 kcal), not these PAL multipliers. That is intentional.</p>
+        ${palInverted ? `<p class="text-warning"><strong>Why does Light show higher than Hard?</strong> Hard-training days often have higher sodium and carbs, which causes temporary water retention. That inflates the apparent scale weight on hard days, making the implied TDEE look smaller — so the grid search assigns a lower PAL. This is a water/glycogen signal, not a bug. Use the flat bumps in your daily plan.</p>` : ''}
+      </div>
+      <div class="overflow-x-auto mb-4">
+        <table class="w-full border rounded-lg">
+          <thead class="surface-2">
+            <tr>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Activity</th>
               <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Fitted PAL</th>
               <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Implied TDEE</th>
             </tr>
           </thead>
           <tbody class="divide-y">${palRows}</tbody>
         </table>
-      </div>
+      </div>`;
+  }
+
+  return `
+    <div class="mb-6 card p-6 shadow-lg">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-4">Energy Model Detail</h3>
+      ${horizonSection}
+      ${expenditureRow}
+      ${bmrSection}
+      ${residualSection}
+      ${palSection}
     </div>
   `;
 }
+
+// ==========================================
+// IMPUTATION TABLE
+// ==========================================
 
 function renderImputationTable(rows) {
   const imputed = rows.filter(r => r.calories_imputed);
@@ -482,10 +607,7 @@ function renderImputationTable(rows) {
   return `
     <div class="mb-6 card p-6 shadow-lg">
       <h3 class="text-responsive-xl font-bold text-secondary mb-4">Missing Day Estimates</h3>
-      <p class="text-sm text-muted mb-4">
-        Days without logged calories are estimated using your TDEE model and weight change.
-        Estimates only appear after 14+ days have passed and enough weight data exists.
-      </p>
+      <p class="text-sm text-muted mb-4">Days without logged calories are estimated using your TDEE model and weight change. Estimates only appear after 14+ days have passed and enough weight data exists.</p>
       <div class="overflow-x-auto">
         <table class="w-full border rounded-lg">
           <thead class="surface-2">
@@ -506,6 +628,10 @@ function renderImputationTable(rows) {
   `;
 }
 
+// ==========================================
+// BLANK DAYS SECTION
+// ==========================================
+
 function renderBlankDaysSection(blankDays) {
   if (!blankDays || blankDays.length === 0) return '';
 
@@ -522,7 +648,6 @@ function renderBlankDaysSection(blankDays) {
     </tr>
   `).join('');
 
-  // Date range defaults: full span of available blank days
   const minDate = blankDays[0].date;
   const maxDate = blankDays[blankDays.length - 1].date;
 
@@ -532,12 +657,10 @@ function renderBlankDaysSection(blankDays) {
       <p class="text-sm text-muted mb-4">
         These days have no logged food but enough weight history for the model to estimate calories.
         Macros are distributed to sum to the estimated calorie total (protein and fat from your
-        targets; carbs fill the remainder). All micronutrient fields are set to your baseline targets.
-        Only days after your first logged food entry are shown.
+        targets; carbs fill the remainder).
         <strong>Filling a day overwrites any partial data already there.</strong>
       </p>
 
-      <!-- Range controls -->
       <div class="flex flex-wrap gap-2 mb-3 items-end">
         <div>
           <label class="block text-xs text-muted mb-1">From</label>
@@ -552,7 +675,6 @@ function renderBlankDaysSection(blankDays) {
         <button id="blank-deselect-all-btn" class="btn btn-secondary btn-sm self-end">Deselect All</button>
       </div>
 
-      <!-- Table -->
       <div class="overflow-x-auto mb-4">
         <table class="w-full border rounded-lg">
           <thead class="surface-2">
@@ -593,32 +715,22 @@ function drawWeightChart(rows) {
 
   const timeframeSelect = document.getElementById('weight-chart-timeframe');
   const daysBack = timeframeSelect?.value === 'all' ? rows.length : parseInt(timeframeSelect?.value || '90');
-
-  // Filter rows to timeframe and only those with weight
   const cutoffIdx = Math.max(0, rows.length - daysBack);
   const visible = rows.slice(cutoffIdx);
 
-  const labels = [];
-  const rawData = [];
-  const smoothData = [];
-
+  const labels = [], rawData = [], smoothData = [];
   for (const r of visible) {
     labels.push(r.date);
     rawData.push(r.weight_lb);
     smoothData.push(r.wt_smooth_lb);
   }
 
-  if (weightChartInstance) {
-    weightChartInstance.destroy();
-    weightChartInstance = null;
-  }
+  if (weightChartInstance) { weightChartInstance.destroy(); weightChartInstance = null; }
 
   const chartColors = CONFIG.CHART_COLORS || [];
   const rawColor = chartColors[0] || '#6366f1';
   const smoothColor = chartColors[1] || '#f59e0b';
-
   const css = getComputedStyle(document.documentElement);
-  const borderColor = `hsl(${css.getPropertyValue('--border').trim()})`;
 
   weightChartInstance = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -696,11 +808,7 @@ function drawWeightChart(rows) {
             },
           },
         },
-        legend: {
-          display: true,
-          position: 'top',
-          labels: { usePointStyle: true, padding: 15 },
-        },
+        legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 15 } },
       },
     },
   });
