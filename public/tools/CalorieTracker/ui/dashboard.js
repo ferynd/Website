@@ -27,6 +27,7 @@ import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
 import { CONFIG } from '../config.js';
 import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
+import { UL_TABLE } from '../targets/nutritionReferences.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -43,6 +44,9 @@ const DASHBOARD_CONFIG = {
   SHOW_ERRORS_IN_UI: true, // Display errors in the dashboard
   FALLBACK_TO_DEFAULTS: true // Use default values if user settings are invalid
 };
+
+// Module-level filter state for the Nutrients tab (persists across re-renders)
+let _nutrientFilter = 'all';
 
 // =========================
 // MICRONUTRIENT SCALING CONFIGURATION
@@ -371,7 +375,7 @@ export function calculateBankingData(targetDateStr) {
 // =========================
 
 /**
- * Calculate micronutrients with training day scaling
+ * Calculate micronutrients with training day scaling, trend direction, and UL checks.
  * @param {string} dateStr - Date string in YYYY-MM-DD format
  * @returns {Object} Micronutrient metrics
  */
@@ -395,56 +399,87 @@ export function calculateMicronutrientMetrics(dateStr) {
             return sum + q * val;
           }, 0)
         : parseFloat(todayEntry[nutrient]) || 0;
-      
+
       let avgIntake = todaysIntake;
+      let threeDayAvg = 0;
       let status = 'red';
-      
-      // Calculate 7-day average for averaged nutrients
+
       if (averagedNutrients.includes(nutrient)) {
-        let sum = 0;
-        let count = 0;
-        
+        let sum7 = 0, count7 = 0, sum3 = 0, count3 = 0;
         for (let i = 0; i < 7; i++) {
-          const pastDate = getPastDate(targetDate, i);
-          const pastDateStr = formatDate(pastDate);
-          const entry = state.dailyEntries.get(pastDateStr) || {};
-          const intake = pastDateStr === dateStr
-            ? todaysIntake
-            : parseFloat(entry[nutrient]) || 0;
-          sum += intake;
-          count++;
+          const pd = getPastDate(targetDate, i);
+          const pds = formatDate(pd);
+          const entry = state.dailyEntries.get(pds) || {};
+          const intake = pds === dateStr ? todaysIntake : parseFloat(entry[nutrient]) || 0;
+          sum7 += intake; count7++;
+          if (i < 3) { sum3 += intake; count3++; }
         }
-        
-        avgIntake = count > 0 ? sum / count : 0;
-        
-        // Status based on 7-day average vs base target (not scaled)
+        avgIntake = count7 > 0 ? sum7 / count7 : 0;
+        threeDayAvg = count3 > 0 ? sum3 / count3 : 0;
+
         if (avgIntake >= baseTarget * 0.9) status = 'green';
         else if (avgIntake >= baseTarget * 0.7) status = 'amber';
         else status = 'red';
       } else {
-        // Daily nutrients - status based on today's intake vs scaled target
+        // For daily-floor nutrients, also compute 3-day average for trend
+        let sum3 = 0, count3 = 0;
+        for (let i = 0; i < 3; i++) {
+          const pd = getPastDate(targetDate, i);
+          const pds = formatDate(pd);
+          const entry = state.dailyEntries.get(pds) || {};
+          const intake = pds === dateStr ? todaysIntake : parseFloat(entry[nutrient]) || 0;
+          sum3 += intake; count3++;
+        }
+        threeDayAvg = count3 > 0 ? sum3 / count3 : 0;
+
         if (todaysIntake >= scaledTarget) status = 'green';
         else if (todaysIntake >= scaledTarget * 0.8) status = 'amber';
         else status = 'red';
       }
-      
+
+      // Trend: compare 3-day avg to the primary display value
+      const primaryValue = averagedNutrients.includes(nutrient) ? avgIntake : todaysIntake;
+      const trendRatio = primaryValue > 0 ? (threeDayAvg - primaryValue) / primaryValue : 0;
+      const trendDirection = trendRatio > 0.05 ? 'up' : trendRatio < -0.05 ? 'down' : 'stable';
+
+      // Target source
+      let targetSource = 'default';
+      if (state.goalSettings?.manualTargetOverrides?.[nutrient] !== undefined) {
+        targetSource = 'override';
+      } else if (
+        state.baselineTargets[nutrient] !== undefined &&
+        Math.abs((state.baselineTargets[nutrient] ?? 0) - (DEFAULT_TARGETS[nutrient] ?? 0)) > 0.001
+      ) {
+        targetSource = 'custom';
+      }
+
+      // Upper-limit check (warn at ≥ 80% of UL)
+      const ul = UL_TABLE[nutrient] ?? null;
+      const checkValue = averagedNutrients.includes(nutrient) ? avgIntake : todaysIntake;
+      const isUlExceeded = ul !== null && checkValue >= ul * 0.8;
+
       metrics[nutrient] = {
         name: nutrient,
         baseTarget,
         scaledTarget,
         todaysIntake,
         avgIntake,
+        threeDayAvg,
         status,
         isDailyFloor: dailyTrackedNutrients.includes(nutrient),
         isAveraged: averagedNutrients.includes(nutrient),
         isScaled: scaledTarget !== baseTarget,
         scaleSuggested: suggested,
         scaleReason: reason,
+        targetSource,
+        trendDirection,
+        ul,
+        isUlExceeded,
       };
     });
-    
+
     return metrics;
-    
+
   } catch (error) {
     handleError('calculate-micronutrients', error, 'Failed to calculate micronutrient metrics');
     return {};
@@ -590,10 +625,97 @@ function renderNutrientsOutput() {
   const dateStr = state.dom.dateInput?.value;
   if (!dateStr) return;
 
-  const micronutrientMetrics = calculateMicronutrientMetrics(dateStr);
-  container.innerHTML = renderChartSection() + renderMicronutrientSections(micronutrientMetrics);
+  const metrics = calculateMicronutrientMetrics(dateStr);
+
+  container.innerHTML =
+    renderNutrientSummaryCards(metrics) +
+    renderChartSection() +
+    renderNutrientFilterBar(_nutrientFilter) +
+    `<div id="nutrient-sections-container">${renderMicronutrientSections(metrics, _nutrientFilter)}</div>`;
 
   initializeChartControls();
+  initializeNutrientFilterBar(metrics);
+}
+
+/**
+ * Render status summary cards at the top of the Nutrients tab.
+ */
+function renderNutrientSummaryCards(metrics) {
+  const vals = Object.values(metrics);
+  const red  = vals.filter(m => m.status === 'red');
+  const amber = vals.filter(m => m.status === 'amber');
+  const green = vals.filter(m => m.status === 'green');
+  const ulWarn = vals.filter(m => m.isUlExceeded);
+
+  const card = (icon, count, label, colorClass) => `
+    <div class="nutrient-status-card">
+      <span class="nutrient-status-icon">${icon}</span>
+      <span class="nutrient-status-count ${colorClass}">${count}</span>
+      <span class="nutrient-status-label">${label}</span>
+    </div>`;
+
+  const shortfallList = red.length > 0 ? `
+    <div class="mb-3 p-3 surface-2 rounded-lg border">
+      <p class="text-sm font-semibold text-negative mb-2">⬇️ Common Shortfalls</p>
+      <div class="flex flex-wrap gap-1">
+        ${red.map(m => `<span class="nutrient-tag nutrient-tag-bad">${formatNutrientName(m.name)}</span>`).join('')}
+      </div>
+    </div>` : '';
+
+  const ulList = ulWarn.length > 0 ? `
+    <div class="mb-3 p-3 surface-2 rounded-lg border">
+      <p class="text-sm font-semibold text-warning mb-2">⚠️ Near Upper Limit</p>
+      <div class="flex flex-wrap gap-1">
+        ${ulWarn.map(m => `<span class="nutrient-tag nutrient-tag-warn" title="UL: ${m.ul}">${formatNutrientName(m.name)}</span>`).join('')}
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="mb-6">
+      <div class="nutrient-status-grid mb-3">
+        ${card('🔴', red.length,   'Low',        'text-negative')}
+        ${card('🟡', amber.length, 'Near Target', 'text-warning')}
+        ${card('🟢', green.length, 'On Target',   'text-positive')}
+        ${card('⚠️', ulWarn.length,'Near UL',     'text-warning')}
+      </div>
+      ${shortfallList}${ulList}
+    </div>`;
+}
+
+/**
+ * Render the filter chip bar for the nutrient list.
+ */
+function renderNutrientFilterBar(activeFilter) {
+  const filters = [
+    { id: 'all',      label: 'All' },
+    { id: 'low',      label: '🔴 Low' },
+    { id: 'near',     label: '🟡 Near Target' },
+    { id: 'above',    label: '🟢 On Target' },
+    { id: 'override', label: '📌 Overridden' },
+  ];
+  return `
+    <div id="nutrient-filter-bar" class="nutrient-filter-bar mb-4" role="group" aria-label="Filter nutrients">
+      ${filters.map(f =>
+        `<button type="button" class="nutrient-filter-chip${f.id === activeFilter ? ' active' : ''}" data-filter="${f.id}">${f.label}</button>`
+      ).join('')}
+    </div>`;
+}
+
+/**
+ * Wire up click handlers on filter chips; re-renders the nutrient list only.
+ */
+function initializeNutrientFilterBar(metrics) {
+  const bar = document.getElementById('nutrient-filter-bar');
+  if (!bar) return;
+  bar.querySelectorAll('.nutrient-filter-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      _nutrientFilter = chip.dataset.filter;
+      bar.querySelectorAll('.nutrient-filter-chip').forEach(c =>
+        c.classList.toggle('active', c.dataset.filter === _nutrientFilter));
+      const sc = document.getElementById('nutrient-sections-container');
+      if (sc) sc.innerHTML = renderMicronutrientSections(metrics, _nutrientFilter);
+    });
+  });
 }
 
 /**
@@ -1170,39 +1292,39 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
 }
 
 /**
- * Render chart section
+ * Render chart section — uses chip-based nutrient picker for mobile-friendly selection.
  */
 function renderChartSection() {
   return `
     <div class="mb-8 card p-6 shadow-lg">
       <h3 class="text-responsive-2xl font-bold text-secondary mb-4">📊 Nutrition Progress Chart</h3>
-      <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label for="chart-nutrients" class="block text-sm font-medium text-primary mb-1">Select Nutrients</label>
-          <select id="chart-nutrients" multiple class="w-full p-2 border rounded-md shadow-sm focus:ring-accent-600 focus:border-accent-600" size="4"></select>
-        </div>
-        <div>
+
+      <div class="mb-3">
+        <p class="text-sm font-medium text-primary mb-2">Select Nutrients <span class="text-xs text-muted font-normal">(tap to toggle)</span></p>
+        <div id="chart-nutrient-chips" class="chart-chip-picker" role="group" aria-label="Select nutrients for chart"></div>
+      </div>
+
+      <div class="mb-4 flex flex-wrap gap-4 items-end">
+        <div class="flex-1">
           <label for="chart-timeframe" class="block text-sm font-medium text-primary mb-1">Time Frame</label>
-          <select id="chart-timeframe" class="w-full p-2 border rounded-md shadow-sm focus:ring-accent-600 focus:border-accent-600">
+          <select id="chart-timeframe">
             <option value="3days">Last 3 Days</option>
             <option value="week">Last Week</option>
             <option value="month">Last Month</option>
           </select>
         </div>
-        <div>
-          <label class="block text-sm font-medium text-primary mb-1">Trend Lines</label>
-          <div class="space-y-2 mt-2">
-            <div class="flex items-center">
-              <input type="checkbox" id="show-3day-avg" class="mr-2 h-4 w-4 text-accent border rounded focus:ring-accent-600">
-              <label for="show-3day-avg" class="text-sm text-primary">3-day average</label>
-            </div>
-            <div class="flex items-center">
-              <input type="checkbox" id="show-7day-avg" class="mr-2 h-4 w-4 text-accent border rounded focus:ring-accent-600">
-              <label for="show-7day-avg" class="text-sm text-primary">7-day average</label>
-            </div>
-          </div>
+        <div class="flex gap-4 items-center flex-wrap">
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-primary">
+            <input type="checkbox" id="show-3day-avg" class="h-4 w-4">
+            <span>3-day avg</span>
+          </label>
+          <label class="flex items-center gap-2 cursor-pointer text-sm text-primary">
+            <input type="checkbox" id="show-7day-avg" class="h-4 w-4">
+            <span>7-day avg</span>
+          </label>
         </div>
       </div>
+
       <div class="chart-container"><canvas id="nutrition-chart"></canvas></div>
       <div id="chart-table" class="mt-6"></div>
     </div>
@@ -1210,84 +1332,117 @@ function renderChartSection() {
 }
 
 /**
- * Render micronutrient sections with training day scaling
+ * Render micronutrient sections with filter support and enhanced per-nutrient detail.
+ * @param {Object} metrics - Output of calculateMicronutrientMetrics()
+ * @param {string} filter  - 'all'|'low'|'near'|'above'|'override'
  */
-function renderMicronutrientSections(metrics) {
+function renderMicronutrientSections(metrics, filter = 'all') {
+  const filterFn = (data) => {
+    switch (filter) {
+      case 'low':      return data.status === 'red';
+      case 'near':     return data.status === 'amber';
+      case 'above':    return data.status === 'green';
+      case 'override': return data.targetSource === 'override';
+      default:         return true;
+    }
+  };
+
   const renderNutrientRow = (nutrient, data) => {
-    const { baseTarget, scaledTarget, todaysIntake, avgIntake, isDailyFloor, isAveraged, scaleSuggested, scaleReason } = data;
+    if (!filterFn(data)) return '';
+
+    const {
+      baseTarget, scaledTarget, todaysIntake, avgIntake, threeDayAvg,
+      isDailyFloor, isAveraged, scaleSuggested, scaleReason,
+      targetSource, trendDirection, ul, isUlExceeded,
+    } = data;
 
     const displayValue = isAveraged ? avgIntake : todaysIntake;
     const targetValue  = isDailyFloor ? scaledTarget : baseTarget;
     const remaining    = targetValue - displayValue;
 
-    const suggestedNote = scaleSuggested && scaledTarget !== baseTarget
-      ? `<span class="text-xs text-muted ml-1" title="Optional suggestion (${scaleReason})">(+${Math.round((scaledTarget - baseTarget))} suggested)</span>`
+    // Source badge
+    const sourceBadge = targetSource === 'override'
+      ? `<span class="nt-badge nt-badge-override" title="Manually pinned target">📌</span>`
+      : targetSource === 'custom'
+      ? `<span class="nt-badge nt-badge-custom" title="Custom target">✏️</span>`
+      : '';
+
+    // Exercise-scaling note
+    const scaleBadge = scaleSuggested && scaledTarget !== baseTarget
+      ? `<span class="nt-badge nt-badge-scale" title="Exercise scaling: ${scaleReason}">⚡+${Math.round(scaledTarget - baseTarget)}</span>`
+      : '';
+
+    // Trend indicator
+    const trendMap = { up: ['↑', 'text-positive'], down: ['↓', 'text-negative'], stable: ['→', 'text-muted'] };
+    const [trendIcon, trendCls] = trendMap[trendDirection] || trendMap.stable;
+    const trendBadge = `<span class="${trendCls} nt-trend" title="Recent trend">${trendIcon}</span>`;
+
+    // UL warning
+    const ulBadge = isUlExceeded
+      ? `<span class="nt-badge nt-badge-ul" title="Near/above upper limit (UL: ${ul})">⚠️</span>`
+      : '';
+
+    // Source label in target span
+    const srcLabel = targetSource === 'override' ? ' (pinned)'
+                   : targetSource === 'custom'   ? ' (custom)'
+                   : ' (DRI)';
+
+    // For averaged nutrients show today's value as sub-detail below the bar
+    const subDetail = isAveraged
+      ? `<div class="nt-sub-detail">Today: ${todaysIntake.toFixed(1)} · 3d avg: ${threeDayAvg.toFixed(1)}</div>`
       : '';
 
     return `
       <div class="kpi-row">
         <div class="meta">
-          <span class="label">${formatNutrientName(nutrient)}${suggestedNote}</span>
-          <span class="current">${displayValue.toFixed(1)}</span>
-          <span class="target">target ${targetValue.toFixed(1)}</span>
+          <span class="label">${formatNutrientName(nutrient)}${sourceBadge}${scaleBadge}${trendBadge}${ulBadge}</span>
+          <span class="current">${displayValue.toFixed(1)}${isAveraged ? '<span class="nt-avg-label">avg</span>' : ''}</span>
+          <span class="target">target ${targetValue.toFixed(1)}${srcLabel}</span>
           <span class="remain ${remainClass(remaining)}">${remaining > 0 ? `${remaining.toFixed(1)} left` : remaining < 0 ? `${Math.abs(remaining).toFixed(1)} over` : '0 left'}</span>
         </div>
         <div class="hbar">
           <div class="hbar-fill ${pctClass(displayValue, targetValue)}" style="width:${pctWidth(displayValue, targetValue)}"></div>
           <div class="hbar-marker" style="left:${markerLeft}"></div>
         </div>
-      </div>
-    `;
+        ${subDetail}
+      </div>`;
   };
 
   const renderSection = (title, nutrientKeys, description) => {
     const rows = nutrientKeys
-      .filter(nutrient => metrics[nutrient])
-      .map(nutrient => renderNutrientRow(nutrient, metrics[nutrient]))
+      .filter(n => metrics[n] && filterFn(metrics[n]))
+      .map(n => renderNutrientRow(n, metrics[n]))
+      .filter(Boolean)
       .join('');
-
     if (!rows) return '';
-
     return `
       <div class="mb-8">
-        <div class="mb-4">
+        <div class="mb-3">
           <h3 class="text-responsive-2xl font-bold text-secondary">${title}</h3>
           <p class="text-sm text-muted">${description}</p>
         </div>
-        <div class="divide-y">
-          ${rows}
-        </div>
-      </div>
-    `;
+        <div class="divide-y">${rows}</div>
+      </div>`;
   };
 
-  return [
-    renderSection(
-      '💧 Daily Electrolytes & Essentials',
-      nutrients.dailyFloors,
-      'Scale with training intensity - must meet daily targets'
-    ),
-    renderSection(
-      '🧪 Daily Vitamins',
-      nutrients.dailyVitamins,
-      'Water-soluble - daily targets, some scale with intense training'
-    ),
-    renderSection(
-      '🟡 Fat-Soluble Vitamins',
-      nutrients.avgVitamins,
-      '7-day rolling average - stored in body fat, no training scaling'
-    ),
-    renderSection(
-      '⚡ Stored Minerals',
-      nutrients.avgMinerals,
-      '7-day rolling average - stored in tissues, no training scaling'
-    ),
-    renderSection(
-      '🔄 Optional Nutrients',
-      nutrients.optional,
-      '7-day rolling average targets'
-    )
+  const sections = [
+    renderSection('💧 Daily Electrolytes & Essentials', nutrients.dailyFloors,
+      'Must meet daily targets — electrolytes scale with training intensity'),
+    renderSection('🧪 Daily Vitamins', nutrients.dailyVitamins,
+      'Water-soluble — daily targets'),
+    renderSection('🟡 Fat-Soluble Vitamins', nutrients.avgVitamins,
+      '7-day rolling average — stored in body fat, no training scaling'),
+    renderSection('⚡ Stored Minerals', nutrients.avgMinerals,
+      '7-day rolling average — stored in tissues, no training scaling'),
+    renderSection('🔄 Optional Nutrients', nutrients.optional,
+      '7-day rolling average targets'),
   ].join('');
+
+  if (!sections.trim()) {
+    const labels = { low: 'Low', near: 'Near Target', above: 'On Target', override: 'Overridden' };
+    return `<p class="text-muted text-center py-8">No nutrients match the "${labels[filter] || filter}" filter.</p>`;
+  }
+  return sections;
 }
 
 // =========================

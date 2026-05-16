@@ -103,58 +103,49 @@ function adjustColor(color, amount) {
 // =========================
 
 /**
- * Initialize chart controls and set up event listeners
+ * Initialize chart controls with chip-based nutrient picker and set up event listeners.
  */
 export function initializeChartControls() {
   try {
     debugLog('init-controls', 'Starting chart controls initialization');
-    
-    const chartNutrients = document.getElementById('chart-nutrients');
+
+    const chipContainer = document.getElementById('chart-nutrient-chips');
     const chartTimeframe = document.getElementById('chart-timeframe');
     const show3DayAvg = document.getElementById('show-3day-avg');
     const show7DayAvg = document.getElementById('show-7day-avg');
 
-    if (!chartNutrients) {
-      debugLog('init-controls', 'Chart nutrients selector not in DOM – skipping init');
+    if (!chipContainer) {
+      debugLog('init-controls', 'chart-nutrient-chips not in DOM – skipping init');
       return;
     }
 
-    // Populate nutrient selector
-    chartNutrients.innerHTML = '';
+    // Populate chip buttons (one per nutrient)
+    chipContainer.innerHTML = '';
     allNutrients.forEach(nutrient => {
-      const option = document.createElement('option');
-      option.value = nutrient;
-      option.textContent = formatNutrientName(nutrient);
-      if (nutrient === CHART_CONFIG.DEFAULT_NUTRIENT) option.selected = true;
-      chartNutrients.appendChild(option);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chart-chip';
+      btn.dataset.nutrient = nutrient;
+      btn.textContent = formatNutrientName(nutrient);
+      if (nutrient === CHART_CONFIG.DEFAULT_NUTRIENT) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('active');
+        try { updateChart(); } catch (err) { handleChartError('chip-click', err); }
+      });
+      chipContainer.appendChild(btn);
     });
 
     // Set default timeframe
-    if (chartTimeframe) {
-      chartTimeframe.value = CHART_CONFIG.DEFAULT_TIMEFRAME;
-    }
+    if (chartTimeframe) chartTimeframe.value = CHART_CONFIG.DEFAULT_TIMEFRAME;
 
-    // Add event listeners with error handling
-    const addEventListenerSafe = (element, event, handler) => {
-      if (element) {
-        element.addEventListener(event, (e) => {
-          try {
-            handler(e);
-          } catch (error) {
-            handleChartError('event-handler', error);
-          }
-        });
-      }
+    const safe = (el, ev, fn) => {
+      if (el) el.addEventListener(ev, e => { try { fn(e); } catch (err) { handleChartError('event-handler', err); } });
     };
-
-    addEventListenerSafe(chartNutrients, 'change', updateChart);
-    addEventListenerSafe(chartTimeframe, 'change', updateChart);
-    addEventListenerSafe(show3DayAvg, 'change', updateChart);
-    addEventListenerSafe(show7DayAvg, 'change', updateChart);
+    safe(chartTimeframe, 'change', updateChart);
+    safe(show3DayAvg,   'change', updateChart);
+    safe(show7DayAvg,   'change', updateChart);
 
     debugLog('init-controls', 'Chart controls initialized successfully');
-
-    // Initial chart render
     updateChart();
 
   } catch (error) {
@@ -394,17 +385,17 @@ export function updateChart() {
       return;
     }
 
-    const chartNutrients = document.getElementById('chart-nutrients');
     const chartTimeframe = document.getElementById('chart-timeframe');
     const show3DayAvg = document.getElementById('show-3day-avg');
     const show7DayAvg = document.getElementById('show-7day-avg');
-    
-    if (!chartNutrients) {
-      debugLog('update-chart', 'Chart nutrients selector not in DOM – skipping update');
+
+    const activeChips = document.querySelectorAll('#chart-nutrient-chips .chart-chip.active');
+    if (!activeChips.length) {
+      debugLog('update-chart', 'chart-nutrient-chips not in DOM – skipping update');
       return;
     }
 
-    const selectedNutrients = Array.from(chartNutrients.selectedOptions).map(o => o.value);
+    const selectedNutrients = Array.from(activeChips).map(c => c.dataset.nutrient);
     const timeframe = chartTimeframe?.value || CHART_CONFIG.DEFAULT_TIMEFRAME;
     const show3Day = show3DayAvg?.checked || false;
     const show7Day = show7DayAvg?.checked || false;
