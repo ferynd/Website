@@ -117,6 +117,16 @@ function dateOffset(dateStr, offsetDays) {
   return d.toISOString().slice(0, 10);
 }
 
+/** Return the PAL bucket key (0 | 100 | 280 | 400) nearest to `bump`. */
+function nearestPalKey(palKeys, bump) {
+  return palKeys.reduce((b, k) => Math.abs(k - bump) < Math.abs(b - bump) ? k : b, palKeys[0]);
+}
+
+/** Resolve exercise calories for a merged row: sessions take priority over legacy bump. */
+function rowExerciseCalories(r) {
+  return r.exerciseCalories != null ? r.exerciseCalories : (r.trainingBump || 0);
+}
+
 /**
  * Solve Ax = b via Gauss-Jordan elimination with partial pivoting.
  * Returns the solution vector or null if the system is singular.
@@ -498,7 +508,7 @@ export function estimateTDEE(rows) {
   for (let i = blockDays; i < result.length; i++) {
     const window = result.slice(i - blockDays, i + 1);
     const cals = window.map(r => r.calories).filter(c => c != null);
-    if (cals.length < blockDays * 0.7) continue;
+    if (cals.length < window.length * 0.7) continue;
 
     const wStart = window[0].wt_smooth_lb;
     const wEnd = window[window.length - 1].wt_smooth_lb;
@@ -510,7 +520,7 @@ export function estimateTDEE(rows) {
     const tdee = avgIntake - avgStorage;
 
     if (tdee >= C.TDEE_PLAUSIBLE_MIN && tdee <= C.TDEE_PLAUSIBLE_MAX) {
-      const calCoverage = cals.length / blockDays;
+      const calCoverage = cals.length / window.length;
       result[i].tdee_block = Math.round(tdee);
       result[i].calCoverage = +calCoverage.toFixed(2);
       result[i].tdee_block_quality = calCoverage >= 0.85 ? 'high' : 'medium';
@@ -681,22 +691,28 @@ export function estimateProfileRmr(profile, weightLb) {
  *    is flagged as potential logging noise rather than labelled "metabolic
  *    adaptation" (which would over-claim biological certainty).
  *
- * Returns an extended object that now includes:
- *  - profilePredictedRmr   : from Mifflin-St Jeor / Cunningham / weight-only
- *  - observedTdee          : trimmed mean of all valid block estimates
- *  - empiricalRestDayExp   : trimmed mean of block estimates on rest days
- *  - loggingResidualNote   : plain-language flag about residual size
+ * Returns an extended object including:
+ *  - profilePredictedRmr      : from Mifflin-St Jeor / Cunningham / weight-only
+ *  - observedTdee             : trimmed mean of high-quality block estimates
+ *  - modelPredictedRestDayTdee: fittedBmr × restPal (model output, not empirical)
+ *  - fittedDataQuality        : 'high' | 'mixed' — whether the fit used only full-coverage blocks
+ *  - loggingResidualNote      : plain-language flag about residual size
  */
 export function estimateBMR(rows, profileRmrKcal = null) {
   const C = ANALYSIS_CONFIG;
 
   const valid = rows.filter(r => r.tdee_block != null && r.wt_smooth_lb != null);
 
-  // Observed TDEE: prefer high-quality blocks when enough exist
+  // Prefer high-quality blocks (full calorie coverage) for all estimates
   const highQualValid = valid.filter(r => r.tdee_block_quality === 'high');
   const tdeeSource = highQualValid.length >= 5 ? highQualValid : valid;
   const allTDEEs = tdeeSource.map(r => r.tdee_block);
   const observedTdee = allTDEEs.length >= 5 ? Math.round(trimmedMean(allTDEEs)) : null;
+
+  // Use high-quality blocks for BMR fitting when enough exist;
+  // 20 matches the minimum post-outlier-rejection count in tryPals.
+  const fitSource = highQualValid.length >= 20 ? highQualValid : valid;
+  const fittedDataQuality = fitSource === highQualValid ? 'high' : 'mixed';
 
   if (valid.length < 30) {
     // Not enough data for grid search — use profile RMR as fallback if available
@@ -719,6 +735,7 @@ export function estimateBMR(rows, profileRmrKcal = null) {
         modelPredictedRestDayTdee: tdeeRestDay,
         observedTdee,
         profilePredictedRmr: profileRmrKcal,
+        fittedDataQuality: null,
         score: null,
         source: 'profile_prior',
         insufficientData: true,
@@ -744,10 +761,8 @@ export function estimateBMR(rows, profileRmrKcal = null) {
 
   function tryPals(pals) {
     const wts = [], bmrs = [];
-    for (const r of valid) {
-      // Use exerciseCalories when available, fall back to legacy trainingBump
-      const bump = r.exerciseCalories != null ? r.exerciseCalories : (r.trainingBump || 0);
-      const palKey = palKeys.reduce((b, k) => Math.abs(k - bump) < Math.abs(b - bump) ? k : b, palKeys[0]);
+    for (const r of fitSource) {
+      const palKey = nearestPalKey(palKeys, rowExerciseCalories(r));
       const impliedBMR = r.tdee_block / pals[palKey];
       wts.push(r.wt_smooth_lb * C.LB_TO_KG);
       bmrs.push(impliedBMR);
@@ -805,8 +820,7 @@ export function estimateBMR(rows, profileRmrKcal = null) {
 
   const recent = valid.slice(-21);
   const adaptResiduals = recent.map(r => {
-    const bump = r.exerciseCalories != null ? r.exerciseCalories : (r.trainingBump || 0);
-    const palKey = palKeys.reduce((b, k) => Math.abs(k - bump) < Math.abs(b - bump) ? k : b, palKeys[0]);
+    const palKey = nearestPalKey(palKeys, rowExerciseCalories(r));
     const impliedBMR = r.tdee_block / bestPals[palKey];
     const fittedBMR = bestModel.a + bestModel.b * r.wt_smooth_lb * C.LB_TO_KG;
     return impliedBMR - fittedBMR;
@@ -847,6 +861,7 @@ export function estimateBMR(rows, profileRmrKcal = null) {
     observedTdee,
     profilePredictedRmr: profileRmrKcal,
     loggingResidualNote,
+    fittedDataQuality,
     score: bestScore,
     source: 'fitted',
   };
@@ -918,6 +933,10 @@ export function computeConfidence(rows, bmrModel) {
     reasons.push('Using profile-based estimate — not enough data yet for a fitted model.');
   }
 
+  if (bmrModel?.fittedDataQuality === 'mixed') {
+    reasons.push('BMR fit includes some weeks with incomplete calorie logs — vacation or logging gaps may reduce model precision.');
+  }
+
   return { label, score, reasons, daysWithWeight, daysWithLoggedCalories };
 }
 
@@ -952,8 +971,7 @@ export function computeLoggingResidual(rows, bmrModel) {
   const residuals = [];
   for (const r of rows) {
     if (r.tdee_block == null || r.calories == null) continue;
-    const bump = r.trainingBump || 0;
-    const palKey = palKeys.reduce((b, k) => Math.abs(k - bump) < Math.abs(b - bump) ? k : b, palKeys[0]);
+    const palKey = nearestPalKey(palKeys, rowExerciseCalories(r));
     const pal = bmrModel.pals?.[palKey];
     if (!pal) continue;
     const wtKg = r.wt_smooth_lb != null ? r.wt_smooth_lb * C.LB_TO_KG : null;
@@ -1010,8 +1028,7 @@ export function imputeCalories(rows, bmrModel) {
       .filter(fr => fr.weight_lb != null);
     if (futureWeights.length < C.IMPUTE_MIN_FUTURE_WEIGHTS) { r.impute_status = 'pending'; continue; }
 
-    const bump = r.trainingBump || 0;
-    const palKey = palKeys.reduce((b, k) => Math.abs(k - bump) < Math.abs(b - bump) ? k : b, palKeys[0]);
+    const palKey = nearestPalKey(palKeys, rowExerciseCalories(r));
     const pal = bmrModel.pals?.[palKey];
     if (!pal) { r.impute_status = 'insufficient_weight_data'; continue; }
 

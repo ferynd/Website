@@ -545,9 +545,10 @@ function renderEnergyDetail(results) {
     palSection = `
       <h4 class="font-semibold text-secondary mb-2 text-sm uppercase tracking-wide">Retrospective TDEE by Activity Level</h4>
       <div class="mb-3 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
-        <p><strong>What this table is:</strong> A data-fitted model. The PAL multiplier for each training-bump category was chosen by minimising BMR volatility across your history. It reflects what your total expenditure appears to have been on days of each type.</p>
-        <p><strong>Prospective budgets are separate:</strong> Your daily calorie target uses a fixed flat bump (Rest +0, Light +100, Hard +280, HIIT +400 kcal), not these PAL multipliers. That is intentional.</p>
-        ${palInverted ? `<p class="text-warning"><strong>Why does Light show higher than Hard?</strong> Hard-training days often have higher sodium and carbs, which causes temporary water retention. That inflates the apparent scale weight on hard days, making the implied TDEE look smaller — so the grid search assigns a lower PAL. This is a water/glycogen signal, not a bug. Use the flat bumps in your daily plan.</p>` : ''}
+        <p><strong>What this table is:</strong> A retrospective data-fitted model. The PAL multiplier for each activity bucket was chosen by minimising BMR volatility across your history. It reflects what your total expenditure appears to have been on days of each type.</p>
+        <p><strong>Activity categories are a temporary compatibility layer.</strong> The four buckets (Rest / Light +100 / Hard +280 / HIIT +400 kcal) map to the legacy training-bump field. Once structured exercise sessions are fully implemented, these will be replaced by continuous per-session calorie estimates.</p>
+        <p><strong>Prospective budgets are separate:</strong> Your daily calorie target uses fixed flat bumps, not these PAL multipliers. That is intentional — the PALs are retrospective; the bumps are forward-looking planning values.</p>
+        ${palInverted ? `<p class="text-warning"><strong>Why does Light show higher than Hard?</strong> Hard-training days often have higher sodium and carbs, which causes temporary water retention. That inflates the apparent scale weight on hard days, making the implied TDEE look smaller — so the grid search assigns a lower PAL. This is a water/glycogen signal, not a model bug. Use the flat bumps in your daily plan.</p>` : ''}
       </div>
       <div class="overflow-x-auto mb-4">
         <table class="w-full border rounded-lg">
