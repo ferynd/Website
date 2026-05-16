@@ -424,7 +424,8 @@ async function handleApplyTargets() {
     await saveTargets(finalTargets);
 
     // Refresh all visible tracker UI
-    const { populateSettingsForm, updateDashboard, updateChart } = await import('../ui/dashboard.js');
+    const { populateSettingsForm, updateDashboard } = await import('../ui/dashboard.js');
+    const { updateChart } = await import('../ui/chart.js');
     populateSettingsForm();
     updateDashboard();
     updateChart();
