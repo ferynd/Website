@@ -515,7 +515,10 @@ export function updateExerciseSessionsList() {
 
 /**
  * Persist an exercise session (add or update by id) for the current date.
- * Called from the exercise modal via window.saveExerciseSession().
+ *
+ * Errors from saveDailyEntry propagate to the caller (wire.js saveExerciseSession)
+ * which keeps the modal open and shows the error — no silent loss on navigation.
+ * UI is only updated after a confirmed cloud save.
  */
 export async function persistExerciseSession(session) {
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
@@ -531,11 +534,7 @@ export async function persistExerciseSession(session) {
   }
 
   state.dailyEntries.set(dateStr, entry);
-  try {
-    await saveDailyEntry(dateStr, entry);
-  } catch (err) {
-    handleError('persist-exercise-session', err, 'Failed to save exercise session to the cloud.');
-  }
+  await saveDailyEntry(dateStr, entry); // throws on failure → caller handles
   updateExerciseSessionsList();
   updateDashboard();
 }
@@ -543,22 +542,31 @@ export async function persistExerciseSession(session) {
 /**
  * Remove an exercise session by id for the current date.
  * Exposed as window.removeExerciseSession.
+ *
+ * Rolls back the in-memory state and re-renders if the cloud save fails so the
+ * UI never shows removal as successful when the data was not actually deleted.
  */
 async function removeExerciseSessionById(sessionId) {
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
   const entry   = getCurrentDailyEntry();
 
   if (!Array.isArray(entry.exerciseSessions)) return;
-  entry.exerciseSessions = entry.exerciseSessions.filter(s => s.id !== sessionId);
 
+  const original = [...entry.exerciseSessions];
+  entry.exerciseSessions = entry.exerciseSessions.filter(s => s.id !== sessionId);
   state.dailyEntries.set(dateStr, entry);
+
   try {
     await saveDailyEntry(dateStr, entry);
+    updateExerciseSessionsList();
+    updateDashboard();
   } catch (err) {
+    // Restore state and re-render to show the session is still present
+    entry.exerciseSessions = original;
+    state.dailyEntries.set(dateStr, entry);
     handleError('remove-exercise-session', err, 'Failed to remove exercise session from the cloud.');
+    updateExerciseSessionsList();
   }
-  updateExerciseSessionsList();
-  updateDashboard();
 }
 
 // Expose session remove to inline onclick handlers (edit is handled in wire.js)

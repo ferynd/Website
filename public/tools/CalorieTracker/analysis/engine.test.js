@@ -229,6 +229,33 @@ describe('deriveExerciseCalories', () => {
     expect(result.exerciseSource).toBe('legacy_bump');
     expect(result.legacyTrainingBumpUsed).toBe(true);
   });
+
+  // ── first-session-on-new-day shape ──────────────────────────────────────────
+  // When a user logs their first exercise session on a day that has no previous
+  // entry, saveExerciseSession (wire.js) uses getCurrentDailyEntry() to create
+  // the entry and sets dayActivityLevel='custom' before calling
+  // persistExerciseSession.  The saved document therefore has:
+  //   { dayActivityLevel: 'custom', exerciseSessions: [<session>] }
+  // deriveExerciseCalories must use the session calories, not the 'custom' bump
+  // (which is 0), for the merged row used by the analysis engine.
+  it('first-session-on-new-day: custom level + session → session kcal wins', () => {
+    const entry = {
+      dayActivityLevel: 'custom',
+      exerciseSessions: [{ manualCalories: 320 }],
+    };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(320);
+    expect(result.exerciseSource).toBe('manual');
+    expect(result.exerciseSessionCount).toBe(1);
+  });
+
+  it('custom level alone (no sessions yet) yields 0 exercise calories', () => {
+    // 'custom' means the user intends to log sessions; with none present yet, 0.
+    const entry = { dayActivityLevel: 'custom', exerciseSessions: [] };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(0);
+    expect(result.exerciseSource).toBe('none');
+  });
 });
 
 // ── Stable maintenance (60 days) ─────────────────────────────────────────────

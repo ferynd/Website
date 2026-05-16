@@ -459,7 +459,7 @@ function updateExerciseLiveEstimate() {
 }
 
 /** Read the modal form and persist the session (add or update). */
-function saveExerciseSession() {
+async function saveExerciseSession() {
   try {
     const actType  = document.getElementById('es-activity-type')?.value;
     const duration = parseFloat(document.getElementById('es-duration')?.value);
@@ -497,19 +497,22 @@ function saveExerciseSession() {
     session.estimatedCalories = kcal;
     session.metValue          = met;
 
-    // Set dayActivityLevel='custom' BEFORE persisting so it is included in the
-    // saved entry. persistExerciseSession calls getCurrentDailyEntry() which
-    // reads from state.dailyEntries, so mutating the entry here is enough.
+    // Use getCurrentDailyEntry (not .get) so a brand-new day gets its entry
+    // created in state before persistExerciseSession runs — otherwise the
+    // dayActivityLevel mutation is lost when persistExerciseSession creates
+    // its own fresh entry via the same call.
     const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
-    const entry   = state.dailyEntries.get(dateStr);
-    if (entry && entry.dayActivityLevel !== 'custom') {
+    const entry   = getCurrentDailyEntry();
+    if (entry.dayActivityLevel !== 'custom') {
       entry.dayActivityLevel = 'custom';
       state.dailyEntries.set(dateStr, entry);
       const sel = document.getElementById('day-activity-level');
       if (sel) sel.value = 'custom';
     }
 
-    persistExerciseSession(session);
+    // Await the cloud save. If it throws, the catch block below handles it and
+    // the modal stays open — no silent data loss on navigation.
+    await persistExerciseSession(session);
     closeExerciseModal();
 
     debugLog('wire-exercise-save', `Session saved: ${actType} ${duration} min`);
