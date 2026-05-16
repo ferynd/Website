@@ -56,8 +56,8 @@ export const ANALYSIS_CONFIG = {
   // Default preferred weigh-in window: 6–9 AM (minutes from midnight)
   WEIGH_IN_WINDOW_DEFAULT: { startMin: 360, endMin: 540 },
 
-  // Minimum rest-day blocks needed to compute empirical rest-day expenditure
-  MIN_REST_DAY_BLOCKS: 5,
+  // Maximum per-day water-weight correction magnitude in lb
+  MAX_WATER_CORRECTION_LB: 2.0,
 };
 
 // ==========================================
@@ -109,6 +109,12 @@ function linearRegression(xs, ys) {
 
 function daysBetween(a, b) {
   return Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+}
+
+function dateOffset(dateStr, offsetDays) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
 }
 
 /**
@@ -205,6 +211,56 @@ export function selectDailyWeight(readings, preferredWindow = null) {
 }
 
 // ==========================================
+// EXERCISE CALORIES DERIVATION
+// ==========================================
+
+/**
+ * Derive exercise calories from a nutrition entry's exerciseSessions array or
+ * fall back to the legacy trainingBump field.
+ *
+ * Priority per session: manualCalories > wearableCalories > estimatedCalories
+ * If no sessions, falls back to trainingBump.
+ *
+ * @param {object|null} nEntry - nutrition entry (dailyEntries value)
+ * @returns {{ exerciseCalories, exerciseSource, exerciseSessionCount, legacyTrainingBumpUsed }}
+ */
+export function deriveExerciseCalories(nEntry) {
+  const sessions = nEntry?.exerciseSessions;
+  let exerciseCalories = 0;
+  let exerciseSource = 'none';
+  let exerciseSessionCount = 0;
+  let legacyTrainingBumpUsed = false;
+
+  if (Array.isArray(sessions) && sessions.length > 0) {
+    exerciseSessionCount = sessions.length;
+    let totalCals = 0;
+    let dominantSource = 'estimated';
+    for (const s of sessions) {
+      if (s.manualCalories != null && s.manualCalories > 0) {
+        totalCals += s.manualCalories;
+        dominantSource = 'manual';
+      } else if (s.wearableCalories != null && s.wearableCalories > 0) {
+        totalCals += s.wearableCalories;
+        if (dominantSource === 'estimated') dominantSource = 'wearable';
+      } else if (s.estimatedCalories != null && s.estimatedCalories > 0) {
+        totalCals += s.estimatedCalories;
+      }
+    }
+    exerciseCalories = totalCals;
+    exerciseSource = dominantSource;
+  } else {
+    const bump = parseFloat(nEntry?.trainingBump) || 0;
+    if (bump > 0) {
+      exerciseCalories = bump;
+      exerciseSource = 'legacy_bump';
+      legacyTrainingBumpUsed = true;
+    }
+  }
+
+  return { exerciseCalories, exerciseSource, exerciseSessionCount, legacyTrainingBumpUsed };
+}
+
+// ==========================================
 // STEP 1: MERGE weight + nutrition into daily rows
 // ==========================================
 
@@ -251,6 +307,7 @@ export function mergeDailyData(weightEntries, dailyEntries, weightEntriesMulti =
     const wEntry = weightByDate.get(dateStr);
     const nEntry = dailyEntries.get(dateStr);
 
+    const exFields = deriveExerciseCalories(nEntry || null);
     dateMap.set(dateStr, {
       date: dateStr,
       weight_lb: wEntry ? wEntry.weight_lb : null,
@@ -260,6 +317,7 @@ export function mergeDailyData(weightEntries, dailyEntries, weightEntriesMulti =
       carbs: nEntry ? (parseFloat(nEntry.carbs) || null) : null,
       fiber: nEntry ? (parseFloat(nEntry.fiber) || null) : null,
       trainingBump: nEntry ? (parseFloat(nEntry.trainingBump) || 0) : 0,
+      ...exFields,
     });
   }
 
@@ -310,6 +368,7 @@ export function waterCorrect(rows) {
 
   let correctFn = null;   // (row) => correction in lb
   let uncertaintyLb = null;
+  let usedOLS = false;
 
   if (trainRows.length >= C.MIN_DAYS_FOR_WATER_REGRESSION) {
     // Standardise predictors
@@ -346,6 +405,7 @@ export function waterCorrect(rows) {
             + beta[2] * (r.carbs - carbMean) / carbSd
             + (useFiber ? beta[3] * fib : 0);
         };
+        usedOLS = true;
 
         const residAfter = fitRows.map(r => {
           const resid = r.weight_lb - r._baseline;
@@ -391,15 +451,22 @@ export function waterCorrect(rows) {
     }
   }
 
-  // Apply corrections
+  // Apply corrections with per-day cap to prevent over-correction
+  const CAP = C.MAX_WATER_CORRECTION_LB;
   for (const r of result) {
     if (r.weight_lb == null) { r.weight_corr = null; r._waterCorrection = 0; continue; }
-    const corr = correctFn(r);
+    const rawCorr = correctFn(r);
+    const corr = Math.min(Math.max(rawCorr, -CAP), CAP);
     r._waterCorrection = corr;
     r.weight_corr = r.weight_lb - corr;
   }
 
-  return { rows: result, uncertaintyLb: uncertaintyLb ?? null };
+  return {
+    rows: result,
+    uncertaintyLb: uncertaintyLb ?? null,
+    waterCorrectionMethod: usedOLS ? 'ols_regression' : 'median_bucket_adaptive',
+    predictorDays: trainRows.length,
+  };
 }
 
 // ==========================================
@@ -443,7 +510,10 @@ export function estimateTDEE(rows) {
     const tdee = avgIntake - avgStorage;
 
     if (tdee >= C.TDEE_PLAUSIBLE_MIN && tdee <= C.TDEE_PLAUSIBLE_MAX) {
+      const calCoverage = cals.length / blockDays;
       result[i].tdee_block = Math.round(tdee);
+      result[i].calCoverage = +calCoverage.toFixed(2);
+      result[i].tdee_block_quality = calCoverage >= 0.85 ? 'high' : 'medium';
     }
   }
   return result;
@@ -454,31 +524,73 @@ export function estimateTDEE(rows) {
 // ==========================================
 
 /**
- * Compute aggregate TDEE estimates at multiple horizons.
- * Uses the same block logic as estimateTDEE but condenses each horizon
- * into a single point estimate (trimmed mean of all block estimates within
- * that window from the end of the record).
+ * Compute aggregate TDEE estimates at multiple horizons using calendar-date cutoffs.
  *
- * @param {Array} rows - Rows with tdee_block populated
+ * Window = [latestDate - (horizonDays-1), latestDate] — exactly `horizonDays` calendar
+ * days regardless of how many valid block rows fall within it.
+ *
+ * High-quality blocks (calCoverage ≥ 0.85) are preferred when ≥ 5 exist; otherwise
+ * all plausible blocks in the window are used.
+ *
+ * @param {Array} rows - Rows with tdee_block populated (output of estimateTDEE)
  * @returns {object} { 14: {...}, 28: {...}, 42: {...}, 56: {...} }
  */
 export function estimateTDEEByHorizon(rows) {
   const C = ANALYSIS_CONFIG;
   const horizons = C.HORIZONS;
   const result = {};
-  const valid = rows.filter(r => r.tdee_block != null && r.wt_smooth_lb != null);
+
+  const allValid = rows.filter(r => r.tdee_block != null && r.wt_smooth_lb != null);
+  if (allValid.length === 0) {
+    for (const [label, days] of Object.entries(horizons)) {
+      result[days] = {
+        tdee: null, daysUsed: 0, available: false, label,
+        calendarStart: null, calendarEnd: null, blockCount: 0,
+        coveragePct: 0, daysWindow: days, reason: 'no_data',
+      };
+    }
+    return result;
+  }
+
+  const latestDate = allValid[allValid.length - 1].date;
 
   for (const [label, days] of Object.entries(horizons)) {
-    const windowRows = valid.slice(-days);
-    const tdees = windowRows.map(r => r.tdee_block).filter(t => t != null);
+    const cutoffDate = dateOffset(latestDate, -(days - 1));
+    const windowRows = allValid.filter(r => r.date >= cutoffDate);
+
+    const highRows = windowRows.filter(r => r.tdee_block_quality === 'high');
+    const primaryRows = highRows.length >= 5 ? highRows : windowRows;
+    const tdees = primaryRows.map(r => r.tdee_block);
+
+    const calendarStart = windowRows.length > 0 ? windowRows[0].date : cutoffDate;
+    const blockCount = tdees.length;
+    const coveragePct = Math.round(100 * windowRows.length / days);
+
     if (tdees.length < 5) {
-      result[days] = { tdee: null, daysUsed: tdees.length, available: false, label };
+      result[days] = {
+        tdee: null,
+        daysUsed: tdees.length,
+        available: false,
+        label,
+        calendarStart,
+        calendarEnd: latestDate,
+        blockCount,
+        coveragePct,
+        daysWindow: days,
+        reason: 'insufficient_blocks',
+      };
     } else {
       result[days] = {
         tdee: Math.round(trimmedMean(tdees)),
         daysUsed: tdees.length,
         available: true,
         label,
+        calendarStart,
+        calendarEnd: latestDate,
+        blockCount,
+        coveragePct,
+        daysWindow: days,
+        reason: highRows.length >= 5 ? 'high_quality_blocks' : 'mixed_quality_blocks',
       };
     }
   }
@@ -580,32 +692,32 @@ export function estimateBMR(rows, profileRmrKcal = null) {
 
   const valid = rows.filter(r => r.tdee_block != null && r.wt_smooth_lb != null);
 
-  // Observed TDEE across all block estimates (not model-dependent)
-  const allTDEEs = valid.map(r => r.tdee_block).filter(t => t != null);
+  // Observed TDEE: prefer high-quality blocks when enough exist
+  const highQualValid = valid.filter(r => r.tdee_block_quality === 'high');
+  const tdeeSource = highQualValid.length >= 5 ? highQualValid : valid;
+  const allTDEEs = tdeeSource.map(r => r.tdee_block);
   const observedTdee = allTDEEs.length >= 5 ? Math.round(trimmedMean(allTDEEs)) : null;
-
-  // Empirical rest-day expenditure: block estimates on days with trainingBump=0
-  const restValid = valid.filter(r => (r.trainingBump || 0) === 0);
-  const restTDEEs = restValid.map(r => r.tdee_block).filter(t => t != null);
-  const empiricalRestDayExp = restTDEEs.length >= C.MIN_REST_DAY_BLOCKS
-    ? Math.round(trimmedMean(restTDEEs))
-    : null;
 
   if (valid.length < 30) {
     // Not enough data for grid search — use profile RMR as fallback if available
     if (profileRmrKcal && profileRmrKcal > 0) {
       const restPal = 1.30; // conservative rest-day PAL
+      const tdeeRestDay = Math.round(profileRmrKcal * restPal);
       return {
         pals: { 0: restPal, 100: 1.45, 280: 1.58, 400: 1.70 },
         a: 0, b: 0,
+        fittedBmr: profileRmrKcal,
         bmr_current: profileRmrKcal,
         bmr_baseline: profileRmrKcal,
+        modelResidual: 0,
+        modelResidualSd: 0,
+        // Deprecated aliases for backward compat
         adaptation: 0,
         adaptationSD: 0,
-        tdee_current: observedTdee ?? Math.round(profileRmrKcal * restPal),
-        tdee_rest_day: Math.round(profileRmrKcal * restPal),
+        tdee_current: observedTdee ?? tdeeRestDay,
+        tdee_rest_day: tdeeRestDay,
+        modelPredictedRestDayTdee: tdeeRestDay,
         observedTdee,
-        empiricalRestDayExp,
         profilePredictedRmr: profileRmrKcal,
         score: null,
         source: 'profile_prior',
@@ -615,13 +727,11 @@ export function estimateBMR(rows, profileRmrKcal = null) {
     }
     return {
       observedTdee,
-      empiricalRestDayExp,
       profilePredictedRmr: profileRmrKcal,
       error: `Not enough data (need 30+ days with both weight and calorie data; have ${valid.length}).`,
     };
   }
 
-  // Grid search (unchanged from v1)
   const palKeys = Object.keys(C.PAL_RANGES).map(Number).sort((a, b) => a - b);
   const grids = {};
   for (const k of palKeys) {
@@ -635,7 +745,8 @@ export function estimateBMR(rows, profileRmrKcal = null) {
   function tryPals(pals) {
     const wts = [], bmrs = [];
     for (const r of valid) {
-      const bump = r.trainingBump || 0;
+      // Use exerciseCalories when available, fall back to legacy trainingBump
+      const bump = r.exerciseCalories != null ? r.exerciseCalories : (r.trainingBump || 0);
       const palKey = palKeys.reduce((b, k) => Math.abs(k - bump) < Math.abs(b - bump) ? k : b, palKeys[0]);
       const impliedBMR = r.tdee_block / pals[palKey];
       wts.push(r.wt_smooth_lb * C.LB_TO_KG);
@@ -682,34 +793,38 @@ export function estimateBMR(rows, profileRmrKcal = null) {
   }
 
   if (!bestModel.a && bestModel.a !== 0) {
-    return { observedTdee, empiricalRestDayExp, profilePredictedRmr: profileRmrKcal, error: 'BMR model fitting failed.' };
+    return { observedTdee, profilePredictedRmr: profileRmrKcal, error: 'BMR model fitting failed.' };
   }
 
   const lastValid = [...valid].reverse().find(r => r.wt_smooth_lb != null);
   const currentWtKg = lastValid.wt_smooth_lb * C.LB_TO_KG;
   const bmrBase = bestModel.a + bestModel.b * currentWtKg;
 
+  // fittedBmr = pure regression output — no residual folded in
+  const fittedBmr = Math.round(bmrBase);
+
   const recent = valid.slice(-21);
   const adaptResiduals = recent.map(r => {
-    const bump = r.trainingBump || 0;
+    const bump = r.exerciseCalories != null ? r.exerciseCalories : (r.trainingBump || 0);
     const palKey = palKeys.reduce((b, k) => Math.abs(k - bump) < Math.abs(b - bump) ? k : b, palKeys[0]);
     const impliedBMR = r.tdee_block / bestPals[palKey];
     const fittedBMR = bestModel.a + bestModel.b * r.wt_smooth_lb * C.LB_TO_KG;
     return impliedBMR - fittedBMR;
   });
-  const adaptation = Math.round(median(adaptResiduals));
-  const adaptationSD = Math.round(stdDev(adaptResiduals));
+  // modelResidual is the ambiguous gap — could be logging error, water noise, or biology
+  const modelResidual = Math.round(median(adaptResiduals));
+  const modelResidualSd = Math.round(stdDev(adaptResiduals));
 
   const restPal = bestPals[0] || 1.3;
-  const tdeeRestDay = Math.round((bmrBase + adaptation) * restPal);
+  // tdee_rest_day uses pure fittedBmr — not inflated by residual
+  const tdeeRestDay = Math.round(bmrBase * restPal);
 
   const recentTDEEs = valid.slice(-21).map(r => r.tdee_block).filter(t => t != null);
   const tdeeRecent = recentTDEEs.length >= 7 ? Math.round(trimmedMean(recentTDEEs)) : tdeeRestDay;
 
-  // Flag large residuals plainly without claiming "metabolic adaptation"
   let loggingResidualNote = null;
-  if (Math.abs(adaptation) > 150) {
-    loggingResidualNote = Math.abs(adaptation) > 300
+  if (Math.abs(modelResidual) > 150) {
+    loggingResidualNote = Math.abs(modelResidual) > 300
       ? 'Large gap between predicted and observed energy balance — likely reflects logging gaps or water weight noise, not just biology.'
       : 'Moderate gap between predicted and observed balance — could be logging error, activity change, or water noise.';
   }
@@ -718,14 +833,18 @@ export function estimateBMR(rows, profileRmrKcal = null) {
     pals: bestPals,
     a: bestModel.a,
     b: bestModel.b,
-    bmr_current: Math.round(bmrBase + adaptation),
-    bmr_baseline: Math.round(bmrBase),
-    adaptation,
-    adaptationSD,
+    fittedBmr,
+    bmr_current: fittedBmr,
+    bmr_baseline: fittedBmr,
+    modelResidual,
+    modelResidualSd,
+    // Deprecated aliases for backward compat
+    adaptation: modelResidual,
+    adaptationSD: modelResidualSd,
     tdee_current: tdeeRecent,
     tdee_rest_day: tdeeRestDay,
+    modelPredictedRestDayTdee: tdeeRestDay,
     observedTdee,
-    empiricalRestDayExp,
     profilePredictedRmr: profileRmrKcal,
     loggingResidualNote,
     score: bestScore,
@@ -839,7 +958,8 @@ export function computeLoggingResidual(rows, bmrModel) {
     if (!pal) continue;
     const wtKg = r.wt_smooth_lb != null ? r.wt_smooth_lb * C.LB_TO_KG : null;
     if (!wtKg) continue;
-    const predictedTDEE = (bmrModel.a + bmrModel.b * wtKg + (bmrModel.adaptation || 0)) * pal;
+    // Use pure fitted BMR (no residual) — the residual IS the quantity we're measuring here
+    const predictedTDEE = (bmrModel.a + bmrModel.b * wtKg) * pal;
     residuals.push(predictedTDEE - r.tdee_block);
   }
 
@@ -896,7 +1016,8 @@ export function imputeCalories(rows, bmrModel) {
     if (!pal) { r.impute_status = 'insufficient_weight_data'; continue; }
 
     const wtKg = r.wt_smooth_lb * C.LB_TO_KG;
-    const predictedBMR = (bmrModel.a || 0) + (bmrModel.b || 0) * wtKg + (bmrModel.adaptation || 0);
+    // Use pure fitted BMR (no residual) so imputed calories reflect the structural model
+    const predictedBMR = (bmrModel.a || 0) + (bmrModel.b || 0) * wtKg;
     const predictedTDEE = predictedBMR > 0 ? predictedBMR * pal : (bmrModel.tdee_current || 2000);
     const deltaKg = (r.wt_smooth_lb - result[i - 1].wt_smooth_lb) * C.LB_TO_KG;
     const calHat = predictedTDEE + C.ENERGY_DENSITY_KCAL_PER_KG * deltaKg;
@@ -1056,8 +1177,13 @@ export function runAnalysis(weightEntries, dailyEntries, profile = null, weightE
     return { error: 'Not enough data for analysis (need at least 7 days).', rows };
   }
 
-  // Step 2: Water correction (returns {rows, uncertaintyLb})
-  const { rows: correctedRows, uncertaintyLb: waterWeightUncertaintyLb } = waterCorrect(rows);
+  // Step 2: Water correction (returns {rows, uncertaintyLb, waterCorrectionMethod, predictorDays})
+  const {
+    rows: correctedRows,
+    uncertaintyLb: waterWeightUncertaintyLb,
+    waterCorrectionMethod,
+    predictorDays: waterPredictorDays,
+  } = waterCorrect(rows);
   rows = correctedRows;
 
   // Step 3: Smooth
@@ -1103,6 +1229,8 @@ export function runAnalysis(weightEntries, dailyEntries, profile = null, weightE
     plateau,
     tdeeByHorizon,
     waterWeightUncertaintyLb,
+    waterCorrectionMethod,
+    waterPredictorDays,
     loggingResidual,
     confidence,
     profileRmr: profileRmrResult,
@@ -1118,12 +1246,13 @@ export function runAnalysis(weightEntries, dailyEntries, profile = null, weightE
       tdee: bmrModel.error ? null : bmrModel.tdee_current,
       bmr: bmrModel.error ? null : bmrModel.bmr_current,
       observedTdee: bmrModel.observedTdee ?? null,
-      restDayCaloriesOut: bmrModel.empiricalRestDayExp ?? bmrModel.tdee_rest_day ?? null,
+      restDayCaloriesOut: bmrModel.modelPredictedRestDayTdee ?? bmrModel.tdee_rest_day ?? null,
       profilePredictedRmr: profileRmrKcal,
       confidenceLabel: confidence.label,
       confidenceScore: confidence.score,
       confidenceReasons: confidence.reasons,
       waterWeightUncertaintyLb,
+      waterCorrectionMethod,
     },
   };
 }

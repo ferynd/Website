@@ -269,7 +269,7 @@ function renderKPICards(results) {
   }
 
   if (s.restDayCaloriesOut != null) {
-    cards.push(kpiCard('Rest-Day Burn', `${s.restDayCaloriesOut} kcal`, 'fa-couch', 'text-accent'));
+    cards.push(kpiCard('Predicted Rest-Day TDEE', `${s.restDayCaloriesOut} kcal`, 'fa-couch', 'text-accent'));
   } else if (s.bmr != null) {
     cards.push(kpiCard('Est. BMR', `${s.bmr} kcal`, 'fa-heart-pulse', 'text-accent'));
   }
@@ -315,7 +315,8 @@ function renderConfidenceCard(confidence, results) {
   // Uncertainty footnote
   let uncertaintyNote = '';
   if (results.waterWeightUncertaintyLb != null) {
-    uncertaintyNote = `<p class="text-xs text-muted mt-2">Day-to-day water weight noise: ±${results.waterWeightUncertaintyLb} lb. This sets a floor on how precisely any single weigh-in can be interpreted.</p>`;
+    const methodLabel = results.waterCorrectionMethod === 'ols_regression' ? 'regression-fitted' : 'median-bucket';
+    uncertaintyNote = `<p class="text-xs text-muted mt-2">Day-to-day water weight noise: ±${results.waterWeightUncertaintyLb} lb (${methodLabel} correction). This sets a floor on how precisely any single weigh-in can be interpreted.</p>`;
   }
 
   return `
@@ -442,9 +443,10 @@ function renderEnergyDetail(results) {
         </div>`
       : '';
 
-    const adaptationSign = bmrModel.adaptation > 0 ? '+' : '';
-    const adaptationColor = bmrModel.adaptation < 0 ? 'text-negative' : 'text-positive';
-    const sd = bmrModel.adaptationSD ?? '?';
+    const residualSign = (bmrModel.modelResidual ?? bmrModel.adaptation ?? 0) > 0 ? '+' : '';
+    const residual = bmrModel.modelResidual ?? bmrModel.adaptation ?? 0;
+    const residualColor = residual < 0 ? 'text-negative' : 'text-positive';
+    const sd = bmrModel.modelResidualSd ?? bmrModel.adaptationSD ?? '?';
 
     const bmrCards = isFallback
       ? `${profileRmrNote}
@@ -455,22 +457,17 @@ function renderEnergyDetail(results) {
         ${profileRmrNote}
         <div class="surface-2 rounded-lg border p-4">
           <div class="text-sm text-muted mb-1">Fitted BMR (weight-based regression)</div>
-          <div class="font-bold text-lg">${bmrModel.bmr_baseline} kcal</div>
-          <div class="text-xs text-muted mt-1">Weight-only prediction from BMR ~ a + b × weight_kg regression on your historical data.</div>
+          <div class="font-bold text-lg text-accent">${bmrModel.fittedBmr ?? bmrModel.bmr_current} kcal</div>
+          <div class="text-xs text-muted mt-1">Pure regression output: BMR ~ a + b × weight_kg, fitted to your historical data. Used directly in daily targets and rest-day TDEE prediction.</div>
         </div>
         <div class="surface-2 rounded-lg border p-4">
           <div class="text-sm text-muted mb-1">Model residual (last 21 days)</div>
-          <div class="font-bold text-lg ${adaptationColor}">${adaptationSign}${bmrModel.adaptation} <span class="font-normal text-base">± ${sd} kcal</span></div>
+          <div class="font-bold text-lg ${residualColor}">${residualSign}${residual} <span class="font-normal text-base">± ${sd} kcal</span></div>
           <div class="text-xs text-muted mt-1 space-y-1">
             <p>Gap between the regression prediction and what your weight-change + calories data implies. A negative value means the model over-predicts your burn; positive means it under-predicts.</p>
-            <p class="text-warning">The ±${sd} kcal spread combines biological variation with logging noise (missed entries, incorrect amounts, water weight). These cannot be separated from scale data alone — do not read this as "metabolic adaptation" specifically.</p>
+            <p class="text-warning">This gap is ambiguous — it reflects some combination of logging inaccuracy (missed entries, incorrect amounts), water weight noise, and activity variation. Scale data alone cannot separate these. Do not label this "metabolic adaptation."</p>
             ${bmrModel.loggingResidualNote ? `<p class="text-warning">${bmrModel.loggingResidualNote}</p>` : ''}
           </div>
-        </div>
-        <div class="surface-2 rounded-lg border p-4">
-          <div class="text-sm text-muted mb-1">Adjusted BMR (used in daily plan)</div>
-          <div class="font-bold text-lg text-accent">${bmrModel.bmr_current} kcal</div>
-          <div class="text-xs text-muted mt-1">= Fitted baseline + residual. Carry the ±${sd} kcal uncertainty when reading TDEE estimates.</div>
         </div>`;
 
     bmrSection = `
@@ -486,25 +483,25 @@ function renderEnergyDetail(results) {
 
   // ── Section: Rest-day vs total spend ────────────────────────────────────
   let expenditureRow = '';
-  if (bmrModel.empiricalRestDayExp != null || bmrModel.observedTdee != null) {
-    const restVal = bmrModel.empiricalRestDayExp != null
-      ? `${bmrModel.empiricalRestDayExp} kcal <span class="font-normal text-xs text-muted">(from ${results.summary?.daysWithCalories ?? '?'} data days)</span>`
-      : '<span class="text-muted">Not enough rest-day data</span>';
+  if (bmrModel.modelPredictedRestDayTdee != null || bmrModel.observedTdee != null) {
+    const restVal = bmrModel.modelPredictedRestDayTdee != null
+      ? `${bmrModel.modelPredictedRestDayTdee} kcal`
+      : '<span class="text-muted">Not enough model data</span>';
     const totalVal = bmrModel.observedTdee != null
       ? `${bmrModel.observedTdee} kcal`
       : '<span class="text-muted">Estimating…</span>';
 
     expenditureRow = `
       <div class="mb-6 surface-2 rounded-lg border p-4">
-        <h4 class="font-semibold text-secondary mb-3 text-sm uppercase tracking-wide">Calories Out — Observed</h4>
+        <h4 class="font-semibold text-secondary mb-3 text-sm uppercase tracking-wide">Calories Out — Model Estimates</h4>
         <div class="grid grid-cols-2 gap-4 text-sm">
           <div>
-            <div class="text-muted text-xs mb-1">Rest-day expenditure</div>
+            <div class="text-muted text-xs mb-1">Predicted rest-day TDEE</div>
             <div class="font-semibold">${restVal}</div>
-            <div class="text-xs text-muted mt-1">Average of all block estimates on rest/low-activity days. Your floor calorie burn.</div>
+            <div class="text-xs text-muted mt-1">Fitted BMR × rest-day PAL. Model-predicted energy burn on days without intentional exercise.</div>
           </div>
           <div>
-            <div class="text-muted text-xs mb-1">Overall average TDEE</div>
+            <div class="text-muted text-xs mb-1">Overall observed TDEE</div>
             <div class="font-semibold">${totalVal}</div>
             <div class="text-xs text-muted mt-1">Trimmed mean across all available 14-day blocks. Includes all activity levels.</div>
           </div>
