@@ -214,6 +214,7 @@ export function initAnalysisEvents() {
       showMessage(`Filling ${selected.length} day(s)…`, false, 30000);
 
       let savedCount = 0;
+      let failCount = 0;
       for (const cb of selected) {
         const dateStr = cb.dataset.date;
         const kind = cb.dataset.kind;
@@ -239,10 +240,16 @@ export function initAnalysisEvents() {
           savedCount++;
         } catch (e) {
           debugLog('blank-fill', `Failed to save ${dateStr}: ${e.message}`);
+          failCount++;
         }
       }
 
-      showMessage(`Filled ${savedCount} day(s) with estimated values.`);
+      showMessage(
+        failCount > 0
+          ? `Filled ${savedCount} day(s), ${failCount} failed — check console for details.`
+          : `Filled ${savedCount} day(s) with estimated values.`,
+        failCount > 0
+      );
       const { updateDashboard } = await import('../ui/dashboard.js');
       updateDashboard();
     });
@@ -268,6 +275,18 @@ export function initAnalysisEvents() {
     document.getElementById('vac-preview-tbody')?.addEventListener('change', e => {
       if (e.target.classList.contains('vac-day-check')) _updateVacFillCount();
       if (e.target.classList.contains('vac-type-select')) _onVacTypeChange(e.target);
+    });
+
+    document.getElementById('vac-preview-tbody')?.addEventListener('input', e => {
+      if (!e.target.classList.contains('vac-custom-kcal')) return;
+      const dateStr = e.target.dataset.date;
+      const val = parseFloat(e.target.value);
+      if (!isNaN(val) && val > 0) {
+        state.vacationEditor.customCalories.set(dateStr, val);
+      } else {
+        state.vacationEditor.customCalories.delete(dateStr);
+      }
+      _refreshVacRowEstimate(dateStr, 'custom');
     });
 
     document.getElementById('vac-fill-btn')?.addEventListener('click', async () => {
@@ -436,12 +455,19 @@ async function _applyVacationFill() {
   showMessage(`Filling ${checked.length} vacation day(s)…`, false, 30000);
 
   let savedCount = 0;
+  let failCount = 0;
   for (const cb of checked) {
     const dateStr = cb.dataset.date;
     const type = state.vacationEditor.dayTypes.get(dateStr) || 'medium';
     const customKcal = type === 'custom'
-      ? (parseFloat(document.querySelector(`.vac-custom-kcal[data-date="${dateStr}"]`)?.value) || null)
+      ? (state.vacationEditor.customCalories.get(dateStr) ?? null)
       : null;
+
+    if (type === 'custom' && customKcal === null) {
+      debugLog('vacation-fill', `Skipping ${dateStr}: custom type with no calories entered`);
+      failCount++;
+      continue;
+    }
 
     const existing = state.dailyEntries.get(dateStr);
     if (existing?.estimateMeta?.locked || existing?.manualLock) {
@@ -458,12 +484,19 @@ async function _applyVacationFill() {
       savedCount++;
     } catch (e) {
       debugLog('vacation-fill', `Failed to save ${dateStr}: ${e.message}`);
+      failCount++;
     }
   }
 
-  showMessage(`Filled ${savedCount} vacation day(s) with estimated values.`);
+  showMessage(
+    failCount > 0
+      ? `Filled ${savedCount} vacation day(s), ${failCount} failed — check console for details.`
+      : `Filled ${savedCount} vacation day(s) with estimated values.`,
+    failCount > 0
+  );
   const { updateDashboard } = await import('../ui/dashboard.js');
   updateDashboard();
+}
 
 // ==========================================
 // RENDER HELPERS

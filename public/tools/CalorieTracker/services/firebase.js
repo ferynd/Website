@@ -5,6 +5,7 @@
  */
 
 import { appId } from '../config.js';
+import { allNutrients } from '../constants.js';
 import { state, coerceQuantity } from '../state/store.js';
 import { handleError, debugLog, showMessage } from '../utils/ui.js';
 import {
@@ -582,10 +583,7 @@ export async function removeEstimateItem(dateStr, itemId) {
 
     const updated = {
       ...existing,
-      calories: Math.round(sum('calories')),
-      protein: Math.round(sum('protein')),
-      fat: Math.round(sum('fat')),
-      carbs: Math.round(sum('carbs')),
+      ...Object.fromEntries(allNutrients.map(k => [k, Math.round(sum(k))])),
       foodItems: newItems,
       entryType: newEntryType,
       vacationDayType: newVacationDayType,

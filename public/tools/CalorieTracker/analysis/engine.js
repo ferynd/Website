@@ -1295,17 +1295,30 @@ export const VACATION_TYPE_CONFIG = {
 
 /**
  * Compute per-weekday average calories from logged (non-synthetic) entries.
+ *
+ * Uses only real food items' calories so that mixed entries (real food plus a
+ * synthetic "Unlogged intake estimate") do not inflate the weekday baseline.
+ *
  * @param {Map} dailyEntries
  * @returns {Array<number|null>}  7-element array indexed by getDay() (0=Sun … 6=Sat)
  */
 export function computeWeekdayAverages(dailyEntries) {
   const buckets = [[], [], [], [], [], [], []];
   for (const [dateStr, entry] of dailyEntries) {
-    const cal = parseFloat(entry.calories);
-    if (isNaN(cal) || cal <= 0) continue;
     if (entry.entryType === 'estimate') continue;
+    const items = Array.isArray(entry.foodItems) ? entry.foodItems : [];
+    let cals;
+    if (items.length > 0) {
+      // Sum only real (non-synthetic) food items so mixed entries don't inflate the baseline.
+      const realItems = items.filter(fi => !isSyntheticItem(fi));
+      cals = realItems.reduce((s, fi) => s + (parseFloat(fi.calories) || 0), 0);
+    } else {
+      // Legacy entries without a foodItems array: use the top-level total directly.
+      cals = parseFloat(entry.calories) || 0;
+    }
+    if (cals <= 0) continue;
     const dow = new Date(dateStr + 'T00:00:00').getDay();
-    buckets[dow].push(cal);
+    buckets[dow].push(cals);
   }
   return buckets.map(arr =>
     arr.length === 0 ? null : arr.reduce((s, v) => s + v, 0) / arr.length
@@ -1416,13 +1429,34 @@ export function buildVacationDayEntry(dateStr, vacationType, analysisResults, da
     'selenium','iodine','phosphorus','iron','zinc','omega3',
   ];
 
-  const loggedEntries = [...dailyEntries.values()].filter(e => {
-    const cal = parseFloat(e.calories);
-    return cal > 0 && e.entryType !== 'estimate';
-  });
+  // Per-day nutrient sums using real (non-synthetic) food items where available.
+  // Falls back to top-level entry fields for legacy entries that have no foodItems array.
+  // This prevents synthetic adjustment items from inflating historical averages.
+  const realDayTotals = [];
+  for (const e of dailyEntries.values()) {
+    if (e.entryType === 'estimate') continue;
+    const items = Array.isArray(e.foodItems) ? e.foodItems : [];
+    if (items.length > 0) {
+      const real = items.filter(fi => !isSyntheticItem(fi));
+      if (real.length === 0) continue;
+      const daySum = {};
+      for (const fi of real) {
+        for (const k of Object.keys(fi)) {
+          const v = parseFloat(fi[k]);
+          if (!isNaN(v)) daySum[k] = (daySum[k] || 0) + v;
+        }
+      }
+      realDayTotals.push(daySum);
+    } else {
+      // Legacy entry: use top-level fields directly.
+      const cal = parseFloat(e.calories) || 0;
+      if (cal <= 0) continue;
+      realDayTotals.push(e);
+    }
+  }
 
   function avgNutrient(key, fallback) {
-    const vals = loggedEntries.map(e => parseFloat(e[key])).filter(v => !isNaN(v) && v > 0);
+    const vals = realDayTotals.map(d => parseFloat(d[key]) || 0).filter(v => v > 0);
     return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : (fallback ?? 0);
   }
 
