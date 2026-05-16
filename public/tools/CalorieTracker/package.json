@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "vite --host 0.0.0.0 --port 3000",
-    "test": "../../../node_modules/.bin/vitest run analysis/weightParser.test.js state/schema.test.js targets/targetEngine.test.js"
+    "test": "../../../node_modules/.bin/vitest run analysis/weightParser.test.js state/schema.test.js targets/targetEngine.test.js analysis/engine.test.js"
   },
   "devDependencies": {
     "vite": "^5.0.0"
