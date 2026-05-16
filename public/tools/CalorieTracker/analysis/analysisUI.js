@@ -5,11 +5,25 @@
  */
 
 import { state } from '../state/store.js';
-import { runAnalysis, getBlankDaysForPopulation } from './engine.js';
+import {
+  runAnalysis,
+  getBlankDaysForPopulation,
+  getPartialDaysForAdjustment,
+  buildVacationDayEntry,
+  buildPartialDayAdjustment,
+  classifyDay,
+  estimateVacationCalories,
+  computeWeekdayAverages,
+  VACATION_TYPE_CONFIG,
+} from './engine.js';
 import { handleWeightUpload } from './weightUpload.js';
 import { debugLog, showMessage } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
-import { saveEstimatedEntry } from '../services/firebase.js';
+import {
+  saveEstimatedEntry,
+  removeEstimateItem,
+  lockEstimateForDate,
+} from '../services/firebase.js';
 
 let weightChartInstance = null;
 
@@ -30,6 +44,10 @@ export function renderAnalysisSection() {
     ? []
     : getBlankDaysForPopulation(results.rows, state.dailyEntries, state.baselineTargets);
 
+  state._partialDaysForAdjustment = results.error
+    ? []
+    : getPartialDaysForAdjustment(results.rows, state.dailyEntries, results.bmrModel);
+
   return `
     <div class="mb-8">
       <h2 class="text-responsive-2xl font-bold text-secondary mb-4">📈 Weight & Energy Analysis</h2>
@@ -45,7 +63,9 @@ export function renderAnalysisSection() {
           ${renderPlateauStatus(results.plateau)}
           ${renderEnergyDetail(results)}
           ${renderImputationTable(results.rows)}
-          ${renderBlankDaysSection(state._blankDaysForPopulation)}
+          ${renderMissingCaloriesSection(state._blankDaysForPopulation, state._partialDaysForAdjustment)}
+          ${renderVacationEditorSection()}
+          ${renderEstimateManagementSection()}
         `
       }
     </div>
@@ -140,74 +160,310 @@ export function initAnalysisEvents() {
     });
   }
 
-  // Blank-day population controls
+  // ── Missing Calories section (blank + partial days) ────────────────────────
   const blankDays = state._blankDaysForPopulation || [];
-  if (blankDays.length === 0) return;
+  const partialDays = state._partialDaysForAdjustment || [];
 
-  function updateFillBtn() {
-    const checked = document.querySelectorAll('.blank-day-check:checked').length;
-    const btn = document.getElementById('blank-fill-btn');
-    const countEl = document.getElementById('blank-fill-count');
-    if (btn) btn.disabled = checked === 0;
-    if (countEl) countEl.textContent = checked;
-  }
-
-  document.getElementById('blank-days-tbody')?.addEventListener('change', e => {
-    if (e.target.classList.contains('blank-day-check')) updateFillBtn();
-  });
-  document.getElementById('blank-check-all')?.addEventListener('change', e => {
-    document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = e.target.checked; });
-    updateFillBtn();
-  });
-  document.getElementById('blank-select-all-btn')?.addEventListener('click', () => {
-    document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = true; });
-    const allBox = document.getElementById('blank-check-all');
-    if (allBox) allBox.checked = true;
-    updateFillBtn();
-  });
-  document.getElementById('blank-deselect-all-btn')?.addEventListener('click', () => {
-    document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = false; });
-    const allBox = document.getElementById('blank-check-all');
-    if (allBox) allBox.checked = false;
-    updateFillBtn();
-  });
-  document.getElementById('blank-select-range-btn')?.addEventListener('click', () => {
-    const fromVal = document.getElementById('blank-range-from')?.value;
-    const toVal   = document.getElementById('blank-range-to')?.value;
-    if (!fromVal || !toVal) return;
-    document.querySelectorAll('.blank-day-check').forEach(cb => {
-      cb.checked = cb.dataset.date >= fromVal && cb.dataset.date <= toVal;
-    });
-    updateFillBtn();
-  });
-
-  document.getElementById('blank-fill-btn')?.addEventListener('click', async () => {
-    const selectedDates = Array.from(document.querySelectorAll('.blank-day-check:checked'))
-      .map(cb => cb.dataset.date);
-    if (selectedDates.length === 0) return;
-
+  if (blankDays.length > 0 || partialDays.length > 0) {
     const blankMap = new Map(blankDays.map(d => [d.date, d]));
-    const fillBtn = document.getElementById('blank-fill-btn');
-    if (fillBtn) fillBtn.disabled = true;
-    showMessage(`Filling ${selectedDates.length} blank day(s)…`, false, 30000);
+    const partialMap = new Map(partialDays.map(d => [d.date, d]));
 
-    let savedCount = 0;
-    for (const dateStr of selectedDates) {
-      const estimated = blankMap.get(dateStr);
-      if (!estimated) continue;
-      try {
-        await saveEstimatedEntry(dateStr, estimated);
-        savedCount++;
-      } catch (e) {
-        debugLog('blank-fill', `Failed to save ${dateStr}: ${e.message}`);
-      }
+    function updateFillBtn() {
+      const checked = document.querySelectorAll('.blank-day-check:checked').length;
+      const btn = document.getElementById('blank-fill-btn');
+      const countEl = document.getElementById('blank-fill-count');
+      if (btn) btn.disabled = checked === 0;
+      if (countEl) countEl.textContent = checked;
     }
 
-    showMessage(`Filled ${savedCount} blank day(s) with estimated values.`);
-    const { updateDashboard } = await import('../ui/dashboard.js');
-    updateDashboard();
+    document.getElementById('blank-days-tbody')?.addEventListener('change', e => {
+      if (e.target.classList.contains('blank-day-check')) updateFillBtn();
+    });
+    document.getElementById('blank-check-all')?.addEventListener('change', e => {
+      document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = e.target.checked; });
+      updateFillBtn();
+    });
+    document.getElementById('blank-select-all-btn')?.addEventListener('click', () => {
+      document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = true; });
+      const allBox = document.getElementById('blank-check-all');
+      if (allBox) allBox.checked = true;
+      updateFillBtn();
+    });
+    document.getElementById('blank-deselect-all-btn')?.addEventListener('click', () => {
+      document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = false; });
+      const allBox = document.getElementById('blank-check-all');
+      if (allBox) allBox.checked = false;
+      updateFillBtn();
+    });
+    document.getElementById('blank-select-range-btn')?.addEventListener('click', () => {
+      const fromVal = document.getElementById('blank-range-from')?.value;
+      const toVal   = document.getElementById('blank-range-to')?.value;
+      if (!fromVal || !toVal) return;
+      document.querySelectorAll('.blank-day-check').forEach(cb => {
+        cb.checked = cb.dataset.date >= fromVal && cb.dataset.date <= toVal;
+      });
+      updateFillBtn();
+    });
+
+    document.getElementById('blank-fill-btn')?.addEventListener('click', async () => {
+      const selected = Array.from(document.querySelectorAll('.blank-day-check:checked'));
+      if (selected.length === 0) return;
+
+      const fillBtn = document.getElementById('blank-fill-btn');
+      if (fillBtn) fillBtn.disabled = true;
+      showMessage(`Filling ${selected.length} day(s)…`, false, 30000);
+
+      let savedCount = 0;
+      for (const cb of selected) {
+        const dateStr = cb.dataset.date;
+        const kind = cb.dataset.kind;
+        try {
+          if (kind === 'partial') {
+            const partialInfo = partialMap.get(dateStr);
+            if (!partialInfo) continue;
+            const existingEntry = state.dailyEntries.get(dateStr);
+            if (!existingEntry) continue;
+            const { adjustedEntry } = buildPartialDayAdjustment(
+              dateStr, partialInfo.residual, existingEntry,
+              state.baselineTargets, partialInfo.confidence
+            );
+            await saveEstimatedEntry(dateStr, adjustedEntry);
+          } else {
+            // blank day — check lock
+            const existingEntry = state.dailyEntries.get(dateStr);
+            if (existingEntry?.estimateMeta?.locked) continue;
+            const estimated = blankMap.get(dateStr);
+            if (!estimated) continue;
+            await saveEstimatedEntry(dateStr, estimated);
+          }
+          savedCount++;
+        } catch (e) {
+          debugLog('blank-fill', `Failed to save ${dateStr}: ${e.message}`);
+        }
+      }
+
+      showMessage(`Filled ${savedCount} day(s) with estimated values.`);
+      const { updateDashboard } = await import('../ui/dashboard.js');
+      updateDashboard();
+    });
+  }
+
+  // ── Vacation Editor ─────────────────────────────────────────────────────────
+  const vacPreviewBtn = document.getElementById('vac-preview-btn');
+  if (vacPreviewBtn) {
+    vacPreviewBtn.addEventListener('click', () => _buildVacationPreview());
+
+    // Batch type buttons
+    for (const type of ['light', 'medium', 'heavy']) {
+      document.getElementById(`vac-batch-${type}`)?.addEventListener('click', () => {
+        _batchSetVacType(type);
+      });
+    }
+
+    document.getElementById('vac-check-all')?.addEventListener('change', e => {
+      document.querySelectorAll('.vac-day-check').forEach(cb => { cb.checked = e.target.checked; });
+      _updateVacFillCount();
+    });
+
+    document.getElementById('vac-preview-tbody')?.addEventListener('change', e => {
+      if (e.target.classList.contains('vac-day-check')) _updateVacFillCount();
+      if (e.target.classList.contains('vac-type-select')) _onVacTypeChange(e.target);
+    });
+
+    document.getElementById('vac-fill-btn')?.addEventListener('click', async () => {
+      await _applyVacationFill();
+    });
+  }
+
+  // ── Estimate Management ─────────────────────────────────────────────────────
+  document.querySelectorAll('.estimate-lock-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const dateStr = btn.dataset.date;
+      const currentlyLocked = btn.dataset.locked === 'true';
+      const newLocked = !currentlyLocked;
+      btn.disabled = true;
+      try {
+        await lockEstimateForDate(dateStr, newLocked);
+        showMessage(`Estimate for ${dateStr} ${newLocked ? 'locked' : 'unlocked'}.`);
+        const { updateDashboard } = await import('../ui/dashboard.js');
+        updateDashboard();
+      } catch {
+        btn.disabled = false;
+      }
+    });
+  });
+
+  document.querySelectorAll('.estimate-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const dateStr = btn.dataset.date;
+      const itemId  = btn.dataset.itemId;
+      btn.disabled = true;
+      try {
+        await removeEstimateItem(dateStr, itemId);
+        showMessage(`Estimate item removed from ${dateStr}. Real food items preserved.`);
+        const { updateDashboard } = await import('../ui/dashboard.js');
+        updateDashboard();
+      } catch {
+        btn.disabled = false;
+      }
+    });
   });
 }
+
+// ==========================================
+// VACATION EDITOR HELPERS
+// ==========================================
+
+function _datesInRange(fromStr, toStr) {
+  const dates = [];
+  const d = new Date(fromStr + 'T00:00:00');
+  const end = new Date(toStr + 'T00:00:00');
+  while (d <= end) {
+    dates.push(d.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
+function _updateVacFillCount() {
+  const checked = document.querySelectorAll('.vac-day-check:checked').length;
+  const btn = document.getElementById('vac-fill-btn');
+  const countEl = document.getElementById('vac-fill-count');
+  if (btn) btn.disabled = checked === 0;
+  if (countEl) countEl.textContent = checked;
+}
+
+function _buildVacationPreview() {
+  const fromVal = document.getElementById('vac-from')?.value;
+  const toVal   = document.getElementById('vac-to')?.value;
+  if (!fromVal || !toVal || fromVal > toVal) {
+    showMessage('Select a valid date range first.', true);
+    return;
+  }
+
+  const defaultType = document.getElementById('vac-default-type')?.value || 'medium';
+  const dates = _datesInRange(fromVal, toVal);
+
+  const bmrModel = state.analysisResults?.bmrModel || null;
+  const weekdayAvgs = computeWeekdayAverages(state.dailyEntries);
+
+  const tbody = document.getElementById('vac-preview-tbody');
+  if (!tbody) return;
+
+  const typeOptions = (type) => Object.entries(VACATION_TYPE_CONFIG).map(([val, cfg]) =>
+    `<option value="${val}"${val === type ? ' selected' : ''}>${cfg.label}</option>`
+  ).join('');
+
+  state.vacationEditor.dayTypes.clear();
+  state.vacationEditor.customCalories.clear();
+
+  tbody.innerHTML = dates.map(dateStr => {
+    const existing = state.dailyEntries.get(dateStr) || null;
+    const analysisRow = (state.analysisResults?.rows || []).find(r => r.date === dateStr) || {};
+    const dayClass = classifyDay(analysisRow, existing);
+    const est = estimateVacationCalories(defaultType, bmrModel, dateStr, null, null, weekdayAvgs);
+    state.vacationEditor.dayTypes.set(dateStr, defaultType);
+
+    const isLocked = Boolean(existing?.estimateMeta?.locked || existing?.manualLock);
+    const lockedNote = isLocked ? ' <span class="text-xs text-warning">(locked)</span>' : '';
+
+    return `
+      <tr data-date="${dateStr}">
+        <td class="px-3 py-2 text-center">
+          <input type="checkbox" class="vac-day-check h-4 w-4" data-date="${dateStr}"
+                 ${isLocked ? 'disabled title="Locked estimate — unlock in Estimate Management first"' : 'checked'} />
+        </td>
+        <td class="px-3 py-2 text-sm">${formatDisplayDate(dateStr)}${lockedNote}</td>
+        <td class="px-3 py-2 text-sm text-center">${dayTypeBadge(dayClass)}</td>
+        <td class="px-3 py-2 text-sm text-center vac-est-cal" data-date="${dateStr}">${est.calories} kcal</td>
+        <td class="px-3 py-2 text-sm text-center">
+          <select class="vac-type-select p-1 border rounded text-sm" data-date="${dateStr}">
+            ${typeOptions(defaultType)}
+          </select>
+        </td>
+        <td class="px-3 py-2 text-sm text-center">
+          <input type="number" class="vac-custom-kcal p-1 border rounded text-sm w-20 hidden"
+                 data-date="${dateStr}" min="200" max="6000" placeholder="kcal" />
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('vac-preview-area')?.classList.remove('hidden');
+  _updateVacFillCount();
+}
+
+function _onVacTypeChange(selectEl) {
+  const dateStr = selectEl.dataset.date;
+  const type = selectEl.value;
+  state.vacationEditor.dayTypes.set(dateStr, type);
+
+  const customInput = document.querySelector(`.vac-custom-kcal[data-date="${dateStr}"]`);
+  if (customInput) {
+    if (type === 'custom') {
+      customInput.classList.remove('hidden');
+    } else {
+      customInput.classList.add('hidden');
+      state.vacationEditor.customCalories.delete(dateStr);
+    }
+  }
+  _refreshVacRowEstimate(dateStr, type);
+}
+
+function _refreshVacRowEstimate(dateStr, type) {
+  const bmrModel = state.analysisResults?.bmrModel || null;
+  const weekdayAvgs = computeWeekdayAverages(state.dailyEntries);
+  const customKcal = state.vacationEditor.customCalories.get(dateStr) ?? null;
+  const est = estimateVacationCalories(type, bmrModel, dateStr, null, customKcal, weekdayAvgs);
+  const cell = document.querySelector(`.vac-est-cal[data-date="${dateStr}"]`);
+  if (cell) cell.textContent = `${est.calories} kcal`;
+}
+
+function _batchSetVacType(type) {
+  document.querySelectorAll('.vac-type-select').forEach(sel => {
+    sel.value = type;
+    _onVacTypeChange(sel);
+  });
+  _updateVacFillCount();
+}
+
+async function _applyVacationFill() {
+  const checked = Array.from(document.querySelectorAll('.vac-day-check:checked'));
+  if (checked.length === 0) return;
+
+  const fillBtn = document.getElementById('vac-fill-btn');
+  if (fillBtn) fillBtn.disabled = true;
+  showMessage(`Filling ${checked.length} vacation day(s)…`, false, 30000);
+
+  let savedCount = 0;
+  for (const cb of checked) {
+    const dateStr = cb.dataset.date;
+    const type = state.vacationEditor.dayTypes.get(dateStr) || 'medium';
+    const customKcal = type === 'custom'
+      ? (parseFloat(document.querySelector(`.vac-custom-kcal[data-date="${dateStr}"]`)?.value) || null)
+      : null;
+
+    const existing = state.dailyEntries.get(dateStr);
+    if (existing?.estimateMeta?.locked || existing?.manualLock) {
+      debugLog('vacation-fill', `Skipping locked estimate for ${dateStr}`);
+      continue;
+    }
+
+    try {
+      const entry = buildVacationDayEntry(
+        dateStr, type, state.analysisResults, state.dailyEntries,
+        state.baselineTargets, customKcal
+      );
+      await saveEstimatedEntry(dateStr, entry);
+      savedCount++;
+    } catch (e) {
+      debugLog('vacation-fill', `Failed to save ${dateStr}: ${e.message}`);
+    }
+  }
+
+  showMessage(`Filled ${savedCount} vacation day(s) with estimated values.`);
+  const { updateDashboard } = await import('../ui/dashboard.js');
+  updateDashboard();
 
 // ==========================================
 // RENDER HELPERS
@@ -627,37 +883,92 @@ function renderImputationTable(rows) {
 }
 
 // ==========================================
-// BLANK DAYS SECTION
+// MISSING CALORIES (blank + partial days)
 // ==========================================
 
-function renderBlankDaysSection(blankDays) {
-  if (!blankDays || blankDays.length === 0) return '';
+function confidenceBadge(conf) {
+  const map = {
+    high:   'text-positive',
+    medium: 'text-accent',
+    low:    'text-warning',
+  };
+  return `<span class="${map[conf] || 'text-muted'} text-xs font-semibold">${conf ?? '—'}</span>`;
+}
 
-  const rows = blankDays.map(d => `
+function dayTypeBadge(type) {
+  const map = {
+    logged:    { label: 'Logged',    cls: 'text-positive' },
+    estimated: { label: 'Estimated', cls: 'text-accent' },
+    vacation:  { label: 'Vacation',  cls: 'text-warning' },
+    blank:     { label: 'Blank',     cls: 'text-muted' },
+    partial:   { label: 'Partial?',  cls: 'text-warning' },
+    mixed:     { label: 'Mixed',     cls: 'text-accent' },
+  };
+  const cfg = map[type] || { label: type, cls: 'text-muted' };
+  return `<span class="${cfg.cls} text-xs font-semibold">${cfg.label}</span>`;
+}
+
+/**
+ * Combined "Fill Missing Calories" section.
+ * - Blank days: fully empty days with a model estimate available.
+ *   Filling creates a complete synthetic entry and OVERWRITES any partial data.
+ * - Partial days: days with real food logged but a large model residual.
+ *   Filling adds only a synthetic "Unlogged intake estimate" item; real food is untouched.
+ */
+function renderMissingCaloriesSection(blankDays, partialDays) {
+  const hasBlank = blankDays && blankDays.length > 0;
+  const hasPartial = partialDays && partialDays.length > 0;
+  if (!hasBlank && !hasPartial) return '';
+
+  const minDate = hasBlank ? blankDays[0].date : (hasPartial ? partialDays[0].date : '');
+  const maxDate = hasBlank
+    ? blankDays[blankDays.length - 1].date
+    : (hasPartial ? partialDays[partialDays.length - 1].date : '');
+
+  const blankRows = hasBlank ? blankDays.map(d => `
     <tr>
       <td class="px-3 py-2 text-center">
-        <input type="checkbox" class="blank-day-check h-4 w-4" data-date="${d.date}" />
+        <input type="checkbox" class="blank-day-check h-4 w-4"
+               data-date="${d.date}" data-kind="blank" />
       </td>
       <td class="px-3 py-2 text-sm">${formatDisplayDate(d.date)}</td>
-      <td class="px-3 py-2 text-sm text-center">${d.calories} kcal</td>
-      <td class="px-3 py-2 text-sm text-center">${Math.round(d.protein)}g</td>
-      <td class="px-3 py-2 text-sm text-center">${Math.round(d.carbs)}g</td>
-      <td class="px-3 py-2 text-sm text-center">${Math.round(d.fat)}g</td>
+      <td class="px-3 py-2 text-sm text-center">${dayTypeBadge('blank')}</td>
+      <td class="px-3 py-2 text-sm text-center font-semibold">${d.calories} kcal</td>
+      <td class="px-3 py-2 text-sm text-center">${Math.round(d.protein)}g / ${Math.round(d.carbs)}g / ${Math.round(d.fat)}g</td>
+      <td class="px-3 py-2 text-sm text-center">${confidenceBadge(d.estimateMeta?.confidence ?? 'medium')}</td>
+      <td class="px-3 py-2 text-xs text-muted">TDEE + weight delta</td>
     </tr>
-  `).join('');
+  `).join('') : '';
 
-  const minDate = blankDays[0].date;
-  const maxDate = blankDays[blankDays.length - 1].date;
+  const partialRows = hasPartial ? partialDays.map(d => `
+    <tr>
+      <td class="px-3 py-2 text-center">
+        <input type="checkbox" class="blank-day-check h-4 w-4"
+               data-date="${d.date}" data-kind="partial"
+               data-residual="${d.residual}" data-confidence="${d.confidence}" />
+      </td>
+      <td class="px-3 py-2 text-sm">${formatDisplayDate(d.date)}</td>
+      <td class="px-3 py-2 text-sm text-center">${dayTypeBadge('partial')}</td>
+      <td class="px-3 py-2 text-sm text-center font-semibold">+${d.residual} kcal</td>
+      <td class="px-3 py-2 text-sm text-center text-muted">${d.loggedCalories} → ~${d.modelEstimate}</td>
+      <td class="px-3 py-2 text-sm text-center">${confidenceBadge(d.confidence)}</td>
+      <td class="px-3 py-2 text-xs text-muted">${d.reason}</td>
+    </tr>
+  `).join('') : '';
+
+  const sectionHeader = hasPartial
+    ? `<th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Delta / Est.</th>`
+    : `<th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. Calories</th>`;
 
   return `
     <div class="mb-6 card p-6 shadow-lg">
-      <h3 class="text-responsive-xl font-bold text-secondary mb-2">📅 Fill Blank Days</h3>
-      <p class="text-sm text-muted mb-4">
-        These days have no logged food but enough weight history for the model to estimate calories.
-        Macros are distributed to sum to the estimated calorie total (protein and fat from your
-        targets; carbs fill the remainder).
-        <strong>Filling a day overwrites any partial data already there.</strong>
-      </p>
+      <h3 class="text-responsive-xl font-bold text-secondary mb-2">📅 Fill Missing Calories</h3>
+
+      <div class="mb-4 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
+        <p><strong>Estimated because blank</strong> — these days have no logged food at all. Filling creates a complete synthetic daily entry built from your TDEE model and historical macro averages. It will overwrite any partial data on those days.</p>
+        ${hasPartial ? `<p><strong>Possible underreporting</strong> — these days have real food logged but a large gap between what you logged and what your weight trend implies. Filling adds only a single synthetic "Unlogged intake estimate" item to cover the estimated gap. Your real food items are never modified or deleted.</p>
+        <p class="text-warning">The model uses trend evidence across many days and residual uncertainty — not single-day scale changes. A large gap is a signal, not a certainty. Use your judgement before applying.</p>` : ''}
+      </div>
 
       <div class="flex flex-wrap gap-2 mb-3 items-end">
         <div>
@@ -681,19 +992,179 @@ function renderBlankDaysSection(blankDays) {
                 <input type="checkbox" id="blank-check-all" class="h-4 w-4" title="Select all" />
               </th>
               <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Date</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. Calories</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. Protein</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. Carbs</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. Fat</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Type</th>
+              ${sectionHeader}
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">P / C / F</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Confidence</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Reason</th>
             </tr>
           </thead>
-          <tbody class="divide-y" id="blank-days-tbody">${rows}</tbody>
+          <tbody class="divide-y" id="blank-days-tbody">
+            ${blankRows}
+            ${partialRows}
+          </tbody>
         </table>
       </div>
 
       <button id="blank-fill-btn" class="btn btn-primary" disabled>
         <i class="fas fa-fill-drip mr-2"></i>Fill <span id="blank-fill-count">0</span> Selected Day(s)
       </button>
+    </div>
+  `;
+}
+
+// ==========================================
+// VACATION / MISSED DAYS EDITOR
+// ==========================================
+
+function renderVacationEditorSection() {
+  const typeOptions = Object.entries(VACATION_TYPE_CONFIG).map(([val, cfg]) =>
+    `<option value="${val}">${cfg.label} — ${cfg.description}</option>`
+  ).join('');
+
+  return `
+    <div class="mb-6 card p-6 shadow-lg">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-2">🏖️ Vacation / Missed Days</h3>
+
+      <div class="mb-4 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
+        <p>Select a date range and assign an intake type. The model estimates calories from your TDEE history, weekday patterns, and the activity level implied by the day type, then fills in a complete synthetic day log.</p>
+        <p><strong>Light</strong> — ~85% of your usual intake. <strong>Medium</strong> — ~100%. <strong>Heavy</strong> — ~110% + 200 kcal. <strong>Custom</strong> — you specify the number directly.</p>
+        <p>You can override the type per day before filling. After filling, use the Estimate Management panel below to lock or remove individual estimates.</p>
+      </div>
+
+      <!-- Step 1: range + default type -->
+      <div class="flex flex-wrap gap-2 mb-4 items-end">
+        <div>
+          <label class="block text-xs text-muted mb-1">From</label>
+          <input type="date" id="vac-from" class="p-1 border rounded-md text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-muted mb-1">To</label>
+          <input type="date" id="vac-to" class="p-1 border rounded-md text-sm" />
+        </div>
+        <div>
+          <label class="block text-xs text-muted mb-1">Default Type</label>
+          <select id="vac-default-type" class="p-1 border rounded-md text-sm">
+            ${typeOptions}
+          </select>
+        </div>
+        <button id="vac-preview-btn" class="btn btn-secondary btn-sm self-end">Preview Range</button>
+      </div>
+
+      <!-- Preview area (hidden until user clicks Preview) -->
+      <div id="vac-preview-area" class="hidden">
+        <div class="flex flex-wrap gap-2 mb-3">
+          <button id="vac-batch-light"  class="btn btn-secondary btn-sm">Set All Light</button>
+          <button id="vac-batch-medium" class="btn btn-secondary btn-sm">Set All Medium</button>
+          <button id="vac-batch-heavy"  class="btn btn-secondary btn-sm">Set All Heavy</button>
+        </div>
+
+        <div class="overflow-x-auto mb-4">
+          <table class="w-full border rounded-lg">
+            <thead class="surface-2">
+              <tr>
+                <th class="px-3 py-2 text-center w-10">
+                  <input type="checkbox" id="vac-check-all" class="h-4 w-4" />
+                </th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Date</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Current</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. Calories</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Type</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Custom kcal</th>
+              </tr>
+            </thead>
+            <tbody id="vac-preview-tbody"></tbody>
+          </table>
+        </div>
+
+        <button id="vac-fill-btn" class="btn btn-primary" disabled>
+          <i class="fas fa-umbrella-beach mr-2"></i>Fill <span id="vac-fill-count">0</span> Selected Day(s) as Vacation
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+// ==========================================
+// ESTIMATE MANAGEMENT PANEL
+// ==========================================
+
+function renderEstimateManagementSection() {
+  // Find all days that currently have synthetic estimates in state.dailyEntries
+  const estimatedEntries = [];
+  for (const [dateStr, entry] of state.dailyEntries) {
+    const isSynth = entry.entryType === 'estimate' || entry.vacationDayType ||
+      (entry.foodItems || []).some(fi => {
+        const syntheticNames = new Set(["Day's estimate", "Estimated vacation day", "Unlogged intake estimate"]);
+        return syntheticNames.has(fi?.name);
+      });
+    if (!isSynth) continue;
+    estimatedEntries.push({ dateStr, entry });
+  }
+  estimatedEntries.sort((a, b) => b.dateStr.localeCompare(a.dateStr));
+
+  if (estimatedEntries.length === 0) return '';
+
+  const rows = estimatedEntries.slice(0, 30).map(({ dateStr, entry }) => {
+    const meta = entry.estimateMeta || {};
+    const locked = Boolean(meta.locked || entry.manualLock);
+    const vacType = entry.vacationDayType
+      ? (VACATION_TYPE_CONFIG[entry.vacationDayType]?.label || entry.vacationDayType)
+      : null;
+    const typeLabel = vacType ? `Vacation (${vacType})` : (entry.entryType === 'estimate' ? 'Blank-day fill' : 'Partial adj.');
+    const syntheticItems = (entry.foodItems || []).filter(fi => {
+      const syntheticNames = new Set(["Day's estimate", "Estimated vacation day", "Unlogged intake estimate"]);
+      return syntheticNames.has(fi?.name) ||
+        (typeof fi?.id === 'string' && (fi.id.startsWith('est-') || fi.id.startsWith('vac-') || fi.id.startsWith('adj-')));
+    });
+
+    const removeButtons = syntheticItems.map(fi => `
+      <button class="estimate-remove-btn btn btn-secondary btn-sm"
+              data-date="${dateStr}" data-item-id="${fi.id}"
+              title="Remove '${fi.name}' from this day">
+        <i class="fas fa-trash-alt mr-1"></i>Remove
+      </button>
+    `).join('');
+
+    return `
+      <tr>
+        <td class="px-3 py-2 text-sm">${formatDisplayDate(dateStr)}</td>
+        <td class="px-3 py-2 text-sm">${typeLabel}</td>
+        <td class="px-3 py-2 text-sm text-center">${confidenceBadge(meta.confidence)}</td>
+        <td class="px-3 py-2 text-sm text-center">
+          <button class="estimate-lock-btn btn btn-secondary btn-sm"
+                  data-date="${dateStr}" data-locked="${locked}">
+            <i class="fas ${locked ? 'fa-lock' : 'fa-lock-open'} mr-1"></i>${locked ? 'Locked' : 'Unlocked'}
+          </button>
+        </td>
+        <td class="px-3 py-2 text-sm">${removeButtons}</td>
+      </tr>
+    `;
+  }).join('');
+
+  return `
+    <div class="mb-6 card p-6 shadow-lg">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-2">🔒 Estimate Management</h3>
+      <p class="text-sm text-muted mb-4">
+        Existing synthetic estimates for your logged history.
+        <strong>Lock</strong> an estimate to prevent auto-updates if the model improves.
+        <strong>Remove</strong> a synthetic item to delete only the estimate — real food items on that day are preserved.
+      </p>
+      <div class="overflow-x-auto">
+        <table class="w-full border rounded-lg">
+          <thead class="surface-2">
+            <tr>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Date</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Type</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Confidence</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Lock</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y">${rows}</tbody>
+        </table>
+      </div>
+      ${estimatedEntries.length > 30 ? `<p class="text-xs text-muted mt-2">Showing 30 most recent of ${estimatedEntries.length} total estimates.</p>` : ''}
     </div>
   `;
 }
