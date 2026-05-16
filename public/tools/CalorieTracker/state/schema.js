@@ -211,20 +211,25 @@ export function prepareProfileForSave(incoming, current = {}) {
  * state → incoming) so no existing per-nutrient key is ever dropped.
  * Forces schemaVersion to SCHEMA_VERSIONS.GOAL.
  *
- * @param {object} incoming  - Partial or full goal settings from a save form / API call.
- * @param {object} [current] - state.goalSettings (already normalized).  Pass {} for new users.
+ * @param {object} incoming    - Partial or full goal settings from a save form / API call.
+ * @param {object} [current]   - state.goalSettings (already normalized).  Pass {} for new users.
+ * @param {object} [opts]      - Options: { replaceOverrides: boolean }
+ *   replaceOverrides: when true, uses incoming.manualTargetOverrides directly (no merge),
+ *   allowing callers to clear previously-saved override keys. Default: false (safe merge).
  * @returns {object} Save-ready goal settings with every field present.
  */
-export function prepareGoalSettingsForSave(incoming, current = {}) {
+export function prepareGoalSettingsForSave(incoming, current = {}, opts = {}) {
   const result = {
     ...DEFAULT_GOAL_SETTINGS,
     ...current,
     ...incoming,
-    manualTargetOverrides: {
-      ...(DEFAULT_GOAL_SETTINGS.manualTargetOverrides),
-      ...(current.manualTargetOverrides || {}),
-      ...(incoming.manualTargetOverrides || {}),
-    },
+    manualTargetOverrides: opts.replaceOverrides
+      ? (incoming.manualTargetOverrides ?? {})
+      : {
+          ...(DEFAULT_GOAL_SETTINGS.manualTargetOverrides),
+          ...(current.manualTargetOverrides || {}),
+          ...(incoming.manualTargetOverrides || {}),
+        },
     schemaVersion: SCHEMA_VERSIONS.GOAL,
   };
   return result;

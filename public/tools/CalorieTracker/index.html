@@ -225,12 +225,243 @@
          PROFILE & GOALS TAB
          ══════════════════════════════════════════════════ -->
     <div id="tab-profile" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-profile">
-      <div class="tab-content-inner text-center py-8">
-        <i class="fas fa-user-circle text-accent" style="font-size:3rem;"></i>
-        <h2 class="text-xl font-semibold text-secondary mt-4 mb-2">Profile &amp; Goals</h2>
-        <p class="text-muted">Body metrics and goal controls coming soon.</p>
-      </div>
-    </div>
+      <div class="settings-panel">
+        <h2 class="text-2xl font-bold mb-6 text-secondary">Profile &amp; Goals</h2>
+
+        <!-- ── Current Weight ──────────────────────────────────────────── -->
+        <div class="settings-section">
+          <h3 class="text-lg font-semibold text-secondary mb-4">Current Weight</h3>
+          <div class="kpi card mb-4">
+            <div class="kpi-row">
+              <div>
+                <div class="kpi-label">Weight</div>
+                <div class="text-2xl font-bold text-accent" id="profile-weight-value">—</div>
+              </div>
+              <div class="text-right text-xs text-muted" id="profile-weight-source">
+                Upload weight data or enter a manual override
+              </div>
+            </div>
+          </div>
+          <div>
+            <label for="profile-manual-weight" class="block text-sm font-medium text-primary mb-1">
+              Manual Weight Override (lb)
+            </label>
+            <div class="flex gap-2">
+              <input type="number" step="0.1" min="50" max="700" id="profile-manual-weight"
+                placeholder="e.g., 185.0" class="flex-1">
+              <button type="button" id="profile-clear-manual-weight" class="btn btn-secondary btn-sm">Clear</button>
+            </div>
+            <p class="text-xs text-muted mt-1">
+              Overrides uploaded weight for all target calculations. Leave blank to use smoothed upload data.
+            </p>
+          </div>
+        </div>
+
+        <!-- ── Body Metrics ────────────────────────────────────────────── -->
+        <div class="settings-section">
+          <h3 class="text-lg font-semibold text-secondary mb-4">Body Metrics</h3>
+          <div class="grid grid-cols-1 gap-4">
+
+            <div>
+              <label class="block text-sm font-medium text-primary mb-2">Sex</label>
+              <div class="flex flex-wrap gap-4">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="profile-sex" value="male" id="profile-sex-male">
+                  <span class="text-sm text-primary">Male</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="profile-sex" value="female" id="profile-sex-female">
+                  <span class="text-sm text-primary">Female</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="radio" name="profile-sex" value="" id="profile-sex-unset">
+                  <span class="text-sm text-primary">Prefer not to say</span>
+                </label>
+              </div>
+              <p class="text-xs text-muted mt-1">Used for sex-specific DRI micronutrient targets and Mifflin-St Jeor BMR.</p>
+            </div>
+
+            <div>
+              <label for="profile-birthdate" class="block text-sm font-medium text-primary mb-1">Birth Date</label>
+              <input type="date" id="profile-birthdate">
+              <p class="text-xs text-muted mt-1">Used to look up age-specific DRI values. Takes priority over the age field below.</p>
+            </div>
+
+            <div>
+              <label for="profile-age" class="block text-sm font-medium text-primary mb-1">Age (years, if birth date not set)</label>
+              <input type="number" step="1" min="14" max="110" id="profile-age" placeholder="e.g., 35">
+            </div>
+
+            <div>
+              <label class="block text-sm font-medium text-primary mb-1">Height</label>
+              <div class="flex gap-2">
+                <input type="number" step="0.1" min="48" max="300" id="profile-height"
+                  class="flex-1" placeholder="e.g., 71">
+                <select id="profile-height-unit" class="w-20">
+                  <option value="in">in</option>
+                  <option value="cm">cm</option>
+                </select>
+              </div>
+              <p class="text-xs text-muted mt-1">Used by Mifflin-St Jeor RMR calculation.</p>
+            </div>
+
+            <div>
+              <label for="profile-bodyfat" class="block text-sm font-medium text-primary mb-1">
+                Body Fat % <span class="text-muted font-normal">(optional)</span>
+              </label>
+              <input type="number" step="0.1" min="3" max="60" id="profile-bodyfat" placeholder="e.g., 18">
+              <p class="text-xs text-muted mt-1">
+                Enables Cunningham RMR (more accurate for athletes) and FFM-based protein targets for fat loss.
+              </p>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── Activity Level ──────────────────────────────────────────── -->
+        <div class="settings-section">
+          <h3 class="text-lg font-semibold text-secondary mb-4">Baseline Activity Level</h3>
+          <p class="text-xs text-muted mb-3">
+            Used when empirical TDEE data is unavailable. Once you have enough weight + calorie history,
+            the engine uses measured data instead.
+          </p>
+          <div class="grid grid-cols-1 gap-2">
+            <label class="flex items-start gap-3 p-3 rounded-lg border surface-2 cursor-pointer hover:border-accent/50 transition-colors">
+              <input type="radio" name="profile-activity" value="sedentary" class="mt-0.5 shrink-0">
+              <span>
+                <span class="text-sm font-medium text-primary block">Sedentary</span>
+                <span class="text-xs text-muted">Desk job, minimal movement (PAL 1.20)</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-3 p-3 rounded-lg border surface-2 cursor-pointer hover:border-accent/50 transition-colors">
+              <input type="radio" name="profile-activity" value="light" class="mt-0.5 shrink-0">
+              <span>
+                <span class="text-sm font-medium text-primary block">Lightly active</span>
+                <span class="text-xs text-muted">1–3 days/week exercise (PAL 1.375)</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-3 p-3 rounded-lg border surface-2 cursor-pointer hover:border-accent/50 transition-colors">
+              <input type="radio" name="profile-activity" value="moderate" class="mt-0.5 shrink-0">
+              <span>
+                <span class="text-sm font-medium text-primary block">Moderately active</span>
+                <span class="text-xs text-muted">3–5 days/week exercise (PAL 1.55)</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-3 p-3 rounded-lg border surface-2 cursor-pointer hover:border-accent/50 transition-colors">
+              <input type="radio" name="profile-activity" value="active" class="mt-0.5 shrink-0">
+              <span>
+                <span class="text-sm font-medium text-primary block">Active</span>
+                <span class="text-xs text-muted">6–7 days/week hard exercise (PAL 1.725)</span>
+              </span>
+            </label>
+            <label class="flex items-start gap-3 p-3 rounded-lg border surface-2 cursor-pointer hover:border-accent/50 transition-colors">
+              <input type="radio" name="profile-activity" value="very_active" class="mt-0.5 shrink-0">
+              <span>
+                <span class="text-sm font-medium text-primary block">Very active</span>
+                <span class="text-xs text-muted">Physical job or twice-daily training (PAL 1.90)</span>
+              </span>
+            </label>
+          </div>
+        </div>
+
+        <!-- ── Goal ────────────────────────────────────────────────────── -->
+        <div class="settings-section">
+          <h3 class="text-lg font-semibold text-secondary mb-4">Goal</h3>
+          <div class="grid grid-cols-1 gap-4">
+
+            <div>
+              <label for="profile-goal-type" class="block text-sm font-medium text-primary mb-1">Goal Type</label>
+              <select id="profile-goal-type">
+                <option value="fatLoss">Lose Fat</option>
+                <option value="maintenance">Maintain Weight</option>
+                <option value="recomp">Recomp (maintain while lifting)</option>
+                <option value="muscleGain">Build Muscle</option>
+                <option value="performance">Performance / High Training Load</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+
+            <div>
+              <label for="profile-target-weight" class="block text-sm font-medium text-primary mb-1">
+                Target Weight (lb) <span class="text-muted font-normal">(optional)</span>
+              </label>
+              <input type="number" step="0.5" min="50" max="500" id="profile-target-weight" placeholder="e.g., 170">
+              <p class="text-xs text-muted mt-1">
+                Combined with target date, computes the required daily deficit automatically.
+              </p>
+            </div>
+
+            <div>
+              <label for="profile-target-date" class="block text-sm font-medium text-primary mb-1">
+                Target Date <span class="text-muted font-normal">(optional)</span>
+              </label>
+              <input type="date" id="profile-target-date">
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ── Auto-Calculate ──────────────────────────────────────────── -->
+        <div class="settings-section">
+          <button type="button" id="auto-calculate-targets-btn" class="btn btn-primary w-full">
+            <i class="fas fa-calculator mr-2"></i>Auto-Calculate Targets
+          </button>
+          <p class="text-xs text-muted text-center mt-2">
+            Generates calories, protein, fat, carbs, and all micronutrient targets from your profile.
+          </p>
+        </div>
+
+        <!-- ── Explanation (shown after calculation) ─────────────────── -->
+        <div id="target-explanation" class="settings-section hidden">
+          <h3 class="text-lg font-semibold text-secondary mb-4">How Targets Were Calculated</h3>
+          <div id="target-explanation-content" class="space-y-0 text-sm"></div>
+        </div>
+
+        <!-- ── Target Preview + Overrides (shown after calculation) ───── -->
+        <div id="target-preview" class="settings-section hidden">
+          <h3 class="text-lg font-semibold text-secondary mb-4">Generated Targets</h3>
+          <div id="target-preview-content"></div>
+
+          <!-- Warnings -->
+          <div id="target-warnings" class="hidden mt-4 p-3 rounded-lg border"
+            style="border-color:hsl(var(--warning)/0.4);background:hsl(var(--warning)/0.08)">
+            <p class="text-sm font-medium mb-1" style="color:hsl(var(--warning))">
+              <i class="fas fa-exclamation-triangle mr-1"></i>Warnings
+            </p>
+            <ul id="target-warnings-list" class="text-xs space-y-1 list-disc list-inside"
+              style="color:hsl(var(--warning))"></ul>
+          </div>
+
+          <!-- Manual Overrides -->
+          <div class="mt-6">
+            <h4 class="text-sm font-semibold text-secondary mb-1">Manual Overrides</h4>
+            <p class="text-xs text-muted mb-3">
+              Check a nutrient to pin it to a custom value. Unchecked nutrients use the auto-calculated value.
+              Overrides are saved with your goals and applied whenever you re-run the engine.
+            </p>
+            <div id="target-override-grid" class="grid grid-cols-1 gap-1"></div>
+          </div>
+
+          <!-- Apply + Save Profile buttons -->
+          <div class="mt-6 flex gap-3 flex-wrap">
+            <button type="button" id="apply-targets-btn" class="btn btn-primary flex-1">
+              <i class="fas fa-check mr-2"></i>Apply to Baseline Targets
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Save Profile & Goals (always visible) ────────────────────── -->
+        <div class="settings-section">
+          <button type="button" id="save-profile-btn" class="btn btn-secondary w-full">
+            Save Profile &amp; Goals
+          </button>
+          <p class="text-xs text-muted text-center mt-1">
+            Saves profile and goal settings without changing baseline targets.
+          </p>
+        </div>
+
+      </div><!-- /.settings-panel -->
+    </div><!-- /#tab-profile -->
 
 
     <!-- ══════════════════════════════════════════════════
