@@ -23,6 +23,17 @@ import {
   detectPlateau,
   runAnalysis,
   ANALYSIS_CONFIG,
+  // New exports
+  isSyntheticItem,
+  SYNTHETIC_ITEM_NAMES,
+  classifyDay,
+  classifyAllDays,
+  estimateVacationCalories,
+  computeWeekdayAverages,
+  buildVacationDayEntry,
+  getPartialDaysForAdjustment,
+  buildPartialDayAdjustment,
+  VACATION_TYPE_CONFIG,
 } from './engine.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -1012,5 +1023,258 @@ describe('fittedDataQuality: medium blocks excluded from fit when enough high-qu
       const shift = Math.abs(bmrClean - bmrVacation) / bmrClean;
       expect(shift).toBeLessThan(0.10); // less than 10% shift
     }
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEW: Synthetic item detection, day classification, vacation estimation
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('isSyntheticItem', () => {
+  it('detects by name', () => {
+    expect(isSyntheticItem({ id: 'xyz', name: "Day's estimate" })).toBe(true);
+    expect(isSyntheticItem({ id: 'xyz', name: 'Estimated vacation day' })).toBe(true);
+    expect(isSyntheticItem({ id: 'xyz', name: 'Unlogged intake estimate' })).toBe(true);
+  });
+
+  it('detects by id prefix', () => {
+    expect(isSyntheticItem({ id: 'est-2024-01-01', name: 'anything' })).toBe(true);
+    expect(isSyntheticItem({ id: 'vac-2024-01-01', name: 'anything' })).toBe(true);
+    expect(isSyntheticItem({ id: 'adj-2024-01-01', name: 'anything' })).toBe(true);
+  });
+
+  it('does not flag real food items', () => {
+    expect(isSyntheticItem({ id: 'food-123', name: 'Chicken breast' })).toBe(false);
+    expect(isSyntheticItem({ id: 'abc', name: 'Oatmeal' })).toBe(false);
+  });
+
+  it('handles null / undefined gracefully', () => {
+    expect(isSyntheticItem(null)).toBe(false);
+    expect(isSyntheticItem(undefined)).toBe(false);
+    expect(isSyntheticItem({ name: null })).toBe(false);
+  });
+});
+
+describe('classifyDay', () => {
+  const blankRow = { date: '2024-01-01', calories: null, calories_imputed: false };
+  const imputedRow = { date: '2024-01-01', calories: 2000, calories_imputed: true };
+
+  it('returns blank for null entry with no imputation', () => {
+    expect(classifyDay(blankRow, null)).toBe('blank');
+  });
+
+  it('returns estimated for imputed row with no entry', () => {
+    expect(classifyDay(imputedRow, null)).toBe('estimated');
+  });
+
+  it('returns vacation for entry with vacationDayType', () => {
+    const entry = { vacationDayType: 'medium', entryType: 'logged', foodItems: [] };
+    expect(classifyDay(blankRow, entry)).toBe('vacation');
+  });
+
+  it('returns estimated for entryType=estimate', () => {
+    const entry = { entryType: 'estimate', foodItems: [{ id: 'est-2024', name: "Day's estimate" }] };
+    expect(classifyDay(blankRow, entry)).toBe('estimated');
+  });
+
+  it('returns logged for entry with real food items and no large residual', () => {
+    const entry = {
+      entryType: 'logged',
+      foodItems: [{ id: 'food-1', name: 'Chicken', calories: 300, protein: 30 }],
+    };
+    expect(classifyDay(blankRow, entry)).toBe('logged');
+  });
+
+  it('returns partial when residual ≥ 400 kcal and real food exists', () => {
+    const entry = {
+      entryType: 'logged',
+      foodItems: [{ id: 'food-1', name: 'Chicken', calories: 300 }],
+    };
+    expect(classifyDay(blankRow, entry, 450)).toBe('partial');
+    expect(classifyDay(blankRow, entry, 399)).toBe('logged');
+  });
+
+  it('returns mixed when real food + adjustment item coexist', () => {
+    const entry = {
+      entryType: 'logged',
+      foodItems: [
+        { id: 'food-1', name: 'Chicken', calories: 300 },
+        { id: 'adj-2024-01-01', name: 'Unlogged intake estimate', calories: 600 },
+      ],
+    };
+    expect(classifyDay(blankRow, entry)).toBe('mixed');
+  });
+
+  it('returns blank for entry with zero-length foodItems and no calories', () => {
+    const entry = { entryType: 'logged', foodItems: [] };
+    expect(classifyDay(blankRow, entry)).toBe('blank');
+  });
+});
+
+describe('estimateVacationCalories', () => {
+  const mockBmr = {
+    error: null,
+    source: 'fitted',
+    observedTdee: 2200,
+    tdee_current: 2200,
+    tdee_rest_day: 2000,
+  };
+
+  it('returns user_specified when vacationType=custom and customCalories provided', () => {
+    const result = estimateVacationCalories('custom', mockBmr, '2024-06-01', null, 1800);
+    expect(result.method).toBe('user_specified');
+    expect(result.calories).toBe(1800);
+  });
+
+  it('scales correctly for light (0.85 × TDEE - 100)', () => {
+    const result = estimateVacationCalories('light', mockBmr, '2024-06-01');
+    // 2200 × 0.85 - 100 = 1770
+    expect(result.calories).toBeCloseTo(1770, -1);
+  });
+
+  it('returns TDEE unchanged for medium', () => {
+    const result = estimateVacationCalories('medium', mockBmr, '2024-06-01');
+    expect(result.calories).toBe(2200);
+    expect(result.confidence).toBe('medium'); // fitted source → medium
+  });
+
+  it('increases for heavy (1.10 × TDEE + 200)', () => {
+    const result = estimateVacationCalories('heavy', mockBmr, '2024-06-01');
+    // 2200 × 1.10 + 200 = 2620
+    expect(result.calories).toBeCloseTo(2620, -1);
+  });
+
+  it('falls back to default_fallback when no TDEE data', () => {
+    const result = estimateVacationCalories('medium', null, '2024-06-01');
+    expect(result.method).toBe('default_fallback');
+    expect(result.calories).toBe(2000);
+  });
+
+  it('bounds calories between 600 and 6000', () => {
+    const highBmr = { error: null, source: 'fitted', observedTdee: 5500 };
+    const heavy = estimateVacationCalories('heavy', highBmr, '2024-06-01');
+    expect(heavy.calories).toBeLessThanOrEqual(6000);
+
+    const lowBmr = { error: null, source: 'fitted', observedTdee: 700 };
+    const light = estimateVacationCalories('light', lowBmr, '2024-06-01');
+    expect(light.calories).toBeGreaterThanOrEqual(600);
+  });
+});
+
+describe('computeWeekdayAverages', () => {
+  it('computes per-weekday averages from logged entries', () => {
+    const entries = new Map([
+      ['2024-01-01', { calories: '2000', entryType: 'logged' }], // Mon
+      ['2024-01-08', { calories: '2100', entryType: 'logged' }], // Mon
+      ['2024-01-06', { calories: '1800', entryType: 'logged' }], // Sat
+    ]);
+    const avgs = computeWeekdayAverages(entries);
+    expect(avgs).toHaveLength(7);
+    // Monday = index 1
+    expect(avgs[1]).toBeCloseTo(2050, 0);
+    // Saturday = index 6
+    expect(avgs[6]).toBeCloseTo(1800, 0);
+    // Other days are null
+    expect(avgs[0]).toBeNull();
+  });
+
+  it('ignores estimated entries', () => {
+    const entries = new Map([
+      ['2024-01-01', { calories: '2000', entryType: 'logged' }],
+      ['2024-01-08', { calories: '9999', entryType: 'estimate' }], // same weekday, should skip
+    ]);
+    const avgs = computeWeekdayAverages(entries);
+    expect(avgs[1]).toBeCloseTo(2000, 0);
+  });
+});
+
+describe('buildVacationDayEntry', () => {
+  function makeBaseline() {
+    return { calories: '2000', protein: '150', fat: '60', fatMinimum: '60' };
+  }
+
+  function makeLoggedEntries() {
+    return new Map([
+      ['2024-01-01', { calories: '2100', protein: '160', fat: '65', carbs: '220', entryType: 'logged', foodItems: [] }],
+      ['2024-01-02', { calories: '1900', protein: '140', fat: '55', carbs: '200', entryType: 'logged', foodItems: [] }],
+    ]);
+  }
+
+  it('produces an estimate entry with vacationDayType set', () => {
+    const entry = buildVacationDayEntry('2024-06-15', 'medium', null, makeLoggedEntries(), makeBaseline());
+    expect(entry.entryType).toBe('estimate');
+    expect(entry.vacationDayType).toBe('medium');
+    expect(entry.estimateMeta.method).toBeTruthy();
+  });
+
+  it('contains a single synthetic food item named "Estimated vacation day"', () => {
+    const entry = buildVacationDayEntry('2024-06-15', 'light', null, makeLoggedEntries(), makeBaseline());
+    expect(entry.foodItems).toHaveLength(1);
+    expect(entry.foodItems[0].name).toBe('Estimated vacation day');
+    expect(entry.foodItems[0].id.startsWith('vac-')).toBe(true);
+  });
+
+  it('calories on food item match entry totals', () => {
+    const entry = buildVacationDayEntry('2024-06-15', 'medium', null, makeLoggedEntries(), makeBaseline());
+    const itemCals = entry.foodItems.reduce((s, fi) => s + fi.calories, 0);
+    expect(itemCals).toBe(entry.calories);
+  });
+
+  it('preserves previousEstimate in meta when overwriting an existing estimate', () => {
+    const existingEntries = new Map([
+      ['2024-06-15', {
+        calories: '1900', entryType: 'estimate', vacationDayType: 'light',
+        estimateMeta: { createdAt: '2024-01-01T00:00:00Z', locked: false, method: 'tdee_model' },
+        foodItems: [],
+      }],
+    ]);
+    const entry = buildVacationDayEntry('2024-06-15', 'medium', null, existingEntries, makeBaseline());
+    expect(entry.estimateMeta.previousEstimate).not.toBeNull();
+    expect(entry.estimateMeta.createdAt).toBe('2024-01-01T00:00:00Z');
+  });
+});
+
+describe('buildPartialDayAdjustment', () => {
+  const baseline = { calories: '2000', protein: '150', fat: '60' };
+
+  it('appends adjustment item without modifying real items', () => {
+    const entry = {
+      calories: 800, protein: 60, fat: 20, carbs: 80,
+      foodItems: [
+        { id: 'food-1', name: 'Oatmeal', calories: 400, protein: 10, fat: 5, carbs: 60 },
+        { id: 'food-2', name: 'Chicken', calories: 400, protein: 50, fat: 15, carbs: 20 },
+      ],
+      entryType: 'logged',
+    };
+    const { adjustedEntry, adjustItem } = buildPartialDayAdjustment('2024-01-05', 600, entry, baseline);
+    expect(adjustedEntry.foodItems).toHaveLength(3);
+    expect(adjustItem.name).toBe('Unlogged intake estimate');
+    expect(adjustItem.id.startsWith('adj-')).toBe(true);
+    expect(adjustItem.calories).toBe(600);
+    // Real food unchanged
+    expect(adjustedEntry.foodItems[0].name).toBe('Oatmeal');
+    expect(adjustedEntry.foodItems[1].name).toBe('Chicken');
+  });
+
+  it('sets updated calorie total correctly', () => {
+    const entry = {
+      calories: 900, protein: 70, fat: 30, carbs: 80,
+      foodItems: [{ id: 'f1', name: 'Salad', calories: 900, protein: 70, fat: 30, carbs: 80 }],
+      entryType: 'logged',
+    };
+    const { adjustedEntry } = buildPartialDayAdjustment('2024-01-06', 500, entry, baseline);
+    expect(adjustedEntry.calories).toBe(1400);
+  });
+
+  it('stores previousEstimate in meta', () => {
+    const entry = {
+      calories: 800, protein: 60, fat: 20, carbs: 70,
+      foodItems: [{ id: 'f1', name: 'Egg', calories: 800, protein: 60, fat: 20, carbs: 70 }],
+      estimateMeta: { method: 'old_method', createdAt: '2023-12-01T00:00:00Z', locked: false },
+      entryType: 'logged',
+    };
+    const { adjustedEntry } = buildPartialDayAdjustment('2024-01-06', 400, entry, baseline, 'medium');
+    expect(adjustedEntry.estimateMeta.previousEstimate?.method).toBe('old_method');
+    expect(adjustedEntry.estimateMeta.method).toBe('underreporting_adjustment');
   });
 });

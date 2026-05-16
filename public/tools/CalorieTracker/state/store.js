@@ -62,6 +62,14 @@ export const state = {
   // Shape: { message: string, isError: boolean } | null
   lastWeightUploadStatus: null,
 
+  // Transient vacation-editor state: persists per-day type overrides while the
+  // user is building a vacation range without a full re-render.
+  // Shape: { dayTypes: Map<dateStr, 'light'|'medium'|'heavy'|'custom'>, customCalories: Map<dateStr, number> }
+  vacationEditor: {
+    dayTypes: new Map(),
+    customCalories: new Map(),
+  },
+
   // An object to cache frequently accessed DOM elements.
   dom: {},
 };

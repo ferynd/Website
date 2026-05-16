@@ -1183,6 +1183,479 @@ export function getBlankDaysForPopulation(rows, dailyEntries, baselineTargets) {
 }
 
 // ==========================================
+// SYNTHETIC ITEM DETECTION
+// ==========================================
+
+/** Names assigned to auto-generated food entries by the estimation system. */
+export const SYNTHETIC_ITEM_NAMES = new Set([
+  "Day's estimate",
+  "Estimated vacation day",
+  "Unlogged intake estimate",
+]);
+
+/**
+ * Returns true when a foodItem was created synthetically (not by the user).
+ * Detects by name OR by the id prefix convention (est- / vac- / adj-).
+ */
+export function isSyntheticItem(item) {
+  if (!item) return false;
+  if (SYNTHETIC_ITEM_NAMES.has(item.name)) return true;
+  if (typeof item.id === 'string') {
+    return item.id.startsWith('est-') || item.id.startsWith('vac-') || item.id.startsWith('adj-');
+  }
+  return false;
+}
+
+// ==========================================
+// DAY CLASSIFICATION
+// ==========================================
+
+/**
+ * Classify a single day into one of six mutually-exclusive types:
+ *
+ *   'logged'    – has real (non-synthetic) food items; model residual < threshold
+ *   'partial'   – has real food; model residual ≥ threshold (possible underreporting)
+ *   'mixed'     – real food + a synthetic "Unlogged intake estimate" already applied
+ *   'estimated' – entire day is synthetic (entryType='estimate')
+ *   'vacation'  – explicitly marked via vacationDayType field
+ *   'blank'     – no entry at all, or entry with no calories and no food items
+ *
+ * @param {object}      row          – Analysis row (date, calories_imputed, …)
+ * @param {object|null} dailyEntry   – Normalized entry from state.dailyEntries
+ * @param {number|null} residualKcal – Model underreporting gap for this day (optional)
+ * @returns {string}
+ */
+export function classifyDay(row, dailyEntry, residualKcal = null) {
+  const PARTIAL_THRESHOLD = 400; // kcal
+
+  if (!dailyEntry) {
+    return (row && row.calories_imputed) ? 'estimated' : 'blank';
+  }
+
+  if (dailyEntry.vacationDayType) return 'vacation';
+  if ((dailyEntry.entryType || 'logged') === 'estimate') return 'estimated';
+
+  const items = Array.isArray(dailyEntry.foodItems) ? dailyEntry.foodItems : [];
+  const realItems = items.filter(fi => !isSyntheticItem(fi));
+  const hasAdjustItem = items.some(fi => fi.name === 'Unlogged intake estimate');
+
+  if (realItems.length === 0 && items.length === 0) return 'blank';
+  if (realItems.length === 0 && items.length > 0) return 'estimated';
+  if (realItems.length > 0 && hasAdjustItem) return 'mixed';
+  if (residualKcal != null && residualKcal >= PARTIAL_THRESHOLD) return 'partial';
+
+  return 'logged';
+}
+
+/**
+ * Classify every day that appears in the analysis rows.
+ * @returns {Map<string, string>}  dateStr → classification
+ */
+export function classifyAllDays(rows, dailyEntries, perDayResiduals = null) {
+  const result = new Map();
+  for (const row of rows) {
+    const entry = dailyEntries.get(row.date) || null;
+    const residual = perDayResiduals ? (perDayResiduals.get(row.date) ?? null) : null;
+    result.set(row.date, classifyDay(row, entry, residual));
+  }
+  return result;
+}
+
+// ==========================================
+// VACATION / MISSED DAY ESTIMATION
+// ==========================================
+
+/** Calorie-adjustment parameters keyed by vacation day type. */
+export const VACATION_TYPE_CONFIG = {
+  light: {
+    label: 'Light',
+    description: 'Relaxed day — lower activity, leisurely meals',
+    tdeeMultiplier: 0.85,
+    calorieOffset: -100,
+  },
+  medium: {
+    label: 'Medium',
+    description: 'Typical day away — some walking, normal eating',
+    tdeeMultiplier: 1.00,
+    calorieOffset: 0,
+  },
+  heavy: {
+    label: 'Heavy',
+    description: 'Active or indulgent day — more food and/or activity than usual',
+    tdeeMultiplier: 1.10,
+    calorieOffset: 200,
+  },
+  custom: {
+    label: 'Custom',
+    description: 'Set your own calorie estimate for this day',
+    tdeeMultiplier: 1.00,
+    calorieOffset: 0,
+  },
+};
+
+/**
+ * Compute per-weekday average calories from logged (non-synthetic) entries.
+ *
+ * Uses only real food items' calories so that mixed entries (real food plus a
+ * synthetic "Unlogged intake estimate") do not inflate the weekday baseline.
+ *
+ * @param {Map} dailyEntries
+ * @returns {Array<number|null>}  7-element array indexed by getDay() (0=Sun … 6=Sat)
+ */
+export function computeWeekdayAverages(dailyEntries) {
+  const buckets = [[], [], [], [], [], [], []];
+  for (const [dateStr, entry] of dailyEntries) {
+    if (entry.entryType === 'estimate') continue;
+    const items = Array.isArray(entry.foodItems) ? entry.foodItems : [];
+    let cals;
+    if (items.length > 0) {
+      // Sum only real (non-synthetic) food items so mixed entries don't inflate the baseline.
+      const realItems = items.filter(fi => !isSyntheticItem(fi));
+      cals = realItems.reduce((s, fi) => s + (parseFloat(fi.calories) || 0), 0);
+    } else {
+      // Legacy entries without a foodItems array: use the top-level total directly.
+      cals = parseFloat(entry.calories) || 0;
+    }
+    if (cals <= 0) continue;
+    const dow = new Date(dateStr + 'T00:00:00').getDay();
+    buckets[dow].push(cals);
+  }
+  return buckets.map(arr =>
+    arr.length === 0 ? null : arr.reduce((s, v) => s + v, 0) / arr.length
+  );
+}
+
+/**
+ * Estimate calories for a vacation/missed day.
+ *
+ * Method priority:
+ *   1. User-specified custom value (vacationType='custom', customCalories provided)
+ *   2. TDEE model (empirical or profile-based) × type multiplier + offset
+ *      + weekday adjustment when pattern data exists
+ *   3. Goal target calories (fallback)
+ *   4. Generic 2000 kcal default
+ *
+ * @param {string}        vacationType
+ * @param {object|null}   bmrModel
+ * @param {string}        dateStr         – 'YYYY-MM-DD'
+ * @param {object|null}   goalSettings
+ * @param {number|null}   customCalories  – used only when vacationType='custom'
+ * @param {Array|null}    weekdayAverages – 7-element array from computeWeekdayAverages()
+ * @returns {{ calories, confidence, method, note }}
+ */
+export function estimateVacationCalories(
+  vacationType, bmrModel, dateStr,
+  goalSettings = null, customCalories = null, weekdayAverages = null
+) {
+  const cfg = VACATION_TYPE_CONFIG[vacationType] || VACATION_TYPE_CONFIG.medium;
+
+  if (vacationType === 'custom' && customCalories != null && customCalories > 0) {
+    return {
+      calories: Math.round(customCalories),
+      confidence: 'low',
+      method: 'user_specified',
+      note: 'User-specified calories for this day.',
+    };
+  }
+
+  let baseTdee = null;
+  let method = 'tdee_model';
+  let confidence = 'low';
+
+  if (bmrModel && !bmrModel.error) {
+    baseTdee = bmrModel.observedTdee || bmrModel.tdee_current || bmrModel.tdee_rest_day;
+    confidence = bmrModel.source === 'fitted' ? 'medium' : 'low';
+  }
+
+  if (!baseTdee && goalSettings) {
+    const g = parseFloat(goalSettings.targetCalories);
+    if (!isNaN(g) && g > 0) { baseTdee = g; method = 'goal_calories'; }
+  }
+
+  if (!baseTdee) {
+    return {
+      calories: 2000, confidence: 'low', method: 'default_fallback',
+      note: 'No TDEE data available — using 2000 kcal generic default.',
+    };
+  }
+
+  let weekdayAdjust = 0;
+  if (weekdayAverages && dateStr) {
+    const dow = new Date(dateStr + 'T00:00:00').getDay();
+    const dayAvg = weekdayAverages[dow];
+    const allAvgs = weekdayAverages.filter(v => v != null);
+    if (dayAvg != null && allAvgs.length > 0) {
+      const overallAvg = allAvgs.reduce((s, v) => s + v, 0) / allAvgs.length;
+      weekdayAdjust = Math.round(dayAvg - overallAvg);
+      if (method === 'tdee_model') method = 'tdee_weekday';
+    }
+  }
+
+  const raw = baseTdee * cfg.tdeeMultiplier + cfg.calorieOffset + weekdayAdjust;
+  const bounded = Math.max(600, Math.min(6000, Math.round(raw)));
+  const tdeeSource = bmrModel?.source === 'fitted' ? 'empirical TDEE' : 'profile TDEE';
+  const offsetStr = weekdayAdjust !== 0
+    ? ` and weekday pattern offset (${weekdayAdjust > 0 ? '+' : ''}${weekdayAdjust} kcal)`
+    : '';
+  const note = `Estimated from your ${tdeeSource} (${Math.round(baseTdee)} kcal) with ${cfg.label.toLowerCase()} vacation adjustment${offsetStr}.`;
+
+  return { calories: bounded, confidence, method, note };
+}
+
+/**
+ * Build a complete estimated entry for a vacation or explicitly missed day.
+ * Caller should pass the result to saveEstimatedEntry().
+ *
+ * @param {string}      dateStr
+ * @param {string}      vacationType
+ * @param {object|null} analysisResults – full output of runAnalysis
+ * @param {Map}         dailyEntries
+ * @param {object}      baselineTargets
+ * @param {number|null} customCalories  – only used when vacationType='custom'
+ * @returns {object}  Complete v2 entry
+ */
+export function buildVacationDayEntry(dateStr, vacationType, analysisResults, dailyEntries, baselineTargets, customCalories = null) {
+  const bmrModel = analysisResults?.bmrModel || null;
+  const weekdayAverages = computeWeekdayAverages(dailyEntries);
+
+  const estimate = estimateVacationCalories(
+    vacationType, bmrModel, dateStr, null, customCalories, weekdayAverages
+  );
+
+  const MICRO_KEYS = [
+    'fiber','potassium','magnesium','sodium','calcium','choline',
+    'vitaminB12','folate','vitaminC','vitaminB6',
+    'vitaminA','vitaminD','vitaminE','vitaminK',
+    'selenium','iodine','phosphorus','iron','zinc','omega3',
+  ];
+
+  // Per-day nutrient sums using real (non-synthetic) food items where available.
+  // Falls back to top-level entry fields for legacy entries that have no foodItems array.
+  // This prevents synthetic adjustment items from inflating historical averages.
+  const realDayTotals = [];
+  for (const e of dailyEntries.values()) {
+    if (e.entryType === 'estimate') continue;
+    const items = Array.isArray(e.foodItems) ? e.foodItems : [];
+    if (items.length > 0) {
+      const real = items.filter(fi => !isSyntheticItem(fi));
+      if (real.length === 0) continue;
+      const daySum = {};
+      for (const fi of real) {
+        for (const k of Object.keys(fi)) {
+          const v = parseFloat(fi[k]);
+          if (!isNaN(v)) daySum[k] = (daySum[k] || 0) + v;
+        }
+      }
+      realDayTotals.push(daySum);
+    } else {
+      // Legacy entry: use top-level fields directly.
+      const cal = parseFloat(e.calories) || 0;
+      if (cal <= 0) continue;
+      realDayTotals.push(e);
+    }
+  }
+
+  function avgNutrient(key, fallback) {
+    const vals = realDayTotals.map(d => parseFloat(d[key]) || 0).filter(v => v > 0);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : (fallback ?? 0);
+  }
+
+  const avgProtein = avgNutrient('protein', parseFloat(baselineTargets.protein) || 150);
+  const avgFat = avgNutrient('fat', parseFloat(baselineTargets.fatMinimum ?? baselineTargets.fat) || 50);
+  const avgMicros = Object.fromEntries(
+    MICRO_KEYS.map(k => [k, avgNutrient(k, parseFloat(baselineTargets[k]) || 0)])
+  );
+
+  const estCals = estimate.calories;
+  const carbsG = Math.max(0, Math.round((estCals - avgProtein * 4 - avgFat * 9) / 4));
+  const trainingBump = parseFloat((dailyEntries.get(dateStr) || {}).trainingBump) || 0;
+  const now = new Date().toISOString();
+
+  const prevEntry = dailyEntries.get(dateStr);
+  const prevMeta = prevEntry?.estimateMeta || null;
+
+  return {
+    date: dateStr,
+    schemaVersion: 2,
+    entryType: 'estimate',
+    vacationDayType: vacationType,
+    calories: estCals,
+    protein: Math.round(avgProtein),
+    fat: Math.round(avgFat),
+    carbs: carbsG,
+    trainingBump,
+    foodItems: [{
+      id: `vac-${dateStr}`,
+      name: 'Estimated vacation day',
+      quantity: 1,
+      timestamp: `${dateStr}T12:00:00.000Z`,
+      calories: estCals,
+      protein: Math.round(avgProtein),
+      fat: Math.round(avgFat),
+      carbs: carbsG,
+      ...avgMicros,
+    }],
+    exerciseSessions: [],
+    dayActivityLevel: null,
+    manualLock: false,
+    calorieAdjustmentItems: [],
+    estimateMeta: {
+      method: estimate.method,
+      modelVersion: '2.1',
+      confidence: estimate.confidence,
+      sourceDataWindow: ANALYSIS_CONFIG.TDEE_BLOCK_DAYS,
+      createdAt: prevMeta?.createdAt || now,
+      updatedAt: now,
+      locked: false,
+      previousEstimate: prevMeta,
+    },
+    ...avgMicros,
+  };
+}
+
+// ==========================================
+// PARTIAL / UNDERREPORTED DAY DETECTION
+// ==========================================
+
+const PARTIAL_RESIDUAL_THRESHOLD_KCAL = 400;
+
+/**
+ * Find days with logged food that the model believes are significantly underreported.
+ *
+ * A day qualifies when:
+ *   - It has real (non-synthetic) food items
+ *   - The model-predicted TDEE minus logged calories ≥ PARTIAL_RESIDUAL_THRESHOLD_KCAL
+ *   - It has not already been adjusted (no "Unlogged intake estimate" item)
+ *   - It is not locked
+ *   - It is at least IMPUTE_LAG_DAYS old (same staleness requirement as imputation)
+ *
+ * @param {Array}  rows         – output of runAnalysis (with tdee_block populated)
+ * @param {Map}    dailyEntries
+ * @param {object} bmrModel     – output of estimateBMR
+ * @returns {Array<{ date, loggedCalories, modelEstimate, residual, confidence, reason }>}
+ *          Sorted descending by residual.
+ */
+export function getPartialDaysForAdjustment(rows, dailyEntries, bmrModel) {
+  if (!bmrModel || bmrModel.error || !bmrModel.pals) return [];
+
+  const C = ANALYSIS_CONFIG;
+  const palKeys = Object.keys(C.PAL_RANGES).map(Number).sort((a, b) => a - b);
+  const today = rows.length > 0 ? rows[rows.length - 1].date : new Date().toISOString().slice(0, 10);
+
+  const results = [];
+
+  for (const r of rows) {
+    const age = daysBetween(r.date, today);
+    if (age < C.IMPUTE_LAG_DAYS) continue;
+
+    const entry = dailyEntries.get(r.date);
+    if (!entry) continue;
+    if (entry.entryType === 'estimate' || entry.vacationDayType) continue;
+    if (entry.manualLock) continue;
+
+    const loggedCals = parseFloat(entry.calories) || 0;
+    if (loggedCals <= 0) continue;
+
+    if ((entry.foodItems || []).some(fi => fi.name === 'Unlogged intake estimate')) continue;
+
+    const realItems = (entry.foodItems || []).filter(fi => !isSyntheticItem(fi));
+    if (realItems.length === 0) continue;
+
+    if (r.wt_smooth_lb == null || r.tdee_block == null) continue;
+
+    const palKey = nearestPalKey(palKeys, rowExerciseCalories(r));
+    const pal = bmrModel.pals[palKey];
+    if (!pal) continue;
+
+    const wtKg = r.wt_smooth_lb * C.LB_TO_KG;
+    const predictedBmr = (bmrModel.a || 0) + (bmrModel.b || 0) * wtKg;
+    const predictedCals = predictedBmr > 0
+      ? Math.round(predictedBmr * pal)
+      : (bmrModel.tdee_current || 2000);
+
+    const residual = predictedCals - loggedCals;
+    if (residual < PARTIAL_RESIDUAL_THRESHOLD_KCAL) continue;
+
+    results.push({
+      date: r.date,
+      loggedCalories: Math.round(loggedCals),
+      modelEstimate: predictedCals,
+      residual: Math.round(residual),
+      confidence: bmrModel.source === 'fitted' ? 'medium' : 'low',
+      reason: residual > 800
+        ? 'Very large gap — likely a significantly incomplete log (missed meals).'
+        : 'Moderate gap — possible missed snacks or underweighed portions.',
+    });
+  }
+
+  return results.sort((a, b) => b.residual - a.residual);
+}
+
+/**
+ * Build a synthetic adjustment item and an updated entry for a partially-logged day.
+ *
+ * The synthetic "Unlogged intake estimate" item is APPENDED to the existing foodItems.
+ * Real logged food is never modified or deleted.
+ *
+ * @param {string} dateStr
+ * @param {number} residualKcal   – estimated unlogged calories to fill
+ * @param {object} dailyEntry     – existing normalized entry (will not be mutated)
+ * @param {object} baselineTargets
+ * @param {string} confidence     – 'low' | 'medium' | 'high'
+ * @returns {{ adjustedEntry, adjustItem }}
+ */
+export function buildPartialDayAdjustment(dateStr, residualKcal, dailyEntry, baselineTargets, confidence = 'low') {
+  const targetCal = parseFloat(baselineTargets.calories) || 2000;
+  const fraction = Math.min(Math.max(residualKcal / targetCal, 0), 1);
+  const targetProtein = parseFloat(baselineTargets.protein) || 150;
+  const targetFat = parseFloat(baselineTargets.fatMinimum ?? baselineTargets.fat) || 50;
+
+  const adjProtein = Math.round(targetProtein * fraction);
+  const adjFat = Math.round(targetFat * fraction);
+  const adjCarbs = Math.max(0, Math.round((residualKcal - adjProtein * 4 - adjFat * 9) / 4));
+
+  const now = new Date().toISOString();
+
+  const adjustItem = {
+    id: `adj-${dateStr}`,
+    name: 'Unlogged intake estimate',
+    quantity: 1,
+    timestamp: `${dateStr}T23:59:00.000Z`,
+    calories: Math.round(residualKcal),
+    protein: adjProtein,
+    fat: adjFat,
+    carbs: adjCarbs,
+  };
+
+  const existingItems = Array.isArray(dailyEntry.foodItems) ? dailyEntry.foodItems : [];
+  const newItems = [...existingItems, adjustItem];
+  const sum = key => newItems.reduce((s, fi) => s + (parseFloat(fi[key]) || 0), 0);
+
+  const prevMeta = dailyEntry.estimateMeta || null;
+
+  const adjustedEntry = {
+    ...dailyEntry,
+    calories: Math.round(sum('calories')),
+    protein: Math.round(sum('protein')),
+    fat: Math.round(sum('fat')),
+    carbs: Math.round(sum('carbs')),
+    foodItems: newItems,
+    estimateMeta: {
+      method: 'underreporting_adjustment',
+      modelVersion: '2.1',
+      confidence,
+      sourceDataWindow: ANALYSIS_CONFIG.TDEE_BLOCK_DAYS,
+      createdAt: prevMeta?.createdAt || now,
+      updatedAt: now,
+      locked: false,
+      previousEstimate: prevMeta,
+    },
+  };
+
+  return { adjustedEntry, adjustItem };
+}
+
+// ==========================================
 // MAIN PIPELINE
 // ==========================================
 

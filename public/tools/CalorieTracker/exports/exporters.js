@@ -94,7 +94,13 @@ export async function exportDailyLogCsv() {
     'calorieAdjustmentItems',
     'estimateMeta',
   ];
-  const headers = [...coreHeaders, ...v2Headers];
+  // Convenience flat columns extracted from estimateMeta for easy spreadsheet use.
+  const estimateHeaders = [
+    'estimateConfidence',
+    'estimateMethod',
+    'estimateLocked',
+  ];
+  const headers = [...coreHeaders, ...v2Headers, ...estimateHeaders];
   let csv = headers.map(h => `"${h}"`).join(',') + '\n';
 
   // entries from fetchAllEntries() are already normalized, so all v2 fields exist.
@@ -115,6 +121,16 @@ export async function exportDailyLogCsv() {
       }
       // Boolean
       if (h === 'manualLock') return e.manualLock ? 'true' : 'false';
+      // Flat estimate metadata convenience columns
+      if (h === 'estimateConfidence') {
+        const v = e.estimateMeta?.confidence ?? '';
+        return `"${String(v).replace(/"/g, '""')}"`;
+      }
+      if (h === 'estimateMethod') {
+        const v = e.estimateMeta?.method ?? '';
+        return `"${String(v).replace(/"/g, '""')}"`;
+      }
+      if (h === 'estimateLocked') return e.estimateMeta?.locked ? 'true' : 'false';
       // Numeric schema version
       if (h === 'schemaVersion') return e.schemaVersion ?? '0';
       // Nullable string fields
