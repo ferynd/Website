@@ -78,15 +78,27 @@
             <input type="date" id="date-input">
           </div>
 
-          <!-- Training Bump -->
-          <div class="mb-4">
-            <label for="training-bump" class="block text-sm font-medium text-primary mb-1">Training Bump</label>
-            <select id="training-bump">
-              <option value="0">Rest Day (0 kcal)</option>
-              <option value="100">Light Lift ≤45min (+100 kcal)</option>
-              <option value="280">Hard Lift 60-90min (+280 kcal)</option>
-              <option value="400">HIIT/Endurance ≥60min (+400 kcal)</option>
+          <!-- Day Activity Level -->
+          <div class="mb-3">
+            <label for="day-activity-level" class="block text-sm font-medium text-primary mb-1">Day Activity Level</label>
+            <select id="day-activity-level">
+              <option value="rest">Rest — no exercise</option>
+              <option value="light">Light — easy walk / gentle movement (+100 kcal)</option>
+              <option value="medium">Medium — moderate training ~45 min (+200 kcal)</option>
+              <option value="heavy">Heavy — intense or long session (+350 kcal)</option>
+              <option value="custom">Custom — log sessions below</option>
             </select>
+          </div>
+
+          <!-- Exercise Sessions -->
+          <div class="mb-4">
+            <div class="flex justify-between items-center mb-2">
+              <label class="block text-sm font-medium text-primary">Exercise Sessions</label>
+              <button type="button" id="add-exercise-session-btn" class="btn btn-primary btn-sm">
+                <i class="fas fa-plus mr-1"></i>Add Session
+              </button>
+            </div>
+            <div id="exercise-sessions-list" class="space-y-1 text-sm"></div>
           </div>
 
           <!-- Food Log -->
@@ -630,6 +642,108 @@
           <button id="cancel-blank-name-btn"    class="btn btn-secondary">Cancel</button>
           <button id="submit-new-food-name-btn" class="btn btn-primary">Submit</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Exercise Session Modal -->
+  <div id="exercise-session-modal" class="hidden fixed inset-0 modal-backdrop flex justify-center items-center p-4 z-50">
+    <div class="modal-content surface-1 text-primary rounded-xl p-6 w-full max-w-md relative overflow-y-auto max-h-[90vh]">
+      <button onclick="closeExerciseModal()" class="absolute top-2 right-4 btn btn-ghost icon-btn" title="Close" aria-label="Close">&times;</button>
+      <h2 id="exercise-modal-title" class="text-xl font-bold mb-4 text-secondary">Add Exercise Session</h2>
+
+      <div class="space-y-3">
+        <div>
+          <label for="es-activity-type" class="block text-sm font-medium text-primary mb-1">Activity</label>
+          <select id="es-activity-type" onchange="updateExerciseModalFields()">
+            <option value="walking">Walking</option>
+            <option value="running">Running</option>
+            <option value="cycling">Cycling</option>
+            <option value="lifting">Lifting</option>
+            <option value="hiit">HIIT / Circuit</option>
+            <option value="sport">Sport</option>
+            <option value="swimming">Swimming</option>
+            <option value="rowing">Rowing</option>
+            <option value="cardio_machine">Cardio Machine</option>
+            <option value="yoga">Yoga / Mobility</option>
+            <option value="custom">Manual / Custom</option>
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label for="es-duration" class="block text-sm font-medium text-primary mb-1">Duration (min)</label>
+            <input type="number" id="es-duration" min="1" max="600" placeholder="e.g. 45" oninput="updateExerciseLiveEstimate()">
+          </div>
+          <div>
+            <label for="es-intensity" class="block text-sm font-medium text-primary mb-1">Intensity</label>
+            <select id="es-intensity" onchange="updateExerciseLiveEstimate()">
+              <option value="easy">Easy</option>
+              <option value="moderate" selected>Moderate</option>
+              <option value="hard">Hard</option>
+              <option value="very_hard">Very Hard</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label for="es-rpe" class="block text-sm font-medium text-primary mb-1">
+            RPE <span class="text-muted font-normal">(1–10, optional)</span>
+          </label>
+          <input type="number" id="es-rpe" min="1" max="10" step="0.5" placeholder="e.g. 7">
+        </div>
+
+        <!-- Distance row — shown for relevant activities -->
+        <div id="es-distance-row" class="hidden grid grid-cols-2 gap-3">
+          <div>
+            <label for="es-distance" class="block text-sm font-medium text-primary mb-1">Distance</label>
+            <input type="number" id="es-distance" min="0" step="0.01" placeholder="e.g. 5.0">
+          </div>
+          <div>
+            <label for="es-distance-unit" class="block text-sm font-medium text-primary mb-1">Unit</label>
+            <select id="es-distance-unit">
+              <option value="km">km</option>
+              <option value="mi">mi</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Steps row — shown for walking -->
+        <div id="es-steps-row" class="hidden">
+          <label for="es-steps" class="block text-sm font-medium text-primary mb-1">
+            Steps <span class="text-muted font-normal">(optional)</span>
+          </label>
+          <input type="number" id="es-steps" min="0" step="100" placeholder="e.g. 8000">
+        </div>
+
+        <div>
+          <label for="es-wearable-cal" class="block text-sm font-medium text-primary mb-1">
+            Wearable calories <span class="text-muted font-normal">(optional — overrides MET estimate)</span>
+          </label>
+          <input type="number" id="es-wearable-cal" min="0" placeholder="e.g. 320" oninput="updateExerciseLiveEstimate()">
+        </div>
+
+        <div>
+          <label for="es-manual-cal" class="block text-sm font-medium text-primary mb-1">
+            Manual calorie override <span class="text-muted font-normal">(optional — highest priority)</span>
+          </label>
+          <input type="number" id="es-manual-cal" min="0" placeholder="e.g. 400" oninput="updateExerciseLiveEstimate()">
+        </div>
+
+        <div>
+          <label for="es-notes" class="block text-sm font-medium text-primary mb-1">Notes <span class="text-muted font-normal">(optional)</span></label>
+          <textarea id="es-notes" rows="2" placeholder="e.g. felt strong, outdoor trail"></textarea>
+        </div>
+
+        <!-- Live calorie estimate -->
+        <div id="es-estimate-display" class="p-3 rounded-lg surface-2 border text-center text-sm font-medium text-accent">
+          Estimated: — kcal
+        </div>
+      </div>
+
+      <div class="flex gap-3 mt-5">
+        <button type="button" onclick="closeExerciseModal()" class="btn btn-secondary flex-1">Cancel</button>
+        <button type="button" onclick="saveExerciseSession()" class="btn btn-primary flex-1">Save Session</button>
       </div>
     </div>
   </div>

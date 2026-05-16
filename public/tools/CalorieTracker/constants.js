@@ -3,6 +3,17 @@
  * @description Rolling 7-day balance system for calorie/macro target calculation
  */
 
+// Day-level activity quick-select (replaces legacy trainingBump select).
+// 'custom' means the user will log detailed sessions; bump = 0 from the level
+// itself — sessions provide the actual calorie estimate.
+export const DAY_ACTIVITY_LEVELS = {
+  rest:   { label: 'Rest',   bump: 0,   description: 'No planned exercise' },
+  light:  { label: 'Light',  bump: 100, description: 'Easy walk or gentle movement' },
+  medium: { label: 'Medium', bump: 200, description: 'Moderate training ~45 min' },
+  heavy:  { label: 'Heavy',  bump: 350, description: 'Intense or long session (>60 min)' },
+  custom: { label: 'Custom', bump: 0,   description: 'Log sessions manually below' },
+};
+
 // Banking System Configuration
 export const BANKING_CONFIG = {
   // Base parameters

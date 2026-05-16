@@ -22,6 +22,11 @@ import {
   normalizeUserProfile,
   normalizeGoalSettings,
 } from '../state/schema.js';
+import {
+  ACTIVITY_TYPES,
+  INTENSITY_LABELS,
+  estimateSessionCalories,
+} from '../exercise/met.js';
 
 // Re-export so other modules that imported normalize functions from data.js
 // keep working without changes.
@@ -168,6 +173,7 @@ export function loadDailyFoodItems() {
   
   debugLog('data-daily', 'Daily food items loaded', { date: dateStr, itemCount: state.dailyFoodItems.length });
   updateFoodItemsList();
+  updateExerciseSessionsList();
 }
 
 /**
@@ -432,7 +438,128 @@ export function getDataSummary() {
   return summary;
 }
 
+// ---------------------------------------------------------------------------
+// Exercise session helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the user's current body weight in kg for MET calculations.
+ * Prefers smoothed analysis weight, falls back to manual override, then 80 kg.
+ */
+function resolveWeightKg() {
+  const manual = parseFloat(state.userProfile?.manualWeightOverrideLb);
+  if (!isNaN(manual) && manual > 0) return manual * 0.45359237;
+  const smoothed = state.analysisResults?.summary?.currentWeight;
+  if (smoothed && smoothed > 0) return smoothed * 0.45359237;
+  return 80; // population fallback
+}
+
+/**
+ * Render the compact exercise sessions list into #exercise-sessions-list.
+ * Called after loadDailyFoodItems and after any session add/edit/remove.
+ */
+export function updateExerciseSessionsList() {
+  const container = document.getElementById('exercise-sessions-list');
+  if (!container) return;
+
+  const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
+  const entry   = state.dailyEntries.get(dateStr) || {};
+  const sessions = Array.isArray(entry.exerciseSessions) ? entry.exerciseSessions : [];
+
+  if (sessions.length === 0) {
+    container.innerHTML = `<p class="text-xs text-muted py-1">No sessions logged — use a Day Activity Level above or add a session.</p>`;
+    return;
+  }
+
+  const weightKg = resolveWeightKg();
+  let totalKcal = 0;
+
+  const rows = sessions.map(s => {
+    const typeLabel = ACTIVITY_TYPES[s.activityType]?.label ?? s.activityType;
+    const intLabel  = INTENSITY_LABELS[s.intensity] ?? s.intensity;
+    const { kcal, source } = estimateSessionCalories(s, weightKg);
+    totalKcal += kcal;
+
+    const sourceIcon = source === 'manual' ? '✏️' : source === 'wearable' ? '⌚' : '📊';
+    const durationTxt = s.durationMin ? `${s.durationMin} min` : '';
+    const distanceTxt = s.distanceValue
+      ? ` · ${s.distanceValue} ${s.distanceUnit || 'km'}`
+      : '';
+    const stepsTxt = s.steps ? ` · ${Number(s.steps).toLocaleString()} steps` : '';
+
+    return `
+      <div class="flex items-center justify-between p-2 rounded-lg surface-2 border gap-2">
+        <div class="flex-1 min-w-0">
+          <span class="font-medium text-primary text-xs">${typeLabel}</span>
+          <span class="text-muted text-xs ml-1">· ${durationTxt} · ${intLabel}${distanceTxt}${stepsTxt}</span>
+          ${s.notes ? `<div class="text-xs text-muted truncate">${s.notes}</div>` : ''}
+        </div>
+        <span class="text-xs text-accent whitespace-nowrap">${sourceIcon} ~${kcal} kcal</span>
+        <button onclick="editExerciseSession('${s.id}')"
+          class="btn btn-ghost icon-btn shrink-0" title="Edit" style="padding:2px 6px;">
+          <i class="fas fa-pencil-alt fa-xs"></i>
+        </button>
+        <button onclick="removeExerciseSession('${s.id}')"
+          class="btn btn-danger icon-btn shrink-0" title="Remove" style="padding:2px 6px;">
+          &times;
+        </button>
+      </div>`;
+  }).join('');
+
+  const totalRow = sessions.length > 1
+    ? `<div class="text-xs text-right text-muted pr-1 pt-1">Total exercise: ~${totalKcal} kcal</div>`
+    : '';
+
+  container.innerHTML = rows + totalRow;
+}
+
+/**
+ * Persist an exercise session (add or update by id) for the current date.
+ * Called from the exercise modal via window.saveExerciseSession().
+ */
+export function persistExerciseSession(session) {
+  const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
+  const entry   = getCurrentDailyEntry();
+
+  if (!Array.isArray(entry.exerciseSessions)) entry.exerciseSessions = [];
+
+  const idx = entry.exerciseSessions.findIndex(s => s.id === session.id);
+  if (idx >= 0) {
+    entry.exerciseSessions[idx] = session;
+  } else {
+    entry.exerciseSessions.push(session);
+  }
+
+  state.dailyEntries.set(dateStr, entry);
+  saveDailyEntry(dateStr, entry);
+  updateExerciseSessionsList();
+  updateDashboard();
+}
+
+/**
+ * Remove an exercise session by id for the current date.
+ * Exposed as window.removeExerciseSession.
+ */
+function removeExerciseSessionById(sessionId) {
+  const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
+  const entry   = getCurrentDailyEntry();
+
+  if (!Array.isArray(entry.exerciseSessions)) return;
+  entry.exerciseSessions = entry.exerciseSessions.filter(s => s.id !== sessionId);
+
+  state.dailyEntries.set(dateStr, entry);
+  saveDailyEntry(dateStr, entry);
+  updateExerciseSessionsList();
+  updateDashboard();
+}
+
+// Expose session remove to inline onclick handlers (edit is handled in wire.js)
+window.removeExerciseSession = removeExerciseSessionById;
+
+// ---------------------------------------------------------------------------
 // Debounced quantity update helper for inline inputs (fires on change)
+// ---------------------------------------------------------------------------
+
 let quantityUpdateTimer;
 window.updateItemQuantity = (id, value) => {
   const q = parseFloat(value);

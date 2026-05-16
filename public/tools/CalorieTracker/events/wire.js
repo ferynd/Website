@@ -4,7 +4,10 @@
  */
 
 import { state } from '../state/store.js';
-import { ensureDateInput, loadUserData, loadDailyFoodItems, getCurrentDailyEntry } from '../services/data.js';
+import {
+  ensureDateInput, loadUserData, loadDailyFoodItems,
+  getCurrentDailyEntry, persistExerciseSession, updateExerciseSessionsList,
+} from '../services/data.js';
 import { setupFoodDropdown } from '../food/dropdown.js';
 import { parseAndStage, addStagedNutrientsToDailyLog, subtractStagedNutrientsFromDailyLog, handleStagingAction } from '../staging/parser.js';
 import { exportTargetsJson, exportSavedFoodsCsv, exportDailyLogCsv } from '../exports/exporters.js';
@@ -17,6 +20,11 @@ import { allNutrients } from '../constants.js';
 import { updateDashboard, activateTab } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { debugLog, handleError } from '../utils/ui.js';
+import {
+  ACTIVITY_TYPES,
+  estimateSessionCalories,
+} from '../exercise/met.js';
+import { getTodayInTimezone } from '../utils/time.js';
 
 /**
  * Main event wiring function - called from main.js after DOM is ready
@@ -44,6 +52,7 @@ export function wire() {
     wireFoodDatabaseEvents();
     wireExportEvents();
     wireTabs();
+    wireExerciseSessionModal();
 
     // Expose global functions for inline HTML onclick handlers
     exposeGlobalFunctions();
@@ -153,7 +162,7 @@ function wireSettingsEvents() {
 }
 
 /**
- * Wire up main control events including date and training bump
+ * Wire up main control events including date and day activity level
  */
 function wireMainControls() {
   try {
@@ -161,14 +170,10 @@ function wireMainControls() {
     if (state.dom.dateInput) {
       state.dom.dateInput.addEventListener('change', async () => {
         try {
-          // Load food items and training bump for the new date
           await loadDailyFoodItems();
-          loadTrainingBumpForDate();
-          
-          // Update UI
+          loadDayActivityForDate();
           updateDashboard();
           updateChart();
-          
           debugLog('wire-date', 'Date changed and UI updated');
         } catch (error) {
           handleError('wire-date-change', error, 'Failed to handle date change');
@@ -176,36 +181,26 @@ function wireMainControls() {
       });
     }
 
-    // Training bump change handler
-    const trainingBumpSelect = document.getElementById('training-bump');
-    if (trainingBumpSelect) {
-      trainingBumpSelect.addEventListener('change', async (e) => {
+    // Day activity level change handler (replaces legacy training-bump)
+    const dayActivitySelect = document.getElementById('day-activity-level');
+    if (dayActivitySelect) {
+      dayActivitySelect.addEventListener('change', async (e) => {
         try {
           const dateStr = state.dom.dateInput?.value;
           if (!dateStr) return;
-          
-          const trainingBump = parseFloat(e.target.value) || 0;
 
-          // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
           const entry = getCurrentDailyEntry();
-          entry.trainingBump = trainingBump;
-          
-          // Save to local state and Firebase
+          entry.dayActivityLevel = e.target.value;
           state.dailyEntries.set(dateStr, entry);
           await saveDailyEntry(dateStr, entry);
-          
-          // Update UI to reflect new calculations
           updateDashboard();
-          
-          debugLog('wire-training', `Training bump set to ${trainingBump} kcal for ${dateStr}`);
-          
+          debugLog('wire-activity', `Day activity level set to ${e.target.value} for ${dateStr}`);
         } catch (error) {
-          handleError('wire-training-bump', error, 'Failed to save training bump');
+          handleError('wire-activity-level', error, 'Failed to save day activity level');
         }
       });
-      
-      // Load training bump when page loads
-      setTimeout(loadTrainingBumpForDate, 500);
+
+      setTimeout(loadDayActivityForDate, 500);
     }
 
     debugLog('wire', 'Main control events wired');
@@ -215,25 +210,23 @@ function wireMainControls() {
 }
 
 /**
- * Load and display the training bump for the currently selected date
+ * Load and display the day activity level for the currently selected date.
+ * Falls back to migrated dayActivityLevel from legacy trainingBump.
  */
-function loadTrainingBumpForDate() {
+function loadDayActivityForDate() {
   try {
     const dateStr = state.dom.dateInput?.value;
-    const trainingBumpSelect = document.getElementById('training-bump');
-    
-    if (!dateStr || !trainingBumpSelect) return;
-    
+    const select  = document.getElementById('day-activity-level');
+    if (!dateStr || !select) return;
+
     const entry = state.dailyEntries.get(dateStr) || {};
-    const trainingBump = parseFloat(entry.trainingBump) || 0;
-    
-    // Set the select value
-    trainingBumpSelect.value = trainingBump.toString();
-    
-    debugLog('wire-training-load', `Loaded training bump: ${trainingBump} kcal for ${dateStr}`);
-    
+    // normalizeEntry already migrated trainingBump → dayActivityLevel in memory
+    const level = entry.dayActivityLevel || 'rest';
+    select.value = level;
+
+    debugLog('wire-activity-load', `Loaded day activity level: ${level} for ${dateStr}`);
   } catch (error) {
-    handleError('wire-training-load', error, 'Failed to load training bump for date');
+    handleError('wire-activity-load', error, 'Failed to load day activity for date');
   }
 }
 
@@ -346,6 +339,182 @@ function wireTabs() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Exercise session modal
+// ---------------------------------------------------------------------------
+
+let _editingSessionId = null; // null = adding new, string = editing existing
+
+/**
+ * Wires the Add Session button and exposes modal globals to window scope.
+ */
+function wireExerciseSessionModal() {
+  try {
+    const addBtn = document.getElementById('add-exercise-session-btn');
+    if (addBtn) addBtn.addEventListener('click', () => openExerciseModal(null));
+    debugLog('wire', 'Exercise session modal wired');
+  } catch (error) {
+    handleError('wire-exercise-modal', error, 'Failed to wire exercise session modal');
+  }
+}
+
+/**
+ * Open the exercise session modal.
+ * @param {string|null} sessionId - null to add new, id string to edit existing.
+ */
+function openExerciseModal(sessionId) {
+  const modal = document.getElementById('exercise-session-modal');
+  if (!modal) return;
+
+  _editingSessionId = sessionId;
+  const title = document.getElementById('exercise-modal-title');
+  if (title) title.textContent = sessionId ? 'Edit Exercise Session' : 'Add Exercise Session';
+
+  if (sessionId) {
+    // Populate fields with existing session data
+    const dateStr  = state.dom.dateInput?.value || getTodayInTimezone();
+    const entry    = state.dailyEntries.get(dateStr) || {};
+    const sessions = entry.exerciseSessions || [];
+    const s = sessions.find(x => x.id === sessionId);
+    if (s) {
+      document.getElementById('es-activity-type').value  = s.activityType || 'walking';
+      document.getElementById('es-duration').value        = s.durationMin  || '';
+      document.getElementById('es-intensity').value       = s.intensity    || 'moderate';
+      document.getElementById('es-rpe').value             = s.rpe          || '';
+      document.getElementById('es-distance').value        = s.distanceValue || '';
+      document.getElementById('es-distance-unit').value   = s.distanceUnit  || 'km';
+      document.getElementById('es-steps').value           = s.steps         || '';
+      document.getElementById('es-wearable-cal').value    = s.wearableCalories || '';
+      document.getElementById('es-manual-cal').value      = s.manualCalories   || '';
+      document.getElementById('es-notes').value           = s.notes           || '';
+    }
+  } else {
+    // Reset to defaults
+    document.getElementById('es-activity-type').value  = 'walking';
+    document.getElementById('es-duration').value        = '';
+    document.getElementById('es-intensity').value       = 'moderate';
+    document.getElementById('es-rpe').value             = '';
+    document.getElementById('es-distance').value        = '';
+    document.getElementById('es-distance-unit').value   = 'km';
+    document.getElementById('es-steps').value           = '';
+    document.getElementById('es-wearable-cal').value    = '';
+    document.getElementById('es-manual-cal').value      = '';
+    document.getElementById('es-notes').value           = '';
+  }
+
+  updateExerciseModalFields();
+  updateExerciseLiveEstimate();
+  modal.classList.remove('hidden');
+}
+
+/** Close the exercise session modal without saving. */
+function closeExerciseModal() {
+  const modal = document.getElementById('exercise-session-modal');
+  if (modal) modal.classList.add('hidden');
+  _editingSessionId = null;
+}
+
+/** Show/hide distance and steps fields based on the selected activity type. */
+function updateExerciseModalFields() {
+  const actType = document.getElementById('es-activity-type')?.value;
+  const info    = ACTIVITY_TYPES[actType] || {};
+
+  const distRow  = document.getElementById('es-distance-row');
+  const stepsRow = document.getElementById('es-steps-row');
+
+  if (distRow)  distRow.classList.toggle('hidden',  !info.hasDistance);
+  if (stepsRow) stepsRow.classList.toggle('hidden', !info.hasSteps);
+
+  updateExerciseLiveEstimate();
+}
+
+/** Recompute and display the live calorie estimate while the user edits the form. */
+function updateExerciseLiveEstimate() {
+  const el = document.getElementById('es-estimate-display');
+  if (!el) return;
+
+  const session = {
+    activityType:    document.getElementById('es-activity-type')?.value || 'custom',
+    durationMin:     parseFloat(document.getElementById('es-duration')?.value) || 0,
+    intensity:       document.getElementById('es-intensity')?.value || 'moderate',
+    wearableCalories: parseFloat(document.getElementById('es-wearable-cal')?.value) || null,
+    manualCalories:   parseFloat(document.getElementById('es-manual-cal')?.value)   || null,
+  };
+
+  // Resolve weight
+  const manual   = parseFloat(state.userProfile?.manualWeightOverrideLb);
+  const smoothed = state.analysisResults?.summary?.currentWeight;
+  const weightKg = (!isNaN(manual) && manual > 0) ? manual * 0.45359237
+                 : (smoothed && smoothed > 0)      ? smoothed * 0.45359237
+                 : 80;
+
+  const { kcal, source } = estimateSessionCalories(session, weightKg);
+  const sourceNote = source === 'manual' ? '(manual override)'
+                   : source === 'wearable' ? '(from wearable)'
+                   : `(MET estimate · ${weightKg.toFixed(0)} kg body weight)`;
+
+  el.textContent = session.durationMin > 0 || source !== 'met_estimate'
+    ? `Estimated: ~${kcal} kcal ${sourceNote}`
+    : 'Estimated: — (enter duration)';
+}
+
+/** Read the modal form and persist the session (add or update). */
+function saveExerciseSession() {
+  try {
+    const actType  = document.getElementById('es-activity-type')?.value;
+    const duration = parseFloat(document.getElementById('es-duration')?.value);
+
+    if (!actType || isNaN(duration) || duration <= 0) {
+      alert('Please enter an activity type and a duration greater than 0.');
+      return;
+    }
+
+    const distRow  = document.getElementById('es-distance-row');
+    const stepsRow = document.getElementById('es-steps-row');
+
+    const session = {
+      id:              _editingSessionId || crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2,8)}`,
+      activityType:    actType,
+      durationMin:     duration,
+      intensity:       document.getElementById('es-intensity')?.value || 'moderate',
+      rpe:             parseFloat(document.getElementById('es-rpe')?.value) || null,
+      distanceValue:   !distRow?.classList.contains('hidden')  ? (parseFloat(document.getElementById('es-distance')?.value) || null) : null,
+      distanceUnit:    !distRow?.classList.contains('hidden')  ? (document.getElementById('es-distance-unit')?.value || 'km') : null,
+      steps:           !stepsRow?.classList.contains('hidden') ? (parseFloat(document.getElementById('es-steps')?.value) || null) : null,
+      wearableCalories: parseFloat(document.getElementById('es-wearable-cal')?.value) || null,
+      manualCalories:   parseFloat(document.getElementById('es-manual-cal')?.value)   || null,
+      notes:           document.getElementById('es-notes')?.value?.trim() || '',
+      timestamp:       new Date().toISOString(),
+    };
+
+    // Compute and store the estimate so the analysis engine can use it
+    const manual   = parseFloat(state.userProfile?.manualWeightOverrideLb);
+    const smoothed = state.analysisResults?.summary?.currentWeight;
+    const weightKg = (!isNaN(manual) && manual > 0) ? manual * 0.45359237
+                   : (smoothed && smoothed > 0)      ? smoothed * 0.45359237
+                   : 80;
+    const { kcal, source, met } = estimateSessionCalories(session, weightKg);
+    session.estimatedCalories = kcal;
+    session.metValue          = met;
+
+    persistExerciseSession(session);
+    closeExerciseModal();
+
+    // Auto-set day activity level to 'custom' when sessions are added
+    const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
+    const entry   = state.dailyEntries.get(dateStr);
+    if (entry && entry.dayActivityLevel !== 'custom') {
+      entry.dayActivityLevel = 'custom';
+      const sel = document.getElementById('day-activity-level');
+      if (sel) sel.value = 'custom';
+    }
+
+    debugLog('wire-exercise-save', `Session saved: ${actType} ${duration} min`);
+  } catch (error) {
+    handleError('wire-exercise-save', error, 'Failed to save exercise session');
+  }
+}
+
 /**
  * Expose functions globally for inline HTML onclick handlers
  */
@@ -359,6 +528,13 @@ function exposeGlobalFunctions() {
       selectFoodItem,
       closeBlankFoodNameModal,
       closeDuplicateDialog,
+      // Exercise session modal
+      openExerciseModal,
+      closeExerciseModal,
+      saveExerciseSession,
+      updateExerciseModalFields,
+      updateExerciseLiveEstimate,
+      editExerciseSession: (id) => openExerciseModal(id),
     });
 
     debugLog('wire', 'Global functions exposed');

@@ -38,7 +38,8 @@ describe('normalizeEntry', () => {
     expect(n.entryType).toBe('logged');
     expect(n.exerciseSessions).toEqual([]);
     expect(n.calorieAdjustmentItems).toEqual([]);
-    expect(n.dayActivityLevel).toBeNull();
+    // trainingBump=280 migrates to 'medium' in memory (legacy compat)
+    expect(n.dayActivityLevel).toBe('medium');
     expect(n.vacationDayType).toBeNull();
     expect(n.manualLock).toBe(false);
     expect(n.estimateMeta).toBeNull();
