@@ -497,17 +497,20 @@ function saveExerciseSession() {
     session.estimatedCalories = kcal;
     session.metValue          = met;
 
-    persistExerciseSession(session);
-    closeExerciseModal();
-
-    // Auto-set day activity level to 'custom' when sessions are added
+    // Set dayActivityLevel='custom' BEFORE persisting so it is included in the
+    // saved entry. persistExerciseSession calls getCurrentDailyEntry() which
+    // reads from state.dailyEntries, so mutating the entry here is enough.
     const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
     const entry   = state.dailyEntries.get(dateStr);
     if (entry && entry.dayActivityLevel !== 'custom') {
       entry.dayActivityLevel = 'custom';
+      state.dailyEntries.set(dateStr, entry);
       const sel = document.getElementById('day-activity-level');
       if (sel) sel.value = 'custom';
     }
+
+    persistExerciseSession(session);
+    closeExerciseModal();
 
     debugLog('wire-exercise-save', `Session saved: ${actType} ${duration} min`);
   } catch (error) {

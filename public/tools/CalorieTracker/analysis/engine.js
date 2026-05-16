@@ -6,6 +6,8 @@
  * Consumes merged daily rows and returns a results object for the UI.
  */
 
+import { DAY_ACTIVITY_LEVELS } from '../constants.js';
+
 // ==========================================
 // CONFIGURATION — all tuneable knobs
 // ==========================================
@@ -259,11 +261,21 @@ export function deriveExerciseCalories(nEntry) {
     exerciseCalories = totalCals;
     exerciseSource = dominantSource;
   } else {
-    const bump = parseFloat(nEntry?.trainingBump) || 0;
-    if (bump > 0) {
-      exerciseCalories = bump;
-      exerciseSource = 'legacy_bump';
-      legacyTrainingBumpUsed = true;
+    // Check dayActivityLevel next (new entries without logged sessions)
+    const level = nEntry?.dayActivityLevel;
+    if (level && level !== 'rest' && level !== 'custom') {
+      const bump = DAY_ACTIVITY_LEVELS[level]?.bump || 0;
+      if (bump > 0) {
+        exerciseCalories = bump;
+        exerciseSource = 'day_activity_level';
+      }
+    } else {
+      const bump = parseFloat(nEntry?.trainingBump) || 0;
+      if (bump > 0) {
+        exerciseCalories = bump;
+        exerciseSource = 'legacy_bump';
+        legacyTrainingBumpUsed = true;
+      }
     }
   }
 

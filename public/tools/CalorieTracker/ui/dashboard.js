@@ -291,8 +291,8 @@ export function calculateBankingData(targetDateStr) {
     // Round to nearest 25 for display friendliness
     const todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
 
-    // Calculate macros with training scaling
-    const scaledProteinG = getScaledNutrientTarget('protein', proteinG, todaysTrainingBump);
+    // Protein floor does not scale with exercise; carbs absorb the extra calories.
+    const scaledProteinG = proteinG;
     const proteinKcal = scaledProteinG * 4;
     const fatKcal = fatFloorG * 9;
     const remainingKcal = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
@@ -338,7 +338,6 @@ export function calculateBankingData(targetDateStr) {
       proteinG: Math.round(scaledProteinG),
       fatG: Math.round(fatFloorG),
       carbsG,
-      trainingIntensity: getTrainingIntensity(todaysTrainingBump),
 
       // Config
       config: {
@@ -650,7 +649,7 @@ function renderCalcDetailsPanel(bankingData) {
           <span class="font-medium">${sumPast6Actual} kcal</span>
         </div>
         ${todaysTrainingBump > 0 ? `
-          <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
+          <p class="text-xs text-muted px-2 italic">Exercise calories included in today's budget (+${todaysTrainingBump} kcal)</p>
         ` : ''}
         ${bankBalance !== 0 ? `
           <div class="flex justify-between items-center p-2 rounded border surface-2">
@@ -1139,7 +1138,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
               <span class="font-medium">${windowBudget - sumPast6Actual} kcal</span>
             </div>
             ${todaysTrainingBump > 0 ? `
-              <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
+              <p class="text-xs text-muted px-2 italic">Exercise calories included in today's budget (+${todaysTrainingBump} kcal)</p>
             ` : ''}
             ${bankBalance !== 0 ? `
               <div class="flex justify-between items-center p-2 rounded border surface-2">

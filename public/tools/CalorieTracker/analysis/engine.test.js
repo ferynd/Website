@@ -176,6 +176,59 @@ describe('deriveExerciseCalories', () => {
     expect(result.exerciseCalories).toBe(500);
     expect(result.exerciseSessionCount).toBe(2);
   });
+
+  it('uses dayActivityLevel bump when no sessions (light → 100)', () => {
+    const entry = { dayActivityLevel: 'light', exerciseSessions: [] };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(100);
+    expect(result.exerciseSource).toBe('day_activity_level');
+    expect(result.legacyTrainingBumpUsed).toBe(false);
+  });
+
+  it('uses dayActivityLevel bump when no sessions (medium → 200)', () => {
+    const entry = { dayActivityLevel: 'medium', exerciseSessions: [] };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(200);
+    expect(result.exerciseSource).toBe('day_activity_level');
+  });
+
+  it('uses dayActivityLevel bump when no sessions (heavy → 350)', () => {
+    const entry = { dayActivityLevel: 'heavy', exerciseSessions: [] };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(350);
+    expect(result.exerciseSource).toBe('day_activity_level');
+  });
+
+  it('returns 0 exercise calories for dayActivityLevel=rest', () => {
+    const entry = { dayActivityLevel: 'rest', exerciseSessions: [] };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(0);
+  });
+
+  it('returns 0 exercise calories for dayActivityLevel=custom with no sessions', () => {
+    // 'custom' means user logs sessions; with none logged yet, no bump
+    const entry = { dayActivityLevel: 'custom', exerciseSessions: [] };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(0);
+  });
+
+  it('sessions override dayActivityLevel when both are present', () => {
+    const entry = {
+      dayActivityLevel: 'heavy',
+      exerciseSessions: [{ manualCalories: 450 }],
+    };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(450);
+    expect(result.exerciseSource).toBe('manual');
+  });
+
+  it('legacy trainingBump is used when dayActivityLevel is null and no sessions', () => {
+    const entry = { dayActivityLevel: null, trainingBump: 200, exerciseSessions: [] };
+    const result = deriveExerciseCalories(entry);
+    expect(result.exerciseCalories).toBe(200);
+    expect(result.exerciseSource).toBe('legacy_bump');
+    expect(result.legacyTrainingBumpUsed).toBe(true);
+  });
 });
 
 // ── Stable maintenance (60 days) ─────────────────────────────────────────────

@@ -517,7 +517,7 @@ export function updateExerciseSessionsList() {
  * Persist an exercise session (add or update by id) for the current date.
  * Called from the exercise modal via window.saveExerciseSession().
  */
-export function persistExerciseSession(session) {
+export async function persistExerciseSession(session) {
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
   const entry   = getCurrentDailyEntry();
 
@@ -531,7 +531,11 @@ export function persistExerciseSession(session) {
   }
 
   state.dailyEntries.set(dateStr, entry);
-  saveDailyEntry(dateStr, entry);
+  try {
+    await saveDailyEntry(dateStr, entry);
+  } catch (err) {
+    handleError('persist-exercise-session', err, 'Failed to save exercise session to the cloud.');
+  }
   updateExerciseSessionsList();
   updateDashboard();
 }
@@ -540,7 +544,7 @@ export function persistExerciseSession(session) {
  * Remove an exercise session by id for the current date.
  * Exposed as window.removeExerciseSession.
  */
-function removeExerciseSessionById(sessionId) {
+async function removeExerciseSessionById(sessionId) {
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
   const entry   = getCurrentDailyEntry();
 
@@ -548,7 +552,11 @@ function removeExerciseSessionById(sessionId) {
   entry.exerciseSessions = entry.exerciseSessions.filter(s => s.id !== sessionId);
 
   state.dailyEntries.set(dateStr, entry);
-  saveDailyEntry(dateStr, entry);
+  try {
+    await saveDailyEntry(dateStr, entry);
+  } catch (err) {
+    handleError('remove-exercise-session', err, 'Failed to remove exercise session from the cloud.');
+  }
   updateExerciseSessionsList();
   updateDashboard();
 }
