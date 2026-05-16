@@ -11,8 +11,17 @@ import {
   averagedNutrients,
   BANKING_CONFIG,
   BankingHelpers,
-  DEFAULT_TARGETS
+  DEFAULT_TARGETS,
+  DAY_ACTIVITY_LEVELS,
 } from '../constants.js';
+import {
+  ACTIVITY_TYPES,
+  INTENSITY_LABELS,
+  estimateSessionCalories,
+  computeSessionTotals,
+  hasMeaningfulSweatActivity,
+  hasHeavyTraining,
+} from '../exercise/met.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
@@ -37,26 +46,15 @@ const DASHBOARD_CONFIG = {
 
 // =========================
 // MICRONUTRIENT SCALING CONFIGURATION
+// Only Na / K / Mg scale, and only for meaningful sweat/endurance sessions.
+// Shown as optional suggestions, not hard requirements.
 // =========================
-const TRAINING_SCALING = {
-  // Electrolytes scale with training intensity (sweat replacement)
-  sodium: { light: 1.1, hard: 1.3, hiit: 1.5 },
-  potassium: { light: 1.1, hard: 1.2, hiit: 1.3 },
-  magnesium: { light: 1.1, hard: 1.2, hiit: 1.3 },
-  
-  // Slight protein bump for very intense sessions only
-  protein: { light: 1.0, hard: 1.0, hiit: 1.1 },
-  
-  // Water-soluble vitamins may increase slightly for hard sessions
-  vitaminC: { light: 1.0, hard: 1.1, hiit: 1.2 },
-  vitaminB6: { light: 1.0, hard: 1.1, hiit: 1.1 }
-};
 
-const TRAINING_EXPLANATIONS = {
-  rest: "Rest day - no extra calories needed",
-  light: "Light training - modest calorie and electrolyte boost",
-  hard: "Hard training - significant calorie boost, enhanced electrolytes", 
-  hiit: "Intense training - major calorie boost, maximum electrolyte support"
+// Legacy bump-level scaling (used when no sessions on the entry — e.g. old trainingBump days)
+const LEGACY_ELECTROLYTE_SCALING = {
+  sodium:    { light: 1.05, hard: 1.15, hiit: 1.25 },
+  potassium: { light: 1.05, hard: 1.10, hiit: 1.20 },
+  magnesium: { light: 1.05, hard: 1.10, hiit: 1.15 },
 };
 
 // =========================
@@ -105,34 +103,88 @@ function handleError(operation, error, userMessage) {
 }
 
 /**
- * Get training intensity category from training bump calories
- * @param {number} trainingBump - Training bump calories
- * @returns {string} Training intensity category
+ * Resolve current weight in kg from state (for MET estimates and banking).
+ * Falls back to 80 kg if no weight data is available.
  */
-function getTrainingIntensity(trainingBump) {
-  if (trainingBump >= 400) return 'hiit';
-  if (trainingBump >= 280) return 'hard';
-  if (trainingBump >= 100) return 'light';
-  return 'rest';
+function resolveWeightKg() {
+  const manual = parseFloat(state.userProfile?.manualWeightOverrideLb);
+  if (!isNaN(manual) && manual > 0) return manual * 0.45359237;
+  const smoothed = state.analysisResults?.summary?.currentWeight;
+  if (smoothed && smoothed > 0) return smoothed * 0.45359237;
+  return 80;
 }
 
 /**
- * Calculate scaled micronutrient target for training days
- * @param {string} nutrient - Nutrient name
- * @param {number} baseTarget - Base target value
- * @param {number} trainingBump - Training bump calories
- * @returns {number} Scaled target value
+ * Get the effective exercise calorie bump for a daily entry.
+ *
+ * Priority:
+ *  1. exerciseSessions (with MET / wearable / manual estimate)
+ *  2. dayActivityLevel bump (new entries without sessions)
+ *  3. Legacy trainingBump (old stored data — preserved exactly)
+ *
+ * @param {object} entry    - Daily entry from state.dailyEntries.
+ * @param {number} weightKg - Body weight for MET calculation.
+ * @returns {number} Exercise calories for this day.
  */
-function getScaledNutrientTarget(nutrient, baseTarget, trainingBump) {
-  const intensity = getTrainingIntensity(trainingBump);
-  if (intensity === 'rest') return baseTarget;
-  
-  const scaling = TRAINING_SCALING[nutrient];
-  if (scaling && scaling[intensity]) {
-    return baseTarget * scaling[intensity];
+function getEntryExerciseKcal(entry, weightKg) {
+  const sessions = entry?.exerciseSessions;
+  if (Array.isArray(sessions) && sessions.length > 0) {
+    return computeSessionTotals(sessions, weightKg).totalKcal;
   }
-  
-  return baseTarget; // No scaling for this nutrient
+  // No sessions — check dayActivityLevel (new entries)
+  const level = entry?.dayActivityLevel;
+  const legacyBump = parseFloat(entry?.trainingBump);
+  // If a legacy trainingBump was stored, use it exactly (backward compat)
+  if (!isNaN(legacyBump) && legacyBump > 0 && !level) {
+    return legacyBump;
+  }
+  if (level && level !== 'rest' && level !== 'custom') {
+    return (DAY_ACTIVITY_LEVELS[level]?.bump) || 0;
+  }
+  // For legacy entries that normalizeEntry migrated to dayActivityLevel,
+  // trainingBump is the authoritative stored value; use it.
+  return !isNaN(legacyBump) ? legacyBump : 0;
+}
+
+/**
+ * Return electrolyte scaling factor (Na / K / Mg only) for a daily entry.
+ * Uses sessions when present; falls back to legacy bump for old entries.
+ *
+ * Returns { factor, suggested, reason } where `suggested` = true means the
+ * scale is an optional recommendation, not a hard requirement.
+ *
+ * @param {string} nutrient
+ * @param {object} entry
+ * @returns {{ factor: number, suggested: boolean, reason: string }}
+ */
+function getElectrolyteScale(nutrient, entry) {
+  if (!['sodium', 'potassium', 'magnesium'].includes(nutrient)) {
+    return { factor: 1, suggested: false, reason: '' };
+  }
+
+  const sessions = entry?.exerciseSessions;
+  if (Array.isArray(sessions) && sessions.length > 0) {
+    if (hasMeaningfulSweatActivity(sessions)) {
+      const f = nutrient === 'sodium' ? 1.25 : 1.15;
+      return { factor: f, suggested: true, reason: 'sweat activity detected' };
+    }
+    if (hasHeavyTraining(sessions)) {
+      return { factor: 1.10, suggested: true, reason: 'heavy training' };
+    }
+    return { factor: 1, suggested: false, reason: '' };
+  }
+
+  // Legacy bump fallback
+  const bump = parseFloat(entry?.trainingBump) || 0;
+  let intensity = 'rest';
+  if (bump >= 350) intensity = 'hiit';
+  else if (bump >= 200) intensity = 'hard';
+  else if (bump > 0)   intensity = 'light';
+  if (intensity === 'rest') return { factor: 1, suggested: false, reason: '' };
+
+  const scaling = LEGACY_ELECTROLYTE_SCALING[nutrient];
+  const f = scaling?.[intensity] ?? 1;
+  return { factor: f, suggested: true, reason: 'legacy training bump' };
 }
 
 // KPI bar helpers
@@ -189,7 +241,9 @@ export function calculateBankingData(targetDateStr) {
       fatFloorG = BANKING_CONFIG.FAT_FLOOR_G;
     }
 
-    // Sum actual intake AND training bumps for the previous (windowDays - 1) days.
+    const weightKg = resolveWeightKg();
+
+    // Sum actual intake AND exercise bumps for the previous (windowDays - 1) days.
     const pastDays = [];
     let sumPast6Actual = 0;
     let sumPastTrainingBumps = 0;
@@ -199,10 +253,10 @@ export function calculateBankingData(targetDateStr) {
       const pastDateStr = formatDate(pastDate);
       const entry = state.dailyEntries.get(pastDateStr) || {};
 
-      const actualKcal = parseFloat(entry.calories) || 0;
-      const trainingBump = parseFloat(entry.trainingBump) || 0;
-      const dailyTarget = baseKcal + trainingBump;
-      const delta = actualKcal - dailyTarget;
+      const actualKcal  = parseFloat(entry.calories) || 0;
+      const trainingBump = getEntryExerciseKcal(entry, weightKg);
+      const dailyTarget  = baseKcal + trainingBump;
+      const delta        = actualKcal - dailyTarget;
 
       pastDays.push({
         date: pastDate,
@@ -214,13 +268,13 @@ export function calculateBankingData(targetDateStr) {
         dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
       });
 
-      sumPast6Actual += actualKcal;
+      sumPast6Actual     += actualKcal;
       sumPastTrainingBumps += trainingBump;
     }
 
-    // Today's entry (for training bump)
+    // Today's entry exercise calories
     const todaysEntry = state.dailyEntries.get(targetDateStr) || {};
-    const todaysTrainingBump = parseFloat(todaysEntry.trainingBump) || 0;
+    const todaysTrainingBump = getEntryExerciseKcal(todaysEntry, weightKg);
 
     // The full 7-day window budget includes base calories for every day
     // PLUS training bumps for every day (past and today).
@@ -237,8 +291,8 @@ export function calculateBankingData(targetDateStr) {
     // Round to nearest 25 for display friendliness
     const todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
 
-    // Calculate macros with training scaling
-    const scaledProteinG = getScaledNutrientTarget('protein', proteinG, todaysTrainingBump);
+    // Protein floor does not scale with exercise; carbs absorb the extra calories.
+    const scaledProteinG = proteinG;
     const proteinKcal = scaledProteinG * 4;
     const fatKcal = fatFloorG * 9;
     const remainingKcal = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
@@ -284,7 +338,6 @@ export function calculateBankingData(targetDateStr) {
       proteinG: Math.round(scaledProteinG),
       fatG: Math.round(fatFloorG),
       carbsG,
-      trainingIntensity: getTrainingIntensity(todaysTrainingBump),
 
       // Config
       config: {
@@ -326,15 +379,15 @@ export function calculateMicronutrientMetrics(dateStr) {
   try {
     const targetDate = new Date(`${dateStr}T00:00:00`);
     const todayEntry = state.dailyEntries.get(dateStr) || {};
-    const todaysTrainingBump = parseFloat(todayEntry.trainingBump) || 0;
-    
+
     const metrics = {};
-    
+
     allNutrients.forEach(nutrient => {
       if (nutrients.macros.includes(nutrient)) return; // Skip macros
 
       const baseTarget = parseFloat(state.baselineTargets[nutrient]) || DEFAULT_TARGETS[nutrient] || 0;
-      const scaledTarget = getScaledNutrientTarget(nutrient, baseTarget, todaysTrainingBump);
+      const { factor, suggested, reason } = getElectrolyteScale(nutrient, todayEntry);
+      const scaledTarget = baseTarget * factor;
       const todaysIntake = dateStr === state.dom.dateInput.value
         ? state.dailyFoodItems.reduce((sum, item) => {
             const q = parseFloat(item.quantity ?? 0) || 0;
@@ -384,7 +437,9 @@ export function calculateMicronutrientMetrics(dateStr) {
         status,
         isDailyFloor: dailyTrackedNutrients.includes(nutrient),
         isAveraged: averagedNutrients.includes(nutrient),
-        isScaled: scaledTarget !== baseTarget
+        isScaled: scaledTarget !== baseTarget,
+        scaleSuggested: suggested,
+        scaleReason: reason,
       };
     });
     
@@ -557,7 +612,10 @@ function renderEnergyOutput() {
   let bankingHtml = '';
   if (dateStr) {
     const bankingData = calculateBankingData(dateStr);
-    bankingHtml = renderInfoBox() + renderBankingPanel(bankingData) + renderCalcDetailsPanel(bankingData);
+    bankingHtml = renderInfoBox()
+      + renderEnergyExerciseBlock(dateStr)
+      + renderBankingPanel(bankingData)
+      + renderCalcDetailsPanel(bankingData);
   }
 
   container.innerHTML = bankingHtml + renderAnalysisSection();
@@ -591,7 +649,7 @@ function renderCalcDetailsPanel(bankingData) {
           <span class="font-medium">${sumPast6Actual} kcal</span>
         </div>
         ${todaysTrainingBump > 0 ? `
-          <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
+          <p class="text-xs text-muted px-2 italic">Exercise calories included in today's budget (+${todaysTrainingBump} kcal)</p>
         ` : ''}
         ${bankBalance !== 0 ? `
           <div class="flex justify-between items-center p-2 rounded border surface-2">
@@ -664,6 +722,115 @@ function renderTodayCompact(bankingData) {
 }
 
 // =========================
+// EXERCISE IMPACT PANEL (Today tab output + Energy tab)
+// =========================
+
+/**
+ * Render a compact exercise summary card for the Today dashboard output.
+ * Shows sessions, calorie estimate, and method source.
+ */
+function renderExerciseSummaryCard(dateStr) {
+  const entry    = state.dailyEntries.get(dateStr) || {};
+  const sessions = Array.isArray(entry.exerciseSessions) ? entry.exerciseSessions : [];
+  const weightKg = resolveWeightKg();
+
+  if (sessions.length === 0) {
+    // Show day activity level bump if set
+    const level = entry.dayActivityLevel;
+    const bump  = level ? (DAY_ACTIVITY_LEVELS[level]?.bump || 0) : (parseFloat(entry.trainingBump) || 0);
+    if (bump <= 0) return ''; // nothing to show
+
+    const levelLabel = level
+      ? DAY_ACTIVITY_LEVELS[level]?.label
+      : `Legacy bump (+${bump} kcal)`;
+    return `
+      <div class="mb-3 p-3 surface-2 rounded-lg border text-sm flex justify-between items-center">
+        <span class="text-muted">Activity:</span>
+        <span class="font-medium text-accent">${levelLabel} · +${bump} kcal</span>
+      </div>`;
+  }
+
+  const { totalKcal, source } = computeSessionTotals(sessions, weightKg);
+  const sourceLabel = source === 'manual' ? 'manual override' : source === 'wearable' ? 'wearable device' : 'MET estimate';
+
+  const sessionLines = sessions.map(s => {
+    const { kcal } = estimateSessionCalories(s, weightKg);
+    const typeLabel = ACTIVITY_TYPES[s.activityType]?.label ?? s.activityType;
+    const intLabel  = INTENSITY_LABELS[s.intensity] ?? s.intensity;
+    return `<div class="text-xs text-muted">${typeLabel} · ${s.durationMin ?? '?'} min · ${intLabel} → ~${kcal} kcal</div>`;
+  }).join('');
+
+  return `
+    <div class="mb-3 p-3 surface-2 rounded-lg border">
+      <div class="flex justify-between items-center mb-1">
+        <span class="text-sm font-medium text-secondary">🏋️ Exercise</span>
+        <span class="text-sm font-bold text-accent">+${totalKcal} kcal <span class="text-xs text-muted font-normal">(${sourceLabel})</span></span>
+      </div>
+      ${sessionLines}
+    </div>`;
+}
+
+/**
+ * Render an exercise impact block for the Energy tab.
+ */
+function renderEnergyExerciseBlock(dateStr) {
+  const entry    = state.dailyEntries.get(dateStr) || {};
+  const sessions = Array.isArray(entry.exerciseSessions) ? entry.exerciseSessions : [];
+  const weightKg = resolveWeightKg();
+
+  if (sessions.length === 0) return '';
+
+  const { totalKcal, source } = computeSessionTotals(sessions, weightKg);
+
+  const rows = sessions.map(s => {
+    const { kcal, source: src, met } = estimateSessionCalories(s, weightKg);
+    const typeLabel = ACTIVITY_TYPES[s.activityType]?.label ?? s.activityType;
+    const intLabel  = INTENSITY_LABELS[s.intensity] ?? s.intensity;
+    const metNote   = src === 'met_estimate' && met != null
+      ? `MET ${met} × ${weightKg.toFixed(1)} kg × ${((s.durationMin||0)/60).toFixed(2)} h`
+      : src === 'wearable' ? 'from wearable device'
+      : 'manual entry';
+    return `
+      <tr>
+        <td class="px-3 py-2 text-sm">${typeLabel}</td>
+        <td class="px-3 py-2 text-sm text-center">${s.durationMin ?? '?'} min</td>
+        <td class="px-3 py-2 text-sm text-center">${intLabel}</td>
+        <td class="px-3 py-2 text-sm text-center font-medium text-accent">~${kcal}</td>
+        <td class="px-3 py-2 text-xs text-muted">${metNote}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="section-card p-4 mb-6">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-3">🏋️ Exercise Sessions — Calorie Impact</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full border rounded-lg text-sm">
+          <thead class="surface-2">
+            <tr>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Activity</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Duration</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Intensity</th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. kcal</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Method</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+          <tfoot class="surface-2 border-t-2 border">
+            <tr>
+              <td colspan="3" class="px-3 py-2 text-sm font-medium">Total</td>
+              <td class="px-3 py-2 text-center font-bold text-accent">~${totalKcal}</td>
+              <td class="px-3 py-2 text-xs text-muted">kcal added to today's budget</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="text-xs text-muted mt-2">
+        MET estimates from the 2024 Compendium of Physical Activities. Add wearable or manual calorie values in the session form to override estimates.
+      </p>
+    </div>`;
+}
+
+// =========================
 // MAIN DASHBOARD UPDATE
 // =========================
 
@@ -699,6 +866,7 @@ export function updateDashboard() {
 
     dashboard.innerHTML = `
       <div id="dashboard-errors"></div>
+      ${renderExerciseSummaryCard(dateStr)}
       ${renderTodayCompact(bankingData)}
     `;
 
@@ -970,7 +1138,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
               <span class="font-medium">${windowBudget - sumPast6Actual} kcal</span>
             </div>
             ${todaysTrainingBump > 0 ? `
-              <p class="text-xs text-muted px-2 italic">${TRAINING_EXPLANATIONS[trainingIntensity]} (+${todaysTrainingBump} kcal included in budget)</p>
+              <p class="text-xs text-muted px-2 italic">Exercise calories included in today's budget (+${todaysTrainingBump} kcal)</p>
             ` : ''}
             ${bankBalance !== 0 ? `
               <div class="flex justify-between items-center p-2 rounded border surface-2">
@@ -1046,16 +1214,20 @@ function renderChartSection() {
  */
 function renderMicronutrientSections(metrics) {
   const renderNutrientRow = (nutrient, data) => {
-    const { baseTarget, scaledTarget, todaysIntake, avgIntake, isDailyFloor, isAveraged } = data;
+    const { baseTarget, scaledTarget, todaysIntake, avgIntake, isDailyFloor, isAveraged, scaleSuggested, scaleReason } = data;
 
     const displayValue = isAveraged ? avgIntake : todaysIntake;
-    const targetValue = isDailyFloor ? scaledTarget : baseTarget;
-    const remaining = targetValue - displayValue;
+    const targetValue  = isDailyFloor ? scaledTarget : baseTarget;
+    const remaining    = targetValue - displayValue;
+
+    const suggestedNote = scaleSuggested && scaledTarget !== baseTarget
+      ? `<span class="text-xs text-muted ml-1" title="Optional suggestion (${scaleReason})">(+${Math.round((scaledTarget - baseTarget))} suggested)</span>`
+      : '';
 
     return `
       <div class="kpi-row">
         <div class="meta">
-          <span class="label">${formatNutrientName(nutrient)}</span>
+          <span class="label">${formatNutrientName(nutrient)}${suggestedNote}</span>
           <span class="current">${displayValue.toFixed(1)}</span>
           <span class="target">target ${targetValue.toFixed(1)}</span>
           <span class="remain ${remainClass(remaining)}">${remaining > 0 ? `${remaining.toFixed(1)} left` : remaining < 0 ? `${Math.abs(remaining).toFixed(1)} over` : '0 left'}</span>

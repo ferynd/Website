@@ -98,6 +98,16 @@ export function normalizeEntry(entry) {
   if (out.dayActivityLevel === undefined) out.dayActivityLevel = null;
   if (out.vacationDayType === undefined) out.vacationDayType = null;
 
+  // Migrate legacy trainingBump → dayActivityLevel in memory only.
+  // Never persisted unless the user saves the day (prepareEntryForSave keeps
+  // the trainingBump field intact so old clients remain unaffected).
+  if (out.dayActivityLevel === null && out.exerciseSessions.length === 0) {
+    const bump = parseFloat(out.trainingBump) || 0;
+    if (bump >= 300) out.dayActivityLevel = 'heavy';
+    else if (bump >= 150) out.dayActivityLevel = 'medium';
+    else if (bump > 0)   out.dayActivityLevel = 'light';
+  }
+
   // Boolean.
   if (out.manualLock === undefined) out.manualLock = false;
 
