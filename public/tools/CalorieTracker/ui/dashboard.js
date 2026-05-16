@@ -463,6 +463,11 @@ export function activateTab(name) {
     const macroHeader = document.getElementById('today-macro-header');
     if (macroHeader) macroHeader.classList.toggle('hidden', name !== 'today');
 
+    // Profile tab works without baseline targets — it's how first-time users set them
+    if (state.userId && name === 'profile' && window.__populateProfileForm) {
+      window.__populateProfileForm();
+    }
+
     if (!state.userId || Object.keys(state.baselineTargets).length === 0) return;
 
     if (name === 'nutrients') renderNutrientsOutput();

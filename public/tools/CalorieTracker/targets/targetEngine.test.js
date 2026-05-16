@@ -130,6 +130,28 @@ describe('resolveCurrentWeightLb', () => {
     const { weightLb } = resolveCurrentWeightLb(profile, makeAnalysis());
     expect(weightLb).toBeNull();
   });
+
+  it('uses rawLatestWeightLb as tertiary fallback when analysisResults is null', () => {
+    const { weightLb, source } = resolveCurrentWeightLb(makeProfile(), null, 172.5);
+    expect(weightLb).toBe(172.5);
+    expect(source).toBe('uploaded_raw');
+  });
+
+  it('prefers smoothed analysisResults over rawLatestWeightLb', () => {
+    const { weightLb, source } = resolveCurrentWeightLb(
+      makeProfile(),
+      makeAnalysis({ summary: { currentWeight: 185 } }),
+      172.5
+    );
+    expect(weightLb).toBe(185);
+    expect(source).toBe('uploaded_smoothed');
+  });
+
+  it('ignores rawLatestWeightLb when useUploadedWeightForCurrentWeight=false', () => {
+    const profile = makeProfile({ useUploadedWeightForCurrentWeight: false });
+    const { weightLb } = resolveCurrentWeightLb(profile, null, 172.5);
+    expect(weightLb).toBeNull();
+  });
 });
 
 // ── computeBMR ────────────────────────────────────────────────────────────────
@@ -483,6 +505,20 @@ describe('generateTargets', () => {
     expect(targets).not.toBeNull();
     expect(targets.calories).toBeGreaterThan(0);
     expect(warnings.length).toBe(0);
+  });
+
+  it('uses rawLatestWeightLb when analysisResults is null and no manual override', () => {
+    const profile = makeProfile({ manualWeightOverrideLb: null });
+    const { targets, meta } = generateTargets(profile, makeGoals(), null, 175);
+    expect(targets).not.toBeNull();
+    expect(meta.weightLb).toBe(175);
+    expect(meta.weightSource).toBe('uploaded_raw');
+  });
+
+  it('returns error when both analysisResults and rawLatestWeightLb are absent', () => {
+    const profile = makeProfile({ manualWeightOverrideLb: null });
+    const { targets } = generateTargets(profile, makeGoals(), null, null);
+    expect(targets).toBeNull();
   });
 
   it('produces correct targets for 60-year-old female maintenance', () => {

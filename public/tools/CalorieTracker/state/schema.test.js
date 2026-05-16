@@ -327,4 +327,29 @@ describe('prepareGoalSettingsForSave', () => {
     expect(saved.useRollingBanking).toBe(false);
     expect(saved.goalType).toBe('muscleGain');
   });
+
+  it('replaceOverrides:true replaces overrides entirely, clearing removed keys', () => {
+    const current  = { manualTargetOverrides: { protein: 175, zinc: 15, iron: 20 } };
+    const incoming = { goalType: 'fatLoss', manualTargetOverrides: { protein: 180 } };
+    const saved    = prepareGoalSettingsForSave(incoming, current, { replaceOverrides: true });
+    expect(saved.manualTargetOverrides.protein).toBe(180);
+    // zinc and iron should NOT be present — they were not checked in the UI
+    expect(saved.manualTargetOverrides.zinc).toBeUndefined();
+    expect(saved.manualTargetOverrides.iron).toBeUndefined();
+  });
+
+  it('replaceOverrides:true with empty overrides clears all saved overrides', () => {
+    const current  = { manualTargetOverrides: { protein: 175, zinc: 15 } };
+    const incoming = { manualTargetOverrides: {} };
+    const saved    = prepareGoalSettingsForSave(incoming, current, { replaceOverrides: true });
+    expect(Object.keys(saved.manualTargetOverrides)).toHaveLength(0);
+  });
+
+  it('replaceOverrides:false (default) still merges overrides', () => {
+    const current  = { manualTargetOverrides: { protein: 175, zinc: 15 } };
+    const incoming = { manualTargetOverrides: { protein: 180 } };
+    const saved    = prepareGoalSettingsForSave(incoming, current, { replaceOverrides: false });
+    expect(saved.manualTargetOverrides.protein).toBe(180);
+    expect(saved.manualTargetOverrides.zinc).toBe(15); // preserved by merge
+  });
 });

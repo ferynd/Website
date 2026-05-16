@@ -13,8 +13,9 @@ import { state } from '../state/store.js';
 import { showMessage, handleError } from '../utils/ui.js';
 import { saveUserProfile, saveGoalSettings, saveTargets } from '../services/firebase.js';
 import { generateTargets, applyManualOverrides } from './targetEngine.js';
+import { runAnalysis } from '../analysis/engine.js';
 
-// Cache the last engine result so Apply can use it without re-running
+// Cache the last engine result for reference (Apply Targets always recomputes fresh)
 let _lastResult = null;
 
 // ---------------------------------------------------------------------------
@@ -102,6 +103,47 @@ export function populateProfileForm() {
 }
 
 // ---------------------------------------------------------------------------
+// Weight helpers
+// ---------------------------------------------------------------------------
+
+/** Returns the weight_lb of the most recent entry in state.weightEntries, or null. */
+function getLatestWeightFromEntries() {
+  if (!state.weightEntries || state.weightEntries.size === 0) return null;
+  let latestDate = '';
+  let latestWeight = null;
+  for (const entry of state.weightEntries.values()) {
+    if (entry.date > latestDate && entry.weight_lb > 0) {
+      latestDate = entry.date;
+      latestWeight = entry.weight_lb;
+    }
+  }
+  return latestWeight;
+}
+
+/**
+ * Build the analysis context needed by generateTargets().
+ * Uses state.analysisResults if already populated (Energy tab visited).
+ * Otherwise attempts runAnalysis() from available data.
+ * Falls back gracefully to rawLatestWeightLb only.
+ */
+async function buildTargetContext() {
+  if (state.analysisResults) {
+    return { analysisResults: state.analysisResults, rawLatestWeightLb: getLatestWeightFromEntries() };
+  }
+
+  if (state.weightEntries?.size > 0 && state.dailyEntries?.size > 0) {
+    try {
+      const results = runAnalysis(state.weightEntries, state.dailyEntries);
+      return { analysisResults: results, rawLatestWeightLb: getLatestWeightFromEntries() };
+    } catch (_) {
+      // Fall through — raw weight only
+    }
+  }
+
+  return { analysisResults: null, rawLatestWeightLb: getLatestWeightFromEntries() };
+}
+
+// ---------------------------------------------------------------------------
 // Weight display
 // ---------------------------------------------------------------------------
 
@@ -124,6 +166,13 @@ export function updateWeightDisplay() {
   if (smoothed && smoothed > 0) {
     valueEl.textContent  = `${smoothed.toFixed(1)} lb`;
     sourceEl.textContent = 'Smoothed from uploaded CSV (water-corrected EWMA)';
+    return;
+  }
+
+  const raw = getLatestWeightFromEntries();
+  if (raw && raw > 0) {
+    valueEl.textContent  = `${raw.toFixed(1)} lb`;
+    sourceEl.textContent = 'Latest uploaded weight (visit Energy tab for EWMA smoothing)';
     return;
   }
 
@@ -189,7 +238,8 @@ async function handleAutoCalculate() {
       manualTargetOverrides: state.goalSettings?.manualTargetOverrides ?? {},
     };
 
-    const result = generateTargets(mergedProfile, mergedGoals, state.analysisResults);
+    const { analysisResults, rawLatestWeightLb } = await buildTargetContext();
+    const result = generateTargets(mergedProfile, mergedGoals, analysisResults, rawLatestWeightLb);
     _lastResult  = result;
 
     if (!result.targets) {
@@ -275,7 +325,7 @@ function renderTargetPreview(result, currentOverrides) {
     </div>
     <details class="text-sm">
       <summary class="cursor-pointer text-secondary font-medium mb-2">All micronutrient targets ▸</summary>
-      <div class="grid grid-cols-2 gap-x-4 gap-y-0.5 mt-2">
+      <div class="grid grid-cols-2 gap-x-4 gap-1 mt-2">
         ${MICRO_KEYS.map(({ key, label }) => `
           <div class="flex justify-between text-xs py-0.5 border-b border-border/20">
             <span class="text-muted">${label}</span>
@@ -340,28 +390,44 @@ async function handleSaveProfile() {
 }
 
 async function handleApplyTargets() {
-  if (!_lastResult?.targets) {
-    showMessage('Run "Auto-Calculate Targets" first.', true);
-    return;
-  }
-
   const btn = document.getElementById('apply-targets-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
 
   try {
-    // Save profile + goals (with updated overrides from UI)
-    await saveUserProfile(readProfileFromForm());
+    // Re-read form and recompute fresh — never use stale _lastResult
+    const profileUpdates  = readProfileFromForm();
     const goalsUpdates    = readGoalsFromForm();
     const manualOverrides = collectManualOverrides();
-    await saveGoalSettings({ ...goalsUpdates, manualTargetOverrides: manualOverrides });
+
+    const mergedProfile = { ...state.userProfile, ...profileUpdates };
+    const mergedGoals   = { ...state.goalSettings, ...goalsUpdates, manualTargetOverrides: manualOverrides };
+
+    const { analysisResults, rawLatestWeightLb } = await buildTargetContext();
+    const result = generateTargets(mergedProfile, mergedGoals, analysisResults, rawLatestWeightLb);
+
+    if (!result.targets) {
+      showMessage(result.warnings[0] ?? 'Cannot calculate targets. Check profile data.', true);
+      return;
+    }
+
+    // Save profile
+    await saveUserProfile(profileUpdates);
+
+    // Save goals — REPLACE overrides entirely so unchecked boxes clear saved keys
+    await saveGoalSettings(
+      { ...goalsUpdates, manualTargetOverrides: manualOverrides },
+      { replaceOverrides: true }
+    );
 
     // Merge generated targets with overrides and save as baseline
-    const finalTargets = applyManualOverrides(_lastResult.targets, manualOverrides);
+    const finalTargets = applyManualOverrides(result.targets, manualOverrides);
     await saveTargets(finalTargets);
 
-    // Refresh Settings tab form so it reflects the new values
-    const { populateSettingsForm } = await import('../ui/dashboard.js');
+    // Refresh all visible tracker UI
+    const { populateSettingsForm, updateDashboard, updateChart } = await import('../ui/dashboard.js');
     populateSettingsForm();
+    updateDashboard();
+    updateChart();
 
     showMessage('Targets applied and saved to baseline!');
   } catch (err) {

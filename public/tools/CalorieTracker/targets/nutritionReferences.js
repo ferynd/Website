@@ -28,7 +28,10 @@ export function getAgeBand(age) {
 
 // ---------------------------------------------------------------------------
 // DRI reference table (NASEM 2019-2023)
-// Values: RDA where one exists, AI otherwise.
+// Values use the most appropriate reference type per nutrient:
+//   - RDA where established (most vitamins and minerals)
+//   - AI (Adequate Intake) where no RDA exists (fiber, potassium, etc.)
+//   - CDRR (Chronic Disease Risk Reduction) for sodium (2300 mg target)
 // Units match the app tracking units (g, mg, mcg as used in constants.js).
 // ---------------------------------------------------------------------------
 

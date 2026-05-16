@@ -388,14 +388,16 @@ export async function fetchGoalSettings() {
 
 /**
  * Saves the user's goal settings document to Firestore and updates state.goalSettings.
- * @param {object} goals - The normalized goal settings object to persist.
+ * @param {object} goals       - The normalized goal settings object to persist.
+ * @param {object} [opts]      - Options forwarded to prepareGoalSettingsForSave.
+ *   opts.replaceOverrides: true replaces manualTargetOverrides entirely (used by Apply Targets).
  */
-export async function saveGoalSettings(incoming) {
+export async function saveGoalSettings(incoming, opts = {}) {
   if (!state.userId) return showMessage('Cannot save goal settings. Not authenticated.', true);
   try {
     // Merge: defaults → current state → incoming, then force schemaVersion.
-    // manualTargetOverrides is key-merged so no existing override is dropped.
-    const toSave = prepareGoalSettingsForSave(incoming, state.goalSettings);
+    // manualTargetOverrides is key-merged by default; pass replaceOverrides:true to replace.
+    const toSave = prepareGoalSettingsForSave(incoming, state.goalSettings, opts);
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/goals/goalSettings`), toSave);
     state.goalSettings = normalizeGoalSettings(toSave);
     showMessage('Goals saved!');

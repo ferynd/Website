@@ -85,13 +85,14 @@ export function resolveAge(profile) {
 
 /**
  * Resolve current weight in lb from profile + optional analysis results.
- * Priority: manual override > uploaded smoothed weight.
+ * Priority: manual override > uploaded smoothed weight > raw latest uploaded weight.
  *
- * @param {object}      profile         - state.userProfile
- * @param {object|null} analysisResults - state.analysisResults or null
+ * @param {object}      profile            - state.userProfile
+ * @param {object|null} analysisResults    - state.analysisResults or null
+ * @param {number|null} rawLatestWeightLb  - latest raw weight_lb from state.weightEntries, or null
  * @returns {{ weightLb: number|null, source: string|null, sourceLabel: string }}
  */
-export function resolveCurrentWeightLb(profile, analysisResults) {
+export function resolveCurrentWeightLb(profile, analysisResults, rawLatestWeightLb = null) {
   const ovr = parseFloat(profile.manualWeightOverrideLb);
   if (!isNaN(ovr) && ovr > 0) {
     return { weightLb: ovr, source: 'manual_override', sourceLabel: 'Manual entry' };
@@ -104,6 +105,16 @@ export function resolveCurrentWeightLb(profile, analysisResults) {
         weightLb: smoothed,
         source: 'uploaded_smoothed',
         sourceLabel: 'Smoothed from uploaded CSV (water-corrected EWMA)',
+      };
+    }
+
+    // Tertiary fallback: raw latest uploaded weight entry (no smoothing)
+    const raw = parseFloat(rawLatestWeightLb);
+    if (!isNaN(raw) && raw > 0) {
+      return {
+        weightLb: raw,
+        source: 'uploaded_raw',
+        sourceLabel: 'Latest uploaded weight (visit Energy tab for EWMA smoothing)',
       };
     }
   }
@@ -384,17 +395,18 @@ export function computeMicronutrientTargets(profile) {
  * Generate auto-calculated daily targets from profile, goals, and optional
  * analysis results.
  *
- * @param {object}      profile         - state.userProfile (normalizeUserProfile() shape)
- * @param {object}      goals           - state.goalSettings (normalizeGoalSettings() shape)
- * @param {object|null} analysisResults - from runAnalysis(), or null
+ * @param {object}      profile            - state.userProfile (normalizeUserProfile() shape)
+ * @param {object}      goals              - state.goalSettings (normalizeGoalSettings() shape)
+ * @param {object|null} analysisResults    - from runAnalysis(), or null
+ * @param {number|null} rawLatestWeightLb  - raw latest weight from state.weightEntries, or null
  * @returns {{ targets: object|null, explanation: object|null, warnings: string[], meta: object }}
  */
-export function generateTargets(profile, goals, analysisResults = null) {
+export function generateTargets(profile, goals, analysisResults = null, rawLatestWeightLb = null) {
   const warnings = [];
 
   // ── Current weight ────────────────────────────────────────────────────────
   const { weightLb, source: weightSource, sourceLabel: weightLabel } =
-    resolveCurrentWeightLb(profile, analysisResults);
+    resolveCurrentWeightLb(profile, analysisResults, rawLatestWeightLb);
 
   if (!weightLb) {
     return {
@@ -457,7 +469,7 @@ export function generateTargets(profile, goals, analysisResults = null) {
     protein: `${proteinResult.protein} g/day — ${proteinResult.note}`,
     fat: `${fatResult.fat} g/day — ${fatResult.note}`,
     carbs: `${carbsResult.carbs} g/day — fills remaining calories after protein (${proteinResult.protein * 4} kcal) and fat (${fatResult.fat * 9} kcal)`,
-    micronutrients: `NASEM/DRI values for ${age}-year-old ${profile.sex ?? 'adult'} (age band: ${getAgeBand(age)})`,
+    micronutrients: `NASEM/DRI values for ${age}-year-old ${profile.sex ?? 'adult'} (age band: ${getAgeBand(age)}); RDA/AI for most nutrients, CDRR for sodium`,
   };
 
   return {
