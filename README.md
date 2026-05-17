@@ -253,7 +253,7 @@ _Note:_ This Trip Cost tool was originally a simpler project that reset on page 
 
 ### Nutrition Tracker (Calorie Tracker)
 
-_”Log meals, track full nutrition, monitor energy trends, and auto-generate targets from your profile and weight history.”_
+_“Log meals, track full nutrition, monitor energy trends, and auto-generate targets from your profile and weight history.”_
 
 This is a full-featured nutrition tracker built as a static client-side app (plain JS/HTML, no React). It lives in **public/tools/CalorieTracker/** and is accessed at `/tools/CalorieTracker/index.html`. Firebase Auth and Firestore provide persistent, per-user storage across sessions and devices.
 
@@ -269,7 +269,9 @@ This is a full-featured nutrition tracker built as a static client-side app (pla
 
 #### Firebase collections
 
-All data lives under `artifacts/nutrition-tracker/users/{userId}/`:
+All data lives under `artifacts/${appId}/users/{userId}/`. `appId` is configured in
+`public/tools/CalorieTracker/config.js` and resolves to `window.__app_id` when present
+(Canvas / hosted environment) or falls back to `’default-app-id’`.
 
 - `targets/baseline` — baseline nutrient targets
 - `dailyEntries/{YYYY-MM-DD}` — per-day food log, exercise sessions, estimate metadata

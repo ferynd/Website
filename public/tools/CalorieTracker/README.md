@@ -102,7 +102,9 @@ The tracker is a browser-native ES module app — no bundler is required to run 
 
 ## Firebase collections
 
-All data lives under `artifacts/nutrition-tracker/users/{userId}/`:
+All data lives under `artifacts/${appId}/users/{userId}/`. `appId` is exported from
+`config.js` and resolves to `window.__app_id` when that global is set (Canvas / hosted
+environment) or falls back to `'default-app-id'` for local development.
 
 | Collection / path | Contents |
 |---|---|
@@ -207,7 +209,7 @@ MET values come from the 2024 Compendium of Physical Activities. The formula is:
 kcal = MET × intensity_scale × body_weight_kg × duration_hours
 ```
 
-`dayActivityLevel` is used when `exerciseSessions` is empty. The bump values are:
+The bump values for `dayActivityLevel` are:
 
 | Level | Bump |
 |---|---|
@@ -217,7 +219,14 @@ kcal = MET × intensity_scale × body_weight_kg × duration_hours
 | heavy | +350 kcal |
 | custom | 0 kcal (sessions provide the value) |
 
-**Legacy `trainingBump` compatibility:** Old entries with a `trainingBump` field but no `exerciseSessions` are mapped to a `dayActivityLevel` in memory (`≥300 → heavy`, `≥150 → medium`, `>0 → light`). The original calorie addition is not re-computed from this mapping — it was already baked into the stored nutrient totals.
+**Priority order** (`getEntryExerciseKcal` in `exercise/met.js`):
+
+1. `exerciseSessions` (non-empty) → sum of all session estimates.
+2. Positive legacy `trainingBump` → the exact stored number is used as-is.
+   `normalizeEntry()` may derive a `dayActivityLevel` from it in memory, but that
+   derivation is lossy (e.g. 280 → medium = 200, 400 → heavy = 350), so the original
+   field is always preferred over the derived level.
+3. `dayActivityLevel` → bump from the table above, only when no positive `trainingBump` exists.
 
 ---
 
@@ -272,7 +281,7 @@ The analysis engine (`analysis/engine.js`) is designed for gradual fat-loss trac
 - **Daily floors** (fiber, potassium, magnesium, sodium, calcium, choline, B12, folate, vitamin C, B6): tracked against the daily target every day.
 - **Averaged nutrients** (fat-soluble vitamins A/D/E/K, stored minerals selenium/iodine/phosphorus/iron/zinc, omega-3): compared against targets using a 7-day rolling average.
 - **UL warnings** (`.nt-badge-ul`): shown when a daily value or rolling average exceeds the Tolerable Upper Intake Level from the DRI tables.
-- **Source badges**: `.nt-badge-override` (manual target override), `.nt-badge-custom` (DRI-derived), `.nt-badge-scale` (scaled for exercise).
+- **Source badges**: `.nt-badge-override` (📌 manually pinned target — user explicitly set a value in overrides), `.nt-badge-custom` (✏️ custom target — the saved target differs from the DRI/default; set by the goal engine or a manual settings save), `.nt-badge-scale` (⚡ exercise-scaled electrolyte suggestion for Na/K/Mg on high-activity days). DRI/default targets show no badge.
 - **Chart**: multi-series Chart.js line chart with chip-based nutrient selection. Selected chips survive tab and date changes (stored in module-level `_chartState`). Selecting no chips clears the chart data so no stale lines remain visible.
 - **Filter chips**: filter the nutrient list by category (Macros, Vitamins, Minerals, Optional). Chips state is preserved across re-renders via module-level `_nutrientFilter`.
 
