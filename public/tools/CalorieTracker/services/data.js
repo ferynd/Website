@@ -1,6 +1,6 @@
 /**
  * @file src/services/data.js
- * @description UPDATED: Data handling with expandable food items list
+ * @description Data service — Firebase reads/writes for daily entries, food items, weight, profile, and goals.
  */
 import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
@@ -178,7 +178,7 @@ export function loadDailyFoodItems() {
 }
 
 /**
- * UPDATED: Renders the expandable list of food items logged for the current day
+ * Renders the food items logged for the current day into the food-items-list container.
  */
 export function updateFoodItemsList() {
   const container = document.getElementById('food-items-list');
@@ -209,7 +209,7 @@ export function updateFoodItemsList() {
 }
 
 /**
- * UPDATED: Renders the actual content of the food items list with improved layout
+ * Renders the list content: a totals summary card followed by per-item rows.
  */
 function renderFoodItemsContent(container) {
   if (state.dailyFoodItems.length === 0) {

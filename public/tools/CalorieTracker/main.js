@@ -1,11 +1,10 @@
 /**
- * @file src/main.js - DEBUG VERSION (dark-theme aligned)
- * @description Main application entry point with extensive debugging
+ * @file main.js
+ * @description Main application entry point. Imports all modules and wires up Firebase auth.
  */
 
-// ===== DEBUGGING CONFIGURATION =====
+// Set to true locally to enable verbose console output from debugLog()
 const DEBUG_MODE = false;
-const SHOW_ALL_ERRORS = true;
 
 // Read CSS variables from :root
 function cssVar(name) {
@@ -54,18 +53,9 @@ function errorLog(step, error, context = '') {
   }
 }
 
-// ===== STEP 1: TEST BASIC DOM ACCESS =====
 debugLog('INIT', 'Starting application initialization');
 
-try {
-  debugLog('DOM-TEST', 'Testing basic DOM access');
-  const testDiv = document.createElement('div');
-  debugLog('DOM-TEST', '✅ Basic DOM access works');
-} catch (error) {
-  errorLog('DOM-TEST', error, 'Basic DOM access failed');
-}
-
-// ===== STEP 2: TEST MODULE IMPORTS =====
+// ===== MODULE IMPORTS =====
 let wireFunction, cacheDomFunction, stateObject;
 let showMessageFunction, handleErrorFunction;
 let ensureDateInputFunction, loadUserDataFunction;

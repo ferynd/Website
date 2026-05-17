@@ -251,41 +251,60 @@ Usage: When you navigate to /tools/trip-cost in the running app, it will prompt 
 
 _Note:_ This Trip Cost tool was originally a simpler project that reset on page reload. The 2025 rebuild turned it into a persistent multi-user app with authentication and real-time database. The additional complexity (user accounts, live sync) made it a great exercise in using Firebase with Next.js.
 
-### Calorie Tracker
+### Nutrition Tracker (Calorie Tracker)
 
-_“A tool to track daily calorie intake and nutrition (Static HTML).”_
+_”Log meals, track full nutrition, monitor energy trends, and auto-generate targets from your profile and weight history.”_
 
-This is a full-featured nutrition and calorie tracking web app, implemented as a static client-side project (not a React app). It lives in **public/tools/CalorieTracker/** and is accessed via the URL /tools/CalorieTracker/index.html. Despite being built as static files, it uses Firebase for data storage, allowing user data to persist across sessions.
+This is a full-featured nutrition tracker built as a static client-side app (plain JS/HTML, no React). It lives in **public/tools/CalorieTracker/** and is accessed at `/tools/CalorieTracker/index.html`. Firebase Auth and Firestore provide persistent, per-user storage across sessions and devices.
 
-**Overview:** The Calorie Tracker lets a user log what they eat each day and see nutritional information. It has the following main parts: - A **Daily Log** section where you enter foods for a selected date (with fields for calories, protein, carbs, etc.). - A **Staging Area** where you can paste in a chunk of text (for example, from another app or source) and the app will parse it into individual food entries (to speed up data entry). - A **Dashboard/Charts** section that visualizes your intake and progress (e.g., showing a chart of calories over time, and how it compares to your goals).
+#### Tab structure
 
-**Technology:** This tool is written with plain JavaScript, HTML, and uses Tailwind CSS for styling (via a CDN link, since it’s outside of the Next.js build). It also uses Chart.js for graphs. Chart palette colors are sourced from CSS variables in `public/shared-styles.css` (`--chart-*-hex`), allowing easy theme tweaks.
+| Tab | What it does |
+|---|---|
+| **Today** | Daily food log, food database, paste-and-parse staging area, exercise sessions, and a compact macro header |
+| **Nutrients** | Full micronutrient breakdown with filter chips, daily-floor vs. 7-day-average tracking, UL warnings, and a multi-series Chart.js chart |
+| **Energy** | Weight upload (CSV), empirical TDEE/rest-day estimation, missing-day fill, vacation-range fill, underreporting true-up, and estimate management |
+| **Profile & Goals** | Body metrics (age, sex, height, weight, body fat), baseline activity level, goal type, target weight/date, and the auto-target generator |
+| **Settings** | Manual baseline target overrides for every macro and micronutrient; data export buttons |
 
-Key implementation details: - The interface and logic are defined in the static files (e.g., index.html, main.js, and various JS modules under CalorieTracker/). - It connects to Firebase by including Firebase SDK scripts. The Firebase configuration (API keys, etc.) is defined in public/tools/CalorieTracker/firebaseConfig.js. - It supports **authentication**: users can sign up with email/password or use an anonymous guest mode. This is handled by Firebase Auth (likely via the Firebase script, not a custom UI like the Trip Cost tool has). - User data (like the log of entries, saved foods, targets) is stored in Firestore under a structured path, probably something like:
+#### Firebase collections
 
-artifacts/  
-calorie-tracker/  
-users/{userId}/entries/{entryId} # daily entries  
-users/{userId}/foods/{foodId} # saved custom foods  
-users/{userId}/targets/... # user’s nutrition targets
+All data lives under `artifacts/nutrition-tracker/users/{userId}/`:
 
-(The exact structure can be found by inspecting the static code, but the idea is each user has their own data space.)
+- `targets/baseline` — baseline nutrient targets
+- `dailyEntries/{YYYY-MM-DD}` — per-day food log, exercise sessions, estimate metadata
+- `foodItems/{foodId}` — user’s saved food database
+- `weightEntries/{docId}` — weigh-in readings (from CSV upload)
+- `profile/userProfile` — body metrics and activity level
+- `goals/goalSettings` — goal type, target weight/date, and manual target overrides
 
-- The app features a number of modules to separate concerns:
-- **State Management:** state/store.js acts as a central store for the app’s state (current user, current date, cached entries and foods, etc.).
-- **UI Helpers:** utils/ui.js provides helper functions for updating the UI (like showing notifications or errors).
-- **Event Wiring:** events/wire.js attaches event listeners to buttons and form inputs once the DOM is loaded, wiring up user interactions to the logic.
-- **Data Handling:** services/data.js deals with fetching and saving data to Firestore (for example, loading all entries for the current user, or saving a new food item).
-- **Firebase Service:** services/firebase.js initializes the Firebase app (using config) and sets up references to the Firestore database and Auth service.
-- **Chart Management:** ui/chart.js sets up the Chart.js charts for visualizing intake over time. It takes data from the entries and plots daily calories (and possibly macro breakdown).
-- **Parsing:** staging/parser.js is responsible for taking a blob of text (like multiple food entries copied at once) and parsing it into structured data that can be added to the log. This enables the "Paste to Stage" functionality, where users can import a list of foods in one go.
-- **Food Management:** There are modules like food/manager.js and food/dropdown.js that handle adding new foods and managing the dropdown search for food names.
+#### Energy model (plain-English summary)
 
-**Using the Calorie Tracker:** - When you open the page, if not logged in, it might prompt to log in or continue as guest. - Once you have a user session, you can pick a date (defaults to today) and start logging foods. - You can also add foods to a "saved foods" list for quick access (with their nutrition info). - The app calculates totals per day and compares them to your target. It can show average intake over the last 3 or 7 days on the chart. - The chart can be toggled between different nutrients (calories, protein, etc.) and different time spans (weekly, monthly view). - Because all data is stored in Firestore, you can come back later or use a different device and your data will be there (when logged into the same account).
+The **Energy** tab runs a statistical analysis engine (`analysis/engine.js`) on the user’s weight history and calorie log:
 
-**Integration with the main site:** The Tools page in the Next.js app describes this tool and provides the link. But once you click the link, you are essentially running a standalone app. There is a link or button on the Calorie Tracker interface (usually a home icon or "Back") which navigates back to the main site’s hub or Tools page.
+1. **Profile-based fallback** — uses Mifflin-St Jeor or Cunningham RMR multiplied by a PAL factor when there is not enough data.
+2. **Empirical TDEE** — once the user has enough paired weight+calorie days (≥14 days rough, ≥42 days high confidence), the engine fits a multi-horizon rolling TDEE using EWMA-smoothed weight trends and linear regression, with an OLS water-weight noise correction layer for high-sodium and high-carb days.
+3. **Confidence and data sufficiency** — each estimate is tagged rough / moderate / high based on how many complete data days are available; the UI shows the confidence level so the user knows how much to trust the number.
+4. **Exercise integration** — `exerciseSessions` entries use MET-based estimates (2024 Compendium), overridable by wearable or manual calorie values. The calorie priority per session is: manual override > wearable reading > MET estimate. The day-level `dayActivityLevel` quick-select provides a simpler alternative when detailed session logging is not needed.
+5. **Missing/vacation/true-up estimates** — the engine identifies days with no log and can fill them with a statistical estimate, flag vacation ranges with a calorie estimate for the day type, or apply an underreporting true-up adjustment. Estimates are stored as synthetic food items with `entryType: ‘estimate’`; they can be locked (to prevent auto-overwrite) or individually removed without affecting real logged foods.
 
-**Note:** The Firebase config for this tool is embedded in the JavaScript. If you fork this project, you’d replace those with your own project’s keys. Also, ensure your Firebase security rules restrict data access by user (so users can’t read each other’s data).
+#### Target engine
+
+`targets/targetEngine.js` generates per-nutrient targets from the profile:
+
+- **Auto targets** — calories set by deficit/surplus over empirical or formula TDEE; protein by g/kg body weight at goal-specific rates; fat with a configurable floor; carbs from remaining calories.
+- **Manual overrides** — any nutrient can be pinned to a custom value and saved in `goalSettings.manualTargetOverrides`; the engine respects these on every re-run.
+- **Macro floors** — fat is always ≥ `fatMinimum` (default 50 g); protein never drops below lean-mass-based minimums for fat-loss goals.
+- **DRI micronutrients** — age- and sex-specific Dietary Reference Intakes from `targets/nutritionReferences.js` with Tolerable Upper Intake Level (UL) warnings.
+
+#### Technology
+
+- Plain JavaScript ES modules, Chart.js 3, Font Awesome icons.
+- Tailwind-style utility classes are hand-rolled in `styles.css` and shared design tokens come from `public/shared-styles.css` (`--chart-*-hex` for chart colors).
+- Firebase SDK loaded via ESM CDN (`gstatic.com/firebasejs/11.x`). Config at `firebaseConfig.js`.
+- Vitest test suite (`npm test` from the tracker directory) covers the analysis engine, schema normalization, target engine, MET calculator, weight parser, and nutrient helpers.
+
+**Integration:** The Tools page links to this static app. The tracker has a “← Back to Hub” link in its nav so users can return to the main site. For developer setup details, see `public/tools/CalorieTracker/README.md`.
 
 ### Social Security Benefits Guide
 

@@ -1,6 +1,7 @@
 /**
  * @file src/food/manager.js
- * @description FIXED: Food management that doesn't affect prior days when deleting saved foods
+ * @description Food database management — select, edit, and delete saved food items without
+ * touching prior daily entries.
  */
 
 import { state } from '../state/store.js';
@@ -125,8 +126,8 @@ export function editFoodItem(foodId) {
 }
 
 /**
- * FIXED: Deletes a food item from the saved foods database ONLY.
- * This no longer affects any prior daily entries - only removes from the food database.
+ * Deletes a food item from the saved foods database.
+ * Daily entries that previously referenced this food are unaffected.
  * @param {string} foodId - The ID of the food item to delete.
  */
 export async function deleteFoodItemFromManager(foodId) {
@@ -134,10 +135,9 @@ export async function deleteFoodItemFromManager(foodId) {
   if (!food) return;
 
   showConfirmationModal(
-    `Delete "${food.name}" from your saved foods database? This will only remove it from your food library and will NOT affect any previous daily logs.`, 
+    `Delete "${food.name}" from your saved foods database? This will only remove it from your food library and will NOT affect any previous daily logs.`,
     async () => {
       try {
-        // FIXED: Only delete from the food database - do not touch daily entries
         await deleteFoodItem(foodId);
 
         showMessage(`Deleted "${food.name}" from your saved foods database. Your historical daily logs are unchanged.`);
