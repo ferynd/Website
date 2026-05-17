@@ -1,8 +1,33 @@
 /**
  * @file ui/nutrientHelpers.js
- * Pure helper functions for nutrient display logic.
- * No DOM, Firebase, or state access — safe to import anywhere and to unit-test.
+ * Shared helper functions for nutrient display logic and weight resolution.
+ * No DOM or Firebase access. resolveWeightKg reads from state (not pure),
+ * but computeTrendDirection and classifyTargetSource are fully pure.
  */
+
+import { state } from '../state/store.js';
+
+// ---------------------------------------------------------------------------
+// Weight resolution (shared by dashboard, chart, and data service)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve the user's current body weight in kg from state.
+ * Prefers manual override, then smoothed analysis weight, then falls back to 80 kg.
+ *
+ * Used as an approximation for historical MET-based exercise calorie calculations.
+ */
+export function resolveWeightKg() {
+  const manual = parseFloat(state.userProfile?.manualWeightOverrideLb);
+  if (!isNaN(manual) && manual > 0) return manual * 0.45359237;
+  const smoothed = state.analysisResults?.summary?.currentWeight;
+  if (smoothed && smoothed > 0) return smoothed * 0.45359237;
+  return 80;
+}
+
+// ---------------------------------------------------------------------------
+// Trend and target-source helpers (pure)
+// ---------------------------------------------------------------------------
 
 /**
  * Compute trend direction by comparing a recent window to a prior window.

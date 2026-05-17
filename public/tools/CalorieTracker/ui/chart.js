@@ -9,6 +9,7 @@ import { allNutrients, averagedNutrients } from '../constants.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { getEntryExerciseKcal } from '../exercise/met.js';
+import { resolveWeightKg } from './nutrientHelpers.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -56,23 +57,6 @@ const _chartState = {
   show3Day: false,
   show7Day: false,
 };
-
-// ---------------------------------------------------------------------------
-// Weight resolution (approximation for historical chart data)
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve current body weight in kg from state.
- * Used as an approximation for historical exercise calorie calculations.
- * Falls back to 80 kg when no weight data is available.
- */
-function resolveWeightKg() {
-  const manual = parseFloat(state.userProfile?.manualWeightOverrideLb);
-  if (!isNaN(manual) && manual > 0) return manual * 0.45359237;
-  const smoothed = state.analysisResults?.summary?.currentWeight;
-  if (smoothed && smoothed > 0) return smoothed * 0.45359237;
-  return 80;
-}
 
 // =========================
 // HELPER FUNCTIONS
@@ -206,14 +190,9 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     
     const endDate = new Date(`${state.dom.dateInput.value}T00:00:00`);
     
-    // Determine number of days to show
     let days = 7;
-    switch (timeframe) {
-      case '3days': days = 3; break;
-      case 'week': days = 7; break;
-      case 'month': days = 30; break;
-      default: days = 7;
-    }
+    if (timeframe === '3days') days = 3;
+    else if (timeframe === 'month') days = 30;
 
     // Get extra days for moving averages
     const maxAvgDays = Math.max(show3Day ? 3 : 0, show7Day ? 7 : 0);
@@ -224,34 +203,24 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     const datasets = [];
     const tableData = {};
 
-    // Generate all date labels
     for (let i = totalDaysNeeded - 1; i >= 0; i--) {
-      const date = getPastDate(endDate, i);
-      allLabels.push(formatDate(date));
+      allLabels.push(formatDate(getPastDate(endDate, i)));
     }
-
-    // Generate display labels (the dates we actually show on chart)
     for (let i = days - 1; i >= 0; i--) {
-      const date = getPastDate(endDate, i);
-      const dateStr = formatDate(date);
+      const dateStr = formatDate(getPastDate(endDate, i));
       displayLabels.push(dateStr);
       tableData[dateStr] = {};
     }
 
-    // Create datasets for each selected nutrient
+    // Resolve weight once for all calorie-target calculations (approximation for history)
+    const weightKg = resolveWeightKg();
+
     nutrientKeys.forEach((nutrient, idx) => {
       const color = CONFIG.CHART_COLORS[idx % CONFIG.CHART_COLORS.length];
-
-      // For calories, the target is per-date: base goal + that day's exercise calories.
-      // Uses the full priority chain (sessions > dayActivityLevel > legacy trainingBump)
-      // so the chart matches the rolling-budget panel exactly.
-      // Current weight is used as an approximation for all historical dates.
       const baseTarget = parseFloat(state.baselineTargets[nutrient]) || 1;
-      const weightKg = resolveWeightKg();
       const getDateTarget = (dateStr) => {
         if (nutrient === 'calories') {
-          const entry = state.dailyEntries.get(dateStr) || {};
-          return baseTarget + getEntryExerciseKcal(entry, weightKg);
+          return baseTarget + getEntryExerciseKcal(state.dailyEntries.get(dateStr) || {}, weightKg);
         }
         return baseTarget;
       };
@@ -424,9 +393,23 @@ export function updateChart() {
     const show3DayAvg = document.getElementById('show-3day-avg');
     const show7DayAvg = document.getElementById('show-7day-avg');
 
-    const activeChips = document.querySelectorAll('#chart-nutrient-chips .chart-chip.active');
-    if (!activeChips.length) {
+    const chipContainer = document.getElementById('chart-nutrient-chips');
+    if (!chipContainer) {
       debugLog('update-chart', 'chart-nutrient-chips not in DOM – skipping update');
+      return;
+    }
+
+    const activeChips = chipContainer.querySelectorAll('.chart-chip.active');
+    if (!activeChips.length) {
+      // Empty selection: clear stale chart and show a hint in the table area
+      if (state.chartInstance) {
+        state.chartInstance.destroy();
+        state.chartInstance = null;
+      }
+      const tableContainer = document.getElementById('chart-table');
+      if (tableContainer) {
+        tableContainer.innerHTML = '<p class="text-muted text-center py-4">Select at least one nutrient above to show the chart.</p>';
+      }
       return;
     }
 
@@ -434,11 +417,6 @@ export function updateChart() {
     const timeframe = chartTimeframe?.value || CHART_CONFIG.DEFAULT_TIMEFRAME;
     const show3Day = show3DayAvg?.checked || false;
     const show7Day = show7DayAvg?.checked || false;
-
-    if (selectedNutrients.length === 0) {
-      debugLog('update-chart', 'No nutrients selected');
-      return;
-    }
 
     const { labels, datasets, tableData } = getChartData(selectedNutrients, timeframe, show3Day, show7Day);
     const canvas = document.getElementById('nutrition-chart');

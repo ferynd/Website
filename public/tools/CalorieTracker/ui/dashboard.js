@@ -23,7 +23,7 @@ import {
   hasHeavyTraining,
   getEntryExerciseKcal,
 } from '../exercise/met.js';
-import { computeTrendDirection, classifyTargetSource } from './nutrientHelpers.js';
+import { computeTrendDirection, classifyTargetSource, resolveWeightKg } from './nutrientHelpers.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
@@ -106,18 +106,6 @@ function handleError(operation, error, userMessage) {
       `;
     }
   }
-}
-
-/**
- * Resolve current weight in kg from state (for MET estimates and banking).
- * Falls back to 80 kg if no weight data is available.
- */
-function resolveWeightKg() {
-  const manual = parseFloat(state.userProfile?.manualWeightOverrideLb);
-  if (!isNaN(manual) && manual > 0) return manual * 0.45359237;
-  const smoothed = state.analysisResults?.summary?.currentWeight;
-  if (smoothed && smoothed > 0) return smoothed * 0.45359237;
-  return 80;
 }
 
 /**

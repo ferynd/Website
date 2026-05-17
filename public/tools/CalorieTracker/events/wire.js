@@ -25,6 +25,7 @@ import {
   estimateSessionCalories,
 } from '../exercise/met.js';
 import { getTodayInTimezone } from '../utils/time.js';
+import { resolveWeightKg } from '../ui/nutrientHelpers.js';
 
 /**
  * Main event wiring function - called from main.js after DOM is ready
@@ -441,13 +442,7 @@ function updateExerciseLiveEstimate() {
     manualCalories:   parseFloat(document.getElementById('es-manual-cal')?.value)   || null,
   };
 
-  // Resolve weight
-  const manual   = parseFloat(state.userProfile?.manualWeightOverrideLb);
-  const smoothed = state.analysisResults?.summary?.currentWeight;
-  const weightKg = (!isNaN(manual) && manual > 0) ? manual * 0.45359237
-                 : (smoothed && smoothed > 0)      ? smoothed * 0.45359237
-                 : 80;
-
+  const weightKg = resolveWeightKg();
   const { kcal, source } = estimateSessionCalories(session, weightKg);
   const sourceNote = source === 'manual' ? '(manual override)'
                    : source === 'wearable' ? '(from wearable)'
@@ -488,11 +483,7 @@ async function saveExerciseSession() {
     };
 
     // Compute and store the estimate so the analysis engine can use it
-    const manual   = parseFloat(state.userProfile?.manualWeightOverrideLb);
-    const smoothed = state.analysisResults?.summary?.currentWeight;
-    const weightKg = (!isNaN(manual) && manual > 0) ? manual * 0.45359237
-                   : (smoothed && smoothed > 0)      ? smoothed * 0.45359237
-                   : 80;
+    const weightKg = resolveWeightKg();
     const { kcal, source, met } = estimateSessionCalories(session, weightKg);
     session.estimatedCalories = kcal;
     session.metValue          = met;
