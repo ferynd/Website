@@ -10,6 +10,7 @@ import {
   computeSessionTotals,
   hasMeaningfulSweatActivity,
   hasHeavyTraining,
+  getEntryExerciseKcal,
   ACTIVITY_TYPES,
   SWEAT_ACTIVITIES,
 } from './met.js';
@@ -240,6 +241,63 @@ describe('hasHeavyTraining', () => {
   it('returns false for moderate session ≥45 min', () => {
     const sessions = [{ activityType: 'lifting', intensity: 'moderate', durationMin: 60 }];
     expect(hasHeavyTraining(sessions)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getEntryExerciseKcal — priority chain
+// ---------------------------------------------------------------------------
+
+describe('getEntryExerciseKcal priority chain', () => {
+  it('uses exerciseSessions when present, ignoring level and trainingBump', () => {
+    const entry = {
+      exerciseSessions: [{ activityType: 'lifting', durationMin: 60, intensity: 'moderate' }],
+      dayActivityLevel: 'heavy',
+      trainingBump: 999,
+    };
+    // lifting moderate 1h × 80kg = 5.0 × 80 × 1 = 400
+    expect(getEntryExerciseKcal(entry, 80)).toBe(400);
+  });
+
+  it('falls through to level/bump when exerciseSessions is empty array', () => {
+    const entry = { exerciseSessions: [], dayActivityLevel: 'medium' };
+    // medium bump = 200
+    expect(getEntryExerciseKcal(entry, 80)).toBe(200);
+  });
+
+  it('uses dayActivityLevel bump when level is set and not rest/custom', () => {
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'heavy' }, 80)).toBe(350);
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'light' }, 80)).toBe(100);
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'medium' }, 80)).toBe(200);
+  });
+
+  it('returns 0 for rest level', () => {
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'rest' }, 80)).toBe(0);
+  });
+
+  it('returns 0 for custom level (sessions provide actual calories)', () => {
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'custom' }, 80)).toBe(0);
+  });
+
+  it('uses legacy trainingBump when no level is set', () => {
+    expect(getEntryExerciseKcal({ trainingBump: 250 }, 80)).toBe(250);
+  });
+
+  it('prefers dayActivityLevel over legacy trainingBump when both present', () => {
+    // level='light'→100, not trainingBump=999
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'light', trainingBump: 999 }, 80)).toBe(100);
+  });
+
+  it('returns 0 for null entry', () => {
+    expect(getEntryExerciseKcal(null, 80)).toBe(0);
+  });
+
+  it('returns 0 for undefined entry', () => {
+    expect(getEntryExerciseKcal(undefined, 80)).toBe(0);
+  });
+
+  it('returns 0 for empty entry object', () => {
+    expect(getEntryExerciseKcal({}, 80)).toBe(0);
   });
 });
 

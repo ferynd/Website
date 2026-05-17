@@ -7,6 +7,8 @@
  * Priority per session: manualCalories > wearableCalories > MET estimate
  */
 
+import { DAY_ACTIVITY_LEVELS } from '../constants.js';
+
 // ---------------------------------------------------------------------------
 // Activity type definitions
 // ---------------------------------------------------------------------------
@@ -164,4 +166,39 @@ export function hasHeavyTraining(sessions) {
     ['hard', 'very_hard'].includes(s.intensity) &&
     (parseFloat(s.durationMin) || 0) >= 45
   );
+}
+
+// ---------------------------------------------------------------------------
+// Entry-level exercise calorie helper (shared between dashboard and chart)
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the effective exercise calorie bump for a daily entry.
+ *
+ * Priority:
+ *  1. exerciseSessions (MET / wearable / manual — most accurate)
+ *  2. dayActivityLevel bump (quick-select, no detailed sessions)
+ *  3. Legacy trainingBump (old stored data — preserved exactly)
+ *
+ * Pure function — no DOM or state access.
+ *
+ * @param {object|null} entry    - Daily entry object (may be null/undefined).
+ * @param {number}      weightKg - Body weight for MET calculation (default 80 kg).
+ * @returns {number} Exercise kcal for this day.
+ */
+export function getEntryExerciseKcal(entry, weightKg = 80) {
+  const sessions = entry?.exerciseSessions;
+  if (Array.isArray(sessions) && sessions.length > 0) {
+    return computeSessionTotals(sessions, weightKg).totalKcal;
+  }
+  const level = entry?.dayActivityLevel;
+  const legacyBump = parseFloat(entry?.trainingBump);
+  // Legacy trainingBump stored without a level → use it exactly (backward compat)
+  if (!isNaN(legacyBump) && legacyBump > 0 && !level) {
+    return legacyBump;
+  }
+  if (level && level !== 'rest' && level !== 'custom') {
+    return (DAY_ACTIVITY_LEVELS[level]?.bump) || 0;
+  }
+  return !isNaN(legacyBump) ? legacyBump : 0;
 }

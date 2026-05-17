@@ -21,7 +21,9 @@ import {
   computeSessionTotals,
   hasMeaningfulSweatActivity,
   hasHeavyTraining,
+  getEntryExerciseKcal,
 } from '../exercise/met.js';
+import { computeTrendDirection, classifyTargetSource } from './nutrientHelpers.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
@@ -116,38 +118,6 @@ function resolveWeightKg() {
   const smoothed = state.analysisResults?.summary?.currentWeight;
   if (smoothed && smoothed > 0) return smoothed * 0.45359237;
   return 80;
-}
-
-/**
- * Get the effective exercise calorie bump for a daily entry.
- *
- * Priority:
- *  1. exerciseSessions (with MET / wearable / manual estimate)
- *  2. dayActivityLevel bump (new entries without sessions)
- *  3. Legacy trainingBump (old stored data — preserved exactly)
- *
- * @param {object} entry    - Daily entry from state.dailyEntries.
- * @param {number} weightKg - Body weight for MET calculation.
- * @returns {number} Exercise calories for this day.
- */
-function getEntryExerciseKcal(entry, weightKg) {
-  const sessions = entry?.exerciseSessions;
-  if (Array.isArray(sessions) && sessions.length > 0) {
-    return computeSessionTotals(sessions, weightKg).totalKcal;
-  }
-  // No sessions — check dayActivityLevel (new entries)
-  const level = entry?.dayActivityLevel;
-  const legacyBump = parseFloat(entry?.trainingBump);
-  // If a legacy trainingBump was stored, use it exactly (backward compat)
-  if (!isNaN(legacyBump) && legacyBump > 0 && !level) {
-    return legacyBump;
-  }
-  if (level && level !== 'rest' && level !== 'custom') {
-    return (DAY_ACTIVITY_LEVELS[level]?.bump) || 0;
-  }
-  // For legacy entries that normalizeEntry migrated to dayActivityLevel,
-  // trainingBump is the authoritative stored value; use it.
-  return !isNaN(legacyBump) ? legacyBump : 0;
 }
 
 /**
@@ -404,8 +374,12 @@ export function calculateMicronutrientMetrics(dateStr) {
       let threeDayAvg = 0;
       let status = 'red';
 
+      let trendDirection = 'stable';
+
       if (averagedNutrients.includes(nutrient)) {
+        // Accumulate 7-day window with separate buckets for recent (0-2) and prior (3-6)
         let sum7 = 0, count7 = 0, sum3 = 0, count3 = 0;
+        let sumPrior = 0, nonZeroPriorCount = 0;
         for (let i = 0; i < 7; i++) {
           const pd = getPastDate(targetDate, i);
           const pds = formatDate(pd);
@@ -413,6 +387,7 @@ export function calculateMicronutrientMetrics(dateStr) {
           const intake = pds === dateStr ? todaysIntake : parseFloat(entry[nutrient]) || 0;
           sum7 += intake; count7++;
           if (i < 3) { sum3 += intake; count3++; }
+          else if (intake > 0) { sumPrior += intake; nonZeroPriorCount++; }
         }
         avgIntake = count7 > 0 ? sum7 / count7 : 0;
         threeDayAvg = count3 > 0 ? sum3 / count3 : 0;
@@ -420,38 +395,40 @@ export function calculateMicronutrientMetrics(dateStr) {
         if (avgIntake >= baseTarget * 0.9) status = 'green';
         else if (avgIntake >= baseTarget * 0.7) status = 'amber';
         else status = 'red';
+
+        // Trend: compare recent 3-day avg vs non-overlapping prior window (days 3-6)
+        const priorAvg = nonZeroPriorCount >= 2 ? sumPrior / nonZeroPriorCount : null;
+        trendDirection = computeTrendDirection(threeDayAvg, priorAvg);
       } else {
-        // For daily-floor nutrients, also compute 3-day average for trend
+        // For daily-floor nutrients, also compute the 3-day avg and compare today vs prior 2 days
         let sum3 = 0, count3 = 0;
+        let sumPrior = 0, nonZeroPriorCount = 0;
         for (let i = 0; i < 3; i++) {
           const pd = getPastDate(targetDate, i);
           const pds = formatDate(pd);
           const entry = state.dailyEntries.get(pds) || {};
           const intake = pds === dateStr ? todaysIntake : parseFloat(entry[nutrient]) || 0;
           sum3 += intake; count3++;
+          if (i >= 1 && intake > 0) { sumPrior += intake; nonZeroPriorCount++; }
         }
         threeDayAvg = count3 > 0 ? sum3 / count3 : 0;
 
         if (todaysIntake >= scaledTarget) status = 'green';
         else if (todaysIntake >= scaledTarget * 0.8) status = 'amber';
         else status = 'red';
+
+        // Trend: today vs average of the prior 2 days (non-overlapping)
+        const priorAvg = nonZeroPriorCount >= 1 ? sumPrior / nonZeroPriorCount : null;
+        trendDirection = computeTrendDirection(todaysIntake, priorAvg);
       }
 
-      // Trend: compare 3-day avg to the primary display value
-      const primaryValue = averagedNutrients.includes(nutrient) ? avgIntake : todaysIntake;
-      const trendRatio = primaryValue > 0 ? (threeDayAvg - primaryValue) / primaryValue : 0;
-      const trendDirection = trendRatio > 0.05 ? 'up' : trendRatio < -0.05 ? 'down' : 'stable';
-
-      // Target source
-      let targetSource = 'default';
-      if (state.goalSettings?.manualTargetOverrides?.[nutrient] !== undefined) {
-        targetSource = 'override';
-      } else if (
-        state.baselineTargets[nutrient] !== undefined &&
-        Math.abs((state.baselineTargets[nutrient] ?? 0) - (DEFAULT_TARGETS[nutrient] ?? 0)) > 0.001
-      ) {
-        targetSource = 'custom';
-      }
+      // Target source classification
+      const targetSource = classifyTargetSource(
+        nutrient,
+        state.baselineTargets,
+        DEFAULT_TARGETS,
+        state.goalSettings?.manualTargetOverrides,
+      );
 
       // Upper-limit check (warn at ≥ 80% of UL)
       const ul = UL_TABLE[nutrient] ?? null;
@@ -1360,11 +1337,11 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     const targetValue  = isDailyFloor ? scaledTarget : baseTarget;
     const remaining    = targetValue - displayValue;
 
-    // Source badge
+    // Source badge (no badge for DRI defaults — only call out deviations)
     const sourceBadge = targetSource === 'override'
       ? `<span class="nt-badge nt-badge-override" title="Manually pinned target">📌</span>`
       : targetSource === 'custom'
-      ? `<span class="nt-badge nt-badge-custom" title="Custom target">✏️</span>`
+      ? `<span class="nt-badge nt-badge-custom" title="Custom target (goal-engine or manual setting)">✏️</span>`
       : '';
 
     // Exercise-scaling note
@@ -1385,7 +1362,7 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     // Source label in target span
     const srcLabel = targetSource === 'override' ? ' (pinned)'
                    : targetSource === 'custom'   ? ' (custom)'
-                   : ' (DRI)';
+                   : ' (DRI)'; // 'dri' = matches reference value exactly
 
     // For averaged nutrients show today's value as sub-detail below the bar
     const subDetail = isAveraged

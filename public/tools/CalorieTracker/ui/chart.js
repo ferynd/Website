@@ -8,6 +8,7 @@ import { CONFIG } from '../config.js';
 import { allNutrients, averagedNutrients } from '../constants.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
+import { getEntryExerciseKcal } from '../exercise/met.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -45,6 +46,33 @@ const css = getComputedStyle(document.documentElement);
 const borderColor = `hsl(${css.getPropertyValue('--border').trim()})`;
 
 // Chart colors are provided by CONFIG.CHART_COLORS
+
+// ---------------------------------------------------------------------------
+// Module-level chart state — persists across re-renders of the Nutrients tab
+// ---------------------------------------------------------------------------
+const _chartState = {
+  selectedNutrients: new Set([CHART_CONFIG.DEFAULT_NUTRIENT]),
+  timeframe: CHART_CONFIG.DEFAULT_TIMEFRAME,
+  show3Day: false,
+  show7Day: false,
+};
+
+// ---------------------------------------------------------------------------
+// Weight resolution (approximation for historical chart data)
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve current body weight in kg from state.
+ * Used as an approximation for historical exercise calorie calculations.
+ * Falls back to 80 kg when no weight data is available.
+ */
+function resolveWeightKg() {
+  const manual = parseFloat(state.userProfile?.manualWeightOverrideLb);
+  if (!isNaN(manual) && manual > 0) return manual * 0.45359237;
+  const smoothed = state.analysisResults?.summary?.currentWeight;
+  if (smoothed && smoothed > 0) return smoothed * 0.45359237;
+  return 80;
+}
 
 // =========================
 // HELPER FUNCTIONS
@@ -119,7 +147,7 @@ export function initializeChartControls() {
       return;
     }
 
-    // Populate chip buttons (one per nutrient)
+    // Populate chip buttons (one per nutrient), restoring prior selection from _chartState
     chipContainer.innerHTML = '';
     allNutrients.forEach(nutrient => {
       const btn = document.createElement('button');
@@ -127,23 +155,30 @@ export function initializeChartControls() {
       btn.className = 'chart-chip';
       btn.dataset.nutrient = nutrient;
       btn.textContent = formatNutrientName(nutrient);
-      if (nutrient === CHART_CONFIG.DEFAULT_NUTRIENT) btn.classList.add('active');
+      if (_chartState.selectedNutrients.has(nutrient)) btn.classList.add('active');
       btn.addEventListener('click', () => {
         btn.classList.toggle('active');
+        if (btn.classList.contains('active')) {
+          _chartState.selectedNutrients.add(nutrient);
+        } else {
+          _chartState.selectedNutrients.delete(nutrient);
+        }
         try { updateChart(); } catch (err) { handleChartError('chip-click', err); }
       });
       chipContainer.appendChild(btn);
     });
 
-    // Set default timeframe
-    if (chartTimeframe) chartTimeframe.value = CHART_CONFIG.DEFAULT_TIMEFRAME;
+    // Restore timeframe and avg toggles from _chartState
+    if (chartTimeframe) chartTimeframe.value = _chartState.timeframe;
+    if (show3DayAvg)   show3DayAvg.checked   = _chartState.show3Day;
+    if (show7DayAvg)   show7DayAvg.checked   = _chartState.show7Day;
 
     const safe = (el, ev, fn) => {
       if (el) el.addEventListener(ev, e => { try { fn(e); } catch (err) { handleChartError('event-handler', err); } });
     };
-    safe(chartTimeframe, 'change', updateChart);
-    safe(show3DayAvg,   'change', updateChart);
-    safe(show7DayAvg,   'change', updateChart);
+    safe(chartTimeframe, 'change', (e) => { _chartState.timeframe = e.target.value; updateChart(); });
+    safe(show3DayAvg,   'change', (e) => { _chartState.show3Day  = e.target.checked; updateChart(); });
+    safe(show7DayAvg,   'change', (e) => { _chartState.show7Day  = e.target.checked; updateChart(); });
 
     debugLog('init-controls', 'Chart controls initialized successfully');
     updateChart();
@@ -207,16 +242,16 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     nutrientKeys.forEach((nutrient, idx) => {
       const color = CONFIG.CHART_COLORS[idx % CONFIG.CHART_COLORS.length];
 
-      // For calories, the target is per-date: base goal + that day's training bump.
-      // This mirrors what the daily plan panel shows and the rolling-budget system uses,
-      // so the chart correctly reflects whether the user hit their adjusted target.
-      // For all other nutrients, the baseline target is a fixed value.
+      // For calories, the target is per-date: base goal + that day's exercise calories.
+      // Uses the full priority chain (sessions > dayActivityLevel > legacy trainingBump)
+      // so the chart matches the rolling-budget panel exactly.
+      // Current weight is used as an approximation for all historical dates.
       const baseTarget = parseFloat(state.baselineTargets[nutrient]) || 1;
+      const weightKg = resolveWeightKg();
       const getDateTarget = (dateStr) => {
         if (nutrient === 'calories') {
           const entry = state.dailyEntries.get(dateStr) || {};
-          const bump = parseFloat(entry.trainingBump) || 0;
-          return baseTarget + bump;
+          return baseTarget + getEntryExerciseKcal(entry, weightKg);
         }
         return baseTarget;
       };
