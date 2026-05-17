@@ -8,6 +8,8 @@ import { CONFIG } from '../config.js';
 import { allNutrients, averagedNutrients } from '../constants.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
+import { getEntryExerciseKcal } from '../exercise/met.js';
+import { resolveWeightKg } from './nutrientHelpers.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -45,6 +47,16 @@ const css = getComputedStyle(document.documentElement);
 const borderColor = `hsl(${css.getPropertyValue('--border').trim()})`;
 
 // Chart colors are provided by CONFIG.CHART_COLORS
+
+// ---------------------------------------------------------------------------
+// Module-level chart state — persists across re-renders of the Nutrients tab
+// ---------------------------------------------------------------------------
+const _chartState = {
+  selectedNutrients: new Set([CHART_CONFIG.DEFAULT_NUTRIENT]),
+  timeframe: CHART_CONFIG.DEFAULT_TIMEFRAME,
+  show3Day: false,
+  show7Day: false,
+};
 
 // =========================
 // HELPER FUNCTIONS
@@ -103,58 +115,56 @@ function adjustColor(color, amount) {
 // =========================
 
 /**
- * Initialize chart controls and set up event listeners
+ * Initialize chart controls with chip-based nutrient picker and set up event listeners.
  */
 export function initializeChartControls() {
   try {
     debugLog('init-controls', 'Starting chart controls initialization');
-    
-    const chartNutrients = document.getElementById('chart-nutrients');
+
+    const chipContainer = document.getElementById('chart-nutrient-chips');
     const chartTimeframe = document.getElementById('chart-timeframe');
     const show3DayAvg = document.getElementById('show-3day-avg');
     const show7DayAvg = document.getElementById('show-7day-avg');
 
-    if (!chartNutrients) {
-      debugLog('init-controls', 'Chart nutrients selector not in DOM – skipping init');
+    if (!chipContainer) {
+      debugLog('init-controls', 'chart-nutrient-chips not in DOM – skipping init');
       return;
     }
 
-    // Populate nutrient selector
-    chartNutrients.innerHTML = '';
+    // Populate chip buttons (one per nutrient), restoring prior selection from _chartState
+    chipContainer.innerHTML = '';
     allNutrients.forEach(nutrient => {
-      const option = document.createElement('option');
-      option.value = nutrient;
-      option.textContent = formatNutrientName(nutrient);
-      if (nutrient === CHART_CONFIG.DEFAULT_NUTRIENT) option.selected = true;
-      chartNutrients.appendChild(option);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'chart-chip';
+      btn.dataset.nutrient = nutrient;
+      btn.textContent = formatNutrientName(nutrient);
+      if (_chartState.selectedNutrients.has(nutrient)) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        btn.classList.toggle('active');
+        if (btn.classList.contains('active')) {
+          _chartState.selectedNutrients.add(nutrient);
+        } else {
+          _chartState.selectedNutrients.delete(nutrient);
+        }
+        try { updateChart(); } catch (err) { handleChartError('chip-click', err); }
+      });
+      chipContainer.appendChild(btn);
     });
 
-    // Set default timeframe
-    if (chartTimeframe) {
-      chartTimeframe.value = CHART_CONFIG.DEFAULT_TIMEFRAME;
-    }
+    // Restore timeframe and avg toggles from _chartState
+    if (chartTimeframe) chartTimeframe.value = _chartState.timeframe;
+    if (show3DayAvg)   show3DayAvg.checked   = _chartState.show3Day;
+    if (show7DayAvg)   show7DayAvg.checked   = _chartState.show7Day;
 
-    // Add event listeners with error handling
-    const addEventListenerSafe = (element, event, handler) => {
-      if (element) {
-        element.addEventListener(event, (e) => {
-          try {
-            handler(e);
-          } catch (error) {
-            handleChartError('event-handler', error);
-          }
-        });
-      }
+    const safe = (el, ev, fn) => {
+      if (el) el.addEventListener(ev, e => { try { fn(e); } catch (err) { handleChartError('event-handler', err); } });
     };
-
-    addEventListenerSafe(chartNutrients, 'change', updateChart);
-    addEventListenerSafe(chartTimeframe, 'change', updateChart);
-    addEventListenerSafe(show3DayAvg, 'change', updateChart);
-    addEventListenerSafe(show7DayAvg, 'change', updateChart);
+    safe(chartTimeframe, 'change', (e) => { _chartState.timeframe = e.target.value; updateChart(); });
+    safe(show3DayAvg,   'change', (e) => { _chartState.show3Day  = e.target.checked; updateChart(); });
+    safe(show7DayAvg,   'change', (e) => { _chartState.show7Day  = e.target.checked; updateChart(); });
 
     debugLog('init-controls', 'Chart controls initialized successfully');
-
-    // Initial chart render
     updateChart();
 
   } catch (error) {
@@ -180,14 +190,9 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     
     const endDate = new Date(`${state.dom.dateInput.value}T00:00:00`);
     
-    // Determine number of days to show
     let days = 7;
-    switch (timeframe) {
-      case '3days': days = 3; break;
-      case 'week': days = 7; break;
-      case 'month': days = 30; break;
-      default: days = 7;
-    }
+    if (timeframe === '3days') days = 3;
+    else if (timeframe === 'month') days = 30;
 
     // Get extra days for moving averages
     const maxAvgDays = Math.max(show3Day ? 3 : 0, show7Day ? 7 : 0);
@@ -198,34 +203,24 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     const datasets = [];
     const tableData = {};
 
-    // Generate all date labels
     for (let i = totalDaysNeeded - 1; i >= 0; i--) {
-      const date = getPastDate(endDate, i);
-      allLabels.push(formatDate(date));
+      allLabels.push(formatDate(getPastDate(endDate, i)));
     }
-
-    // Generate display labels (the dates we actually show on chart)
     for (let i = days - 1; i >= 0; i--) {
-      const date = getPastDate(endDate, i);
-      const dateStr = formatDate(date);
+      const dateStr = formatDate(getPastDate(endDate, i));
       displayLabels.push(dateStr);
       tableData[dateStr] = {};
     }
 
-    // Create datasets for each selected nutrient
+    // Resolve weight once for all calorie-target calculations (approximation for history)
+    const weightKg = resolveWeightKg();
+
     nutrientKeys.forEach((nutrient, idx) => {
       const color = CONFIG.CHART_COLORS[idx % CONFIG.CHART_COLORS.length];
-
-      // For calories, the target is per-date: base goal + that day's training bump.
-      // This mirrors what the daily plan panel shows and the rolling-budget system uses,
-      // so the chart correctly reflects whether the user hit their adjusted target.
-      // For all other nutrients, the baseline target is a fixed value.
       const baseTarget = parseFloat(state.baselineTargets[nutrient]) || 1;
       const getDateTarget = (dateStr) => {
         if (nutrient === 'calories') {
-          const entry = state.dailyEntries.get(dateStr) || {};
-          const bump = parseFloat(entry.trainingBump) || 0;
-          return baseTarget + bump;
+          return baseTarget + getEntryExerciseKcal(state.dailyEntries.get(dateStr) || {}, weightKg);
         }
         return baseTarget;
       };
@@ -394,25 +389,34 @@ export function updateChart() {
       return;
     }
 
-    const chartNutrients = document.getElementById('chart-nutrients');
     const chartTimeframe = document.getElementById('chart-timeframe');
     const show3DayAvg = document.getElementById('show-3day-avg');
     const show7DayAvg = document.getElementById('show-7day-avg');
-    
-    if (!chartNutrients) {
-      debugLog('update-chart', 'Chart nutrients selector not in DOM – skipping update');
+
+    const chipContainer = document.getElementById('chart-nutrient-chips');
+    if (!chipContainer) {
+      debugLog('update-chart', 'chart-nutrient-chips not in DOM – skipping update');
       return;
     }
 
-    const selectedNutrients = Array.from(chartNutrients.selectedOptions).map(o => o.value);
+    const activeChips = chipContainer.querySelectorAll('.chart-chip.active');
+    if (!activeChips.length) {
+      // Empty selection: clear stale chart and show a hint in the table area
+      if (state.chartInstance) {
+        state.chartInstance.destroy();
+        state.chartInstance = null;
+      }
+      const tableContainer = document.getElementById('chart-table');
+      if (tableContainer) {
+        tableContainer.innerHTML = '<p class="text-muted text-center py-4">Select at least one nutrient above to show the chart.</p>';
+      }
+      return;
+    }
+
+    const selectedNutrients = Array.from(activeChips).map(c => c.dataset.nutrient);
     const timeframe = chartTimeframe?.value || CHART_CONFIG.DEFAULT_TIMEFRAME;
     const show3Day = show3DayAvg?.checked || false;
     const show7Day = show7DayAvg?.checked || false;
-
-    if (selectedNutrients.length === 0) {
-      debugLog('update-chart', 'No nutrients selected');
-      return;
-    }
 
     const { labels, datasets, tableData } = getChartData(selectedNutrients, timeframe, show3Day, show7Day);
     const canvas = document.getElementById('nutrition-chart');

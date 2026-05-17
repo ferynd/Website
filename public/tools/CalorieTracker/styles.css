@@ -618,6 +618,171 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
 }
 
 /* ============================================================
+   CHART CHIP PICKER  (replaces <select multiple> for nutrient selection)
+   ============================================================ */
+.chart-chip-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .375rem;
+}
+
+.chart-chip {
+  padding: .25rem .65rem;
+  font-size: .75rem;
+  line-height: 1.2;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+  color: hsl(var(--text-3));
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: border-color .15s, background .15s, color .15s;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chart-chip:hover {
+  border-color: hsl(var(--accent) / .5);
+  color: hsl(var(--text));
+}
+
+.chart-chip.active {
+  background: hsl(var(--accent) / .15);
+  border-color: hsl(var(--accent));
+  color: hsl(var(--accent));
+  font-weight: 600;
+}
+
+/* ============================================================
+   NUTRIENT FILTER BAR
+   ============================================================ */
+.nutrient-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .375rem;
+}
+
+.nutrient-filter-chip {
+  padding: .25rem .75rem;
+  font-size: .8125rem;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+  color: hsl(var(--text-2));
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: border-color .15s, background .15s, color .15s;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nutrient-filter-chip:hover {
+  border-color: hsl(var(--accent) / .5);
+  color: hsl(var(--text));
+}
+
+.nutrient-filter-chip.active {
+  background: hsl(var(--accent) / .15);
+  border-color: hsl(var(--accent));
+  color: hsl(var(--accent));
+  font-weight: 600;
+}
+
+/* ============================================================
+   NUTRIENT STATUS SUMMARY GRID
+   ============================================================ */
+.nutrient-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .5rem;
+}
+
+.nutrient-status-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: .625rem .5rem;
+  background: hsl(var(--surface-1));
+  border: 1px solid hsl(var(--border));
+  border-radius: .75rem;
+  text-align: center;
+}
+
+.nutrient-status-icon  { font-size: 1.1rem; margin-bottom: .15rem; }
+.nutrient-status-count { font-size: 1.375rem; font-weight: 700; line-height: 1; }
+.nutrient-status-label { font-size: .6875rem; color: hsl(var(--text-3)); margin-top: .15rem; }
+
+/* ============================================================
+   NUTRIENT INLINE BADGES  (.nt-badge variants)
+   ============================================================ */
+.nt-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: .65rem;
+  padding: .1em .35em;
+  border-radius: .25rem;
+  margin-left: .25rem;
+  vertical-align: middle;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.nt-badge-override { background: hsl(var(--accent) / .15);  color: hsl(var(--accent)); }
+.nt-badge-custom   { background: hsl(var(--info)   / .15);  color: hsl(var(--info)); }
+.nt-badge-scale    { background: hsl(var(--warning) / .15); color: hsl(var(--warning)); }
+.nt-badge-ul       { background: hsl(var(--error)   / .12); color: hsl(var(--warning)); }
+
+.nt-trend {
+  font-size: .8em;
+  margin-left: .2rem;
+  vertical-align: middle;
+}
+
+.nt-avg-label {
+  font-size: .65rem;
+  color: hsl(var(--text-3));
+  margin-left: .2rem;
+  font-weight: 400;
+}
+
+/* Sub-detail line below the KPI bar (today / 3d-avg for averaged nutrients) */
+.nt-sub-detail {
+  grid-column: 1 / -1;
+  font-size: .72rem;
+  color: hsl(var(--text-3));
+  padding-top: .1rem;
+  padding-bottom: .2rem;
+  padding-left: calc(6rem + .75rem);
+}
+
+/* ============================================================
+   NUTRIENT TAGS (shortfall / UL summary lists)
+   ============================================================ */
+.nutrient-tag {
+  display: inline-flex;
+  padding: .15rem .5rem;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 500;
+}
+
+.nutrient-tag-bad  {
+  background: hsl(var(--error)   / .12);
+  color: hsl(var(--error));
+  border: 1px solid hsl(var(--error)   / .3);
+}
+
+.nutrient-tag-warn {
+  background: hsl(var(--warning) / .12);
+  color: hsl(var(--warning));
+  border: 1px solid hsl(var(--warning) / .3);
+}
+
+/* ============================================================
    MOBILE TWEAKS  (< 480 px)
    ============================================================ */
 @media (max-width: 480px) {
@@ -631,4 +796,11 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
   .settings-panel    { padding: 1rem .75rem; }
   .settings-section  { padding: 1rem .75rem; border-radius: .75rem; }
   .chart-container   { height: 280px; }
+  /* Collapse status grid to 2 cols on small phones */
+  .nutrient-status-grid { grid-template-columns: repeat(2, 1fr); }
+  /* Slightly larger chips for touch targets */
+  .chart-chip        { min-height: 36px; font-size: .8rem; }
+  .nutrient-filter-chip { min-height: 40px; }
+  /* Hide sub-detail on very small screens to save space */
+  .nt-sub-detail     { padding-left: 0; }
 }

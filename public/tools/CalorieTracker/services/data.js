@@ -27,6 +27,7 @@ import {
   INTENSITY_LABELS,
   estimateSessionCalories,
 } from '../exercise/met.js';
+import { resolveWeightKg } from '../ui/nutrientHelpers.js';
 
 // Re-export so other modules that imported normalize functions from data.js
 // keep working without changes.
@@ -441,18 +442,6 @@ export function getDataSummary() {
 // ---------------------------------------------------------------------------
 // Exercise session helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Resolve the user's current body weight in kg for MET calculations.
- * Prefers smoothed analysis weight, falls back to manual override, then 80 kg.
- */
-function resolveWeightKg() {
-  const manual = parseFloat(state.userProfile?.manualWeightOverrideLb);
-  if (!isNaN(manual) && manual > 0) return manual * 0.45359237;
-  const smoothed = state.analysisResults?.summary?.currentWeight;
-  if (smoothed && smoothed > 0) return smoothed * 0.45359237;
-  return 80; // population fallback
-}
 
 /**
  * Render the compact exercise sessions list into #exercise-sessions-list.
