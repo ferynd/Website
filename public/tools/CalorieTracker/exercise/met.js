@@ -191,14 +191,18 @@ export function getEntryExerciseKcal(entry, weightKg = 80) {
   if (Array.isArray(sessions) && sessions.length > 0) {
     return computeSessionTotals(sessions, weightKg).totalKcal;
   }
-  const level = entry?.dayActivityLevel;
   const legacyBump = parseFloat(entry?.trainingBump);
-  // Legacy trainingBump stored without a level → use it exactly (backward compat)
-  if (!isNaN(legacyBump) && legacyBump > 0 && !level) {
+  // A positive stored trainingBump is the exact authoritative value for that day.
+  // normalizeEntry() derives dayActivityLevel from it in memory, but the derivation
+  // is lossy (e.g. 280 → medium = 200, 400 → heavy = 350). Prefer the original.
+  // New entries from the quick-select UI do not have trainingBump set, so they
+  // fall through to the dayActivityLevel branch below.
+  if (!isNaN(legacyBump) && legacyBump > 0) {
     return legacyBump;
   }
+  const level = entry?.dayActivityLevel;
   if (level && level !== 'rest' && level !== 'custom') {
     return (DAY_ACTIVITY_LEVELS[level]?.bump) || 0;
   }
-  return !isNaN(legacyBump) ? legacyBump : 0;
+  return 0;
 }

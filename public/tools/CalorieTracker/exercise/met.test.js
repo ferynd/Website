@@ -283,9 +283,57 @@ describe('getEntryExerciseKcal priority chain', () => {
     expect(getEntryExerciseKcal({ trainingBump: 250 }, 80)).toBe(250);
   });
 
-  it('prefers dayActivityLevel over legacy trainingBump when both present', () => {
-    // level='light'→100, not trainingBump=999
-    expect(getEntryExerciseKcal({ dayActivityLevel: 'light', trainingBump: 999 }, 80)).toBe(100);
+  it('prefers stored trainingBump over derived dayActivityLevel when both present', () => {
+    // normalizeEntry() derives dayActivityLevel='light' from trainingBump=999 in memory,
+    // but the exact stored value must win
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'light', trainingBump: 999 }, 80)).toBe(999);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getEntryExerciseKcal — legacy trainingBump exactness (regression)
+// ---------------------------------------------------------------------------
+
+describe('getEntryExerciseKcal legacy trainingBump exactness', () => {
+  it('exerciseSessions still win over trainingBump and derived level', () => {
+    const entry = {
+      exerciseSessions: [{ activityType: 'lifting', durationMin: 60, intensity: 'moderate' }],
+      dayActivityLevel: 'heavy',
+      trainingBump: 400,
+    };
+    // Sessions: 5.0 MET × 80 kg × 1 h = 400 — same coincidental value, confirms sessions path
+    expect(getEntryExerciseKcal(entry, 80)).toBe(400);
+    // Verify with a different weight to distinguish sessions from trainingBump path
+    expect(getEntryExerciseKcal({ ...entry, trainingBump: 999 }, 70)).toBe(350); // 5.0×70×1
+  });
+
+  it('trainingBump=280 with derived dayActivityLevel=medium returns 280, not 200', () => {
+    // normalizeEntry() maps 280 → 'medium'; DAY_ACTIVITY_LEVELS.medium.bump = 200
+    const entry = { trainingBump: 280, dayActivityLevel: 'medium' };
+    expect(getEntryExerciseKcal(entry, 80)).toBe(280);
+  });
+
+  it('trainingBump=400 with derived dayActivityLevel=heavy returns 400, not 350', () => {
+    // normalizeEntry() maps 400 → 'heavy'; DAY_ACTIVITY_LEVELS.heavy.bump = 350
+    const entry = { trainingBump: 400, dayActivityLevel: 'heavy' };
+    expect(getEntryExerciseKcal(entry, 80)).toBe(400);
+  });
+
+  it('new entry with dayActivityLevel=medium and no trainingBump returns configured bump', () => {
+    // Modern quick-select entries have no trainingBump — level is authoritative
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'medium' }, 80)).toBe(200);
+  });
+
+  it('custom level with no trainingBump returns 0 (sessions will provide calories)', () => {
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'custom' }, 80)).toBe(0);
+  });
+
+  it('rest level with no trainingBump returns 0', () => {
+    expect(getEntryExerciseKcal({ dayActivityLevel: 'rest' }, 80)).toBe(0);
+  });
+
+  it('trainingBump=0 with a level still uses the level (0 is not a stored bump)', () => {
+    expect(getEntryExerciseKcal({ trainingBump: 0, dayActivityLevel: 'medium' }, 80)).toBe(200);
   });
 
   it('returns 0 for null entry', () => {
