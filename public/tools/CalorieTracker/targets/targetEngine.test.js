@@ -756,4 +756,59 @@ describe('computeProteinTarget — proteinBasis', () => {
     const currentBasis = computeProteinTarget('fatLoss', 185, null, null);
     expect(protein).toBe(currentBasis.protein);
   });
+
+  it('explicit leanMass uses FFM even when lean-mass protein is lower than body-weight protein', () => {
+    // Use BF% = 45% (> 40.7% threshold) to make 2.7×FFM < 1.6×bodyWeight for maintenance
+    // 100 lb, BF=45% → FFM = 100 × 0.45359 × 0.55 = 24.9 kg; 2.7×24.9 = 67.3 → 67 g
+    // currentWeight maintenance (rate=1.6): 100 × 0.45359 × 1.6 = 72.6 → 73 g
+    // So leanMass (67 g) < currentWeight (73 g) — explicit leanMass must still use FFM
+    const ffm_kg = 100 * 0.45359237 * 0.55; // 24.95 kg FFM
+    const goals = makeGoals({ goalType: 'maintenance', proteinBasis: 'leanMass' });
+    const { protein, proteinBasisUsed, proteinBasisFallbackReason } = computeProteinTarget('maintenance', 100, ffm_kg, goals);
+    expect(proteinBasisUsed).toBe('leanMass');
+    expect(proteinBasisFallbackReason).toBeNull();
+    const currentBasis = computeProteinTarget('maintenance', 100, null, null);
+    expect(protein).toBeLessThan(currentBasis.protein); // FFM-based is lower but should still be used
+    expect(protein).toBeCloseTo(Math.round(ffm_kg * 2.7), 0);
+  });
+
+  it('explicit leanMass without BF% falls back to currentWeight with fallback reason', () => {
+    const goals = makeGoals({ goalType: 'maintenance', proteinBasis: 'leanMass' });
+    const { protein, proteinBasisUsed, proteinBasisFallbackReason } = computeProteinTarget('maintenance', 185, null, goals);
+    expect(proteinBasisUsed).toBe('currentWeight');
+    expect(proteinBasisFallbackReason).toMatch(/BF%/i);
+    const currentBasis = computeProteinTarget('maintenance', 185, null, null);
+    expect(protein).toBe(currentBasis.protein);
+  });
+
+  it('adjustedWeight uses midpoint between current and target weight', () => {
+    // 200 lb current, 160 lb target → midpoint = 180 lb
+    // fatLoss rate = 2.2; 180 × 0.45359 × 2.2 = 179.4 → ~179
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 160, proteinBasis: 'adjustedWeight' });
+    const { protein, proteinBasisUsed, proteinBasisFallbackReason } = computeProteinTarget('fatLoss', 200, null, goals);
+    expect(proteinBasisUsed).toBe('adjustedWeight');
+    expect(proteinBasisFallbackReason).toBeNull();
+    const midpointKg = ((200 + 160) / 2) * 0.45359237;
+    expect(protein).toBeCloseTo(Math.round(midpointKg * 2.2), 0);
+    // Must be between currentWeight and targetWeight basis
+    const currentBasis = computeProteinTarget('fatLoss', 200, null, null);
+    const targetBasis = computeProteinTarget('fatLoss', 200, null, makeGoals({ goalType: 'fatLoss', targetWeightLb: 160, proteinBasis: 'targetWeight' }));
+    expect(protein).toBeLessThan(currentBasis.protein);
+    expect(protein).toBeGreaterThan(targetBasis.protein);
+  });
+
+  it('adjustedWeight without valid target falls back to currentWeight with reason', () => {
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: null, proteinBasis: 'adjustedWeight' });
+    const { protein, proteinBasisUsed, proteinBasisFallbackReason } = computeProteinTarget('fatLoss', 185, null, goals);
+    expect(proteinBasisUsed).toBe('currentWeight');
+    expect(proteinBasisFallbackReason).toMatch(/target weight/i);
+  });
+
+  it('adjustedWeight when target >= current falls back to currentWeight with reason', () => {
+    // Target 190 lb >= current 185 lb — no valid conservative midpoint
+    const goals = makeGoals({ goalType: 'muscleGain', targetWeightLb: 190, proteinBasis: 'adjustedWeight' });
+    const { protein, proteinBasisUsed, proteinBasisFallbackReason } = computeProteinTarget('muscleGain', 185, null, goals);
+    expect(proteinBasisUsed).toBe('currentWeight');
+    expect(proteinBasisFallbackReason).toMatch(/not lower/i);
+  });
 });

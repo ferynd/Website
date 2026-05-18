@@ -1952,3 +1952,93 @@ describe('getTrueUpCandidates — centered windows', () => {
     }
   });
 });
+
+// ── getTrueUpCandidates — interval-aware allocation ───────────────────────────
+
+describe('getTrueUpCandidates — interval-aware allocation', () => {
+  it('each candidate allocatedDelta does not exceed its interval residualBefore', () => {
+    // Two blank days 7 days apart (both within each other\'s 28d window)
+    const startDate = '2023-10-01';
+    const d1 = isoDate(startDate, 28);
+    const d2 = isoDate(startDate, 35);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      blankDate: d1, startDate, n: 80,
+    });
+    dailyEntries.delete(d2); // add second blank day
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+
+    for (const c of candidates) {
+      for (const iv of c.intervalsUsed) {
+        expect(iv.allocatedDelta).toBeLessThanOrEqual(iv.residualBefore + 1); // +1 rounding
+      }
+    }
+  });
+
+  it('candidatesInWindow > 1 when two blank days share a 28d window', () => {
+    // d2 = d1 + 7 days, which is within d1\'s 28d window ([d1-14, d1+13])
+    const startDate = '2023-10-01';
+    const d1 = isoDate(startDate, 28);
+    const d2 = isoDate(startDate, 35);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      blankDate: d1, startDate, n: 80,
+    });
+    dailyEntries.delete(d2);
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+
+    const c1 = candidates.find(c => c.date === d1);
+    if (!c1) return;
+    // d1\'s 28d window = [d1-14, d1+13] = [day14, day41]; d2=day35 is inside it
+    const i28 = c1.intervalsUsed.find(i => i.name === '28d');
+    if (i28) {
+      expect(i28.candidatesInWindow).toBeGreaterThanOrEqual(2);
+      // When window is shared, allocFactor < 1 unless residual covers both needs
+      // (just verify allocFactor is recorded correctly as a ratio in [0,1])
+      expect(i28.allocFactor).toBeGreaterThanOrEqual(0);
+      expect(i28.allocFactor).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('single blank day gets allocFactor=1 when alone in its window', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 30);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      blankDate, startDate, n: 80,
+    });
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate);
+    if (!found) return;
+
+    // With only this candidate in the window, allocFactor = min(1, residual/refTdee)
+    // When residual ≥ refTdee (normal blank day scenario), allocFactor should be close to 1
+    for (const iv of found.intervalsUsed) {
+      if (iv.candidatesInWindow === 1) {
+        expect(iv.allocFactor).toBeGreaterThanOrEqual(0.95);
+      }
+    }
+    // Recommendation should still be close to TDEE (not artificially capped)
+    expect(found.recommendedDelta).toBeGreaterThanOrEqual(600);
+  });
+
+  it('_pending property on result array is non-enumerable', () => {
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      startDate: '2023-10-01', n: 60,
+    });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+
+    // Non-enumerable: should not appear in Object.keys, JSON.stringify, or for...in
+    expect(Object.keys(candidates)).not.toContain('_pending');
+    // But remains directly accessible
+    expect(Array.isArray(candidates._pending)).toBe(true);
+  });
+});
