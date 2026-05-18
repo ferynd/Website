@@ -127,7 +127,11 @@ function getLatestWeightFromEntries() {
  * Falls back gracefully to rawLatestWeightLb only.
  */
 async function buildTargetContext(mergedProfile = null) {
-  if (state.analysisResults) {
+  // When a mergedProfile is explicitly provided (i.e. from a form edit), always rerun
+  // runAnalysis so that formula-TDEE and profile-prior targets reflect the new values
+  // immediately. Only reuse the cached state.analysisResults when no profile overrides
+  // are in play (i.e. first-load or Energy-tab pre-computed result).
+  if (!mergedProfile && state.analysisResults) {
     return { analysisResults: state.analysisResults, rawLatestWeightLb: getLatestWeightFromEntries() };
   }
 

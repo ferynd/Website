@@ -658,3 +658,51 @@ describe('computeTDEE — activity level vs empirical', () => {
     expect(explanation.activityIgnored).toBeNull();
   });
 });
+
+// ── Profile-change sensitivity (Fix 1: stale context guard) ──────────────────
+// These tests prove that profile fields (activity level, weight, goal type)
+// immediately affect the formula TDEE and calorie targets — the mechanism that
+// makes buildTargetContext(mergedProfile) useful when it always reruns.
+
+describe('profile changes affect formula targets immediately', () => {
+  it('switching from sedentary to active raises formula TDEE', () => {
+    const sedentary = makeProfile({ baselineActivityLevel: 'sedentary', manualWeightOverrideLb: 185 });
+    const active    = makeProfile({ baselineActivityLevel: 'active',    manualWeightOverrideLb: 185 });
+
+    const { targets: tSed } = generateTargets(sedentary, makeGoals({ goalType: 'maintenance' }), null);
+    const { targets: tAct } = generateTargets(active,    makeGoals({ goalType: 'maintenance' }), null);
+
+    expect(tAct.calories).toBeGreaterThan(tSed.calories);
+  });
+
+  it('heavier weight produces higher formula TDEE for same activity level', () => {
+    const light  = makeProfile({ manualWeightOverrideLb: 150 });
+    const heavy  = makeProfile({ manualWeightOverrideLb: 220 });
+
+    const { targets: tL } = generateTargets(light, makeGoals({ goalType: 'maintenance' }), null);
+    const { targets: tH } = generateTargets(heavy, makeGoals({ goalType: 'maintenance' }), null);
+
+    expect(tH.calories).toBeGreaterThan(tL.calories);
+  });
+
+  it('fat-loss goal produces fewer calories than maintenance for same profile', () => {
+    const profile = makeProfile({ manualWeightOverrideLb: 185 });
+    const { targets: tMaint } = generateTargets(profile, makeGoals({ goalType: 'maintenance' }), null);
+    const { targets: tFat   } = generateTargets(
+      profile,
+      makeGoals({ goalType: 'fatLoss', targetWeightLb: 170, targetDate: '2025-06-01' }),
+      null,
+    );
+
+    expect(tFat.calories).toBeLessThan(tMaint.calories);
+  });
+
+  it('two extreme activity levels produce different formula TDEE via generateTargets', () => {
+    const p1 = makeProfile({ baselineActivityLevel: 'sedentary',  manualWeightOverrideLb: 185 });
+    const p2 = makeProfile({ baselineActivityLevel: 'veryActive', manualWeightOverrideLb: 185 });
+    const g  = makeGoals({ goalType: 'maintenance' });
+    const r1 = generateTargets(p1, g, null);
+    const r2 = generateTargets(p2, g, null);
+    expect(r1.targets.calories).not.toEqual(r2.targets.calories);
+  });
+});

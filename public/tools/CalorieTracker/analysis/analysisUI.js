@@ -10,6 +10,7 @@ import {
   getBlankDaysForPopulation,
   getPartialDaysForAdjustment,
   getTrueUpCandidates,
+  buildBlankDayEstimateEntry,
   buildVacationDayEntry,
   buildPartialDayAdjustment,
   classifyDay,
@@ -72,7 +73,7 @@ export function renderAnalysisSection() {
           ${renderPlateauStatus(results.plateau)}
           ${renderEnergyDetail(results)}
           ${renderImputationTable(results.rows)}
-          ${renderMissingCaloriesSection(state._trueUpCandidates, state._blankDaysForPopulation, state._partialDaysForAdjustment)}
+          ${renderMissingCaloriesSection(state._trueUpCandidates)}
           ${renderVacationEditorSection()}
           ${renderEstimateManagementSection()}
         `
@@ -170,21 +171,9 @@ export function initAnalysisEvents() {
     });
   }
 
-  // ── Missing Calories section (unified + legacy) ───────────────────────────
-  const trueUpCandidates = state._trueUpCandidates || [];
-  const blankDays = state._blankDaysForPopulation || [];
-  const partialDays = state._partialDaysForAdjustment || [];
-
-  const allCandidates = trueUpCandidates.length > 0
-    ? trueUpCandidates
-    : [
-        ...blankDays.map(d => ({ date: d.date, type: 'blank', entry: d, residual: d.calories, confidence: d.estimateMeta?.confidence ?? 'medium' })),
-        ...partialDays.map(d => ({ date: d.date, type: 'partial', entry: d, residual: d.residual, confidence: d.confidence })),
-      ];
-
-  const blankMap = new Map(blankDays.map(d => [d.date, d]));
-  const partialMap = new Map(partialDays.map(d => [d.date, d]));
-  const candidateMap = new Map(trueUpCandidates.map(d => [d.date, d]));
+  // ── Missing Calories section (unified candidates only) ────────────────────
+  const allCandidates = state._trueUpCandidates || [];
+  const candidateMap  = new Map(allCandidates.map(d => [d.date, d]));
 
   if (allCandidates.length > 0) {
     function getVisibleCheckboxes() {
@@ -226,7 +215,10 @@ export function initAnalysisEvents() {
       const toVal   = document.getElementById('blank-range-to')?.value;
       if (!fromVal || !toVal) return;
       getVisibleCheckboxes().forEach(cb => {
-        cb.checked = cb.dataset.date >= fromVal && cb.dataset.date <= toVal;
+        const row = cb.closest('tr');
+        const isReview = row?.dataset.review === 'true';
+        // Never auto-select reviewManually rows via range — user must check them explicitly
+        cb.checked = !isReview && cb.dataset.date >= fromVal && cb.dataset.date <= toVal;
       });
       updateFillBtn();
     });
@@ -297,11 +289,11 @@ export function initAnalysisEvents() {
         const kind = cb.dataset.kind;
         try {
           if (kind === 'partial') {
-            const candidate = candidateMap.get(dateStr) || partialMap.get(dateStr);
+            const candidate = candidateMap.get(dateStr);
             const existingEntry = state.dailyEntries.get(dateStr);
             if (!candidate || !existingEntry) continue;
-            const residual = candidate.recommendedDelta ?? candidate.residual;
-            const conf = candidate.confidence ?? cb.dataset.confidence ?? 'low';
+            const residual = candidate.recommendedDelta;
+            const conf = candidate.confidence ?? 'low';
             const { adjustedEntry } = buildPartialDayAdjustment(
               dateStr, residual, existingEntry, state.baselineTargets, conf
             );
@@ -309,10 +301,12 @@ export function initAnalysisEvents() {
           } else {
             const existingEntry = state.dailyEntries.get(dateStr);
             if (existingEntry?.estimateMeta?.locked) continue;
-            const estimated = candidateMap.get(dateStr) || blankMap.get(dateStr);
-            if (!estimated) continue;
-            // Use legacy blank entry if available, otherwise build minimal entry
-            const entryToSave = blankMap.has(dateStr) ? blankMap.get(dateStr) : estimated;
+            const candidate = candidateMap.get(dateStr);
+            if (!candidate) continue;
+            // Build a proper v2 estimate entry — never save the raw candidate object
+            const entryToSave = buildBlankDayEstimateEntry(
+              dateStr, candidate, state.analysisResults, state.dailyEntries, state.baselineTargets
+            );
             await saveEstimatedEntry(dateStr, entryToSave);
           }
           savedCount++;
@@ -1213,42 +1207,12 @@ function dayTypeBadge(type) {
 }
 
 /**
- * Combined "Fill Missing Calories" section.
- * Accepts unified candidates (from getTrueUpCandidates) or falls back to
- * legacy blankDays / partialDays arrays for backward compatibility.
+ * "Fill Missing Calories" section — driven exclusively by getTrueUpCandidates.
+ * No legacy blankDays / partialDays fallback; all rows come from the unified
+ * candidate engine with per-interval energy-balance evidence.
  */
-function renderMissingCaloriesSection(candidates, blankDays, partialDays) {
-  // Use unified candidates if available; fall back to legacy arrays
-  const rows = (candidates && candidates.length > 0)
-    ? candidates
-    : [
-        ...(blankDays || []).map(d => ({
-          date: d.date,
-          type: 'blank',
-          recommendedDelta: d.calories,
-          loggedCalories: 0,
-          expectedCalories: d.calories,
-          confidence: d.estimateMeta?.confidence ?? 'medium',
-          confidenceScore: 35,
-          reason: 'TDEE + weight delta (legacy estimate)',
-          checkedByDefault: true,
-          reviewManually: false,
-          intervalsUsed: [],
-        })),
-        ...(partialDays || []).map(d => ({
-          date: d.date,
-          type: 'partial',
-          recommendedDelta: d.residual,
-          loggedCalories: d.loggedCalories,
-          expectedCalories: d.modelEstimate,
-          confidence: d.confidence,
-          confidenceScore: d.confidence === 'medium' ? 40 : 20,
-          reason: d.reason,
-          checkedByDefault: d.confidence !== 'low',
-          reviewManually: d.residual > 1000,
-          intervalsUsed: [],
-        })),
-      ];
+function renderMissingCaloriesSection(candidates) {
+  const rows = candidates && candidates.length > 0 ? candidates : [];
 
   if (rows.length === 0) return '';
 
@@ -1258,11 +1222,19 @@ function renderMissingCaloriesSection(candidates, blankDays, partialDays) {
 
   const tableRows = rows.map(r => {
     const intervalDetails = r.intervalsUsed && r.intervalsUsed.length > 0
-      ? `<details class="inline text-xs mt-1"><summary class="cursor-pointer text-accent">Interval math</summary>
-          <div class="mt-1 space-y-0.5">
-            ${r.intervalsUsed.map(i =>
-              `<div>${i.name}: ${i.perDayResidual > 0 ? '+' : ''}${i.perDayResidual} kcal/day · ${i.coverage}% coverage · ${i.weightPoints} wt pts</div>`
-            ).join('')}
+      ? `<details class="inline text-xs mt-1"><summary class="cursor-pointer text-accent">Interval math ▸</summary>
+          <div class="mt-1 space-y-1 pl-1">
+            ${r.intervalsUsed.map(i => `<div class="border-l-2 border-accent/30 pl-2">
+              <strong>${i.name}</strong> [${i.intervalStart} – ${i.intervalEnd}]:
+              gap ${i.perDayResidual > 0 ? '+' : ''}${i.perDayResidual} kcal/day
+              ${i.reportedIntake != null ? ` · logged ${i.reportedIntake} kcal` : ''}
+              ${i.expectedExpenditure != null ? ` · TDEE-est ${i.expectedExpenditure} kcal` : ''}
+              ${i.weightImpliedStorage != null ? ` · wt-implied ${i.weightImpliedStorage > 0 ? '+' : ''}${i.weightImpliedStorage} kcal` : ''}
+              ${i.residualBefore != null ? ` · residual before ${i.residualBefore > 0 ? '+' : ''}${i.residualBefore}` : ''}
+              ${i.residualAfter != null ? ` → after ${i.residualAfter > 0 ? '+' : ''}${i.residualAfter}` : ''}
+              · ${i.coverage}% coverage · ${i.weightPoints} wt pts
+            </div>`).join('')}
+            ${r.confidenceDrivers ? `<div class="text-muted mt-0.5">Confidence factors: ${r.confidenceDrivers}</div>` : ''}
           </div></details>`
       : '';
 

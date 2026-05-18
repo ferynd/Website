@@ -68,6 +68,24 @@ export const app = initializeApp(importedConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
+// ---------- STATE HELPERS ----------
+
+/**
+ * Rebuild state.weightEntriesMulti from state.weightEntries so that callers
+ * which need multiple readings per day (e.g. runAnalysis) immediately see
+ * freshly uploaded data without an extra round-trip fetch.
+ */
+function _rebuildWeightEntriesMulti() {
+  const multi = new Map();
+  for (const [docId, entry] of state.weightEntries) {
+    const dateStr = entry.date;
+    if (!dateStr) continue;
+    if (!multi.has(dateStr)) multi.set(dateStr, []);
+    multi.get(dateStr).push({ ...entry, docId });
+  }
+  state.weightEntriesMulti = multi;
+}
+
 // ---------- DATABASE (FIRESTORE) CRUD FUNCTIONS ----------
 
 /**
@@ -478,6 +496,9 @@ export async function saveWeightEntriesBatch(entries, opts = {}) {
         const { docId, ...docData } = entry;
         state.weightEntries.set(docId, docData);
       }
+
+      // Rebuild weightEntriesMulti so same-session analysis uses all weigh-ins per day
+      _rebuildWeightEntriesMulti();
 
       if (opts.onProgress) {
         opts.onProgress(totalSaved, entries.length, ci + 1, chunks.length);

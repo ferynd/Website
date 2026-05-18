@@ -121,12 +121,50 @@ function sourceHasTime(s) {
 }
 
 /**
+ * Interpret (year, month, day, hour, min, sec) wall-clock components as being
+ * in `timezone` and return the corresponding UTC-based Date.
+ *
+ * Without a timezone the components are treated as browser-local time (same as
+ * `new Date(y, m-1, d, h, mi, s)`).
+ *
+ * The iterative algorithm finds the UTC instant such that, when formatted in
+ * the target timezone, it reads as the given wall-clock components. Converges
+ * in ≤3 iterations for all real-world IANA timezone offsets.
+ */
+function parseDateInTimezone(year, month, day, hour, min, sec, timezone) {
+  if (!timezone) return new Date(year, month - 1, day, hour, min, sec);
+  try {
+    let utcMs = Date.UTC(year, month - 1, day, hour, min, sec);
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(utcMs);
+      const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      });
+      const parts = fmt.formatToParts(d);
+      const get = t => parseInt(parts.find(p => p.type === t)?.value ?? '0');
+      let tzH = get('hour'); if (tzH === 24) tzH = 0;
+      const gotMs  = Date.UTC(get('year'), get('month') - 1, get('day'), tzH, get('minute'), get('second'));
+      const wantMs = Date.UTC(year, month - 1, day, hour, min, sec);
+      const diff = gotMs - wantMs;
+      if (Math.abs(diff) < 1000) break;
+      utcMs -= diff;
+    }
+    return new Date(utcMs);
+  } catch (_) {
+    return new Date(year, month - 1, day, hour, min, sec);
+  }
+}
+
+/**
  * Parse a date string using explicit format matchers.
  * Falls back to new Date() as a last resort.
  * @param {string} s
+ * @param {string|null} [timezone]  – IANA timezone name (e.g. "America/Chicago")
  * @returns {Date | null}
  */
-function parseExplicitDate(s) {
+function parseExplicitDate(s, timezone) {
   s = (s || '').trim();
   if (!s) return null;
 
@@ -135,7 +173,7 @@ function parseExplicitDate(s) {
   // YYYY-MM-DD [T|space HH:mm[:ss]]
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
   if (m) {
-    return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0));
+    return parseDateInTimezone(+m[1], +m[2], +m[3], +(m[4] || 0), +(m[5] || 0), +(m[6] || 0), timezone);
   }
 
   // MM/DD/YYYY [HH:mm[:ss] [AM/PM]]  — optional 12-hour suffix; bare 24-hour also accepted
@@ -147,7 +185,7 @@ function parseExplicitDate(s) {
       if (pm && h !== 12) h += 12;
       if (!pm && h === 12) h = 0;
     }
-    return new Date(+m[3], +m[1] - 1, +m[2], h, mi, sec);
+    return parseDateInTimezone(+m[3], +m[1], +m[2], h, mi, sec, timezone);
   }
 
   // Mon[ ]DD[,] YYYY HH:mm[:ss] AM/PM  (e.g. "Jul 13 2017 07:20:13 AM")
@@ -159,24 +197,51 @@ function parseExplicitDate(s) {
     const pm = m[7].toLowerCase() === 'pm';
     if (pm && h !== 12) h += 12;
     if (!pm && h === 12) h = 0;
-    return new Date(+m[3], moIdx, +m[2], h, +m[5], +(m[6] || 0));
+    return parseDateInTimezone(+m[3], moIdx + 1, +m[2], h, +m[5], +(m[6] || 0), timezone);
   }
 
-  // Final fallback
+  // Final fallback (no timezone applied — string has no parseable components)
   const d = new Date(s);
   return isNaN(d.getTime()) ? null : d;
 }
 
 // ── Doc-ID helpers ────────────────────────────────────────────────────────────
 
-function localDateStr(d) {
+/**
+ * Extract YYYY-MM-DD in the given timezone (or browser-local time when absent).
+ * Using Intl.DateTimeFormat with 'en-CA' reliably returns ISO-style YYYY-MM-DD.
+ */
+function localDateStr(d, timezone) {
+  if (timezone) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+      }).format(d);
+    } catch (_) { /* fall through */ }
+  }
   const y  = d.getFullYear();
   const mo = String(d.getMonth() + 1).padStart(2, '0');
   const da = String(d.getDate()).padStart(2, '0');
   return `${y}-${mo}-${da}`;
 }
 
-function localTimestamp(d) {
+/**
+ * Build a "YYYY-MM-DDTHH-MM-SS" timestamp string in the given timezone.
+ */
+function localTimestamp(d, timezone) {
+  if (timezone) {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone,
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      });
+      const parts = fmt.formatToParts(d);
+      const get = t => parts.find(p => p.type === t)?.value ?? '00';
+      let h = get('hour'); if (h === '24') h = '00';
+      return `${get('year')}-${get('month')}-${get('day')}T${h}-${get('minute')}-${get('second')}`;
+    } catch (_) { /* fall through */ }
+  }
   const y  = d.getFullYear();
   const mo = String(d.getMonth() + 1).padStart(2, '0');
   const da = String(d.getDate()).padStart(2, '0');
@@ -184,6 +249,24 @@ function localTimestamp(d) {
   const mi = String(d.getMinutes()).padStart(2, '0');
   const s  = String(d.getSeconds()).padStart(2, '0');
   return `${y}-${mo}-${da}T${h}-${mi}-${s}`;
+}
+
+/**
+ * Extract hour and minute in the given timezone (or browser-local).
+ */
+function localHourMin(d, timezone) {
+  if (timezone) {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
+      });
+      const parts = fmt.formatToParts(d);
+      const get = t => parseInt(parts.find(p => p.type === t)?.value ?? '0');
+      let h = get('hour'); if (h === 24) h = 0;
+      return { h, mi: get('minute') };
+    } catch (_) { /* fall through */ }
+  }
+  return { h: d.getHours(), mi: d.getMinutes() };
 }
 
 /** djb2-variant hash of a string → unsigned 32-bit base-36. */
@@ -200,9 +283,9 @@ function rowHash(str) {
  * - Rows with a precise time → local timestamp ("2017-07-13T07-20-13")
  * - Date-only rows           → "date_weight_hash" (stable across re-uploads)
  */
-function computeDocId(d, weight_lb, rawRow, hasTime) {
-  if (hasTime) return localTimestamp(d);
-  return `${localDateStr(d)}_${weight_lb}_${rowHash(rawRow)}`;
+function computeDocId(d, weight_lb, rawRow, hasTime, timezone) {
+  if (hasTime) return localTimestamp(d, timezone);
+  return `${localDateStr(d, timezone)}_${weight_lb}_${rowHash(rawRow)}`;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -240,6 +323,7 @@ function computeDocId(d, weight_lb, rawRow, hasTime) {
  */
 export function parseWeightCSV(raw, opts = {}) {
   const importedAt = new Date().toISOString();
+  const timezone   = opts.timezone ?? null;
 
   const diag = {
     totalRows: 0,
@@ -356,15 +440,16 @@ export function parseWeightCSV(raw, opts = {}) {
       dateStr = timePart ? `${datePart} ${timePart}` : datePart;
     }
 
-    const parsed = parseExplicitDate(dateStr);
+    const parsed = parseExplicitDate(dateStr, timezone);
     if (!parsed || isNaN(parsed.getTime())) { skip('invalid_date', i + 1); continue; }
 
     const hasTime   = sourceHasTime(dateStr);
-    const date      = localDateStr(parsed);
-    const time_min  = parsed.getHours() * 60 + parsed.getMinutes();
-    const timestamp = localTimestamp(parsed);
+    const date      = localDateStr(parsed, timezone);
+    const { h: hh, mi: mmi } = localHourMin(parsed, timezone);
+    const time_min  = hh * 60 + mmi;
+    const timestamp = localTimestamp(parsed, timezone);
     const sourceHash = rowHash(rawRow);
-    const docId     = computeDocId(parsed, weight_lb, rawRow, hasTime);
+    const docId     = computeDocId(parsed, weight_lb, rawRow, hasTime, timezone);
 
     if (seenDocIds.has(docId)) {
       diag.duplicateRows++;
