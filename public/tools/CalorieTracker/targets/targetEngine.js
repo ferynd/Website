@@ -757,3 +757,48 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
     warnings: result.warnings,
   };
 }
+
+/**
+ * Pure helper: build the calorie-target series for the Energy-tab eating-pattern chart.
+ *
+ * In manual mode: flat line at baselineTargets.calories (null before firstNutritionDate).
+ * In autoGoal mode: per-date resolution via resolveDailyBaseTargets, cached to avoid
+ *   redundant generateTargets calls across a long label array.
+ *
+ * @param {string[]}    labels            - chart date strings YYYY-MM-DD (chronological)
+ * @param {string|null} firstNutritionDate - earliest manually-logged date; null = unknown
+ * @param {object}      stateLike         - { goalSettings, baselineTargets, userProfile,
+ *                                          analysisResults, weightEntries }
+ * @returns {{ targetData: (number|null)[], label: string|null, anyFallback: boolean }}
+ */
+export function buildEatingPatternTargetSeries(labels, firstNutritionDate, stateLike) {
+  const targetMode = stateLike.goalSettings?.targetMode ?? 'manual';
+  const baseCals   = parseFloat(stateLike.baselineTargets?.calories) || null;
+
+  if (targetMode !== 'autoGoal') {
+    return {
+      targetData: labels.map(d =>
+        (!firstNutritionDate || d < firstNutritionDate) ? null : baseCals
+      ),
+      label: baseCals ? `Manual target (${baseCals} kcal)` : null,
+      anyFallback: false,
+    };
+  }
+
+  // autoGoal: resolve per date, cache to avoid calling generateTargets O(n) times
+  const cache = new Map();
+  let anyFallback = false;
+
+  const targetData = labels.map(dateStr => {
+    if (!firstNutritionDate || dateStr < firstNutritionDate) return null;
+    if (!cache.has(dateStr)) {
+      const r = resolveDailyBaseTargets(dateStr, stateLike);
+      if (r.source === 'manual_fallback') anyFallback = true;
+      cache.set(dateStr, parseFloat(r.targets?.calories) || baseCals);
+    }
+    return cache.get(dateStr);
+  });
+
+  const label = anyFallback ? 'Auto-goal target (manual fallback)' : 'Auto-goal target';
+  return { targetData, label, anyFallback };
+}

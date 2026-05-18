@@ -16,6 +16,7 @@ import {
   computeWeekdayAverages,
   VACATION_TYPE_CONFIG,
 } from './engine.js';
+import { buildEatingPatternTargetSeries } from '../targets/targetEngine.js';
 import { handleWeightUpload } from './weightUpload.js';
 import { debugLog, showMessage } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
@@ -736,8 +737,14 @@ function renderEatingPatternChart(results) {
     : '';
 
   const targetModeNote = targetMode === 'autoGoal'
-    ? 'Daily targets are set by <strong>Auto Goal</strong> mode (Profile &amp; Goals).'
-    : 'Daily targets use your <strong>manual baseline</strong> (Settings or "Apply to Baseline Targets").';
+    ? 'Daily targets are set by <strong>Auto Goal</strong> mode (Profile &amp; Goals) — the dashed target line varies per date.'
+    : 'Daily targets use your <strong>manual baseline</strong> (Settings or "Apply to Baseline Targets") — the dashed target line is flat.';
+
+  const targetNote = targetMode === 'autoGoal'
+    ? '<p>Target line: per-date <strong>Auto Goal</strong> calories (varies with your goal deadline and weight history).</p>'
+    : (baseCals ? `<p>Target line: flat <strong>manual baseline of ${baseCals} kcal/day</strong>${tdee && baseCals < tdee ? ` — a deficit of ~${tdee - baseCals} kcal/day` : ''}.</p>` : '');
+
+  const targetLineDesc = targetMode === 'autoGoal' ? 'auto-goal target (dashed, per-date)' : 'manual baseline target (dashed)';
 
   return `
     <div class="mb-6 card p-6 shadow-lg">
@@ -754,12 +761,12 @@ function renderEatingPatternChart(results) {
       <div class="p-3 surface-2 rounded-lg border text-sm text-muted space-y-2">
         <p class="font-semibold text-primary">How the model thinks about this:</p>
         ${tdee ? `<p>Estimated total daily energy expenditure: <strong>${tdee} kcal/day</strong> (${tdeeSource}). ${restDayTdee !== tdee ? `Rest-day TDEE: <strong>${restDayTdee} kcal/day</strong> (fitted BMR × rest-day PAL).` : ''}</p>` : ''}
-        ${baseCals ? `<p>Baseline calorie target: <strong>${baseCals} kcal/day</strong>${tdee && baseCals < tdee ? ` — a deficit of ~${tdee - baseCals} kcal/day` : ''}.</p>` : ''}
+        ${targetNote}
         ${uncertaintyNote ? `<p>${uncertaintyNote} This is a physical lower bound on single-day precision — scale fluctuations can mask real trends.</p>` : ''}
         ${residualNote ? `<p>${residualNote} ${Math.abs(residual?.medianKcalPerDay ?? 0) > 100 ? 'This gap likely reflects underlogged meals, not metabolic differences.' : 'Small gap — logging appears consistent.'}</p>` : ''}
         ${firstDateNote ? `<p>${firstDateNote} Weight data before this date affects the trend chart only.</p>` : ''}
         <p>${targetModeNote}</p>
-        <p class="text-xs">The chart shows your 7-day rolling calorie average (blue, real logged days only) vs your base target (dashed) and the TDEE estimate (orange). The smoothed weight trend is overlaid on the right axis. Unsaved imputed values are never included in the reported calorie series.</p>
+        <p class="text-xs">The chart shows your 7-day rolling calorie average (blue, real logged days only) vs your ${targetLineDesc} and the TDEE estimate (orange). The smoothed weight trend is overlaid on the right axis. Unsaved imputed values are never included in the reported calorie series.</p>
       </div>
     </div>
   `;
@@ -812,7 +819,6 @@ function drawEatingPatternChart(rows) {
   const targetColor = chartColors[3] || '#22c55e';
   const weightColor = chartColors[0] || '#a78bfa';
 
-  const baseCals = parseFloat(state.baselineTargets?.calories) || null;
   const tdeeVal  = state.analysisResults?.bmrModel?.tdee_current || null;
 
   // Respect the "include estimates" toggle if it exists in the DOM
@@ -882,16 +888,19 @@ function drawEatingPatternChart(rows) {
     });
   }
 
-  if (baseCals) {
+  const { targetData, label: targetLabel } =
+    buildEatingPatternTargetSeries(labels, firstNutritionDate, state);
+
+  if (targetLabel) {
     datasets.push({
-      label: `Target (${baseCals} kcal)`,
-      data: labels.map(() => baseCals),
+      label: targetLabel,
+      data: targetData,
       borderColor: targetColor,
       borderWidth: 1.5,
       borderDash: [3, 3],
       pointRadius: 0,
       fill: false,
-      spanGaps: true,
+      spanGaps: false,   // null = gap, keeps pre-tracking stretch clean
       yAxisID: 'y',
       order: 4,
     });

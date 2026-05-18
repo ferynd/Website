@@ -20,6 +20,7 @@ import {
   applyManualOverrides,
   resolveDailyBaseTargets,
   latestWeightLbFromEntries,
+  buildEatingPatternTargetSeries,
 } from './targetEngine.js';
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -1235,5 +1236,93 @@ describe('computeBMR — Cunningham preferred when BF% is set', () => {
     const profile = makeProfile({ bodyFatPercent: 20, manualWeightOverrideLb: 185 });
     const { meta } = generateTargets(profile, makeGoals(), null);
     expect(meta.bmrMethod).toBe('cunningham');
+  });
+});
+
+// ── buildEatingPatternTargetSeries ────────────────────────────────────────────
+
+describe('buildEatingPatternTargetSeries', () => {
+  const labels = ['2025-01-01', '2025-01-02', '2025-01-03', '2025-01-04'];
+  const firstNutritionDate = '2025-01-02';
+
+  function makeStateLike(overrides = {}) {
+    return {
+      goalSettings: { targetMode: 'manual', goalType: 'maintenance', manualTargetOverrides: {} },
+      baselineTargets: { calories: 2000, protein: 150, fat: 60, carbs: 200 },
+      userProfile: makeProfile({ manualWeightOverrideLb: 185 }),
+      analysisResults: null,
+      weightEntries: new Map(),
+      ...overrides,
+    };
+  }
+
+  it('manual mode returns a flat baseline series', () => {
+    const { targetData, label, anyFallback } =
+      buildEatingPatternTargetSeries(labels, firstNutritionDate, makeStateLike());
+    expect(anyFallback).toBe(false);
+    expect(label).toMatch(/Manual target/);
+    expect(targetData[0]).toBeNull();          // before firstNutritionDate
+    expect(targetData[1]).toBe(2000);
+    expect(targetData[2]).toBe(2000);
+    expect(targetData[3]).toBe(2000);
+  });
+
+  it('manual mode returns all-null when firstNutritionDate is null', () => {
+    const { targetData } =
+      buildEatingPatternTargetSeries(labels, null, makeStateLike());
+    expect(targetData.every(v => v === null)).toBe(true);
+  });
+
+  it('manual mode label is null when baselineTargets.calories is missing', () => {
+    const s = makeStateLike({ baselineTargets: {} });
+    const { label } = buildEatingPatternTargetSeries(labels, firstNutritionDate, s);
+    expect(label).toBeNull();
+  });
+
+  it('autoGoal mode returns date-specific targets (> 0) after firstNutritionDate', () => {
+    const s = makeStateLike({
+      goalSettings: { targetMode: 'autoGoal', goalType: 'maintenance', manualTargetOverrides: {} },
+    });
+    const { targetData, label } =
+      buildEatingPatternTargetSeries(labels, firstNutritionDate, s);
+    expect(label).toBe('Auto-goal target');
+    expect(targetData[0]).toBeNull();           // before firstNutritionDate
+    expect(targetData[1]).toBeGreaterThan(0);
+    expect(targetData[2]).toBeGreaterThan(0);
+  });
+
+  it('dates before firstNutritionDate return null in autoGoal mode', () => {
+    const s = makeStateLike({
+      goalSettings: { targetMode: 'autoGoal', goalType: 'maintenance', manualTargetOverrides: {} },
+    });
+    const { targetData } =
+      buildEatingPatternTargetSeries(labels, '2025-01-04', s);
+    expect(targetData[0]).toBeNull();
+    expect(targetData[1]).toBeNull();
+    expect(targetData[2]).toBeNull();
+    expect(targetData[3]).toBeGreaterThan(0);
+  });
+
+  it('manual fallback is reflected in label and anyFallback when autoGoal has no weight', () => {
+    const s = makeStateLike({
+      goalSettings: { targetMode: 'autoGoal', goalType: 'maintenance', manualTargetOverrides: {} },
+      userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: false }),
+      weightEntries: new Map(),
+    });
+    const { label, anyFallback } =
+      buildEatingPatternTargetSeries(labels, firstNutritionDate, s);
+    expect(anyFallback).toBe(true);
+    expect(label).toContain('fallback');
+  });
+
+  it('autoGoal caches: resolving the same date twice yields the same value', () => {
+    const s = makeStateLike({
+      goalSettings: { targetMode: 'autoGoal', goalType: 'maintenance', manualTargetOverrides: {} },
+    });
+    const labelsWithDup = ['2025-01-02', '2025-01-02', '2025-01-03'];
+    const { targetData } =
+      buildEatingPatternTargetSeries(labelsWithDup, '2025-01-02', s);
+    expect(targetData[0]).toBe(targetData[1]);   // same date, same value
+    expect(typeof targetData[0]).toBe('number');
   });
 });
