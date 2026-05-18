@@ -699,7 +699,7 @@ describe('profile changes affect formula targets immediately', () => {
 
   it('two extreme activity levels produce different formula TDEE via generateTargets', () => {
     const p1 = makeProfile({ baselineActivityLevel: 'sedentary',  manualWeightOverrideLb: 185 });
-    const p2 = makeProfile({ baselineActivityLevel: 'veryActive', manualWeightOverrideLb: 185 });
+    const p2 = makeProfile({ baselineActivityLevel: 'very_active', manualWeightOverrideLb: 185 });
     const g  = makeGoals({ goalType: 'maintenance' });
     const r1 = generateTargets(p1, g, null);
     const r2 = generateTargets(p2, g, null);

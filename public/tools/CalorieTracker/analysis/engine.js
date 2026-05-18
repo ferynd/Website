@@ -1721,11 +1721,19 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
       const lastW  = weightRows[weightRows.length - 1].wt_smooth_lb;
       const weightImpliedStorage = Math.round((lastW - firstW) * 3500);
 
-      // Reported intake (including candidate's loggedCalories, 0 for blank)
+      // Reported intake. For blank candidate days, treat intake as 0 (the day is unfilled).
+      // Other imputed non-candidate days can still contribute their imputed calories.
       let reportedIntake = 0;
       for (const r of intervalRows) {
-        const e = dailyEntries.get(r.date);
-        reportedIntake += e ? (parseFloat(e.calories) || 0) : (r.calories_imputed ? (r.calories || 0) : 0);
+        if (r.date === row.date && type === 'blank') {
+          // Candidate blank day has not been logged — exclude any imputed calories
+          reportedIntake += 0;
+        } else {
+          const e = dailyEntries.get(r.date);
+          reportedIntake += e
+            ? parseFloat(e.calories) || 0
+            : (r.calories_imputed ? (r.calories || 0) : 0);
+        }
       }
       reportedIntake = Math.round(reportedIntake);
 
@@ -1787,10 +1795,20 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
     }
 
     // ── Cap and build recommendation ────────────────────────────────────────
-    const maxDelta = type === 'blank'
-      ? Math.min(perDay * primary.days, Math.round(avgTdeeForCandidate))  // don't exceed a full day's TDEE
-      : Math.min(perDay, Math.round(avgTdeeForCandidate - loggedCalories));
-    const recommendedDelta = Math.max(0, Math.min(maxDelta, 1500));
+    // Blank days: recommendedDelta = full-day calorie estimate, saved as the entry total.
+    // Partial days: recommendedDelta = additive missing-calorie adjustment, appended to existing food.
+    let recommendedDelta;
+    if (type === 'blank') {
+      // Prefer imputed row calories; fall back to interval TDEE, then baseline, then 2000
+      const imputedCals = row.calories_imputed ? (row.calories || 0) : 0;
+      const fullDayEst = imputedCals > 600
+        ? imputedCals
+        : (avgTdeeForCandidate > 0 ? Math.round(avgTdeeForCandidate) : (parseFloat(baselineTargets?.calories) || 2000));
+      recommendedDelta = Math.min(Math.max(fullDayEst, 600), 6000);
+    } else {
+      const maxDelta = Math.min(perDay, Math.round(avgTdeeForCandidate - loggedCalories));
+      recommendedDelta = Math.max(0, Math.min(maxDelta, 1500));
+    }
     if (recommendedDelta < 100) continue;
 
     const expectedCalories = Math.round(loggedCalories + recommendedDelta);
@@ -1855,11 +1873,13 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
  * Build a complete v2 daily entry for a blank day from a true-up candidate.
  *
  * Unlike buildPartialDayAdjustment (which appends to existing food),
- * this creates an entry from scratch using the candidate's recommendedDelta
- * as the day's calorie total and deriving macros from baseline targets.
+ * this creates an entry from scratch. For blank candidates, candidate.recommendedDelta
+ * is the full-day calorie estimate (imputed or TDEE-derived) — it is saved directly as
+ * the entry calorie total. For partial candidates (handled separately by
+ * buildPartialDayAdjustment), recommendedDelta is an additive adjustment instead.
  *
  * @param {string} dateStr
- * @param {object} candidate         – getTrueUpCandidates row
+ * @param {object} candidate         – getTrueUpCandidates row; recommendedDelta is full-day kcal
  * @param {object} analysisResults   – runAnalysis() output (may be null)
  * @param {Map}    dailyEntries
  * @param {object} baselineTargets

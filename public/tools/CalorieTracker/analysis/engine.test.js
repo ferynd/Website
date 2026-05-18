@@ -1460,19 +1460,88 @@ describe('getTrueUpCandidates', () => {
     expect(flagged).toBeUndefined();
   });
 
-  it('a clearly blank day is flagged as type blank', () => {
+  it('a clearly blank day is found and flagged as type blank (hard check)', () => {
     const startDate = '2023-10-01';
     const blankDate = isoDate(startDate, 25);
-    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 70 });
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
 
     const results = runAnalysis(weightEntries, dailyEntries);
-    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    expect(results.error).toBeFalsy();
 
-    // May or may not find it depending on imputation — if found, should be 'blank'
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
     const found = candidates.find(c => c.date === blankDate);
-    if (found) {
-      expect(found.type).toBe('blank');
-      expect(found.recommendedDelta).toBeGreaterThan(0);
+    expect(found, `expected blank candidate for ${blankDate} — candidate was not produced`).toBeDefined();
+    expect(found.type).toBe('blank');
+    // recommendedDelta for a blank day is the full-day estimate, not a tiny residual
+    expect(found.recommendedDelta).toBeGreaterThanOrEqual(600);
+    expect(found.recommendedDelta).toBeLessThanOrEqual(6000);
+  });
+
+  it('blank day recommendedDelta is a full-day TDEE estimate, not a per-day residual fragment', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const tdeeOverride = 2350;
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp(
+      { blankDate, startDate, n: 80, tdeeOverride },
+    );
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate);
+    expect(found, `expected blank candidate for ${blankDate}`).toBeDefined();
+    // Full-day estimate must be substantially larger than per-day residual (~25 kcal/day)
+    // A blank day TDEE-based estimate should be ~2000-2400, not ~25
+    expect(found.recommendedDelta).toBeGreaterThanOrEqual(1500);
+  });
+
+  it('buildBlankDayEstimateEntry saves calories equal to the blank candidate recommendedDelta', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate);
+    expect(found, `expected blank candidate for ${blankDate}`).toBeDefined();
+
+    const entry = buildBlankDayEstimateEntry(blankDate, found, null, dailyEntries, baseline);
+    expect(entry.calories).toBe(found.recommendedDelta);
+    expect(entry.foodItems[0].calories).toBe(found.recommendedDelta);
+  });
+
+  it('blank candidate interval excludes the blank day imputed calories from reportedIntake', () => {
+    // All non-blank days log 2000 kcal. The blank day has no log entry.
+    // With the fix, the blank day contributes 0 to reportedIntake.
+    // Without it, imputed calories (~TDEE) would inflate reportedIntake by ~2350.
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate);
+    expect(found, `expected blank candidate for ${blankDate}`).toBeDefined();
+
+    // For each interval, expectedExpenditure must exceed reportedIntake.
+    // If the blank day's imputed calories were included, reportedIntake would be close
+    // to expectedExpenditure and the residual would shrink to near zero.
+    for (const interval of found.intervalsUsed) {
+      expect(interval.expectedExpenditure).toBeGreaterThan(interval.reportedIntake);
+      expect(interval.residualBefore).toBeGreaterThan(0);
+    }
+
+    // For the 14-day window, 13 non-blank days × 2000 kcal = 26000 reported.
+    // If blank day imputed (~2350) were included it would be ~28350 — above 27000.
+    const i14 = found.intervalsUsed.find(i => i.name === '14d');
+    if (i14) {
+      expect(i14.reportedIntake).toBeLessThan(27000);
+      expect(i14.reportedIntake).toBeGreaterThan(23000);
     }
   });
 
