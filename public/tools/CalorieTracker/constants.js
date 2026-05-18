@@ -30,7 +30,16 @@ export const BANKING_CONFIG = {
     LIGHT_LIFT: 100, // 25-40g carbs * 4 kcal/g = 100-160 kcal
     HARD_LIFT: 280, // 50-90g carbs * 4 kcal/g = 200-360 kcal
     HIIT_ENDURANCE: 400 // 60-120g carbs * 4 kcal/g = 240-480 kcal
-  }
+  },
+
+  // Auto Goal schedule adjustment caps (kcal/day downward)
+  // Soft cap: normal maximum correction per day in Auto Goal mode
+  MAX_SCHEDULE_ADJ_SOFT: 150,
+  // Hard cap: absolute maximum correction — goal date may need adjustment
+  MAX_SCHEDULE_ADJ_HARD: 250,
+
+  // Safe daily calorie floor — NIDDK Body Weight Planner public lower bound
+  MIN_DAILY_CALORIES: 1000,
 };
 
 // Groups nutrients by tracking behavior (daily floors vs 7-day averages)

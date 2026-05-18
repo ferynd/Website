@@ -1326,3 +1326,107 @@ describe('buildEatingPatternTargetSeries', () => {
     expect(typeof targetData[0]).toBe('number');
   });
 });
+
+// ── Auto Goal: 177 lb → 170 lb by 2026-07-31 scenario ───────────────────────
+
+describe('Auto Goal: 177→170 lb by 2026-07-31', () => {
+  const PROFILE_177 = makeProfile({
+    sex: 'male', age: 35,
+    heightValue: 70, heightUnit: 'in',
+    manualWeightOverrideLb: 177,
+    baselineActivityLevel: 'moderate',
+  });
+  const GOALS_TO_170 = makeGoals({
+    goalType: 'fatLoss',
+    targetWeightLb: 170,
+    targetDate: '2026-07-31',
+    targetMode: 'autoGoal',
+    manualTargetOverrides: {},
+  });
+  // Approx days from today (2026-05-18) to 2026-07-31 ≈ 74 days
+  const AS_OF = '2026-05-18';
+
+  it('produces a mild deficit, not a crash target', () => {
+    const { targets, meta } = generateTargets(PROFILE_177, GOALS_TO_170, null, null, AS_OF);
+    expect(targets).not.toBeNull();
+    // 177 lb → 170 lb in ~74 days: delta_lb=7; delta_kg≈3.17; deficit = 3.17×7700/74 ≈ 330 kcal
+    // TDEE formula moderate ≈ 2700; target ≈ 2700−330 ≈ 2370 — reasonable, not below 1000
+    expect(targets.calories).toBeGreaterThan(1500);
+    expect(targets.calories).toBeLessThan(3000);
+    expect(meta.weightLb).toBe(177);
+  });
+
+  it('calorie target is above safe floor (1000 kcal)', () => {
+    const { targets } = generateTargets(PROFILE_177, GOALS_TO_170, null, null, AS_OF);
+    expect(targets.calories).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('moving target date later increases calories (gentler deficit)', () => {
+    const goalsEarlier = { ...GOALS_TO_170, targetDate: '2026-06-30' };
+    const goalsLater   = { ...GOALS_TO_170, targetDate: '2026-10-31' };
+    const { targets: tE } = generateTargets(PROFILE_177, goalsEarlier, null, null, AS_OF);
+    const { targets: tL } = generateTargets(PROFILE_177, goalsLater,   null, null, AS_OF);
+    expect(tL.calories).toBeGreaterThanOrEqual(tE.calories);
+  });
+
+  it('moving target date earlier decreases calories (steeper deficit)', () => {
+    const goalsFar  = { ...GOALS_TO_170, targetDate: '2026-11-30' };
+    const goalsNear = { ...GOALS_TO_170, targetDate: '2026-07-01' };
+    const { targets: tF } = generateTargets(PROFILE_177, goalsFar,  null, null, AS_OF);
+    const { targets: tN } = generateTargets(PROFILE_177, goalsNear, null, null, AS_OF);
+    expect(tN.calories).toBeLessThanOrEqual(tF.calories);
+  });
+
+  it('if target date would require unsafe deficit, calories are floored and explanation notes it', () => {
+    // 7 lb loss in 3 days is absurd — should hit bmr_floor clamp
+    const extremeGoals = { ...GOALS_TO_170, targetDate: '2026-05-21' }; // 3 days out
+    const { targets, explanation } = generateTargets(PROFILE_177, extremeGoals, null, null, AS_OF);
+    // target_invalid or bmr_floor clamp; calories should still be >= 1000
+    expect(targets.calories).toBeGreaterThanOrEqual(1000);
+    // The explanation may note the clamp
+    if (explanation?.deficitClamped) {
+      expect(explanation.deficitClamped).toMatch(/date|cap|clamp|750|invalid/i);
+    }
+  });
+
+  it('resolveDailyBaseTargets produces reasonable auto goal for 177→170 scenario', () => {
+    const s = {
+      baselineTargets: { calories: 2000, protein: 150, fat: 60, carbs: 200 },
+      goalSettings: { ...GOALS_TO_170, targetMode: 'autoGoal' },
+      userProfile: PROFILE_177,
+      analysisResults: null,
+      weightEntries: new Map(),
+    };
+    const { targets, source } = resolveDailyBaseTargets(AS_OF, s);
+    expect(source).toBe('autoGoal');
+    expect(targets.calories).toBeGreaterThan(1500);
+    expect(targets.calories).toBeLessThan(3000);
+  });
+});
+
+// ── Auto Goal calorie floor: base target never below 1000 ────────────────────
+
+describe('Auto Goal calorie floor', () => {
+  it('computeCalorieTarget always returns calories >= 1000 for fat loss', () => {
+    // TDEE 1050, BMR 1200 → minSafeFloor = max(1000, round(1200×0.85)=1020) = 1020
+    const { calories } = computeCalorieTarget('fatLoss', 1050, 1200, makeGoals(), 100);
+    expect(calories).toBeGreaterThanOrEqual(1000);
+  });
+
+  it('calorieFloor is max(1000, round(0.85 × BMR))', () => {
+    // BMR 1800 → floor = max(1000, 1530) = 1530
+    const { calorieFloor } = computeCalorieTarget('fatLoss', 2400, 1800, makeGoals(), 185);
+    expect(calorieFloor).toBe(Math.max(1000, Math.round(1800 * 0.85)));
+  });
+
+  it('generateTargets never returns calories below 1000 for any goal type', () => {
+    const profile = makeProfile({ manualWeightOverrideLb: 90, sex: 'female', age: 70 });
+    for (const goalType of ['fatLoss', 'maintenance', 'recomp', 'muscleGain', 'performance']) {
+      const goals = makeGoals({ goalType, targetWeightLb: goalType === 'fatLoss' ? 85 : null, targetDate: '2027-12-31' });
+      const { targets } = generateTargets(profile, goals, null, null, '2026-05-18');
+      if (targets) {
+        expect(targets.calories, `${goalType} calories below 1000`).toBeGreaterThanOrEqual(1000);
+      }
+    }
+  });
+});
