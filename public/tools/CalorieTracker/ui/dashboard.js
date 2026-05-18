@@ -31,6 +31,9 @@ import { CONFIG } from '../config.js';
 import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
 import { UL_TABLE } from '../targets/nutritionReferences.js';
 import { resolveDailyBaseTargets } from '../targets/dailyTargetResolver.js';
+import { runAnalysis } from '../analysis/engine.js';
+import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries } from '../targets/targetEngine.js';
+import { calcBankingCore } from './bankingEngine.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -284,69 +287,38 @@ export function calculateBankingData(targetDateStr) {
     // The full 7-day window budget (for display and manual-mode calc).
     const windowBudget = sumPastBaseTargets + todayBaseCalories + sumPastTrainingBumps + todaysTrainingBump;
 
-    // rawBankBalance: cumulative credit (+) or debt (-) from the past 6 days.
-    // Positive = under-ate relative to targets. Negative = over-ate.
-    const rawBankBalance = Math.round(sumPastBaseTargets + sumPastTrainingBumps - sumPast6Actual);
-
     // Sum of all past day targets (for display in the table footer)
     const sumPastTargets = sumPastBaseTargets + sumPastTrainingBumps;
 
-    // ── Mode-specific target resolution ──────────────────────────────────────
+    // ── Effective calorie floor (BMR-based or 1000 kcal minimum) ─────────────
     const MIN_DAILY_CALORIES = BANKING_CONFIG.MIN_DAILY_CALORIES ?? 1000;
-    let bankMode, bankBalance, bankAdjustmentApplied, scheduleAdjustment, targetFloorApplied;
-    let scheduleCapped = false;
-    let todayKcalTarget;
-
-    if (targetMode === 'autoGoal') {
-      // AUTO GOAL: today's target = base (from goal engine) + exercise + soft schedule correction.
-      // The full rolling bank is NOT applied — that caused extreme negative targets when a few
-      // high-calorie days exhausted the 7-day window budget.
-      scheduleAdjustment = 0;
-
-      const cumulativeDebt = Math.max(0, -rawBankBalance); // how much over target this week
-
-      if (cumulativeDebt > 0) {
-        const goalTargetDate = state.goalSettings?.targetDate;
-        if (goalTargetDate) {
-          const targetMs   = new Date(`${goalTargetDate}T00:00:00`).getTime();
-          const todayMs    = new Date(`${targetDateStr}T00:00:00`).getTime();
-          const remainingDays = Math.round((targetMs - todayMs) / 86400000);
-
-          if (remainingDays > 1) {
-            const rawAdj   = -cumulativeDebt / remainingDays;
-            const SOFT_CAP = -(BANKING_CONFIG.MAX_SCHEDULE_ADJ_SOFT ?? 150);
-            const HARD_CAP = -(BANKING_CONFIG.MAX_SCHEDULE_ADJ_HARD ?? 250);
-            // Apply hard cap; flag if soft cap was also exceeded
-            scheduleAdjustment = Math.round(Math.max(HARD_CAP, rawAdj));
-            if (rawAdj < SOFT_CAP) scheduleCapped = true;
-          }
-        }
-      }
-
-      bankMode             = 'autoGoalSchedule';
-      bankAdjustmentApplied = scheduleAdjustment;
-      bankBalance          = rawBankBalance; // informational (not directly applied)
-
-      const rawTarget = todayBaseCalories + todaysTrainingBump + scheduleAdjustment;
-      todayKcalTarget = BankingHelpers.roundToNearest25(rawTarget);
-
-      targetFloorApplied = todayKcalTarget < MIN_DAILY_CALORIES;
-      if (targetFloorApplied) todayKcalTarget = MIN_DAILY_CALORIES;
-
-    } else {
-      // MANUAL: rolling bank logic — the window budget adjusts today's target up/down.
-      bankMode = 'manualRolling';
-      scheduleAdjustment = 0;
-
-      const rollingTarget = windowBudget - sumPast6Actual;
-      bankBalance          = Math.round(rollingTarget - todayBaseCalories - todaysTrainingBump);
-      bankAdjustmentApplied = bankBalance;
-
-      todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
-
-      targetFloorApplied = todayKcalTarget < MIN_DAILY_CALORIES;
-      if (targetFloorApplied) todayKcalTarget = MIN_DAILY_CALORIES;
+    let effectiveFloor = MIN_DAILY_CALORIES;
+    let floorSource = 'min_daily';
+    const _rawWtLb = latestWeightLbFromEntries(state.weightEntries);
+    const { weightLb: _wLb } = resolveCurrentWeightLb(state.userProfile ?? {}, state.analysisResults ?? null, _rawWtLb);
+    if (_wLb) {
+      const _bmrFloorValue = Math.max(MIN_DAILY_CALORIES, Math.round(computeBMR(state.userProfile ?? {}, _wLb).bmr * 0.85));
+      if (_bmrFloorValue > MIN_DAILY_CALORIES) { effectiveFloor = _bmrFloorValue; floorSource = 'bmr_floor'; }
     }
+
+    // ── Mode-specific target resolution (via pure calcBankingCore) ────────────
+    const coreResult = calcBankingCore({
+      todayBaseCalories,
+      todaysTrainingBump,
+      sumPastBaseTargets,
+      sumPastTrainingBumps,
+      sumPast6Actual,
+      windowBudget,
+      targetMode,
+      useRollingBanking: state.goalSettings?.useRollingBanking ?? true,
+      goalTargetDate: state.goalSettings?.targetDate ?? null,
+      targetDateStr,
+      effectiveFloor,
+    });
+    const {
+      bankMode, bankBalance, bankAdjustmentApplied, scheduleAdjustment,
+      rawBankBalance, todayKcalTarget, targetFloorApplied, scheduleCapped,
+    } = coreResult;
 
     // Macro split using today's final target.
     const scaledProteinG = proteinG;
@@ -417,6 +389,16 @@ export function calculateBankingData(targetDateStr) {
       displayFatG,
       displayCarbsG,
 
+      // Base macros (from todayBaseCalories, before exercise/bank/floor)
+      baseProteinG: displayProteinG,
+      baseFatG: displayFatG,
+      baseCarbsG: displayCarbsG,
+
+      // Final macros (from todayKcalTarget — carbs absorbs all adjustments)
+      finalProteinG: displayProteinG,
+      finalFatG: displayFatG,
+      finalCarbsG: carbsG,
+
       // Today's resolved base calorie target
       todayBaseCalories,
       resolvedTargetSource,
@@ -427,12 +409,14 @@ export function calculateBankingData(targetDateStr) {
 
       // Mode / adjustment metadata
       targetMode,
-      bankMode,            // 'manualRolling' | 'autoGoalSchedule'
+      bankMode,            // 'manualRolling' | 'autoGoalSchedule' | 'off'
       bankAdjustmentApplied,
       rawBankBalance,      // cumulative 6-day credit/debt (informational in autoGoal mode)
       scheduleAdjustment,  // auto goal only: spread overage over remaining days
-      targetFloorApplied,  // true when MIN_DAILY_CALORIES floor was applied
+      targetFloorApplied,  // true when effectiveFloor was applied
       minDailyCalories: MIN_DAILY_CALORIES,
+      effectiveFloor,      // actual floor used (BMR-based or MIN_DAILY_CALORIES)
+      floorSource,         // 'bmr_floor' | 'min_daily'
       scheduleCapped,      // true if soft cap (150 kcal/day) was hit
 
       // Config
@@ -457,6 +441,12 @@ export function calculateBankingData(targetDateStr) {
       displayProteinG: BANKING_CONFIG.PROTEIN_G,
       displayFatG: BANKING_CONFIG.FAT_FLOOR_G,
       displayCarbsG: 0,
+      baseProteinG: BANKING_CONFIG.PROTEIN_G,
+      baseFatG: BANKING_CONFIG.FAT_FLOOR_G,
+      baseCarbsG: 0,
+      finalProteinG: BANKING_CONFIG.PROTEIN_G,
+      finalFatG: BANKING_CONFIG.FAT_FLOOR_G,
+      finalCarbsG: 0,
       todayBaseCalories: BANKING_CONFIG.BASE_KCAL,
       resolvedTargetSource: 'manual',
       bankIncomplete: false,
@@ -468,6 +458,8 @@ export function calculateBankingData(targetDateStr) {
       scheduleAdjustment: 0,
       targetFloorApplied: false,
       minDailyCalories: BANKING_CONFIG.MIN_DAILY_CALORIES ?? 1000,
+      effectiveFloor: BANKING_CONFIG.MIN_DAILY_CALORIES ?? 1000,
+      floorSource: 'min_daily',
       scheduleCapped: false,
       config: { windowDays: BANKING_CONFIG.ROLLING_WINDOW_DAYS }
     };
@@ -690,6 +682,7 @@ export function activateTab(name) {
     if (name === 'nutrients') renderNutrientsOutput();
     else if (name === 'energy') renderEnergyOutput();
     else if (name === 'settings') populateSettingsForm();
+    else if (name === 'today') updateDashboard();
 
     debugLog('activate-tab', `Activated tab: ${name}`);
   } catch (error) {
@@ -1192,6 +1185,17 @@ function renderEnergyExerciseBlock(dateStr) {
 export function updateDashboard() {
   try {
     debugLog('update-start', 'Starting dashboard update');
+
+    // Populate analysis cache synchronously when data is available but Energy tab
+    // hasn't been visited yet.  runAnalysis() is pure CPU — no I/O or DOM.
+    if (!state.analysisResults && state.weightEntries?.size > 0 && state.dailyEntries?.size > 0) {
+      try {
+        state.analysisResults = runAnalysis(
+          state.weightEntries, state.dailyEntries,
+          state.userProfile ?? null, state.weightEntriesMulti ?? null
+        );
+      } catch (_) {}
+    }
 
     const { dashboard } = state.dom;
     if (!dashboard) throw new Error('Dashboard container not found');

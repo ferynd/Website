@@ -374,7 +374,7 @@ export async function saveUserProfile(incoming) {
     const toSave = prepareProfileForSave(incoming, state.userProfile);
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/profile/userProfile`), toSave);
     state.userProfile = normalizeUserProfile(toSave);
-    showMessage('Profile saved!');
+    if (!opts?.silent) showMessage('Profile saved!');
     debugLog('firebase-save', 'User profile saved');
   } catch (e) {
     handleError('profile-save', e, 'Failed to save profile.');
@@ -418,7 +418,7 @@ export async function saveGoalSettings(incoming, opts = {}) {
     const toSave = prepareGoalSettingsForSave(incoming, state.goalSettings, opts);
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/goals/goalSettings`), toSave);
     state.goalSettings = normalizeGoalSettings(toSave);
-    showMessage('Goals saved!');
+    if (!opts?.silent) showMessage('Goals saved!');
     debugLog('firebase-save', 'Goal settings saved');
   } catch (e) {
     handleError('goals-save', e, 'Failed to save goal settings.');

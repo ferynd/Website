@@ -9,9 +9,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { calcBankingCore } from './bankingEngine.js';
 
 // ---------------------------------------------------------------------------
-// Pure helpers mirrored from dashboard.js
+// Pure helpers mirrored from dashboard.js (kept for existing test coverage)
 // ---------------------------------------------------------------------------
 
 function hasTrustedCalories(entry) {
@@ -399,5 +400,143 @@ describe('mode isolation: manual vs Auto Goal banking behavior', () => {
     const { todayKcalTarget: autoTarget } =
       calcBankingAutoGoal(TODAY, entries, baseKcal, far.toISOString().slice(0, 10));
     expect(autoTarget).toBeGreaterThan(1500); // no crash
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calcBankingCore — tests that use the real exported pure function
+// ---------------------------------------------------------------------------
+
+function makeCore(overrides = {}) {
+  return {
+    todayBaseCalories: 2000,
+    todaysTrainingBump: 0,
+    sumPastBaseTargets: 6 * 2000,
+    sumPastTrainingBumps: 0,
+    sumPast6Actual: 6 * 2000,
+    windowBudget: 7 * 2000,
+    targetMode: 'manual',
+    useRollingBanking: true,
+    goalTargetDate: null,
+    targetDateStr: TODAY,
+    effectiveFloor: 1000,
+    ...overrides,
+  };
+}
+
+describe('calcBankingCore — manual rolling bank', () => {
+  it('on-target past 6 days → zero bank balance, target = baseKcal', () => {
+    const r = calcBankingCore(makeCore());
+    expect(r.bankBalance).toBe(0);
+    expect(r.todayKcalTarget).toBe(2000);
+    expect(r.bankMode).toBe('manualRolling');
+  });
+
+  it('under-eating past 6 days → positive bank, higher today target', () => {
+    const r = calcBankingCore(makeCore({ sumPast6Actual: 6 * 1500 }));
+    expect(r.bankBalance).toBeGreaterThan(0);
+    expect(r.todayKcalTarget).toBeGreaterThan(2000);
+  });
+
+  it('large overage → target floored at effectiveFloor', () => {
+    const r = calcBankingCore(makeCore({ sumPast6Actual: 6 * 4000 }));
+    expect(r.targetFloorApplied).toBe(true);
+    expect(r.todayKcalTarget).toBe(1000);
+  });
+
+  it('floor of 1200 (BMR-based) is used when provided', () => {
+    const r = calcBankingCore(makeCore({ sumPast6Actual: 6 * 4000, effectiveFloor: 1200 }));
+    expect(r.todayKcalTarget).toBe(1200);
+  });
+});
+
+describe('calcBankingCore — banking off (useRollingBanking: false)', () => {
+  it('bankMode is "off" when useRollingBanking=false', () => {
+    const r = calcBankingCore(makeCore({ useRollingBanking: false }));
+    expect(r.bankMode).toBe('off');
+  });
+
+  it('target = base + exercise, unaffected by past overage', () => {
+    // 6 days of big overages but banking is off
+    const r = calcBankingCore(makeCore({
+      useRollingBanking: false,
+      sumPast6Actual: 6 * 3500,
+      todaysTrainingBump: 200,
+    }));
+    expect(r.todayKcalTarget).toBe(2200); // 2000 + 200, no penalty
+    expect(r.bankBalance).toBe(0);
+    expect(r.bankAdjustmentApplied).toBe(0);
+  });
+
+  it('under-eating past week does not inflate target when banking is off', () => {
+    const r = calcBankingCore(makeCore({
+      useRollingBanking: false,
+      sumPast6Actual: 6 * 500,
+    }));
+    expect(r.todayKcalTarget).toBe(2000);
+  });
+
+  it('floor still applies in banking-off mode', () => {
+    const r = calcBankingCore(makeCore({
+      useRollingBanking: false,
+      todayBaseCalories: 800,
+      effectiveFloor: 1000,
+    }));
+    expect(r.targetFloorApplied).toBe(true);
+    expect(r.todayKcalTarget).toBe(1000);
+  });
+});
+
+describe('calcBankingCore — Auto Goal schedule adjustment', () => {
+  it('no past overage → zero schedule adjustment, target = base', () => {
+    const r = calcBankingCore(makeCore({
+      targetMode: 'autoGoal',
+      goalTargetDate: '2025-09-01',
+    }));
+    expect(r.scheduleAdjustment).toBe(0);
+    expect(r.todayKcalTarget).toBe(2000);
+    expect(r.bankMode).toBe('autoGoalSchedule');
+  });
+
+  it('overage + far goal date → small negative schedule adjustment', () => {
+    const far = new Date(TODAY); far.setDate(far.getDate() + 74);
+    const r = calcBankingCore(makeCore({
+      targetMode: 'autoGoal',
+      sumPast6Actual: 6 * 2800, // 4800 kcal debt
+      goalTargetDate: far.toISOString().slice(0, 10),
+    }));
+    expect(r.scheduleAdjustment).toBeLessThan(0);
+    expect(r.todayKcalTarget).toBeGreaterThan(1000);
+    expect(r.todayKcalTarget).toBeLessThan(2100);
+  });
+
+  it('rawBankBalance returned as informational (not schedule adjustment)', () => {
+    const far = new Date(TODAY); far.setDate(far.getDate() + 74);
+    const r = calcBankingCore(makeCore({
+      targetMode: 'autoGoal',
+      sumPast6Actual: 6 * 2800,
+      goalTargetDate: far.toISOString().slice(0, 10),
+    }));
+    expect(r.rawBankBalance).toBeLessThan(0); // has debt
+    expect(r.bankBalance).toBe(r.rawBankBalance); // bankBalance = informational rawBankBalance
+    expect(Math.abs(r.scheduleAdjustment)).toBeLessThan(Math.abs(r.rawBankBalance)); // gentle spread
+  });
+});
+
+describe('calcBankingCore — 177→170 lb scenario (regression)', () => {
+  it('big overage history in auto goal mode does not produce crash target', () => {
+    // Simulate user who ate 2800 kcal/day vs 1935 kcal base for 6 days
+    const far = new Date(TODAY); far.setDate(far.getDate() + 74);
+    const r = calcBankingCore(makeCore({
+      targetMode: 'autoGoal',
+      todayBaseCalories: 1935,
+      sumPastBaseTargets: 6 * 1935,
+      sumPast6Actual: 6 * 2800,
+      goalTargetDate: far.toISOString().slice(0, 10),
+      effectiveFloor: 1000,
+    }));
+    expect(r.todayKcalTarget).toBeGreaterThan(1000);
+    expect(r.todayKcalTarget).toBeLessThan(2200);
+    expect(r.targetFloorApplied).toBe(false);
   });
 });
