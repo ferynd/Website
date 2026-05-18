@@ -701,7 +701,7 @@ function renderTodayMacroHeader(bankingData) {
   const el = document.getElementById('today-macro-header');
   if (!el) return;
 
-  const { todayKcalTarget, displayProteinG, displayFatG, displayCarbsG } = bankingData;
+  const { todayKcalTarget, finalProteinG, finalFatG, finalCarbsG } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
     const q = parseFloat(item.quantity ?? 0) || 0;
@@ -724,10 +724,10 @@ function renderTodayMacroHeader(bankingData) {
   };
 
   el.innerHTML =
-    cell('Cal',     totals.cal,  todayKcalTarget)  +
-    cell('Protein', totals.pro,  displayProteinG)  +
-    cell('Fat',     totals.fat,  displayFatG)      +
-    cell('Carbs',   totals.carb, displayCarbsG);
+    cell('Cal',     totals.cal,  todayKcalTarget) +
+    cell('Protein', totals.pro,  finalProteinG)   +
+    cell('Fat',     totals.fat,  finalFatG)        +
+    cell('Carbs',   totals.carb, finalCarbsG);
 }
 
 /**
@@ -872,7 +872,7 @@ function renderCalcDetailsPanel(bankingData) {
   const {
     todayBaseCalories, todaysTrainingBump, bankBalance, targetMode, bankMode,
     sumPast6Actual, sumPastTargets, windowBudget, todayKcalTarget,
-    scheduleAdjustment, rawBankBalance, targetFloorApplied, minDailyCalories,
+    scheduleAdjustment, rawBankBalance, targetFloorApplied, effectiveFloor, floorSource,
   } = bankingData;
 
   if (bankMode === 'autoGoalSchedule') {
@@ -899,8 +899,8 @@ function renderCalcDetailsPanel(bankingData) {
           ` : ''}
           ${targetFloorApplied ? `
             <div class="flex justify-between items-center p-2 surface-1 rounded border text-warning">
-              <span>Minimum daily floor applied:</span>
-              <span class="font-medium">${minDailyCalories} kcal</span>
+              <span>Minimum daily floor applied${floorSource === 'bmr_floor' ? ' (BMR-based)' : ''}:</span>
+              <span class="font-medium">${effectiveFloor} kcal</span>
             </div>
           ` : ''}
           <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
@@ -957,9 +957,9 @@ function renderCalcDetailsPanel(bankingData) {
  */
 function renderTodayCompact(bankingData) {
   const {
-    todayKcalTarget, displayProteinG, displayFatG, displayCarbsG,
+    todayKcalTarget, finalProteinG, finalFatG, finalCarbsG,
     todayBaseCalories, todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
-    bankMode, scheduleAdjustment, rawBankBalance, targetFloorApplied, minDailyCalories, scheduleCapped,
+    bankMode, scheduleAdjustment, rawBankBalance, targetFloorApplied, effectiveFloor, floorSource, scheduleCapped,
   } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
@@ -1027,7 +1027,7 @@ function renderTodayCompact(bankingData) {
     : '';
 
   const floorNote = targetFloorApplied
-    ? `<div class="text-xs text-warning mt-1">⚠ Target was floored at ${minDailyCalories} kcal. Goal date may need adjustment or recent overage is being carried forward.</div>`
+    ? `<div class="text-xs text-warning mt-1">⚠ Target was floored at ${effectiveFloor} kcal${floorSource === 'bmr_floor' ? ' (BMR-based minimum)' : ''}. Goal date may need adjustment or recent overage is being carried forward.</div>`
     : '';
 
   const capNote = scheduleCapped
@@ -1057,9 +1057,9 @@ function renderTodayCompact(bankingData) {
       </div>
     </div>
     <div class="divide-y">
-      ${macroRow('Protein', totals.protein, displayProteinG)}
-      ${macroRow('Fat (min)', totals.fat, displayFatG)}
-      ${macroRow('Carbs', totals.carbs, displayCarbsG)}
+      ${macroRow('Protein', totals.protein, finalProteinG)}
+      ${macroRow('Fat (min)', totals.fat, finalFatG)}
+      ${macroRow('Carbs', totals.carbs, finalCarbsG)}
     </div>
   `;
 }
@@ -1332,7 +1332,7 @@ function renderBankingPanel(bankingData) {
   const {
     bankBalance, rawBankBalance, pastDays, sumPast6Actual, sumPastTargets,
     windowBudget, todayBaseCalories, targetMode, bankMode, scheduleAdjustment,
-    targetFloorApplied, minDailyCalories, scheduleCapped, todayKcalTarget,
+    targetFloorApplied, effectiveFloor, floorSource, scheduleCapped, todayKcalTarget,
   } = bankingData;
 
   const contributionRows = pastDays.map(d => `
@@ -1409,7 +1409,7 @@ function renderBankingPanel(bankingData) {
 
         ${targetFloorApplied ? `
           <div class="mb-3 p-3 surface-2 rounded-lg border text-sm text-warning">
-            ⚠ Target was floored at ${minDailyCalories} kcal. Goal date may need adjustment or the recent overage is large relative to remaining time.
+            ⚠ Target was floored at ${effectiveFloor} kcal${floorSource === 'bmr_floor' ? ' (BMR-based minimum)' : ''}. Goal date may need adjustment or the recent overage is large relative to remaining time.
           </div>` : ''}
 
         ${scheduleCapped ? `
@@ -1453,7 +1453,7 @@ function renderBankingPanel(bankingData) {
 
       ${targetFloorApplied ? `
         <div class="mt-3 p-3 surface-2 rounded-lg border text-sm text-warning">
-          ⚠ Target was floored at ${minDailyCalories} kcal. The rolling bank pulled today's budget below the minimum safe daily intake.
+          ⚠ Target was floored at ${effectiveFloor} kcal${floorSource === 'bmr_floor' ? ' (BMR-based minimum)' : ''}. The rolling bank pulled today's budget below the minimum safe daily intake.
         </div>` : ''}
 
       ${pastDaysTable}

@@ -366,7 +366,7 @@ export async function fetchUserProfile() {
  * Saves the user's profile document to Firestore and updates state.userProfile.
  * @param {object} profile - The normalized profile object to persist.
  */
-export async function saveUserProfile(incoming) {
+export async function saveUserProfile(incoming, opts = {}) {
   if (!state.userId) return showMessage('Cannot save profile. Not authenticated.', true);
   try {
     // Merge: defaults → current state → incoming, then force schemaVersion.
