@@ -227,7 +227,7 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
  * @param {number} bmr
  * @param {object} goals  - state.goalSettings (targetWeightLb, targetDate)
  * @param {number} weightLb
- * @returns {{ calories: number, deficit: number, deficitNote: string }}
+ * @returns {{ calories: number, deficit: number, deficitNote: string, daysLeft: number|null, targetWeightDeltaLb: number|null, rawRequiredDeficit: number|null, appliedDeficit: number, deficitClampReason: string, calorieFloor: number }}
  */
 export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb) {
   const minSafeFloor = Math.max(1000, roundInt(bmr * 0.85));
@@ -236,50 +236,85 @@ export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb) {
     case 'fatLoss': {
       let deficit = 400;
       let deficitNote = 'Moderate deficit (~400 kcal below TDEE)';
+      let deficitClampReason = 'none';
+      let daysLeft = null;
+      let targetWeightDeltaLb = null;
+      let rawRequiredDeficit = null;
 
       const targetLb = parseFloat(goals.targetWeightLb);
       const targetDate = goals.targetDate;
 
       if (!isNaN(targetLb) && targetLb > 0 && targetDate && weightLb > targetLb) {
-        const daysLeft = (new Date(targetDate).getTime() - Date.now()) / 86400000;
+        daysLeft = (new Date(targetDate).getTime() - Date.now()) / 86400000;
+        targetWeightDeltaLb = round1(weightLb - targetLb);
         if (daysLeft > 14) {
           const deltaKg = (weightLb - targetLb) * LB_TO_KG;
-          const required = roundInt((deltaKg * 7700) / daysLeft);
-          deficit = clamp(required, 200, 750);
+          rawRequiredDeficit = roundInt((deltaKg * 7700) / daysLeft);
+          if (rawRequiredDeficit < 200) {
+            deficit = 200;
+            deficitClampReason = 'minimum_deficit';
+          } else if (rawRequiredDeficit > 750) {
+            deficit = 750;
+            deficitClampReason = 'maximum_deficit';
+          } else {
+            deficit = rawRequiredDeficit;
+          }
           deficitNote = `~${roundInt(weightLb - targetLb)} lb to lose by ${targetDate} → ${deficit} kcal/day deficit`;
+        } else {
+          deficitClampReason = 'target_invalid';
         }
       }
 
+      const appliedDeficit = deficit;
+      const rawCalories = tdee - deficit;
+      let calories;
+      if (rawCalories < minSafeFloor) {
+        calories = minSafeFloor;
+        deficitClampReason = 'bmr_floor';
+      } else if (rawCalories > tdee - 100) {
+        calories = tdee - 100;
+      } else {
+        calories = rawCalories;
+      }
+
       return {
-        calories: clamp(tdee - deficit, minSafeFloor, tdee - 100),
-        deficit,
+        calories,
+        deficit: tdee - calories,
         deficitNote,
+        daysLeft,
+        targetWeightDeltaLb,
+        rawRequiredDeficit,
+        appliedDeficit,
+        deficitClampReason,
+        calorieFloor: minSafeFloor,
       };
     }
 
     case 'maintenance':
-      return { calories: tdee, deficit: 0, deficitNote: 'At TDEE (maintenance)' };
+      return { calories: tdee, deficit: 0, deficitNote: 'At TDEE (maintenance)', daysLeft: null, targetWeightDeltaLb: null, rawRequiredDeficit: null, appliedDeficit: 0, deficitClampReason: 'none', calorieFloor: minSafeFloor };
 
     case 'recomp':
       return {
         calories: tdee,
         deficit: 0,
         deficitNote: 'At TDEE — training bump system handles day-to-day surplus/deficit cycling',
+        daysLeft: null, targetWeightDeltaLb: null, rawRequiredDeficit: null, appliedDeficit: 0, deficitClampReason: 'none', calorieFloor: minSafeFloor,
       };
 
     case 'muscleGain':
-      return { calories: tdee + 250, deficit: -250, deficitNote: 'Lean bulk (+250 kcal above TDEE)' };
+      return { calories: tdee + 250, deficit: -250, deficitNote: 'Lean bulk (+250 kcal above TDEE)', daysLeft: null, targetWeightDeltaLb: null, rawRequiredDeficit: null, appliedDeficit: -250, deficitClampReason: 'none', calorieFloor: minSafeFloor };
 
     case 'performance':
       return {
         calories: tdee + 400,
         deficit: -400,
         deficitNote: 'Performance surplus (+400 kcal — carbohydrates prioritized for fuel)',
+        daysLeft: null, targetWeightDeltaLb: null, rawRequiredDeficit: null, appliedDeficit: -400, deficitClampReason: 'none', calorieFloor: minSafeFloor,
       };
 
     case 'custom':
     default:
-      return { calories: tdee, deficit: 0, deficitNote: 'Starting from TDEE estimate — adjust as needed' };
+      return { calories: tdee, deficit: 0, deficitNote: 'Starting from TDEE estimate — adjust as needed', daysLeft: null, targetWeightDeltaLb: null, rawRequiredDeficit: null, appliedDeficit: 0, deficitClampReason: 'none', calorieFloor: minSafeFloor };
   }
 }
 
@@ -391,6 +426,23 @@ export function computeMicronutrientTargets(profile) {
 // Main export
 // ---------------------------------------------------------------------------
 
+function buildDeficitClampNote(calResult, tdeeResult) {
+  const reason = calResult.deficitClampReason;
+  if (reason === 'minimum_deficit') {
+    return `Required deficit (${calResult.rawRequiredDeficit} kcal) is below the 200 kcal minimum — clamped to 200 kcal/day. The target date is achievable but calories are not lowered further.`;
+  }
+  if (reason === 'maximum_deficit') {
+    return `Required deficit (${calResult.rawRequiredDeficit} kcal) exceeds the 750 kcal safety cap — clamped to 750 kcal/day. Reaching target weight by the target date would require an unsafe rate; target date may need adjustment.`;
+  }
+  if (reason === 'bmr_floor') {
+    return `The calculated target (${tdeeResult.tdee} − ${calResult.appliedDeficit} = ${tdeeResult.tdee - calResult.appliedDeficit} kcal) is below the safe floor of ${calResult.calorieFloor} kcal/day (85% of BMR). Calories set to the BMR floor. Target date is not achievable at a safe deficit — consider a later target date.`;
+  }
+  if (reason === 'target_invalid') {
+    return `Target date is less than 14 days away — time-based deficit calculation skipped. Using default 400 kcal/day deficit instead.`;
+  }
+  return null;
+}
+
 /**
  * Generate auto-calculated daily targets from profile, goals, and optional
  * analysis results.
@@ -465,7 +517,13 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
     currentWeight: `${round1(weightLb)} lb — ${weightLabel}`,
     bmr: `${bmrResult.bmr} kcal/day via ${bmrResult.methodLabel}`,
     tdee: `${tdeeResult.tdee} kcal/day — ${tdeeResult.sourceLabel}`,
+    activityIgnored: tdeeResult.source === 'empirical'
+      ? `Baseline activity level setting is ignored — TDEE is measured directly from your weight and calorie history (${tdeeResult.tdee} kcal/day)`
+      : null,
     calories: `${calResult.calories} kcal/day — ${calResult.deficitNote}`,
+    deficitClamped: (goalType === 'fatLoss' && calResult.deficitClampReason !== 'none')
+      ? buildDeficitClampNote(calResult, tdeeResult)
+      : null,
     protein: `${proteinResult.protein} g/day — ${proteinResult.note}`,
     fat: `${fatResult.fat} g/day — ${fatResult.note}`,
     carbs: `${carbsResult.carbs} g/day — fills remaining calories after protein (${proteinResult.protein * 4} kcal) and fat (${fatResult.fat * 9} kcal)`,

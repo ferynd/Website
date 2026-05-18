@@ -126,14 +126,19 @@ function getLatestWeightFromEntries() {
  * Otherwise attempts runAnalysis() from available data.
  * Falls back gracefully to rawLatestWeightLb only.
  */
-async function buildTargetContext() {
-  if (state.analysisResults) {
+async function buildTargetContext(mergedProfile = null) {
+  // When a mergedProfile is explicitly provided (i.e. from a form edit), always rerun
+  // runAnalysis so that formula-TDEE and profile-prior targets reflect the new values
+  // immediately. Only reuse the cached state.analysisResults when no profile overrides
+  // are in play (i.e. first-load or Energy-tab pre-computed result).
+  if (!mergedProfile && state.analysisResults) {
     return { analysisResults: state.analysisResults, rawLatestWeightLb: getLatestWeightFromEntries() };
   }
 
   if (state.weightEntries?.size > 0 && state.dailyEntries?.size > 0) {
     try {
-      const results = runAnalysis(state.weightEntries, state.dailyEntries);
+      const profile = mergedProfile ?? state.userProfile ?? null;
+      const results = runAnalysis(state.weightEntries, state.dailyEntries, profile, state.weightEntriesMulti ?? null);
       return { analysisResults: results, rawLatestWeightLb: getLatestWeightFromEntries() };
     } catch (_) {
       // Fall through — raw weight only
@@ -238,7 +243,7 @@ async function handleAutoCalculate() {
       manualTargetOverrides: state.goalSettings?.manualTargetOverrides ?? {},
     };
 
-    const { analysisResults, rawLatestWeightLb } = await buildTargetContext();
+    const { analysisResults, rawLatestWeightLb } = await buildTargetContext(mergedProfile);
     const result = generateTargets(mergedProfile, mergedGoals, analysisResults, rawLatestWeightLb);
     _lastResult  = result;
 
@@ -275,7 +280,9 @@ function renderExplanation(result) {
     ['Current weight',  exp.currentWeight],
     ['BMR / RMR',       exp.bmr],
     ['TDEE estimate',   exp.tdee],
+    ...(exp.activityIgnored ? [['Activity level', exp.activityIgnored]] : []),
     ['Calorie target',  exp.calories],
+    ...(exp.deficitClamped ? [['Deficit clamped', exp.deficitClamped]] : []),
     ['Protein target',  exp.protein],
     ['Fat target',      exp.fat],
     ['Carbs target',    exp.carbs],
@@ -402,7 +409,7 @@ async function handleApplyTargets() {
     const mergedProfile = { ...state.userProfile, ...profileUpdates };
     const mergedGoals   = { ...state.goalSettings, ...goalsUpdates, manualTargetOverrides: manualOverrides };
 
-    const { analysisResults, rawLatestWeightLb } = await buildTargetContext();
+    const { analysisResults, rawLatestWeightLb } = await buildTargetContext(mergedProfile);
     const result = generateTargets(mergedProfile, mergedGoals, analysisResults, rawLatestWeightLb);
 
     if (!result.targets) {
@@ -453,6 +460,28 @@ export function wireProfileTab() {
   on('profile-clear-manual-weight', 'click', () => {
     setVal('profile-manual-weight', '');
     updateWeightDisplay();
+  });
+
+  // Auto-recalculate with debounce when profile fields change
+  let _debounceTimer = null;
+  function scheduleAutoCalculate() {
+    clearTimeout(_debounceTimer);
+    _debounceTimer = setTimeout(() => {
+      handleAutoCalculate();
+    }, 800);
+  }
+
+  const autoFields = [
+    'profile-manual-weight', 'profile-birthdate', 'profile-age',
+    'profile-height', 'profile-bodyfat', 'profile-goal-type',
+    'profile-target-weight', 'profile-target-date',
+  ];
+  for (const id of autoFields) {
+    on(id, 'input', scheduleAutoCalculate);
+    on(id, 'change', scheduleAutoCalculate);
+  }
+  document.querySelectorAll('input[name="profile-sex"], input[name="profile-activity"]').forEach(el => {
+    el.addEventListener('change', scheduleAutoCalculate);
   });
 }
 

@@ -377,7 +377,36 @@ describe('edge cases', () => {
   });
 });
 
-// ── 11. Large synthetic CSV ───────────────────────────────────────────────────
+// ── 11. localDateStr — locale-independent date extraction ─────────────────────
+
+describe('localDateStr — locale-independent date extraction', () => {
+  it('date near midnight parses to the correct local date, not UTC', () => {
+    // A timestamp that is 11:45 PM local time on Jan 5 (early hours UTC on Jan 6)
+    // Parser uses local Date components so should produce 2024-01-05.
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-01-05 23:45:00';
+    const { entries } = parseWeightCSV(csv);
+    expect(entries.length).toBe(1);
+    // The date field should reflect the local calendar date (Jan 5), not UTC (Jan 6).
+    // Because parseExplicitDate uses new Date(y, m-1, d, h, mi, s) — local time.
+    expect(entries[0].date).toBe('2024-01-05');
+    expect(entries[0].time_min).toBe(23 * 60 + 45);
+  });
+
+  it('date-only row produces YYYY-MM-DD without locale formatting artifacts', () => {
+    const csv = 'Weight (lb),Date\n185.0,2024-03-15';
+    const { entries } = parseWeightCSV(csv);
+    expect(entries[0].date).toBe('2024-03-15');
+  });
+
+  it('timestamp docId uses YYYY-MM-DD component, not locale-dependent string', () => {
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-12-31 23:59:00';
+    const { entries } = parseWeightCSV(csv);
+    expect(entries[0].date).toBe('2024-12-31');
+    expect(entries[0].docId).toBe('2024-12-31T23-59-00');
+  });
+});
+
+// ── 12. Large synthetic CSV ───────────────────────────────────────────────────
 
 describe('large synthetic CSV (1000 rows)', () => {
   const rows = ['Weight (lb),Date/Time'];
@@ -395,5 +424,57 @@ describe('large synthetic CSV (1000 rows)', () => {
     expect(entries.length).toBe(1000);
     expect(diagnostics.skippedRows).toBe(0);
     expect(diagnostics.parsedRows).toBe(1000);
+  });
+});
+
+// ── 13. Timezone-aware parsing ────────────────────────────────────────────────
+// These tests confirm that when opts.timezone is provided the parser creates
+// Date objects corresponding to wall-clock times in that timezone, not the
+// test-environment (Node.js, usually UTC) local timezone.
+
+describe('timezone-aware parsing (opts.timezone)', () => {
+  // Node's default timezone is UTC. America/Chicago is UTC-6 in winter.
+  // A CSV time of "2024-01-06 01:00:00" means 1 AM Chicago = 7 AM UTC.
+  // Without timezone correction the date component would be "2024-01-06"
+  // either way for this case; we test the boundary crossing case more carefully.
+
+  it('parses "2024-01-05 23:45:00" with Chicago tz — date stays Jan 5', () => {
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-01-05 23:45:00';
+    const { entries } = parseWeightCSV(csv, { timezone: 'America/Chicago' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].date).toBe('2024-01-05');
+    expect(entries[0].time_min).toBe(23 * 60 + 45);
+  });
+
+  it('parses "2024-01-06 01:00:00" with Chicago tz — date is Jan 6 (Chicago wall-clock)', () => {
+    // Without tz-aware creation the test-env (UTC) would also give Jan 6 for "01:00",
+    // but with timezone=Chicago the UTC-based Date is Jan 6 07:00 UTC, and
+    // Intl extraction in Chicago gives Jan 6 01:00 — date "2024-01-06".
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-01-06 01:00:00';
+    const { entries } = parseWeightCSV(csv, { timezone: 'America/Chicago' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].date).toBe('2024-01-06');
+    expect(entries[0].time_min).toBe(60); // 1:00 AM = 60 min
+  });
+
+  it('docId timestamp reflects the timezone components', () => {
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-01-05 23:45:00';
+    const { entries } = parseWeightCSV(csv, { timezone: 'America/Chicago' });
+    expect(entries[0].docId).toBe('2024-01-05T23-45-00');
+  });
+
+  it('date-only rows are unaffected by timezone option', () => {
+    // Date-only rows have no time component; timezone cannot change the date.
+    const csv = 'Weight (lb),Date\n185.0,2024-03-15';
+    const { entries } = parseWeightCSV(csv, { timezone: 'America/Chicago' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].date).toBe('2024-03-15');
+  });
+
+  it('without timezone option behavior is unchanged (locale-independent)', () => {
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-01-05 23:45:00';
+    const { entries } = parseWeightCSV(csv);
+    expect(entries[0].date).toBe('2024-01-05');
+    expect(entries[0].time_min).toBe(23 * 60 + 45);
   });
 });

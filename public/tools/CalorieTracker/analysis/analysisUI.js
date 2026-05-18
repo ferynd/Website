@@ -9,6 +9,8 @@ import {
   runAnalysis,
   getBlankDaysForPopulation,
   getPartialDaysForAdjustment,
+  getTrueUpCandidates,
+  buildBlankDayEstimateEntry,
   buildVacationDayEntry,
   buildPartialDayAdjustment,
   classifyDay,
@@ -48,6 +50,10 @@ export function renderAnalysisSection() {
     ? []
     : getPartialDaysForAdjustment(results.rows, state.dailyEntries, results.bmrModel);
 
+  state._trueUpCandidates = results.error
+    ? []
+    : getTrueUpCandidates(results.rows, state.dailyEntries, results.bmrModel, state.baselineTargets);
+
   return `
     <div class="mb-8">
       <h2 class="text-responsive-2xl font-bold text-secondary mb-4">📈 Weight & Energy Analysis</h2>
@@ -59,11 +65,15 @@ export function renderAnalysisSection() {
         : `
           ${renderKPICards(results)}
           ${renderConfidenceCard(results.confidence, results)}
-          ${renderWeightChart()}
+          ${renderEatingPatternChart(results)}
+          <details class="mb-6" id="weight-trend-details" open>
+            <summary class="cursor-pointer font-semibold text-secondary p-2 surface-2 rounded-lg border mb-2 select-none">Scale trend details ▸</summary>
+            ${renderWeightChart()}
+          </details>
           ${renderPlateauStatus(results.plateau)}
           ${renderEnergyDetail(results)}
           ${renderImputationTable(results.rows)}
-          ${renderMissingCaloriesSection(state._blankDaysForPopulation, state._partialDaysForAdjustment)}
+          ${renderMissingCaloriesSection(state._trueUpCandidates)}
           ${renderVacationEditorSection()}
           ${renderEstimateManagementSection()}
         `
@@ -149,6 +159,7 @@ export function initAnalysisEvents() {
 
   if (state.analysisResults && !state.analysisResults.error) {
     drawWeightChart(state.analysisResults.rows);
+    drawEatingPatternChart(state.analysisResults.rows);
   }
 
   const timeframeSelect = document.getElementById('weight-chart-timeframe');
@@ -160,16 +171,20 @@ export function initAnalysisEvents() {
     });
   }
 
-  // ── Missing Calories section (blank + partial days) ────────────────────────
-  const blankDays = state._blankDaysForPopulation || [];
-  const partialDays = state._partialDaysForAdjustment || [];
+  // ── Missing Calories section (unified candidates only) ────────────────────
+  const allCandidates = state._trueUpCandidates || [];
+  const candidateMap  = new Map(allCandidates.map(d => [d.date, d]));
 
-  if (blankDays.length > 0 || partialDays.length > 0) {
-    const blankMap = new Map(blankDays.map(d => [d.date, d]));
-    const partialMap = new Map(partialDays.map(d => [d.date, d]));
+  if (allCandidates.length > 0) {
+    function getVisibleCheckboxes() {
+      return Array.from(document.querySelectorAll('.blank-day-check')).filter(cb => {
+        const row = cb.closest('tr');
+        return row && !row.classList.contains('hidden');
+      });
+    }
 
     function updateFillBtn() {
-      const checked = document.querySelectorAll('.blank-day-check:checked').length;
+      const checked = getVisibleCheckboxes().filter(cb => cb.checked).length;
       const btn = document.getElementById('blank-fill-btn');
       const countEl = document.getElementById('blank-fill-count');
       if (btn) btn.disabled = checked === 0;
@@ -180,17 +195,17 @@ export function initAnalysisEvents() {
       if (e.target.classList.contains('blank-day-check')) updateFillBtn();
     });
     document.getElementById('blank-check-all')?.addEventListener('change', e => {
-      document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = e.target.checked; });
+      getVisibleCheckboxes().forEach(cb => { cb.checked = e.target.checked; });
       updateFillBtn();
     });
     document.getElementById('blank-select-all-btn')?.addEventListener('click', () => {
-      document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = true; });
+      getVisibleCheckboxes().forEach(cb => { cb.checked = true; });
       const allBox = document.getElementById('blank-check-all');
       if (allBox) allBox.checked = true;
       updateFillBtn();
     });
     document.getElementById('blank-deselect-all-btn')?.addEventListener('click', () => {
-      document.querySelectorAll('.blank-day-check').forEach(cb => { cb.checked = false; });
+      getVisibleCheckboxes().forEach(cb => { cb.checked = false; });
       const allBox = document.getElementById('blank-check-all');
       if (allBox) allBox.checked = false;
       updateFillBtn();
@@ -199,10 +214,64 @@ export function initAnalysisEvents() {
       const fromVal = document.getElementById('blank-range-from')?.value;
       const toVal   = document.getElementById('blank-range-to')?.value;
       if (!fromVal || !toVal) return;
-      document.querySelectorAll('.blank-day-check').forEach(cb => {
-        cb.checked = cb.dataset.date >= fromVal && cb.dataset.date <= toVal;
+      getVisibleCheckboxes().forEach(cb => {
+        const row = cb.closest('tr');
+        const isReview = row?.dataset.review === 'true';
+        // Never auto-select reviewManually rows via range — user must check them explicitly
+        cb.checked = !isReview && cb.dataset.date >= fromVal && cb.dataset.date <= toVal;
       });
       updateFillBtn();
+    });
+
+    // Filter buttons
+    document.querySelectorAll('.trueup-filter').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.trueup-filter').forEach(b => b.classList.remove('active-filter'));
+        btn.classList.add('active-filter');
+        const filter = btn.dataset.filter;
+        document.querySelectorAll('#blank-days-tbody tr').forEach(row => {
+          let show = true;
+          if (filter === 'blank') show = row.dataset.type === 'blank';
+          else if (filter === 'partial') show = row.dataset.type === 'partial';
+          else if (filter === 'high-medium') show = row.dataset.confidence !== 'low';
+          else if (filter === 'review') show = row.dataset.review === 'true';
+          row.classList.toggle('hidden', !show);
+        });
+        updateFillBtn();
+      });
+    });
+
+    // Sort columns
+    let _sortCol = 'date';
+    let _sortAsc = false;
+    document.querySelectorAll('.trueup-sort').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (_sortCol === col) { _sortAsc = !_sortAsc; }
+        else { _sortCol = col; _sortAsc = col !== 'date'; }
+
+        document.querySelectorAll('.trueup-sort-icon').forEach(ic => ic.textContent = '');
+        th.querySelector('.trueup-sort-icon').textContent = _sortAsc ? '↑' : '↓';
+
+        const tbody = document.getElementById('blank-days-tbody');
+        if (!tbody) return;
+        const trs = Array.from(tbody.querySelectorAll('tr'));
+        trs.sort((a, b) => {
+          let av, bv;
+          if (col === 'date') { av = a.dataset.date; bv = b.dataset.date; }
+          else if (col === 'type') { av = a.dataset.type; bv = b.dataset.type; }
+          else if (col === 'delta') { av = +a.dataset.delta; bv = +b.dataset.delta; }
+          else if (col === 'confidence') {
+            const order = { high: 2, medium: 1, low: 0 };
+            av = order[a.dataset.confidence] ?? 0;
+            bv = order[b.dataset.confidence] ?? 0;
+          }
+          if (av < bv) return _sortAsc ? -1 : 1;
+          if (av > bv) return _sortAsc ? 1 : -1;
+          return 0;
+        });
+        trs.forEach(tr => tbody.appendChild(tr));
+      });
     });
 
     document.getElementById('blank-fill-btn')?.addEventListener('click', async () => {
@@ -220,22 +289,25 @@ export function initAnalysisEvents() {
         const kind = cb.dataset.kind;
         try {
           if (kind === 'partial') {
-            const partialInfo = partialMap.get(dateStr);
-            if (!partialInfo) continue;
+            const candidate = candidateMap.get(dateStr);
             const existingEntry = state.dailyEntries.get(dateStr);
-            if (!existingEntry) continue;
+            if (!candidate || !existingEntry) continue;
+            const residual = candidate.recommendedDelta;
+            const conf = candidate.confidence ?? 'low';
             const { adjustedEntry } = buildPartialDayAdjustment(
-              dateStr, partialInfo.residual, existingEntry,
-              state.baselineTargets, partialInfo.confidence
+              dateStr, residual, existingEntry, state.baselineTargets, conf
             );
             await saveEstimatedEntry(dateStr, adjustedEntry);
           } else {
-            // blank day — check lock
             const existingEntry = state.dailyEntries.get(dateStr);
             if (existingEntry?.estimateMeta?.locked) continue;
-            const estimated = blankMap.get(dateStr);
-            if (!estimated) continue;
-            await saveEstimatedEntry(dateStr, estimated);
+            const candidate = candidateMap.get(dateStr);
+            if (!candidate) continue;
+            // Build a proper v2 estimate entry — never save the raw candidate object
+            const entryToSave = buildBlankDayEstimateEntry(
+              dateStr, candidate, state.analysisResults, state.dailyEntries, state.baselineTargets
+            );
+            await saveEstimatedEntry(dateStr, entryToSave);
           }
           savedCount++;
         } catch (e) {
@@ -253,6 +325,9 @@ export function initAnalysisEvents() {
       const { updateDashboard } = await import('../ui/dashboard.js');
       updateDashboard();
     });
+
+    // Initialize fill button count
+    updateFillBtn();
   }
 
   // ── Vacation Editor ─────────────────────────────────────────────────────────
@@ -632,6 +707,196 @@ function renderConfidenceCard(confidence, results) {
 }
 
 // ==========================================
+// EATING PATTERN CHART
+// ==========================================
+
+function renderEatingPatternChart(results) {
+  const { bmrModel, tdeeByHorizon, waterWeightUncertaintyLb } = results;
+  if (!bmrModel || bmrModel.error) return '';
+
+  const tdee = bmrModel.tdee_current || bmrModel.observedTdee;
+  const baseCals = parseFloat(state.baselineTargets?.calories) || null;
+  const restDayTdee = bmrModel.modelPredictedRestDayTdee || tdee;
+  const uncertainty = waterWeightUncertaintyLb ?? null;
+
+  const uncertaintyNote = uncertainty != null
+    ? `Water weight noise: ±${uncertainty} lb (≈ ±${Math.round(uncertainty * 3500)} kcal apparent daily variation).`
+    : '';
+
+  const residual = results.loggingResidual;
+  const residualNote = residual
+    ? `Model vs log gap: ${residual.medianKcalPerDay > 0 ? '+' : ''}${residual.medianKcalPerDay} kcal/day median (±${residual.sdKcalPerDay}).`
+    : '';
+
+  const tdeeSource = bmrModel.source === 'fitted'
+    ? 'empirical (fitted to your history)'
+    : 'profile formula (not enough data for empirical)';
+
+  return `
+    <div class="mb-6 card p-6 shadow-lg">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-1">📊 Eating Pattern vs Weight Change</h3>
+      <div style="position:relative; height:300px;" class="mb-4">
+        <canvas id="eating-pattern-chart"></canvas>
+      </div>
+      <div class="p-3 surface-2 rounded-lg border text-sm text-muted space-y-2">
+        <p class="font-semibold text-primary">How the model thinks about this:</p>
+        ${tdee ? `<p>Estimated total daily energy expenditure: <strong>${tdee} kcal/day</strong> (${tdeeSource}). ${restDayTdee !== tdee ? `Rest-day TDEE: <strong>${restDayTdee} kcal/day</strong> (fitted BMR × rest-day PAL).` : ''}</p>` : ''}
+        ${baseCals ? `<p>Baseline calorie target: <strong>${baseCals} kcal/day</strong>${tdee && baseCals < tdee ? ` — a deficit of ~${tdee - baseCals} kcal/day` : ''}.</p>` : ''}
+        ${uncertaintyNote ? `<p>${uncertaintyNote} This is a physical lower bound on single-day precision — scale fluctuations can mask real trends.</p>` : ''}
+        ${residualNote ? `<p>${residualNote} ${Math.abs(residual?.medianKcalPerDay ?? 0) > 100 ? 'This gap likely reflects underlogged meals, not metabolic differences.' : 'Small gap — logging appears consistent.'}</p>` : ''}
+        <p class="text-xs">The chart shows your 7-day rolling calorie average (blue) vs your base target (dashed) and the TDEE estimate (orange). The smoothed weight trend is overlaid on the right axis. Markers show blank/partial/estimated days.</p>
+      </div>
+    </div>
+  `;
+}
+
+function drawEatingPatternChart(rows) {
+  const canvas = document.getElementById('eating-pattern-chart');
+  if (!canvas || !rows || rows.length === 0) return;
+
+  const WINDOW = 7;
+  const chartColors = CONFIG.CHART_COLORS || [];
+  const calsColor   = chartColors[2] || '#3b82f6';
+  const tdeeColor   = chartColors[1] || '#f59e0b';
+  const targetColor = chartColors[3] || '#22c55e';
+  const weightColor = chartColors[0] || '#a78bfa';
+
+  const baseCals = parseFloat(state.baselineTargets?.calories) || null;
+  const tdeeVal  = state.analysisResults?.bmrModel?.tdee_current || null;
+
+  // Build 7d rolling average of logged calories
+  const labels = [];
+  const rollingCals = [];
+  const smoothWeights = [];
+
+  for (let i = 0; i < rows.length; i++) {
+    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
+    const calVals = slice.map(r => {
+      const e = state.dailyEntries.get(r.date);
+      if (e && (parseFloat(e.calories) || 0) > 0) return parseFloat(e.calories);
+      if (r.calories_imputed) return r.calories || null;
+      return null;
+    }).filter(v => v != null);
+    labels.push(rows[i].date);
+    rollingCals.push(calVals.length >= 3 ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length) : null);
+    smoothWeights.push(rows[i].wt_smooth_lb);
+  }
+
+  if (window._eatingPatternChart) { window._eatingPatternChart.destroy(); window._eatingPatternChart = null; }
+
+  const datasets = [
+    {
+      label: 'Calories (7d avg)',
+      data: rollingCals,
+      borderColor: calsColor,
+      backgroundColor: calsColor + '30',
+      borderWidth: 2,
+      pointRadius: 0,
+      fill: false,
+      spanGaps: true,
+      tension: 0.3,
+      yAxisID: 'y',
+      order: 2,
+    },
+  ];
+
+  if (tdeeVal) {
+    datasets.push({
+      label: `TDEE (${tdeeVal} kcal)`,
+      data: labels.map(() => tdeeVal),
+      borderColor: tdeeColor,
+      borderWidth: 1.5,
+      borderDash: [6, 3],
+      pointRadius: 0,
+      fill: false,
+      spanGaps: true,
+      yAxisID: 'y',
+      order: 3,
+    });
+  }
+
+  if (baseCals) {
+    datasets.push({
+      label: `Target (${baseCals} kcal)`,
+      data: labels.map(() => baseCals),
+      borderColor: targetColor,
+      borderWidth: 1.5,
+      borderDash: [3, 3],
+      pointRadius: 0,
+      fill: false,
+      spanGaps: true,
+      yAxisID: 'y',
+      order: 4,
+    });
+  }
+
+  datasets.push({
+    label: 'Smoothed weight (lb)',
+    data: smoothWeights,
+    borderColor: weightColor,
+    borderWidth: 2,
+    pointRadius: 0,
+    fill: false,
+    spanGaps: true,
+    tension: 0.3,
+    yAxisID: 'y2',
+    order: 1,
+  });
+
+  window._eatingPatternChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        y: {
+          position: 'left',
+          title: { display: true, text: 'Calories (kcal)' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        y2: {
+          position: 'right',
+          title: { display: true, text: 'Weight (lb)' },
+          grid: { drawOnChartArea: false },
+        },
+        x: {
+          grid: { display: false },
+          ticks: {
+            maxTicksLimit: 12,
+            callback(value) {
+              const d = new Date(this.getLabelForValue(value) + 'T00:00:00');
+              return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            },
+          },
+        },
+      },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 12 } },
+        tooltip: {
+          backgroundColor: 'rgba(0,0,0,0.9)',
+          titleColor: 'white',
+          bodyColor: 'white',
+          callbacks: {
+            title(items) {
+              if (!items.length) return '';
+              const d = new Date(items[0].label + 'T00:00:00');
+              return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            },
+            label(ctx) {
+              if (ctx.raw == null) return null;
+              return `${ctx.dataset.label}: ${ctx.raw}`;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// ==========================================
 // WEIGHT CHART
 // ==========================================
 
@@ -942,67 +1207,78 @@ function dayTypeBadge(type) {
 }
 
 /**
- * Combined "Fill Missing Calories" section.
- * - Blank days: fully empty days with a model estimate available.
- *   Filling creates a complete synthetic entry and OVERWRITES any partial data.
- * - Partial days: days with real food logged but a large model residual.
- *   Filling adds only a synthetic "Unlogged intake estimate" item; real food is untouched.
+ * "Fill Missing Calories" section — driven exclusively by getTrueUpCandidates.
+ * No legacy blankDays / partialDays fallback; all rows come from the unified
+ * candidate engine with per-interval energy-balance evidence.
  */
-function renderMissingCaloriesSection(blankDays, partialDays) {
-  const hasBlank = blankDays && blankDays.length > 0;
-  const hasPartial = partialDays && partialDays.length > 0;
-  if (!hasBlank && !hasPartial) return '';
+function renderMissingCaloriesSection(candidates) {
+  const rows = candidates && candidates.length > 0 ? candidates : [];
 
-  const minDate = hasBlank ? blankDays[0].date : (hasPartial ? partialDays[0].date : '');
-  const maxDate = hasBlank
-    ? blankDays[blankDays.length - 1].date
-    : (hasPartial ? partialDays[partialDays.length - 1].date : '');
+  if (rows.length === 0) return '';
 
-  const blankRows = hasBlank ? blankDays.map(d => `
-    <tr>
-      <td class="px-3 py-2 text-center">
-        <input type="checkbox" class="blank-day-check h-4 w-4"
-               data-date="${d.date}" data-kind="blank" />
-      </td>
-      <td class="px-3 py-2 text-sm">${formatDisplayDate(d.date)}</td>
-      <td class="px-3 py-2 text-sm text-center">${dayTypeBadge('blank')}</td>
-      <td class="px-3 py-2 text-sm text-center font-semibold">${d.calories} kcal</td>
-      <td class="px-3 py-2 text-sm text-center">${Math.round(d.protein)}g / ${Math.round(d.carbs)}g / ${Math.round(d.fat)}g</td>
-      <td class="px-3 py-2 text-sm text-center">${confidenceBadge(d.estimateMeta?.confidence ?? 'medium')}</td>
-      <td class="px-3 py-2 text-xs text-muted">TDEE + weight delta</td>
-    </tr>
-  `).join('') : '';
+  const allDates = rows.map(r => r.date);
+  const minDate = allDates.reduce((a, b) => a < b ? a : b);
+  const maxDate = allDates.reduce((a, b) => a > b ? a : b);
 
-  const partialRows = hasPartial ? partialDays.map(d => `
-    <tr>
-      <td class="px-3 py-2 text-center">
-        <input type="checkbox" class="blank-day-check h-4 w-4"
-               data-date="${d.date}" data-kind="partial"
-               data-residual="${d.residual}" data-confidence="${d.confidence}" />
-      </td>
-      <td class="px-3 py-2 text-sm">${formatDisplayDate(d.date)}</td>
-      <td class="px-3 py-2 text-sm text-center">${dayTypeBadge('partial')}</td>
-      <td class="px-3 py-2 text-sm text-center font-semibold">+${d.residual} kcal</td>
-      <td class="px-3 py-2 text-sm text-center text-muted">${d.loggedCalories} → ~${d.modelEstimate}</td>
-      <td class="px-3 py-2 text-sm text-center">${confidenceBadge(d.confidence)}</td>
-      <td class="px-3 py-2 text-xs text-muted">${d.reason}</td>
-    </tr>
-  `).join('') : '';
+  const tableRows = rows.map(r => {
+    const intervalDetails = r.intervalsUsed && r.intervalsUsed.length > 0
+      ? `<details class="inline text-xs mt-1"><summary class="cursor-pointer text-accent">Interval math ▸</summary>
+          <div class="mt-1 space-y-1 pl-1">
+            ${r.intervalsUsed.map(i => `<div class="border-l-2 border-accent/30 pl-2">
+              <strong>${i.name}</strong> [${i.intervalStart} – ${i.intervalEnd}]:
+              gap ${i.perDayResidual > 0 ? '+' : ''}${i.perDayResidual} kcal/day
+              ${i.reportedIntake != null ? ` · logged ${i.reportedIntake} kcal` : ''}
+              ${i.expectedExpenditure != null ? ` · TDEE-est ${i.expectedExpenditure} kcal` : ''}
+              ${i.weightImpliedStorage != null ? ` · wt-implied ${i.weightImpliedStorage > 0 ? '+' : ''}${i.weightImpliedStorage} kcal` : ''}
+              ${i.residualBefore != null ? ` · residual before ${i.residualBefore > 0 ? '+' : ''}${i.residualBefore}` : ''}
+              ${i.residualAfter != null ? ` → after ${i.residualAfter > 0 ? '+' : ''}${i.residualAfter}` : ''}
+              · ${i.coverage}% coverage · ${i.weightPoints} wt pts
+            </div>`).join('')}
+            ${r.confidenceDrivers ? `<div class="text-muted mt-0.5">Confidence factors: ${r.confidenceDrivers}</div>` : ''}
+          </div></details>`
+      : '';
 
-  const sectionHeader = hasPartial
-    ? `<th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Delta / Est.</th>`
-    : `<th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Est. Calories</th>`;
+    return `
+      <tr data-date="${r.date}" data-type="${r.type}" data-confidence="${r.confidence}" data-delta="${r.recommendedDelta}" data-review="${r.reviewManually}">
+        <td class="px-3 py-2 text-center">
+          <input type="checkbox" class="blank-day-check h-4 w-4"
+            data-date="${r.date}" data-kind="${r.type}"
+            data-residual="${r.recommendedDelta}" data-confidence="${r.confidence}"
+            ${r.checkedByDefault && !r.reviewManually ? 'checked' : ''} />
+        </td>
+        <td class="px-3 py-2 text-sm">${formatDisplayDate(r.date)}</td>
+        <td class="px-3 py-2 text-sm text-center">${dayTypeBadge(r.type)}</td>
+        <td class="px-3 py-2 text-sm text-center font-semibold">
+          ${r.type === 'blank' ? r.recommendedDelta + ' kcal' : '+' + r.recommendedDelta + ' kcal'}
+          ${r.reviewManually ? '<span class="ml-1 text-xs text-warning font-normal border border-warning rounded px-1">Review</span>' : ''}
+        </td>
+        <td class="px-3 py-2 text-sm text-center">${confidenceBadge(r.confidence)}</td>
+        <td class="px-3 py-2 text-xs text-muted max-w-xs">
+          ${r.reason}
+          ${intervalDetails}
+        </td>
+      </tr>`;
+  }).join('');
 
   return `
     <div class="mb-6 card p-6 shadow-lg">
       <h3 class="text-responsive-xl font-bold text-secondary mb-2">📅 Fill Missing Calories</h3>
-
       <div class="mb-4 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
-        <p><strong>Estimated because blank</strong> — these days have no logged food at all. Filling creates a complete synthetic daily entry built from your TDEE model and historical macro averages. It will overwrite any partial data on those days.</p>
-        ${hasPartial ? `<p><strong>Possible underreporting</strong> — these days have real food logged but a large gap between what you logged and what your weight trend implies. Filling adds only a single synthetic "Unlogged intake estimate" item to cover the estimated gap. Your real food items are never modified or deleted.</p>
-        <p class="text-warning">The model uses trend evidence across many days and residual uncertainty — not single-day scale changes. A large gap is a signal, not a certainty. Use your judgement before applying.</p>` : ''}
+        <p><strong>Blank days</strong> — no food logged; filling creates a complete synthetic entry from your TDEE model and macro averages.</p>
+        <p><strong>Partial days</strong> — real food logged but a large gap between your log and what the weight trend implies. Filling adds a single synthetic item; your real food is never changed.</p>
+        <p class="text-warning">A gap is a signal, not a certainty. Use your judgement before applying. Days marked "Review" are large (&gt;1000 kcal) and unchecked by default.</p>
       </div>
 
+      <!-- Filters -->
+      <div class="flex flex-wrap gap-2 mb-3">
+        <button class="trueup-filter btn btn-secondary btn-sm active-filter" data-filter="all">All (${rows.length})</button>
+        <button class="trueup-filter btn btn-secondary btn-sm" data-filter="blank">Blank (${rows.filter(r => r.type === 'blank').length})</button>
+        <button class="trueup-filter btn btn-secondary btn-sm" data-filter="partial">Partial (${rows.filter(r => r.type === 'partial').length})</button>
+        <button class="trueup-filter btn btn-secondary btn-sm" data-filter="high-medium">High/Med confidence (${rows.filter(r => r.confidence !== 'low').length})</button>
+        <button class="trueup-filter btn btn-secondary btn-sm" data-filter="review">Needs review (${rows.filter(r => r.reviewManually).length})</button>
+      </div>
+
+      <!-- Date range + bulk select -->
       <div class="flex flex-wrap gap-2 mb-3 items-end">
         <div>
           <label class="block text-xs text-muted mb-1">From</label>
@@ -1017,25 +1293,30 @@ function renderMissingCaloriesSection(blankDays, partialDays) {
         <button id="blank-deselect-all-btn" class="btn btn-secondary btn-sm self-end">Deselect All</button>
       </div>
 
+      <!-- Sortable table -->
       <div class="overflow-x-auto mb-4">
-        <table class="w-full border rounded-lg">
+        <table class="w-full border rounded-lg text-sm" id="trueup-table">
           <thead class="surface-2">
             <tr>
               <th class="px-3 py-2 text-center w-10">
-                <input type="checkbox" id="blank-check-all" class="h-4 w-4" title="Select all" />
+                <input type="checkbox" id="blank-check-all" class="h-4 w-4" title="Select all visible" />
               </th>
-              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Date</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Type</th>
-              ${sectionHeader}
-              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">P / C / F</th>
-              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Confidence</th>
+              <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase cursor-pointer trueup-sort" data-col="date">
+                Date <span class="trueup-sort-icon">↓</span>
+              </th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase cursor-pointer trueup-sort" data-col="type">
+                Type <span class="trueup-sort-icon"></span>
+              </th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase cursor-pointer trueup-sort" data-col="delta">
+                Delta / Est. <span class="trueup-sort-icon"></span>
+              </th>
+              <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase cursor-pointer trueup-sort" data-col="confidence">
+                Confidence <span class="trueup-sort-icon"></span>
+              </th>
               <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Reason</th>
             </tr>
           </thead>
-          <tbody class="divide-y" id="blank-days-tbody">
-            ${blankRows}
-            ${partialRows}
-          </tbody>
+          <tbody id="blank-days-tbody">${tableRows}</tbody>
         </table>
       </div>
 

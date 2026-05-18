@@ -485,6 +485,16 @@ export function initializeTabs() {
     if (macroHeader) macroHeader.classList.toggle('hidden', initial !== 'today');
 
     debugLog('init-tabs', `Initial tab: ${initial}`);
+
+    // Restore Paste & Parse open/closed state
+    const parserDetails = document.getElementById('paste-parse-details');
+    if (parserDetails) {
+      const saved = localStorage.getItem('ct-parser-open');
+      if (saved === 'false') parserDetails.removeAttribute('open');
+      parserDetails.addEventListener('toggle', () => {
+        localStorage.setItem('ct-parser-open', String(parserDetails.open));
+      });
+    }
   } catch (error) {
     handleError('init-tabs', error, 'Failed to initialize tabs');
   }
@@ -757,7 +767,7 @@ function renderCalcDetailsPanel(bankingData) {
  * Render compact calorie + macro summary for the Today tab.
  */
 function renderTodayCompact(bankingData) {
-  const { todayKcalTarget, proteinG, fatG, carbsG } = bankingData;
+  const { todayKcalTarget, proteinG, fatG, carbsG, baseKcal, todaysTrainingBump, bankBalance } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
     const q = parseFloat(item.quantity ?? 0) || 0;
@@ -795,6 +805,10 @@ function renderTodayCompact(bankingData) {
       <div class="text-xs text-muted uppercase tracking-wide mb-1">Calories Remaining</div>
       <div class="text-4xl font-bold ${remainColor}">${Math.round(remaining)}</div>
       <div class="text-xs text-muted mt-1">${Math.round(totals.calories)} eaten · ${todayKcalTarget} target</div>
+      <div class="text-xs text-muted mt-1">
+        Base: ${baseKcal} kcal${todaysTrainingBump > 0 ? ` · Exercise: +${todaysTrainingBump} kcal` : ''}${bankBalance !== 0 ? ` · Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance} kcal` : ''} · Final: ${todayKcalTarget} kcal
+      </div>
+      <div class="text-xs text-muted mt-0.5 italic" style="font-size:0.7rem">Profile &amp; Goals only changes Today after "Apply to Baseline Targets"</div>
       <div class="hbar mt-2">
         <div class="hbar-fill ${pctClass(totals.calories, todayKcalTarget)}" style="width:${pctWidth(totals.calories, todayKcalTarget)}"></div>
         <div class="hbar-marker" style="left:${markerLeft}"></div>
