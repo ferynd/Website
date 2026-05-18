@@ -222,14 +222,16 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
  * Compute daily calorie target based on goal type, TDEE, BMR floor, and
  * optional time-based fat loss calculation.
  *
- * @param {string} goalType
- * @param {number} tdee
- * @param {number} bmr
- * @param {object} goals  - state.goalSettings (targetWeightLb, targetDate)
- * @param {number} weightLb
+ * @param {string}      goalType
+ * @param {number}      tdee
+ * @param {number}      bmr
+ * @param {object}      goals       - state.goalSettings (targetWeightLb, targetDate)
+ * @param {number}      weightLb
+ * @param {string|null} asOfDateStr - 'YYYY-MM-DD'; when provided, days-left math uses this
+ *                                    date instead of today (timezone-safe, historical-date safe).
  * @returns {{ calories: number, deficit: number, deficitNote: string, daysLeft: number|null, targetWeightDeltaLb: number|null, rawRequiredDeficit: number|null, appliedDeficit: number, deficitClampReason: string, calorieFloor: number }}
  */
-export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb) {
+export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb, asOfDateStr = null) {
   const minSafeFloor = Math.max(1000, roundInt(bmr * 0.85));
 
   switch (goalType) {
@@ -245,7 +247,11 @@ export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb) {
       const targetDate = goals.targetDate;
 
       if (!isNaN(targetLb) && targetLb > 0 && targetDate && weightLb > targetLb) {
-        daysLeft = (new Date(targetDate).getTime() - Date.now()) / 86400000;
+        // Use local date-only math (no time-of-day noise, works for historical dates)
+        const asOfMs = asOfDateStr
+          ? new Date(`${asOfDateStr}T00:00:00`).getTime()
+          : (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
+        daysLeft = (new Date(`${targetDate}T00:00:00`).getTime() - asOfMs) / 86400000;
         targetWeightDeltaLb = round1(weightLb - targetLb);
         if (daysLeft > 14) {
           const deltaKg = (weightLb - targetLb) * LB_TO_KG;
@@ -538,9 +544,10 @@ function buildDeficitClampNote(calResult, tdeeResult) {
  * @param {object}      goals              - state.goalSettings (normalizeGoalSettings() shape)
  * @param {object|null} analysisResults    - from runAnalysis(), or null
  * @param {number|null} rawLatestWeightLb  - raw latest weight from state.weightEntries, or null
+ * @param {string|null} asOfDateStr        - 'YYYY-MM-DD'; forwarded to computeCalorieTarget
  * @returns {{ targets: object|null, explanation: object|null, warnings: string[], meta: object }}
  */
-export function generateTargets(profile, goals, analysisResults = null, rawLatestWeightLb = null) {
+export function generateTargets(profile, goals, analysisResults = null, rawLatestWeightLb = null, asOfDateStr = null) {
   const warnings = [];
 
   // ── Current weight ────────────────────────────────────────────────────────
@@ -564,7 +571,7 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
 
   // ── Calorie target ────────────────────────────────────────────────────────
   const goalType = goals.goalType ?? 'maintenance';
-  const calResult = computeCalorieTarget(goalType, tdeeResult.tdee, bmrResult.bmr, goals, weightLb);
+  const calResult = computeCalorieTarget(goalType, tdeeResult.tdee, bmrResult.bmr, goals, weightLb, asOfDateStr);
 
   // ── Protein ───────────────────────────────────────────────────────────────
   const proteinResult = computeProteinTarget(goalType, weightLb, bmrResult.ffm_kg, goals);
@@ -642,14 +649,156 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
 }
 
 /**
- * Merge generated targets with the user's manual overrides.
- * Only keys explicitly set in manualOverrides replace the generated value.
+ * Merge generated targets with the user's manual overrides, then recompose
+ * macros so the calorie total stays consistent.
  *
- * @param {object|null} generated      - targets from generateTargets()
- * @param {object}      manualOverrides - goals.manualTargetOverrides (sparse dict)
- * @returns {object|null}
+ * Recomposition rules (applied whenever calories, protein, or fat are overridden
+ * and carbs are NOT explicitly pinned):
+ *   carbs = max(0, floor((calories - protein×4 - fat×9) / 4))
+ *
+ * If protein×4 + fat×9 > calories after the merge, carbs is clamped to 0 and
+ * a warning is attached as result._warnings[].
+ *
+ * @param {object|null} generated       - targets from generateTargets()
+ * @param {object}      manualOverrides  - goals.manualTargetOverrides (sparse dict)
+ * @returns {object|null}  New targets object; never mutates inputs.
  */
 export function applyManualOverrides(generated, manualOverrides = {}) {
   if (!generated) return generated;
-  return { ...generated, ...manualOverrides };
+  const merged = { ...generated, ...manualOverrides };
+
+  const calOverridden     = 'calories' in manualOverrides;
+  const proteinOverridden = 'protein'  in manualOverrides;
+  const fatOverridden     = 'fat' in manualOverrides || 'fatMinimum' in manualOverrides;
+  const carbsOverridden   = 'carbs'    in manualOverrides;
+
+  const warnings = [];
+
+  if ((calOverridden || proteinOverridden || fatOverridden) && !carbsOverridden) {
+    const remaining = merged.calories - (merged.protein * 4) - (merged.fat * 9);
+    merged.carbs = Math.max(0, Math.round(remaining / 4));
+    if (remaining < 0) {
+      warnings.push(
+        `Protein (${merged.protein} g × 4 = ${merged.protein * 4} kcal) + Fat (${merged.fat} g × 9 = ${merged.fat * 9} kcal) ` +
+        `exceeds calorie target (${merged.calories} kcal). Carbs set to 0.`
+      );
+    }
+  }
+
+  if (warnings.length) merged._warnings = warnings;
+  return merged;
+}
+
+/**
+ * Pure helper: returns the latest weight_lb from a weightEntries Map, or null.
+ * Accepts the same Map<docId, {date, weight_lb, ...}> shape as state.weightEntries.
+ * Used by resolveDailyBaseTargets so auto-goal works before the Energy tab is visited.
+ */
+export function latestWeightLbFromEntries(weightEntries) {
+  if (!weightEntries || weightEntries.size === 0) return null;
+  let latestDate = '';
+  let latestWeight = null;
+  for (const entry of weightEntries.values()) {
+    if (entry.date > latestDate && parseFloat(entry.weight_lb) > 0) {
+      latestDate = entry.date;
+      latestWeight = parseFloat(entry.weight_lb);
+    }
+  }
+  return latestWeight;
+}
+
+/**
+ * Resolve today's base calorie/macro targets for a given date.
+ *
+ * In 'manual' mode  — returns state.baselineTargets unchanged.
+ * In 'autoGoal' mode — runs generateTargets() live from profile + goals +
+ *                       latest analysis, then applies manual overrides.
+ *
+ * Falls back gracefully to manual baseline when auto-goal computation fails.
+ *
+ * @param {string} dateStr   - Date string 'YYYY-MM-DD'; forwarded to computeCalorieTarget for date-aware deficit math
+ * @param {object} stateLike - Object with { baselineTargets, goalSettings, userProfile, analysisResults }
+ * @returns {{ targets: object, source: 'manual'|'autoGoal'|'manual_fallback', warnings: string[] }}
+ */
+export function resolveDailyBaseTargets(dateStr, stateLike) {
+  const mode = stateLike.goalSettings?.targetMode ?? 'manual';
+
+  if (mode !== 'autoGoal') {
+    return {
+      targets: { ...stateLike.baselineTargets },
+      source: 'manual',
+      warnings: [],
+    };
+  }
+
+  const rawLatestWeightLb = latestWeightLbFromEntries(stateLike.weightEntries ?? null);
+
+  const result = generateTargets(
+    stateLike.userProfile  ?? {},
+    stateLike.goalSettings ?? {},
+    stateLike.analysisResults ?? null,
+    rawLatestWeightLb,
+    dateStr
+  );
+
+  if (!result.targets) {
+    const reason = result.warnings[0] ?? 'unknown reason';
+    return {
+      targets: { ...stateLike.baselineTargets },
+      source: 'manual_fallback',
+      warnings: [`Auto-goal targets unavailable (${reason}); falling back to manual baseline.`],
+    };
+  }
+
+  const finalTargets = applyManualOverrides(result.targets, stateLike.goalSettings?.manualTargetOverrides ?? {});
+  return {
+    targets: finalTargets,
+    source: 'autoGoal',
+    warnings: result.warnings,
+  };
+}
+
+/**
+ * Pure helper: build the calorie-target series for the Energy-tab eating-pattern chart.
+ *
+ * In manual mode: flat line at baselineTargets.calories (null before firstNutritionDate).
+ * In autoGoal mode: per-date resolution via resolveDailyBaseTargets, cached to avoid
+ *   redundant generateTargets calls across a long label array.
+ *
+ * @param {string[]}    labels            - chart date strings YYYY-MM-DD (chronological)
+ * @param {string|null} firstNutritionDate - earliest manually-logged date; null = unknown
+ * @param {object}      stateLike         - { goalSettings, baselineTargets, userProfile,
+ *                                          analysisResults, weightEntries }
+ * @returns {{ targetData: (number|null)[], label: string|null, anyFallback: boolean }}
+ */
+export function buildEatingPatternTargetSeries(labels, firstNutritionDate, stateLike) {
+  const targetMode = stateLike.goalSettings?.targetMode ?? 'manual';
+  const baseCals   = parseFloat(stateLike.baselineTargets?.calories) || null;
+
+  if (targetMode !== 'autoGoal') {
+    return {
+      targetData: labels.map(d =>
+        (!firstNutritionDate || d < firstNutritionDate) ? null : baseCals
+      ),
+      label: baseCals ? `Manual target (${baseCals} kcal)` : null,
+      anyFallback: false,
+    };
+  }
+
+  // autoGoal: resolve per date, cache to avoid calling generateTargets O(n) times
+  const cache = new Map();
+  let anyFallback = false;
+
+  const targetData = labels.map(dateStr => {
+    if (!firstNutritionDate || dateStr < firstNutritionDate) return null;
+    if (!cache.has(dateStr)) {
+      const r = resolveDailyBaseTargets(dateStr, stateLike);
+      if (r.source === 'manual_fallback') anyFallback = true;
+      cache.set(dateStr, parseFloat(r.targets?.calories) || baseCals);
+    }
+    return cache.get(dateStr);
+  });
+
+  const label = anyFallback ? 'Auto-goal target (manual fallback)' : 'Auto-goal target';
+  return { targetData, label, anyFallback };
 }

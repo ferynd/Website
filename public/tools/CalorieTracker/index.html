@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Rolling Balance Nutrition Tracker</title>
+  <title>Nutrition Tracker</title>
 
   <!-- UI libs -->
   <link rel="stylesheet" href="/shared-styles.css">
@@ -37,10 +37,10 @@
       <header class="app-header">
         <div class="app-header-title">
           <i class="fas fa-chart-pie text-accent" style="font-size:1.25rem;flex-shrink:0;"></i>
-          <h1 class="text-primary">Rolling Balance Nutrition Tracker</h1>
+          <h1 class="text-primary">Nutrition Tracker</h1>
         </div>
         <div class="app-header-controls">
-          <span id="user-status" class="text-secondary text-sm hidden"></span>
+          <span id="user-status" class="app-header-email text-secondary text-sm hidden"></span>
           <button id="open-login-btn" class="btn btn-primary btn-sm">Login / Sign Up</button>
           <button id="logout-btn" class="hidden btn btn-secondary btn-sm">Logout</button>
           <button id="open-settings-btn" class="btn btn-secondary icon-btn" title="Settings" aria-label="Settings">
@@ -478,11 +478,36 @@
           </div>
         </div>
 
+        <!-- ── Target Mode ────────────────────────────────────────────────── -->
+        <div class="settings-section">
+          <h3 class="text-lg font-semibold text-secondary mb-2">Daily Target Mode</h3>
+          <p class="text-xs text-muted mb-3">Choose how Today's calorie &amp; macro targets are set.</p>
+          <div class="space-y-2">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="radio" name="profile-target-mode" value="manual" class="mt-0.5 shrink-0" checked>
+              <div>
+                <span class="text-sm font-medium text-primary">Manual baseline targets</span>
+                <p class="text-xs text-muted">Today uses the targets you set in Settings or applied via Auto-Calculate. Stable day-to-day.</p>
+              </div>
+            </label>
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="radio" name="profile-target-mode" value="autoGoal" class="mt-0.5 shrink-0">
+              <div>
+                <span class="text-sm font-medium text-primary">Auto-goal targets</span>
+                <p class="text-xs text-muted">Today derives targets live from your profile, current weight, and goal date. Updates as weight changes.</p>
+              </div>
+            </label>
+          </div>
+        </div>
+
         <!-- ── Save Profile & Goals (always visible) ────────────────────── -->
         <div class="settings-section">
-          <button type="button" id="save-profile-btn" class="btn btn-secondary w-full">
-            Save Profile &amp; Goals
-          </button>
+          <div class="flex items-center justify-between mb-1">
+            <button type="button" id="save-profile-btn" class="btn btn-secondary flex-1">
+              Save Profile &amp; Goals
+            </button>
+            <span id="profile-autosave-status" class="text-xs text-muted ml-3" aria-live="polite"></span>
+          </div>
           <p class="text-xs text-muted text-center mt-1">
             Saves profile and goal settings without changing baseline targets.
           </p>

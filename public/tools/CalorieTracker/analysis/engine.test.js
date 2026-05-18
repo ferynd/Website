@@ -1496,7 +1496,7 @@ describe('getTrueUpCandidates', () => {
     expect(found.recommendedDelta).toBeGreaterThanOrEqual(1500);
   });
 
-  it('buildBlankDayEstimateEntry saves calories equal to the blank candidate recommendedDelta', () => {
+  it('buildBlankDayEstimateEntry saves calories from fullDayEstimate (centered-interval source)', () => {
     const startDate = '2023-10-01';
     const blankDate = isoDate(startDate, 25);
     const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
@@ -1508,9 +1508,15 @@ describe('getTrueUpCandidates', () => {
     const found = candidates.find(c => c.date === blankDate);
     expect(found, `expected blank candidate for ${blankDate}`).toBeDefined();
 
+    // fullDayEstimate is now the primary source (centered-interval TDEE)
+    expect(found.fullDayEstimate).toBeDefined();
+    expect(found.estimateSource).toBe('centered_interval');
+
     const entry = buildBlankDayEstimateEntry(blankDate, found, null, dailyEntries, baseline);
-    expect(entry.calories).toBe(found.recommendedDelta);
-    expect(entry.foodItems[0].calories).toBe(found.recommendedDelta);
+    // Entry calories should come from fullDayEstimate, not raw recommendedDelta
+    // recommendedDelta is still capped by minAllocDelta, fullDayEstimate is uncapped
+    expect(entry.calories).toBe(found.fullDayEstimate);
+    expect(entry.foodItems[0].calories).toBe(found.fullDayEstimate);
   });
 
   it('blank candidate interval excludes the blank day imputed calories from reportedIntake', () => {
@@ -2040,5 +2046,219 @@ describe('getTrueUpCandidates — interval-aware allocation', () => {
     expect(Object.keys(candidates)).not.toContain('_pending');
     // But remains directly accessible
     expect(Array.isArray(candidates._pending)).toBe(true);
+  });
+});
+
+// ── estimateProfileRmr — Cunningham preferred when BF% available (Issue 7) ───
+
+describe('estimateProfileRmr — method priority', () => {
+  const weightLb = 185;
+
+  it('uses cunningham when BF% is set, even with full height+age+sex data', () => {
+    const profile = {
+      bodyFatPercent: 18, age: 35, sex: 'male',
+      heightValue: 71, heightUnit: 'in', birthDate: null,
+    };
+    const result = estimateProfileRmr(profile, weightLb);
+    expect(result.method).toBe('cunningham');
+  });
+
+  it('falls back to mifflin_st_jeor when no BF% but height+age+sex are available', () => {
+    const profile = {
+      bodyFatPercent: null, age: 35, sex: 'male',
+      heightValue: 71, heightUnit: 'in', birthDate: null,
+    };
+    const result = estimateProfileRmr(profile, weightLb);
+    expect(result.method).toBe('mifflin_st_jeor');
+  });
+
+  it('falls back to weight_only when neither BF% nor Mifflin params are available', () => {
+    const result = estimateProfileRmr({}, weightLb);
+    expect(result.method).toBe('weight_only');
+  });
+
+  it('cunningham RMR is higher than mifflin for a lean individual (low BF%)', () => {
+    const cunninghamResult = estimateProfileRmr({
+      bodyFatPercent: 10, age: 30, sex: 'male', heightValue: 70, heightUnit: 'in',
+    }, 180);
+    const mifflinResult = estimateProfileRmr({
+      bodyFatPercent: null, age: 30, sex: 'male', heightValue: 70, heightUnit: 'in',
+    }, 180);
+    expect(cunninghamResult.rmr).toBeGreaterThan(mifflinResult.rmr);
+  });
+
+  it('rejects BF% values outside 5–60 range (non-physiological)', () => {
+    const tooLow  = estimateProfileRmr({ bodyFatPercent: 2,  age: 30, sex: 'male', heightValue: 70, heightUnit: 'in' }, 185);
+    const tooHigh = estimateProfileRmr({ bodyFatPercent: 65, age: 30, sex: 'male', heightValue: 70, heightUnit: 'in' }, 185);
+    // Should fall back to Mifflin since BF% guard is 5–60
+    expect(tooLow.method).toBe('mifflin_st_jeor');
+    expect(tooHigh.method).toBe('mifflin_st_jeor');
+  });
+});
+
+// ── blank-day estimate source priority (Issue 8) ─────────────────────────────
+
+describe('getTrueUpCandidates — blank-day estimate source priority', () => {
+  it('blank candidates have fullDayEstimate, estimateSource, and imputedDiagnosticCalories fields', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate && c.type === 'blank');
+    expect(found).toBeDefined();
+
+    expect(found.fullDayEstimate).toBeDefined();
+    expect(typeof found.fullDayEstimate).toBe('number');
+    expect(found.estimateSource).toMatch(/centered_interval|baseline_target/);
+    // imputedDiagnosticCalories is null when no imputed data, or a number
+    expect(found.imputedDiagnosticCalories === null || typeof found.imputedDiagnosticCalories === 'number').toBe(true);
+  });
+
+  it('blank candidate estimateSource is centered_interval when avgTdee is available', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 40);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 100 });
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate && c.type === 'blank');
+    if (!found) return; // skip if insufficient data
+
+    expect(found.estimateSource).toBe('centered_interval');
+    expect(found.fullDayEstimate).toBeGreaterThan(0);
+  });
+
+  it('buildBlankDayEstimateEntry uses fullDayEstimate as calorie source (not raw recommendedDelta)', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate && c.type === 'blank');
+    expect(found).toBeDefined();
+
+    const entry = buildBlankDayEstimateEntry(blankDate, found, null, dailyEntries, baseline);
+
+    // Entry should use fullDayEstimate (uncapped) not recommendedDelta (which is further capped by minAllocDelta)
+    expect(entry.calories).toBe(found.fullDayEstimate);
+    expect(entry.foodItems[0].calories).toBe(found.fullDayEstimate);
+  });
+
+  it('partial candidates have null fullDayEstimate and null estimateSource', () => {
+    const startDate = '2023-10-01';
+    const blankDate = null; // no blank
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80, partialDate: isoDate(startDate, 20) });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const partial = candidates.find(c => c.type === 'partial');
+    if (!partial) return; // skip if none surfaced
+    expect(partial.fullDayEstimate).toBeNull();
+    expect(partial.estimateSource).toBeNull();
+  });
+});
+
+// ── analysis summary fields (Issue 5) ────────────────────────────────────────
+
+describe('runAnalysis — summary breakdown fields', () => {
+  function buildEntries(specs) {
+    const m = new Map();
+    for (const [date, opts] of Object.entries(specs)) {
+      m.set(date, {
+        schemaVersion: 2,
+        entryType: opts.estimate ? 'estimate' : 'logged',
+        calories: opts.calories ?? 2000,
+        protein: 150, fat: 60, carbs: 200,
+        foodItems: [{
+          id: `food-${date}`,
+          name: opts.estimate ? "Day's estimate" : 'Real food',
+          quantity: 1,
+          calories: opts.calories ?? 2000,
+          protein: 150, fat: 60, carbs: 200,
+          _isSynthetic: opts.estimate ? true : undefined,
+        }],
+        exerciseSessions: [],
+      });
+    }
+    return m;
+  }
+
+  function buildWeights(startDate, n) {
+    const m = new Map();
+    for (let i = 0; i < n; i++) {
+      const d = new Date(`${startDate}T00:00:00`);
+      d.setDate(d.getDate() + i);
+      const dateStr = d.toISOString().slice(0, 10);
+      m.set(`w-${i}`, { date: dateStr, weight_lb: 185, time_min: 480, source: 'test' });
+    }
+    return m;
+  }
+
+  it('daysWithManualCalories counts only non-estimate logged entries', () => {
+    const startDate = '2024-01-01';
+    const weightEntries = buildWeights(startDate, 30);
+    const dailyEntries = buildEntries({
+      '2024-01-05': { calories: 2100 },
+      '2024-01-06': { calories: 1900 },
+      '2024-01-07': { estimate: true, calories: 1800 },
+    });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.summary.daysWithManualCalories).toBe(2);
+  });
+
+  it('daysWithSavedEstimates counts saved estimate entries only', () => {
+    const startDate = '2024-01-01';
+    const weightEntries = buildWeights(startDate, 30);
+    const dailyEntries = buildEntries({
+      '2024-01-05': { calories: 2000 },
+      '2024-01-10': { estimate: true, calories: 1900 },
+      '2024-01-11': { estimate: true, calories: 1800 },
+    });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.summary.daysWithSavedEstimates).toBe(2);
+  });
+
+  it('daysWithManualCalories + daysWithSavedEstimates ≤ daysWithCalories', () => {
+    const startDate = '2024-01-01';
+    const weightEntries = buildWeights(startDate, 60);
+    const dailyEntries = buildEntries({
+      '2024-01-05': { calories: 2000 },
+      '2024-01-06': { calories: 2100 },
+      '2024-01-10': { estimate: true, calories: 1900 },
+    });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    const { daysWithManualCalories, daysWithSavedEstimates, daysWithCalories } = results.summary;
+    expect(daysWithManualCalories + daysWithSavedEstimates).toBeLessThanOrEqual(daysWithCalories);
+  });
+
+  it('daysWithUnsavedImputedCalories: engine-imputed days with no saved entry', () => {
+    const startDate = '2024-01-01';
+    // Enough weight data for imputation to run but no food entries after a gap
+    const weightEntries = buildWeights(startDate, 60);
+    // Only log a few days — the rest will be blank and may be imputed by engine
+    const dailyEntries = buildEntries({
+      '2024-01-05': { calories: 2000 },
+      '2024-01-06': { calories: 2000 },
+    });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    const { daysWithUnsavedImputedCalories, daysImputed } = results.summary;
+    // All engine-imputed days have no saved estimate, so counts should match
+    expect(daysWithUnsavedImputedCalories).toBe(daysImputed);
+  });
+
+  it('summary fields are all numeric and ≥ 0', () => {
+    const startDate = '2024-01-01';
+    const weightEntries = buildWeights(startDate, 20);
+    const dailyEntries = buildEntries({ '2024-01-03': { calories: 2000 } });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    const { daysWithManualCalories, daysWithSavedEstimates, daysWithUnsavedImputedCalories } = results.summary;
+    expect(typeof daysWithManualCalories).toBe('number');
+    expect(typeof daysWithSavedEstimates).toBe('number');
+    expect(typeof daysWithUnsavedImputedCalories).toBe('number');
+    expect(daysWithManualCalories).toBeGreaterThanOrEqual(0);
+    expect(daysWithSavedEstimates).toBeGreaterThanOrEqual(0);
+    expect(daysWithUnsavedImputedCalories).toBeGreaterThanOrEqual(0);
   });
 });

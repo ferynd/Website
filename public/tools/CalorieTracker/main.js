@@ -125,8 +125,9 @@ try {
     }),
 
     import('./targets/targetUI.js').then(module => {
-      window.__wireProfileTab   = module.wireProfileTab;
-      window.__populateProfileForm = module.populateProfileForm;
+      window.__wireProfileTab          = module.wireProfileTab;
+      window.__populateProfileForm     = module.populateProfileForm;
+      window.__forcePopulateProfileForm = module.forcePopulateProfileForm;
       debugLog('IMPORT-TEST', '✅ targetUI.js imported successfully');
     }).catch(error => {
       errorLog('IMPORT-TARGET-UI', error, 'Failed to import targetUI.js (non-fatal)');

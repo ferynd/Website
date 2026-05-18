@@ -10,6 +10,7 @@ import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { getEntryExerciseKcal } from '../exercise/met.js';
 import { resolveWeightKg } from './nutrientHelpers.js';
+import { resolveDailyBaseTargets } from '../targets/dailyTargetResolver.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -215,12 +216,21 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     // Resolve weight once for all calorie-target calculations (approximation for history)
     const weightKg = resolveWeightKg();
 
+    const isAutoGoal = (state.goalSettings?.targetMode === 'autoGoal');
+
     nutrientKeys.forEach((nutrient, idx) => {
       const color = CONFIG.CHART_COLORS[idx % CONFIG.CHART_COLORS.length];
       const baseTarget = parseFloat(state.baselineTargets[nutrient]) || 1;
       const getDateTarget = (dateStr) => {
         if (nutrient === 'calories') {
-          return baseTarget + getEntryExerciseKcal(state.dailyEntries.get(dateStr) || {}, weightKg);
+          const calBase = isAutoGoal
+            ? (parseFloat(resolveDailyBaseTargets(dateStr, state).targets?.calories) || baseTarget)
+            : baseTarget;
+          return calBase + getEntryExerciseKcal(state.dailyEntries.get(dateStr) || {}, weightKg);
+        }
+        if (isAutoGoal) {
+          const resolved = parseFloat(resolveDailyBaseTargets(dateStr, state).targets?.[nutrient]);
+          return resolved > 0 ? resolved : baseTarget;
         }
         return baseTarget;
       };
@@ -419,6 +429,7 @@ export function updateChart() {
     const show7Day = show7DayAvg?.checked || false;
 
     const { labels, datasets, tableData } = getChartData(selectedNutrients, timeframe, show3Day, show7Day);
+    const isAutoGoalMode = (state.goalSettings?.targetMode === 'autoGoal');
     const canvas = document.getElementById('nutrition-chart');
     
     if (!canvas) {
@@ -440,7 +451,7 @@ export function updateChart() {
         datasets: [
           // Target line at 100%
           {
-            label: 'Target (100%)',
+            label: isAutoGoalMode ? 'Auto-goal target (100%)' : 'Manual target (100%)',
             data: new Array(labels.length).fill(100),
             type: 'line',
             borderColor: borderColor,

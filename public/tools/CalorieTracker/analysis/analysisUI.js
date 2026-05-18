@@ -16,6 +16,7 @@ import {
   computeWeekdayAverages,
   VACATION_TYPE_CONFIG,
 } from './engine.js';
+import { buildEatingPatternTargetSeries } from '../targets/targetEngine.js';
 import { handleWeightUpload } from './weightUpload.js';
 import { debugLog, showMessage } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
@@ -151,6 +152,13 @@ export function initAnalysisEvents() {
     drawWeightChart(state.analysisResults.rows);
     drawEatingPatternChart(state.analysisResults.rows);
   }
+
+  // Redraw eating pattern chart when the "include estimates" toggle changes
+  document.getElementById('eating-chart-include-estimates')?.addEventListener('change', () => {
+    if (state.analysisResults && !state.analysisResults.error) {
+      drawEatingPatternChart(state.analysisResults.rows);
+    }
+  });
 
   const timeframeSelect = document.getElementById('weight-chart-timeframe');
   if (timeframeSelect) {
@@ -704,10 +712,11 @@ function renderEatingPatternChart(results) {
   const { bmrModel, tdeeByHorizon, waterWeightUncertaintyLb } = results;
   if (!bmrModel || bmrModel.error) return '';
 
-  const tdee = bmrModel.tdee_current || bmrModel.observedTdee;
-  const baseCals = parseFloat(state.baselineTargets?.calories) || null;
+  const tdee        = bmrModel.tdee_current || bmrModel.observedTdee;
+  const baseCals    = parseFloat(state.baselineTargets?.calories) || null;
   const restDayTdee = bmrModel.modelPredictedRestDayTdee || tdee;
   const uncertainty = waterWeightUncertaintyLb ?? null;
+  const targetMode  = state.goalSettings?.targetMode ?? 'manual';
 
   const uncertaintyNote = uncertainty != null
     ? `Water weight noise: ±${uncertainty} lb (≈ ±${Math.round(uncertainty * 3500)} kcal apparent daily variation).`
@@ -722,22 +731,81 @@ function renderEatingPatternChart(results) {
     ? 'empirical (fitted to your history)'
     : 'profile formula (not enough data for empirical)';
 
+  const firstNutritionDate = findFirstManualNutritionDate();
+  const firstDateNote = firstNutritionDate
+    ? `Reported intake starts on <strong>${firstNutritionDate}</strong>, your first manually logged nutrition day.`
+    : '';
+
+  const targetModeNote = targetMode === 'autoGoal'
+    ? 'Daily targets are set by <strong>Auto Goal</strong> mode (Profile &amp; Goals) — the dashed target line varies per date.'
+    : 'Daily targets use your <strong>manual baseline</strong> (Settings or "Apply to Baseline Targets") — the dashed target line is flat.';
+
+  const targetNote = targetMode === 'autoGoal'
+    ? '<p>Target line: per-date <strong>Auto Goal</strong> calories (varies with your goal deadline and weight history).</p>'
+    : (baseCals ? `<p>Target line: flat <strong>manual baseline of ${baseCals} kcal/day</strong>${tdee && baseCals < tdee ? ` — a deficit of ~${tdee - baseCals} kcal/day` : ''}.</p>` : '');
+
+  const targetLineDesc = targetMode === 'autoGoal' ? 'auto-goal target (dashed, per-date)' : 'manual baseline target (dashed)';
+
   return `
     <div class="mb-6 card p-6 shadow-lg">
       <h3 class="text-responsive-xl font-bold text-secondary mb-1">📊 Eating Pattern vs Weight Change</h3>
+      <div class="mb-3 flex flex-wrap gap-4 items-center text-sm">
+        <label class="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" id="eating-chart-include-estimates" class="h-4 w-4">
+          <span class="text-muted">Include saved estimates in reported intake</span>
+        </label>
+      </div>
       <div style="position:relative; height:300px;" class="mb-4">
         <canvas id="eating-pattern-chart"></canvas>
       </div>
       <div class="p-3 surface-2 rounded-lg border text-sm text-muted space-y-2">
         <p class="font-semibold text-primary">How the model thinks about this:</p>
         ${tdee ? `<p>Estimated total daily energy expenditure: <strong>${tdee} kcal/day</strong> (${tdeeSource}). ${restDayTdee !== tdee ? `Rest-day TDEE: <strong>${restDayTdee} kcal/day</strong> (fitted BMR × rest-day PAL).` : ''}</p>` : ''}
-        ${baseCals ? `<p>Baseline calorie target: <strong>${baseCals} kcal/day</strong>${tdee && baseCals < tdee ? ` — a deficit of ~${tdee - baseCals} kcal/day` : ''}.</p>` : ''}
+        ${targetNote}
         ${uncertaintyNote ? `<p>${uncertaintyNote} This is a physical lower bound on single-day precision — scale fluctuations can mask real trends.</p>` : ''}
         ${residualNote ? `<p>${residualNote} ${Math.abs(residual?.medianKcalPerDay ?? 0) > 100 ? 'This gap likely reflects underlogged meals, not metabolic differences.' : 'Small gap — logging appears consistent.'}</p>` : ''}
-        <p class="text-xs">The chart shows your 7-day rolling calorie average (blue) vs your base target (dashed) and the TDEE estimate (orange). The smoothed weight trend is overlaid on the right axis. Markers show blank/partial/estimated days.</p>
+        ${firstDateNote ? `<p>${firstDateNote} Weight data before this date affects the trend chart only.</p>` : ''}
+        <p>${targetModeNote}</p>
+        <p class="text-xs">The chart shows your 7-day rolling calorie average (blue, real logged days only) vs your ${targetLineDesc} and the TDEE estimate (orange). The smoothed weight trend is overlaid on the right axis. Unsaved imputed values are never included in the reported calorie series.</p>
       </div>
     </div>
   `;
+}
+
+/**
+ * Return the earliest YYYY-MM-DD string in dailyEntries that has real manually-
+ * logged food (entryType !== 'estimate', calories > 0, not synthetic-item-only).
+ * Returns null when no such day exists.
+ */
+function findFirstManualNutritionDate() {
+  let earliest = null;
+  for (const [dateStr, entry] of state.dailyEntries) {
+    if (!entry) continue;
+    const cals = parseFloat(entry.calories);
+    if (!(cals > 0)) continue;
+    if (entry.entryType === 'estimate') continue;
+    // Skip days where every food item is synthetic
+    const items = Array.isArray(entry.foodItems) ? entry.foodItems : [];
+    if (items.length > 0 && items.every(it =>
+      it.entryType === 'estimate' || /^(est-|vac-|adj-)/.test(it.id ?? '')
+    )) continue;
+    if (earliest === null || dateStr < earliest) earliest = dateStr;
+  }
+  return earliest;
+}
+
+/**
+ * Return real calories for a given date, or null.
+ * Saved estimate entries count only when includeEstimates=true.
+ * Unsaved / engine-imputed values are never included.
+ */
+function _realCaloriesForDate(dateStr, includeEstimates) {
+  const entry = state.dailyEntries.get(dateStr);
+  if (!entry) return null;
+  const cals = parseFloat(entry.calories);
+  if (!(cals > 0)) return null;
+  if (entry.entryType === 'estimate') return includeEstimates ? cals : null;
+  return cals;
 }
 
 function drawEatingPatternChart(rows) {
@@ -751,25 +819,40 @@ function drawEatingPatternChart(rows) {
   const targetColor = chartColors[3] || '#22c55e';
   const weightColor = chartColors[0] || '#a78bfa';
 
-  const baseCals = parseFloat(state.baselineTargets?.calories) || null;
   const tdeeVal  = state.analysisResults?.bmrModel?.tdee_current || null;
 
-  // Build 7d rolling average of logged calories
-  const labels = [];
-  const rollingCals = [];
+  // Respect the "include estimates" toggle if it exists in the DOM
+  const includeEstimates = document.getElementById('eating-chart-include-estimates')?.checked ?? false;
+
+  // Only draw reported calorie series from the first day the user manually logged food.
+  // This prevents weight data before tracking started from appearing as calorie points.
+  const firstNutritionDate = findFirstManualNutritionDate();
+
+  // Build 7d rolling average from REAL logged calories only.
+  // Engine-imputed values (r.calories_imputed) are never included as reported intake.
+  const labels        = [];
+  const rollingCals   = [];
   const smoothWeights = [];
 
   for (let i = 0; i < rows.length; i++) {
-    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
-    const calVals = slice.map(r => {
-      const e = state.dailyEntries.get(r.date);
-      if (e && (parseFloat(e.calories) || 0) > 0) return parseFloat(e.calories);
-      if (r.calories_imputed) return r.calories || null;
-      return null;
-    }).filter(v => v != null);
     labels.push(rows[i].date);
-    rollingCals.push(calVals.length >= 3 ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length) : null);
     smoothWeights.push(rows[i].wt_smooth_lb);
+
+    // Before tracking started: no calorie data point
+    if (!firstNutritionDate || rows[i].date < firstNutritionDate) {
+      rollingCals.push(null);
+      continue;
+    }
+
+    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
+    const calVals = slice
+      .filter(r => firstNutritionDate && r.date >= firstNutritionDate)
+      .map(r => _realCaloriesForDate(r.date, includeEstimates))
+      .filter(v => v != null);
+
+    rollingCals.push(calVals.length >= 3
+      ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length)
+      : null);
   }
 
   if (window._eatingPatternChart) { window._eatingPatternChart.destroy(); window._eatingPatternChart = null; }
@@ -805,16 +888,19 @@ function drawEatingPatternChart(rows) {
     });
   }
 
-  if (baseCals) {
+  const { targetData, label: targetLabel } =
+    buildEatingPatternTargetSeries(labels, firstNutritionDate, state);
+
+  if (targetLabel) {
     datasets.push({
-      label: `Target (${baseCals} kcal)`,
-      data: labels.map(() => baseCals),
+      label: targetLabel,
+      data: targetData,
       borderColor: targetColor,
       borderWidth: 1.5,
       borderDash: [3, 3],
       pointRadius: 0,
       fill: false,
-      spanGaps: true,
+      spanGaps: false,   // null = gap, keeps pre-tracking stretch clean
       yAxisID: 'y',
       order: 4,
     });

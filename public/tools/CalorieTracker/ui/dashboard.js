@@ -30,6 +30,7 @@ import { initializeChartControls } from './chart.js';
 import { CONFIG } from '../config.js';
 import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
 import { UL_TABLE } from '../targets/nutritionReferences.js';
+import { resolveDailyBaseTargets } from '../targets/dailyTargetResolver.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -182,6 +183,23 @@ const pctClass = (v, tgt) => {
  * @param {string} targetDateStr - Target date in YYYY-MM-DD format
  * @returns {Object} Banking calculation results
  */
+/**
+ * Returns true when an entry contains calories the user (or a saved estimate)
+ * deliberately logged — i.e. calories are a real signal, not an absent default.
+ *
+ * Entries that do NOT count as "real" calories:
+ *   • Empty objects (no Firestore document for that date)
+ *   • Entries where calories === 0 with no food items (user opened the day but logged nothing)
+ *
+ * Entries that DO count:
+ *   • Any entry with calories > 0 (logged food, saved estimates, vacation days, true-up days)
+ */
+function _hasTrustedCalories(entry) {
+  if (!entry || Object.keys(entry).length === 0) return false;
+  const cals = parseFloat(entry.calories);
+  return !isNaN(cals) && cals > 0;
+}
+
 export function calculateBankingData(targetDateStr) {
   try {
     debugLog('calc-start', { targetDateStr, userId: state.userId });
@@ -204,21 +222,41 @@ export function calculateBankingData(targetDateStr) {
     }
 
     const weightKg = resolveWeightKg();
+    const targetMode = state.goalSettings?.targetMode ?? 'manual';
+
+    // Helper: resolve per-day calorie target.
+    // In autoGoal mode, each past day uses the date-specific dynamically computed target.
+    // In manual mode, every day uses the same baseKcal from baseline targets.
+    function resolveDayCalorieTarget(dateStr) {
+      if (targetMode !== 'autoGoal') return baseKcal;
+      const resolved = resolveDailyBaseTargets(dateStr, state);
+      return parseFloat(resolved.targets?.calories) || baseKcal;
+    }
 
     // Sum actual intake AND exercise bumps for the previous (windowDays - 1) days.
+    // For days with no logged data ("unknown"), we use the day's target as a
+    // bank-neutral stand-in to prevent phantom calorie banks from blank days.
     const pastDays = [];
-    let sumPast6Actual = 0;
+    let sumPast6Actual       = 0;
     let sumPastTrainingBumps = 0;
+    let sumPastBaseTargets   = 0; // window budget accumulator
+    const unknownDays        = [];
 
     for (let i = 1; i < windowDays; i++) {
-      const pastDate = getPastDate(targetDate, i);
+      const pastDate    = getPastDate(targetDate, i);
       const pastDateStr = formatDate(pastDate);
-      const entry = state.dailyEntries.get(pastDateStr) || {};
+      const entry       = state.dailyEntries.get(pastDateStr) || {};
 
-      const actualKcal  = parseFloat(entry.calories) || 0;
-      const trainingBump = getEntryExerciseKcal(entry, weightKg);
-      const dailyTarget  = baseKcal + trainingBump;
-      const delta        = actualKcal - dailyTarget;
+      const trainingBump    = getEntryExerciseKcal(entry, weightKg);
+      const dayBaseCalories = resolveDayCalorieTarget(pastDateStr);
+      const dailyTarget     = dayBaseCalories + trainingBump;
+
+      const trusted = _hasTrustedCalories(entry);
+      // Unknown days: use target calories so they contribute 0 to bank balance
+      const actualKcal = trusted ? parseFloat(entry.calories) : dailyTarget;
+      const delta      = actualKcal - dailyTarget;
+
+      if (!trusted) unknownDays.push(pastDateStr);
 
       pastDays.push({
         date: pastDate,
@@ -227,20 +265,25 @@ export function calculateBankingData(targetDateStr) {
         trainingBump,
         dailyTarget,
         delta,
+        unknown: !trusted,
         dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
       });
 
-      sumPast6Actual     += actualKcal;
+      sumPast6Actual       += actualKcal;
       sumPastTrainingBumps += trainingBump;
+      sumPastBaseTargets   += dayBaseCalories;
     }
 
-    // Today's entry exercise calories
-    const todaysEntry = state.dailyEntries.get(targetDateStr) || {};
-    const todaysTrainingBump = getEntryExerciseKcal(todaysEntry, weightKg);
+    const bankIncomplete = unknownDays.length > 0;
 
-    // The full 7-day window budget includes base calories for every day
+    // Today's base calorie target and exercise bump
+    const todaysEntry         = state.dailyEntries.get(targetDateStr) || {};
+    const todaysTrainingBump  = getEntryExerciseKcal(todaysEntry, weightKg);
+    const todayBaseCalories   = resolveDayCalorieTarget(targetDateStr);
+
+    // The full 7-day window budget uses each day's own base target
     // PLUS training bumps for every day (past and today).
-    const windowBudget = baseKcal * windowDays + sumPastTrainingBumps + todaysTrainingBump;
+    const windowBudget = sumPastBaseTargets + todayBaseCalories + sumPastTrainingBumps + todaysTrainingBump;
 
     // Rolling target = how much of the window budget remains for today.
     const rollingTarget = windowBudget - sumPast6Actual;
@@ -248,20 +291,42 @@ export function calculateBankingData(targetDateStr) {
     // Bank balance = how much today's target differs from a plain rest-day goal.
     // Positive = you under-ate relative to targets = more room today.
     // Negative = you over-ate relative to targets = less room today.
-    const bankBalance = rollingTarget - baseKcal - todaysTrainingBump;
+    // When bankIncomplete, the balance is a lower-bound estimate (unknown days neutral).
+    const bankBalance = rollingTarget - todayBaseCalories - todaysTrainingBump;
 
     // Round to nearest 25 for display friendliness
     const todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
 
     // Protein floor does not scale with exercise; carbs absorb the extra calories.
     const scaledProteinG = proteinG;
-    const proteinKcal = scaledProteinG * 4;
-    const fatKcal = fatFloorG * 9;
-    const remainingKcal = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
-    const carbsG = Math.round(remainingKcal / 4);
+    const proteinKcal    = scaledProteinG * 4;
+    const fatKcal        = fatFloorG * 9;
+    const remainingKcal  = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
+    const carbsG         = Math.round(remainingKcal / 4);
+
+    // Resolve today's base macro targets for display.
+    // carbsG above can be 0 when the rolling target < protein+fat budget (e.g. after over-eating);
+    // macro progress bars should show the stable daily base targets instead.
+    // Also capture the resolution source so display labels can be mode-accurate.
+    let resolvedTargetSource = targetMode;  // 'manual' or 'autoGoal'
+    const displayBaseTargets = targetMode === 'autoGoal'
+      ? (() => {
+        const r = resolveDailyBaseTargets(targetDateStr, state);
+        resolvedTargetSource = r.source;   // may be 'manual_fallback' if weight unavailable
+        return r.targets || {};
+      })()
+      : state.baselineTargets;
+    const displayProteinG = Math.round(parseFloat(displayBaseTargets.protein) || scaledProteinG);
+    const displayFatG     = Math.round(parseFloat(displayBaseTargets.fatMinimum ?? displayBaseTargets.fat) || fatFloorG);
+    const displayCarbsG   = (() => {
+      const fromTargets = parseFloat(displayBaseTargets.carbs);
+      if (fromTargets > 0) return Math.round(fromTargets);
+      const calBudget = parseFloat(displayBaseTargets.calories) || baseKcal;
+      return Math.round(Math.max(0, (calBudget - displayProteinG * 4 - displayFatG * 9) / 4));
+    })();
 
     // Sum of all past day targets (for display in the table footer)
-    const sumPastTargets = baseKcal * pastDays.length + sumPastTrainingBumps;
+    const sumPastTargets = sumPastBaseTargets + sumPastTrainingBumps;
 
     debugLog('calculation-summary', {
       windowBudget,
@@ -270,7 +335,9 @@ export function calculateBankingData(targetDateStr) {
       todaysTrainingBump,
       rollingTarget: Math.round(rollingTarget),
       bankBalance: Math.round(bankBalance),
-      todayKcalTarget
+      todayKcalTarget,
+      bankIncomplete,
+      unknownDays,
     });
 
     if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS && pastDays.length > 0) {
@@ -279,7 +346,8 @@ export function calculateBankingData(targetDateStr) {
         actual: Math.round(d.actualKcal),
         training: d.trainingBump,
         target: d.dailyTarget,
-        delta: Math.round(d.delta)
+        delta: Math.round(d.delta),
+        unknown: d.unknown,
       })));
     }
 
@@ -301,10 +369,24 @@ export function calculateBankingData(targetDateStr) {
       fatG: Math.round(fatFloorG),
       carbsG,
 
+      // Base macro targets for display (stable; not reduced by rolling deficit)
+      displayProteinG,
+      displayFatG,
+      displayCarbsG,
+
+      // Today's resolved base calorie target (may differ from baseKcal in autoGoal mode)
+      todayBaseCalories,
+      resolvedTargetSource,
+
+      // Bank completeness
+      bankIncomplete,
+      unknownDays,
+
+      // Display meta
+      targetMode,
+
       // Config
-      config: {
-        windowDays
-      }
+      config: { windowDays }
     };
 
   } catch (error) {
@@ -322,6 +404,14 @@ export function calculateBankingData(targetDateStr) {
       proteinG: BANKING_CONFIG.PROTEIN_G,
       fatG: BANKING_CONFIG.FAT_FLOOR_G,
       carbsG: 0,
+      displayProteinG: BANKING_CONFIG.PROTEIN_G,
+      displayFatG: BANKING_CONFIG.FAT_FLOOR_G,
+      displayCarbsG: 0,
+      todayBaseCalories: BANKING_CONFIG.BASE_KCAL,
+      resolvedTargetSource: 'manual',
+      bankIncomplete: false,
+      unknownDays: [],
+      targetMode: 'manual',
       trainingIntensity: 'rest',
       config: { windowDays: BANKING_CONFIG.ROLLING_WINDOW_DAYS }
     };
@@ -556,7 +646,7 @@ function renderTodayMacroHeader(bankingData) {
   const el = document.getElementById('today-macro-header');
   if (!el) return;
 
-  const { todayKcalTarget, proteinG, fatG, carbsG } = bankingData;
+  const { todayKcalTarget, displayProteinG, displayFatG, displayCarbsG } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
     const q = parseFloat(item.quantity ?? 0) || 0;
@@ -579,10 +669,10 @@ function renderTodayMacroHeader(bankingData) {
   };
 
   el.innerHTML =
-    cell('Cal',     totals.cal,  todayKcalTarget) +
-    cell('Protein', totals.pro,  proteinG)        +
-    cell('Fat',     totals.fat,  fatG)            +
-    cell('Carbs',   totals.carb, carbsG);
+    cell('Cal',     totals.cal,  todayKcalTarget)  +
+    cell('Protein', totals.pro,  displayProteinG)  +
+    cell('Fat',     totals.fat,  displayFatG)      +
+    cell('Carbs',   totals.carb, displayCarbsG);
 }
 
 /**
@@ -725,9 +815,12 @@ function renderEnergyOutput() {
  */
 function renderCalcDetailsPanel(bankingData) {
   const {
-    baseKcal, todaysTrainingBump, bankBalance,
+    todayBaseCalories, todaysTrainingBump, bankBalance, targetMode,
     sumPast6Actual, sumPastTargets, windowBudget, todayKcalTarget, trainingIntensity
   } = bankingData;
+  const tomorrowNote = targetMode === 'autoGoal'
+    ? 'Hit this target and tomorrow recalculates from Auto Goal mode.'
+    : `Hit this target and tomorrow resets to ${todayBaseCalories} kcal (rest day).`;
 
   return `
     <div class="section-card p-4 mb-6">
@@ -756,7 +849,7 @@ function renderCalcDetailsPanel(bankingData) {
         ` : ''}
         <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
           <div>${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal today</strong></div>
-          <div>Hit this target and tomorrow resets to ${baseKcal} kcal (rest day).</div>
+          <div>${tomorrowNote}</div>
         </div>
       </div>
     </div>
@@ -767,7 +860,10 @@ function renderCalcDetailsPanel(bankingData) {
  * Render compact calorie + macro summary for the Today tab.
  */
 function renderTodayCompact(bankingData) {
-  const { todayKcalTarget, proteinG, fatG, carbsG, baseKcal, todaysTrainingBump, bankBalance } = bankingData;
+  const {
+    todayKcalTarget, displayProteinG, displayFatG, displayCarbsG,
+    todayBaseCalories, todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
+  } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
     const q = parseFloat(item.quantity ?? 0) || 0;
@@ -778,7 +874,7 @@ function renderTodayCompact(bankingData) {
     return acc;
   }, { calories: 0, protein: 0, fat: 0, carbs: 0 });
 
-  const remaining = todayKcalTarget - totals.calories;
+  const remaining  = todayKcalTarget - totals.calories;
   const remainColor = remaining >= 0 ? 'text-positive' : 'text-negative';
 
   const macroRow = (label, actual, target) => {
@@ -800,24 +896,37 @@ function renderTodayCompact(bankingData) {
       </div>`;
   };
 
+  const modeBadge = targetMode === 'autoGoal'
+    ? `<span class="text-xs font-medium text-accent ml-1">Auto Goal</span>`
+    : `<span class="text-xs text-muted ml-1">Manual Baseline</span>`;
+
+  const bankNote = bankIncomplete
+    ? `<div class="text-xs text-warning mt-1">⚠ Rolling bank incomplete — missing data for: ${unknownDays.join(', ')}. Unknown days treated as on-target.</div>`
+    : '';
+
+  const profileNote = targetMode !== 'autoGoal'
+    ? `<div class="text-xs text-muted mt-0.5 italic" style="font-size:0.7rem">Profile &amp; Goals only changes Today after "Apply to Baseline Targets" or switching to Auto Goal mode.</div>`
+    : '';
+
   return `
     <div class="mb-4 p-4 surface-2 rounded-lg border text-center">
       <div class="text-xs text-muted uppercase tracking-wide mb-1">Calories Remaining</div>
       <div class="text-4xl font-bold ${remainColor}">${Math.round(remaining)}</div>
       <div class="text-xs text-muted mt-1">${Math.round(totals.calories)} eaten · ${todayKcalTarget} target</div>
       <div class="text-xs text-muted mt-1">
-        Base: ${baseKcal} kcal${todaysTrainingBump > 0 ? ` · Exercise: +${todaysTrainingBump} kcal` : ''}${bankBalance !== 0 ? ` · Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance} kcal` : ''} · Final: ${todayKcalTarget} kcal
+        Target: ${modeBadge} · Base: ${todayBaseCalories}${todaysTrainingBump > 0 ? ` + Exercise: +${todaysTrainingBump}` : ''}${bankBalance !== 0 ? ` + Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance}` : ''} = ${todayKcalTarget} kcal
       </div>
-      <div class="text-xs text-muted mt-0.5 italic" style="font-size:0.7rem">Profile &amp; Goals only changes Today after "Apply to Baseline Targets"</div>
+      ${bankNote}
+      ${profileNote}
       <div class="hbar mt-2">
         <div class="hbar-fill ${pctClass(totals.calories, todayKcalTarget)}" style="width:${pctWidth(totals.calories, todayKcalTarget)}"></div>
         <div class="hbar-marker" style="left:${markerLeft}"></div>
       </div>
     </div>
     <div class="divide-y">
-      ${macroRow('Protein', totals.protein, proteinG)}
-      ${macroRow('Fat (min)', totals.fat, fatG)}
-      ${macroRow('Carbs', totals.carbs, carbsG)}
+      ${macroRow('Protein', totals.protein, displayProteinG)}
+      ${macroRow('Fat (min)', totals.fat, displayFatG)}
+      ${macroRow('Carbs', totals.carbs, displayCarbsG)}
     </div>
   `;
 }
@@ -1057,15 +1166,21 @@ function renderInfoBox() {
  * Render banking panel showing rolling 7-day balance
  */
 function renderBankingPanel(bankingData) {
-  const { bankBalance, pastDays, sumPast6Actual, sumPastTargets, windowBudget, baseKcal } = bankingData;
+  const { bankBalance, pastDays, sumPast6Actual, sumPastTargets, windowBudget, todayBaseCalories, targetMode } = bankingData;
+  const budgetExplain = targetMode === 'autoGoal'
+    ? `${windowBudget} kcal (per-day auto-goal targets + training bumps).`
+    : `${windowBudget} kcal (${todayBaseCalories}/day × 7 + training bumps).`;
+  const tomorrowNote = targetMode === 'autoGoal'
+    ? 'Hit this target and tomorrow recalculates from Auto Goal mode.'
+    : `If you hit today's target, tomorrow's target resets to exactly ${todayBaseCalories} kcal (on a rest day).`;
 
   const contributionRows = pastDays.map(d => `
-    <tr>
-      <td class="px-3 py-2 text-sm font-medium">${d.dayName}${d.trainingBump > 0 ? ' <span class="text-xs text-accent">+' + d.trainingBump + '</span>' : ''}</td>
-      <td class="px-3 py-2 text-sm text-center">${Math.round(d.actualKcal)}</td>
+    <tr${d.unknown ? ' class="opacity-60"' : ''}>
+      <td class="px-3 py-2 text-sm font-medium">${d.dayName}${d.trainingBump > 0 ? ' <span class="text-xs text-accent">+' + d.trainingBump + '</span>' : ''}${d.unknown ? ' <span class="text-xs text-warning">(missing)</span>' : ''}</td>
+      <td class="px-3 py-2 text-sm text-center">${d.unknown ? '<span class="text-muted">—</span>' : Math.round(d.actualKcal)}</td>
       <td class="px-3 py-2 text-sm text-center text-muted">${Math.round(d.dailyTarget)}</td>
-      <td class="px-3 py-2 text-sm text-center font-medium ${d.delta > 0 ? 'text-negative' : d.delta < 0 ? 'text-positive' : 'text-muted'}">
-        ${d.delta > 0 ? '+' : ''}${Math.round(d.delta)}
+      <td class="px-3 py-2 text-sm text-center font-medium ${d.unknown ? 'text-muted' : d.delta > 0 ? 'text-negative' : d.delta < 0 ? 'text-positive' : 'text-muted'}">
+        ${d.unknown ? '0' : (d.delta > 0 ? '+' : '') + Math.round(d.delta)}
       </td>
     </tr>
   `).join('');
@@ -1121,9 +1236,9 @@ function renderBankingPanel(bankingData) {
         </div>
 
         <div class="mt-3 p-3 surface-2 rounded-lg text-xs text-muted space-y-1">
-          <p><strong>How it works:</strong> Your 7-day calorie budget is ${windowBudget} kcal (${baseKcal}/day × 7 + training bumps).</p>
+          <p><strong>How it works:</strong> Your 7-day calorie budget is ${budgetExplain}</p>
           <p>You've consumed ${sumPast6Actual} kcal over the last 6 days against a target of ${sumPastTargets} kcal.</p>
-          <p>If you hit today's target, tomorrow's target resets to exactly ${baseKcal} kcal (on a rest day).</p>
+          <p>${tomorrowNote}</p>
         </div>
       </div>
     </div>
@@ -1250,7 +1365,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
             <div class="mt-2 pt-2 border-t border">
               <div class="text-xs text-muted space-y-1">
                 <div>Final target: ${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal</strong></div>
-                <div>If you eat exactly this, tomorrow's target will be ${baseKcal} kcal (on a rest day).</div>
+                <div>If you eat exactly this, tomorrow's target will be ${todayBaseCalories ?? baseKcal} kcal (on a rest day).</div>
               </div>
             </div>
           </div>
