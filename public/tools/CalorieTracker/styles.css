@@ -783,16 +783,105 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
 }
 
 /* ============================================================
+   FOOD ITEM CARD
+   ============================================================ */
+.food-item-card {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding: .625rem .75rem;
+  border-radius: .625rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+  transition: box-shadow .15s;
+}
+.food-item-card:hover { box-shadow: var(--shadow-1); }
+
+.food-item-top {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  min-width: 0;
+}
+
+.food-item-name {
+  flex: 1 1 0%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  font-size: .875rem;
+  color: hsl(var(--text));
+}
+
+.food-item-delete {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+}
+
+.food-item-bottom {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.food-item-macros {
+  flex: 1 1 auto;
+  font-size: .75rem;
+  color: hsl(var(--text-2));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.food-item-qty {
+  flex: 0 0 auto;
+  width: 4.5rem;
+}
+
+/* ============================================================
+   MOBILE TWEAKS  (< 640 px)  — header email truncation
+   ============================================================ */
+@media (max-width: 640px) {
+  /* Allow controls row to wrap so the email doesn't overflow */
+  .app-header-controls { flex-wrap: wrap; }
+
+  /* Email shrinks and truncates instead of forcing the header wider */
+  .app-header-email {
+    flex: 1 1 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    order: -1;            /* email appears first within the controls block */
+    font-size: .75rem;
+  }
+}
+
+/* ============================================================
    MOBILE TWEAKS  (< 480 px)
    ============================================================ */
 @media (max-width: 480px) {
+  /* Safety net — no horizontal scroll at any viewport width */
+  body, #main-content { overflow-x: hidden; }
+
   .app-header        { padding: .5rem .75rem; }
   .today-layout      { padding: .75rem; gap: 1rem; }
   .today-inputs      { padding: 1rem .75rem; border-radius: .75rem; }
   .section-card      { padding: 1rem .75rem; border-radius: .75rem; }
   .tab-btn           { padding: .625rem .625rem; font-size: .8rem; }
-  .macro-summary-bar { padding: .4rem .75rem; }
+
+  /* Macro summary bar: 2×2 grid on narrow phones */
+  .macro-summary-bar {
+    padding: .4rem .75rem;
+    grid-template-columns: repeat(2, 1fr);
+  }
   .macro-cell-value  { font-size: .7rem; }
+
   .settings-panel    { padding: 1rem .75rem; }
   .settings-section  { padding: 1rem .75rem; border-radius: .75rem; }
   .chart-container   { height: 280px; }
@@ -803,4 +892,8 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
   .nutrient-filter-chip { min-height: 40px; }
   /* Hide sub-detail on very small screens to save space */
   .nt-sub-detail     { padding-left: 0; }
+
+  /* Food item qty input: full width below the macros line */
+  .food-item-bottom  { flex-direction: column; align-items: stretch; }
+  .food-item-qty     { width: 100%; }
 }

@@ -251,37 +251,25 @@ function renderFoodItemsContent(container) {
     const totalProtein = qty * (parseFloat(item.protein) || 0);
     const totalCarbs = qty * (parseFloat(item.carbs) || 0);
     const totalFat = qty * (parseFloat(item.fat) || 0);
-    const details = `Cal: ${Math.round(totalCals)} | P: ${Math.round(totalProtein)} / C: ${Math.round(totalCarbs)} / F: ${Math.round(totalFat)}`;
-    
-    // Format timestamp if available
-    let timeStamp = '';
-    if (item.timestamp) {
-      const time = new Date(item.timestamp);
-      timeStamp = time.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-    }
+    const macroLine = `${Math.round(totalCals)} cal · ${Math.round(totalProtein)}p · ${Math.round(totalCarbs)}c · ${Math.round(totalFat)}f`;
 
     const qtyInput = typeof window.updateItemQuantity === 'function'
       ? `<input type="number" step="0.01" min="0"
-          class="input input-xs w-16 mr-2"
+          class="input input-xs food-item-qty"
           value="${qty}"
           onchange="window.updateItemQuantity('${item.id}', this.value)" />`
       : '';
 
     return `
-      <div class="group flex justify-between items-center p-3 rounded-lg border surface-2 ${isSubtraction ? 'text-negative' : ''} hover:shadow-md transition-all duration-200">
-        <div class="flex-grow min-w-0">
-          <div class="flex items-center justify-between mb-1">
-            <span class="font-medium text-primary truncate">${nameDisplay}</span>
-            ${timeStamp ? `<span class="text-xs text-muted ml-2">${timeStamp}</span>` : ''}
-          </div>
-          <div class="text-xs text-secondary">${details}</div>
+      <div class="food-item-card ${isSubtraction ? 'text-negative' : ''}">
+        <div class="food-item-top">
+          <span class="food-item-name" title="${name}">${name}</span>
+          <button onclick="removeFoodItem(${index})" class="food-item-delete btn btn-danger icon-btn" aria-label="Delete" title="Delete">&times;</button>
         </div>
-        ${qtyInput}
-        <button onclick="removeFoodItem(${index})" class="btn btn-danger icon-btn" aria-label="Delete" title="Delete">&times;</button>
+        <div class="food-item-bottom">
+          <span class="food-item-macros">${qty > 0 ? `×${qty} · ` : ''}${macroLine}</span>
+          ${qtyInput}
+        </div>
       </div>`;
   }).join('');
 

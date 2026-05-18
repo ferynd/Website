@@ -304,6 +304,21 @@ export function calculateBankingData(targetDateStr) {
     const remainingKcal  = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
     const carbsG         = Math.round(remainingKcal / 4);
 
+    // Resolve today's base macro targets for display.
+    // carbsG above can be 0 when the rolling target < protein+fat budget (e.g. after over-eating);
+    // macro progress bars should show the stable daily base targets instead.
+    const displayBaseTargets = targetMode === 'autoGoal'
+      ? (resolveDailyBaseTargets(targetDateStr, state).targets || {})
+      : state.baselineTargets;
+    const displayProteinG = Math.round(parseFloat(displayBaseTargets.protein) || scaledProteinG);
+    const displayFatG     = Math.round(parseFloat(displayBaseTargets.fatMinimum ?? displayBaseTargets.fat) || fatFloorG);
+    const displayCarbsG   = (() => {
+      const fromTargets = parseFloat(displayBaseTargets.carbs);
+      if (fromTargets > 0) return Math.round(fromTargets);
+      const calBudget = parseFloat(displayBaseTargets.calories) || baseKcal;
+      return Math.round(Math.max(0, (calBudget - displayProteinG * 4 - displayFatG * 9) / 4));
+    })();
+
     // Sum of all past day targets (for display in the table footer)
     const sumPastTargets = sumPastBaseTargets + sumPastTrainingBumps;
 
@@ -348,6 +363,11 @@ export function calculateBankingData(targetDateStr) {
       fatG: Math.round(fatFloorG),
       carbsG,
 
+      // Base macro targets for display (stable; not reduced by rolling deficit)
+      displayProteinG,
+      displayFatG,
+      displayCarbsG,
+
       // Bank completeness
       bankIncomplete,
       unknownDays,
@@ -374,6 +394,9 @@ export function calculateBankingData(targetDateStr) {
       proteinG: BANKING_CONFIG.PROTEIN_G,
       fatG: BANKING_CONFIG.FAT_FLOOR_G,
       carbsG: 0,
+      displayProteinG: BANKING_CONFIG.PROTEIN_G,
+      displayFatG: BANKING_CONFIG.FAT_FLOOR_G,
+      displayCarbsG: 0,
       bankIncomplete: false,
       unknownDays: [],
       targetMode: 'manual',
@@ -611,7 +634,7 @@ function renderTodayMacroHeader(bankingData) {
   const el = document.getElementById('today-macro-header');
   if (!el) return;
 
-  const { todayKcalTarget, proteinG, fatG, carbsG } = bankingData;
+  const { todayKcalTarget, displayProteinG, displayFatG, displayCarbsG } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
     const q = parseFloat(item.quantity ?? 0) || 0;
@@ -634,10 +657,10 @@ function renderTodayMacroHeader(bankingData) {
   };
 
   el.innerHTML =
-    cell('Cal',     totals.cal,  todayKcalTarget) +
-    cell('Protein', totals.pro,  proteinG)        +
-    cell('Fat',     totals.fat,  fatG)            +
-    cell('Carbs',   totals.carb, carbsG);
+    cell('Cal',     totals.cal,  todayKcalTarget)  +
+    cell('Protein', totals.pro,  displayProteinG)  +
+    cell('Fat',     totals.fat,  displayFatG)      +
+    cell('Carbs',   totals.carb, displayCarbsG);
 }
 
 /**
@@ -823,7 +846,7 @@ function renderCalcDetailsPanel(bankingData) {
  */
 function renderTodayCompact(bankingData) {
   const {
-    todayKcalTarget, proteinG, fatG, carbsG, baseKcal,
+    todayKcalTarget, displayProteinG, displayFatG, displayCarbsG, baseKcal,
     todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
   } = bankingData;
 
@@ -886,9 +909,9 @@ function renderTodayCompact(bankingData) {
       </div>
     </div>
     <div class="divide-y">
-      ${macroRow('Protein', totals.protein, proteinG)}
-      ${macroRow('Fat (min)', totals.fat, fatG)}
-      ${macroRow('Carbs', totals.carbs, carbsG)}
+      ${macroRow('Protein', totals.protein, displayProteinG)}
+      ${macroRow('Fat (min)', totals.fat, displayFatG)}
+      ${macroRow('Carbs', totals.carbs, displayCarbsG)}
     </div>
   `;
 }
