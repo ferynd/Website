@@ -101,6 +101,19 @@
             <div id="exercise-sessions-list" class="space-y-1 text-sm"></div>
           </div>
 
+          <!-- Collapsible: Paste & Parse -->
+          <details class="collapsible" id="paste-parse-details" open>
+            <summary>Paste &amp; Parse</summary>
+            <div class="pt-3 pb-2">
+              <label for="paste-area" class="block text-sm font-medium text-primary mb-1">Paste Log to Stage</label>
+              <textarea id="paste-area" rows="4" placeholder="Paste your log here..."></textarea>
+              <button type="button" id="parse-btn" class="w-full mt-2 btn btn-primary">
+                <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
+              </button>
+              <div id="parse-missing-warning" class="hidden mt-2 p-2 rounded text-xs text-warning surface-2 border border-warning"></div>
+            </div>
+          </details>
+
           <!-- Food Log -->
           <div class="mb-2 staging-section">
             <div class="flex justify-between items-center mb-3 flex-wrap gap-2">
@@ -133,19 +146,6 @@
               <div id="food-items-list" class="food-items-container space-y-2 overflow-y-auto p-2"></div>
             </div>
           </div>
-
-          <!-- Collapsible: Paste & Parse -->
-          <details class="collapsible">
-            <summary>Paste &amp; Parse</summary>
-            <div class="pt-3 pb-2">
-              <label for="paste-area" class="block text-sm font-medium text-primary mb-1">Paste Log to Stage</label>
-              <textarea id="paste-area" rows="4" placeholder="Paste your log here..."></textarea>
-              <button type="button" id="parse-btn" class="w-full mt-2 btn btn-primary">
-                <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
-              </button>
-              <div id="parse-missing-warning" class="hidden mt-2 p-2 rounded text-xs text-warning surface-2 border border-warning"></div>
-            </div>
-          </details>
 
           <!-- Collapsible: Manual Nutrient Input -->
           <details class="collapsible">

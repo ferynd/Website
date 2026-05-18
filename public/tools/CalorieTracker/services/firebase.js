@@ -417,31 +417,12 @@ export async function saveGoalSettings(incoming, opts = {}) {
  * @returns {Promise<{saved: number, skipped: number}>}
  */
 export async function saveWeightEntries(entries) {
-  if (!state.userId) {
-    showMessage('Cannot save weight data. Not authenticated.', true);
-    return { saved: 0, skipped: 0 };
-  }
-  let saved = 0;
-  try {
-    for (const entry of entries) {
-      // Deterministic ID from timestamp: "2017-07-13T07-20-13"
-      const docId = entry.timestamp.replace(/[:/]/g, '-').replace(/\s/g, 'T');
-      const docData = {
-        date: entry.date,
-        weight_lb: entry.weight_lb,
-        time_min: entry.time_min,
-        timestamp: entry.timestamp,
-        source: 'csv_upload'
-      };
-      await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/weightEntries`, docId), docData);
-      state.weightEntries.set(docId, docData);
-      saved++;
-    }
-    debugLog('firebase-weight', `Saved ${saved} weight entries`);
-  } catch (e) {
-    handleError('weight-save', e, 'Failed to save weight entries.');
-  }
-  return { saved, skipped: entries.length - saved };
+  const withDocIds = entries.map(entry => ({
+    ...entry,
+    docId: entry.docId ?? entry.timestamp.replace(/[:/]/g, '-').replace(/\s/g, 'T'),
+    source: entry.source ?? 'csv_upload',
+  }));
+  return saveWeightEntriesBatch(withDocIds);
 }
 
 /**
@@ -571,7 +552,7 @@ export async function removeEstimateItem(dateStr, itemId) {
     }
 
     const newItems = (existing.foodItems || []).filter(fi => fi.id !== itemId);
-    const sum = key => newItems.reduce((s, fi) => s + (parseFloat(fi[key]) || 0), 0);
+    const sum = key => newItems.reduce((s, fi) => s + (parseFloat(fi.quantity ?? 1) || 0) * (parseFloat(fi[key]) || 0), 0);
 
     const allSynthetic = newItems.length > 0 && newItems.every(fi => _isSyntheticFoodItem(fi));
     const newEntryType = allSynthetic ? 'estimate' : 'logged';

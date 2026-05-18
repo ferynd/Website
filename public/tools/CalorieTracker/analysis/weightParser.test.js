@@ -377,7 +377,36 @@ describe('edge cases', () => {
   });
 });
 
-// ── 11. Large synthetic CSV ───────────────────────────────────────────────────
+// ── 11. localDateStr — locale-independent date extraction ─────────────────────
+
+describe('localDateStr — locale-independent date extraction', () => {
+  it('date near midnight parses to the correct local date, not UTC', () => {
+    // A timestamp that is 11:45 PM local time on Jan 5 (early hours UTC on Jan 6)
+    // Parser uses local Date components so should produce 2024-01-05.
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-01-05 23:45:00';
+    const { entries } = parseWeightCSV(csv);
+    expect(entries.length).toBe(1);
+    // The date field should reflect the local calendar date (Jan 5), not UTC (Jan 6).
+    // Because parseExplicitDate uses new Date(y, m-1, d, h, mi, s) — local time.
+    expect(entries[0].date).toBe('2024-01-05');
+    expect(entries[0].time_min).toBe(23 * 60 + 45);
+  });
+
+  it('date-only row produces YYYY-MM-DD without locale formatting artifacts', () => {
+    const csv = 'Weight (lb),Date\n185.0,2024-03-15';
+    const { entries } = parseWeightCSV(csv);
+    expect(entries[0].date).toBe('2024-03-15');
+  });
+
+  it('timestamp docId uses YYYY-MM-DD component, not locale-dependent string', () => {
+    const csv = 'Weight (lb),Date/Time\n185.0,2024-12-31 23:59:00';
+    const { entries } = parseWeightCSV(csv);
+    expect(entries[0].date).toBe('2024-12-31');
+    expect(entries[0].docId).toBe('2024-12-31T23-59-00');
+  });
+});
+
+// ── 12. Large synthetic CSV ───────────────────────────────────────────────────
 
 describe('large synthetic CSV (1000 rows)', () => {
   const rows = ['Weight (lb),Date/Time'];

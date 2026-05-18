@@ -562,3 +562,99 @@ describe('applyManualOverrides', () => {
     expect(generated).toEqual(original);
   });
 });
+
+// ── computeCalorieTarget — new metadata fields ────────────────────────────────
+
+describe('computeCalorieTarget — deficit metadata', () => {
+  function futureDate(months) {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0, 10);
+  }
+
+  it('shorter deadline → larger deficit than longer deadline (unclamped)', () => {
+    const goals2mo = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(2) });
+    const goals4mo = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(4) });
+    const r2 = computeCalorieTarget('fatLoss', 2400, 1800, goals2mo, 185);
+    const r4 = computeCalorieTarget('fatLoss', 2400, 1800, goals4mo, 185);
+    expect(r2.appliedDeficit).toBeGreaterThan(r4.appliedDeficit);
+  });
+
+  it('returns rawRequiredDeficit and daysLeft when target date set', () => {
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(3) });
+    const { rawRequiredDeficit, daysLeft, targetWeightDeltaLb } = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185);
+    expect(rawRequiredDeficit).toBeGreaterThan(0);
+    expect(daysLeft).toBeGreaterThan(14);
+    expect(targetWeightDeltaLb).toBeCloseTo(7, 0);
+  });
+
+  it('clamps to maximum_deficit when required deficit exceeds 750 kcal', () => {
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 155, targetDate: futureDate(1) });
+    const { deficitClampReason, appliedDeficit } = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185);
+    expect(deficitClampReason).toBe('maximum_deficit');
+    expect(appliedDeficit).toBe(750);
+  });
+
+  it('clamps to minimum_deficit when required deficit is below 200 kcal', () => {
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 184, targetDate: futureDate(12) });
+    const { deficitClampReason, appliedDeficit } = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185);
+    expect(deficitClampReason).toBe('minimum_deficit');
+    expect(appliedDeficit).toBe(200);
+  });
+
+  it('returns bmr_floor when TDEE − deficit would go below safe floor', () => {
+    const { deficitClampReason, calorieFloor, calories } = computeCalorieTarget('fatLoss', 1200, 1200, makeGoals(), 100);
+    expect(deficitClampReason).toBe('bmr_floor');
+    expect(calories).toBeGreaterThanOrEqual(calorieFloor);
+  });
+
+  it('returns calorieFloor = max(1000, 0.85 × bmr)', () => {
+    const { calorieFloor } = computeCalorieTarget('fatLoss', 2400, 1800, makeGoals(), 185);
+    expect(calorieFloor).toBe(Math.max(1000, Math.round(1800 * 0.85)));
+  });
+
+  it('non-fatLoss goals have deficitClampReason none', () => {
+    for (const goalType of ['maintenance', 'muscleGain', 'performance', 'recomp', 'custom']) {
+      const { deficitClampReason } = computeCalorieTarget(goalType, 2400, 1800, makeGoals(), 185);
+      expect(deficitClampReason, goalType).toBe('none');
+    }
+  });
+});
+
+// ── computeTDEE — activity level interaction with empirical ───────────────────
+
+describe('computeTDEE — activity level vs empirical', () => {
+  const bmrResult = { bmr: 1800, methodLabel: 'Mifflin-St Jeor RMR' };
+
+  it('baseline activity level changes formula TDEE when no empirical data', () => {
+    const sed  = computeTDEE(bmrResult, makeProfile({ baselineActivityLevel: 'sedentary'   }), null);
+    const very = computeTDEE(bmrResult, makeProfile({ baselineActivityLevel: 'very_active' }), null);
+    expect(sed.tdee).toBeLessThan(very.tdee);
+    expect(sed.source).toBe('formula');
+    expect(very.source).toBe('formula');
+  });
+
+  it('baseline activity level does NOT change TDEE when empirical is active', () => {
+    const analysis = makeAnalysis({ bmrModel: { tdee_current: 2400, error: null } });
+    const sed  = computeTDEE(bmrResult, makeProfile({ baselineActivityLevel: 'sedentary'   }), analysis);
+    const very = computeTDEE(bmrResult, makeProfile({ baselineActivityLevel: 'very_active' }), analysis);
+    expect(sed.tdee).toBe(2400);
+    expect(very.tdee).toBe(2400);
+    expect(sed.source).toBe('empirical');
+    expect(very.source).toBe('empirical');
+  });
+
+  it('generateTargets explanation includes activityIgnored note when empirical TDEE active', () => {
+    const profile = makeProfile({ manualWeightOverrideLb: 185, baselineActivityLevel: 'sedentary' });
+    const analysis = makeAnalysis({ bmrModel: { tdee_current: 2400, error: null } });
+    const { explanation } = generateTargets(profile, makeGoals(), analysis);
+    expect(explanation.activityIgnored).toBeTruthy();
+    expect(explanation.activityIgnored).toMatch(/empirical|measured|history/i);
+  });
+
+  it('generateTargets explanation has no activityIgnored when TDEE is formula-based', () => {
+    const profile = makeProfile({ manualWeightOverrideLb: 185 });
+    const { explanation } = generateTargets(profile, makeGoals(), null);
+    expect(explanation.activityIgnored).toBeNull();
+  });
+});

@@ -1277,4 +1277,81 @@ describe('buildPartialDayAdjustment', () => {
     expect(adjustedEntry.estimateMeta.previousEstimate?.method).toBe('old_method');
     expect(adjustedEntry.estimateMeta.method).toBe('underreporting_adjustment');
   });
+
+  it('quantity-aware: item with qty 2 contributes double calories to total', () => {
+    const entry = {
+      calories: 1000, protein: 80, fat: 40, carbs: 100,
+      foodItems: [
+        { id: 'f1', name: 'Rice', quantity: 2, calories: 500, protein: 40, fat: 20, carbs: 50 },
+      ],
+      entryType: 'logged',
+    };
+    const { adjustedEntry } = buildPartialDayAdjustment('2024-01-07', 300, entry, baseline);
+    const synth = adjustedEntry.foodItems.find(fi => fi.id.startsWith('adj-'));
+    expect(synth).toBeTruthy();
+    // total = qty2×500 + 300 synthetic = 1300
+    expect(adjustedEntry.calories).toBe(1300);
+  });
+});
+
+// ── computeWeekdayAverages — quantity-aware ───────────────────────────────────
+
+describe('computeWeekdayAverages — quantity-aware', () => {
+  it('multiplies item calories by quantity', () => {
+    const entries = new Map();
+    // Monday with 2 qty×500 = 1000 kcal real
+    entries.set('2024-01-08', {
+      date: '2024-01-08',
+      calories: 1000, protein: 100, fat: 40, carbs: 100,
+      entryType: 'logged',
+      foodItems: [
+        { id: 'f1', name: 'Chicken', quantity: 2, calories: 500, protein: 50, fat: 20, carbs: 0 },
+      ],
+    });
+    const avgs = computeWeekdayAverages(entries);
+    const dow = new Date('2024-01-08T00:00:00').getDay(); // Monday = 1
+    expect(avgs[dow]).toBe(1000);
+  });
+
+  it('ignores synthetic items in weekday averages', () => {
+    const entries = new Map();
+    entries.set('2024-01-09', {
+      date: '2024-01-09',
+      calories: 1500, protein: 100, fat: 50, carbs: 150,
+      entryType: 'logged',
+      foodItems: [
+        { id: 'f1', name: 'Oats', quantity: 1, calories: 500, protein: 20, fat: 10, carbs: 60 },
+        { id: 'est-2024-01-09', name: "Day's estimate", quantity: 1, calories: 1000, protein: 80, fat: 40, carbs: 90 },
+      ],
+    });
+    const avgs = computeWeekdayAverages(entries);
+    const dow = new Date('2024-01-09T00:00:00').getDay();
+    // Only the real item (500 kcal × qty 1) should count
+    expect(avgs[dow]).toBe(500);
+  });
+});
+
+// ── buildVacationDayEntry — quantity-aware averages ───────────────────────────
+
+describe('buildVacationDayEntry — quantity-aware nutrient averages', () => {
+  function makeBaselineForVac() {
+    return { calories: '2000', protein: '150', fat: '60', fatMinimum: '50' };
+  }
+
+  it('averages calories correctly when items have quantity > 1', () => {
+    const entries = new Map();
+    // 3 real logged days each with qty-2 items (500 cal each → 1000 per day)
+    for (let i = 1; i <= 3; i++) {
+      const d = `2024-01-0${i}`;
+      entries.set(d, {
+        date: d, calories: 1000, protein: 80, fat: 40, carbs: 100,
+        entryType: 'logged',
+        foodItems: [{ id: `f${i}`, name: 'Meal', quantity: 2, calories: 500, protein: 40, fat: 20, carbs: 50 }],
+      });
+    }
+    const entry = buildVacationDayEntry('2024-01-20', 'medium', null, entries, makeBaselineForVac());
+    // avgProtein should reflect qty×protein = 2×40 = 80 per day average
+    expect(entry.protein).toBeGreaterThanOrEqual(60);
+    expect(entry.fat).toBeGreaterThanOrEqual(30);
+  });
 });
