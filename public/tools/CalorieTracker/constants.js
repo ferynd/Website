@@ -230,6 +230,7 @@ export const DEFAULT_GOAL_SETTINGS = {
   priority: 'maintenance',
   useRollingBanking: true,
   manualTargetOverrides: {}, // { [nutrientKey]: number } — sparse, never auto-populated
+  proteinBasis: null,  // null/'auto' | 'currentWeight' | 'targetWeight' | 'leanMass' | 'adjustedWeight'
 };
 
 // Analysis horizons (in days) for multi-window TDEE estimates

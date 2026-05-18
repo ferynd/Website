@@ -1097,6 +1097,15 @@ export function detectPlateau(rows) {
 // BLANK DAY POPULATION
 // ==========================================
 
+/**
+ * @legacy Kept for backward compatibility. Not called from any live UI path.
+ * Use getTrueUpCandidates() instead.
+ *
+ * @param {Array}  rows
+ * @param {Map}    dailyEntries
+ * @param {object} baselineTargets
+ * @returns {Array}
+ */
 export function getBlankDaysForPopulation(rows, dailyEntries, baselineTargets) {
   const firstFoodRow = rows.find(r => {
     if (!r.calories_imputed && r.calories != null) {
@@ -1321,7 +1330,7 @@ export function computeWeekdayAverages(dailyEntries) {
     buckets[dow].push(cals);
   }
   return buckets.map(arr =>
-    arr.length === 0 ? null : arr.reduce((s, v) => s + v, 0) / arr.length
+    arr.length === 0 ? null : trimmedMean(arr, 0.1)
   );
 }
 
@@ -1522,6 +1531,9 @@ export function buildVacationDayEntry(dateStr, vacationType, analysisResults, da
 const PARTIAL_RESIDUAL_THRESHOLD_KCAL = 400;
 
 /**
+ * @legacy Kept for backward compatibility. Not called from any live UI path.
+ * Use getTrueUpCandidates() instead.
+ *
  * Find days with logged food that the model believes are significantly underreported.
  *
  * A day qualifies when:
@@ -1638,18 +1650,20 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
   const weekdayMedians = weekdayBuckets.map(arr => arr.length >= 3 ? median(arr) : null);
   const recentMedian = recentCalories.length >= 7 ? median(recentCalories) : null;
 
-  // Windows that END at the candidate day (candidate-inclusive)
+  // Centered windows: candidate is inside [D-preDays, D+postDays]
   const INTERVALS = [
-    { days: 14, name: '14d' },
-    { days: 28, name: '28d' },
-    { days: 42, name: '42d' },
+    { days: 14, preDays: 7,  postDays: 6,  name: '14d', minPostWeights: 3 },
+    { days: 28, preDays: 14, postDays: 13, name: '28d', minPostWeights: 5 },
+    { days: 42, preDays: 21, postDays: 20, name: '42d', minPostWeights: 7 },
   ];
+  const MIN_CANDIDATE_AGE = 6; // at minimum 6 days old (smallest postDays)
 
   const candidates = [];
+  const pendingCandidates = [];
 
   for (const row of rows) {
     const age = daysBetween(row.date, today);
-    if (age < C.IMPUTE_LAG_DAYS) continue;
+    if (age < MIN_CANDIDATE_AGE) continue;
 
     const entry = dailyEntries.get(row.date);
     const isLocked = entry && (entry.manualLock || entry.estimateMeta?.locked);
@@ -1670,7 +1684,6 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
     let realItemCount = 0;
 
     if (!entry || (parseFloat(entry.calories) || 0) === 0) {
-      // Completely blank: only flag when analysis agrees (imputed or pending)
       if (row.calories_imputed || row.impute_status === 'pending') {
         type = 'blank';
         loggedCalories = 0;
@@ -1685,7 +1698,6 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
       if (loggedCalories > 0) {
         const dow = new Date(row.date + 'T00:00:00').getDay();
         const refCals = weekdayMedians[dow] ?? recentMedian ?? 2000;
-        // Partial: logged significantly below personal baseline + few items
         if (loggedCalories < refCals * 0.55 && realItemCount >= 1 && realItemCount <= 10) {
           type = 'partial';
         }
@@ -1694,16 +1706,35 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
 
     if (!type) continue;
 
-    // ── Candidate-centered interval evidence ────────────────────────────────
-    // Each window is N days long, ending at (and including) the candidate.
+    // ── Centered interval evidence ──────────────────────────────────────────
+    // Each window spans [D-preDays, D+postDays] so the candidate is inside,
+    // not at the end. This prevents attributing interval residuals to the candidate
+    // when all evidence comes from days before it.
     const intervalsUsed = [];
+    let anyWindowNeedsFutureData = false;
 
-    for (const { days, name } of INTERVALS) {
-      // Window: [D-(N-1), D] — N days total, candidate is the final day
-      const start = dateOffset(row.date, -(days - 1));
-      const intervalRows = rows.filter(r => r.date >= start && r.date <= row.date);
+    for (const { days, preDays, postDays, name, minPostWeights } of INTERVALS) {
+      // If candidate isn't old enough for this window's post-candidate span, skip
+      if (age < postDays) {
+        anyWindowNeedsFutureData = true;
+        continue;
+      }
+
+      const start = dateOffset(row.date, -preDays);
+      const end   = dateOffset(row.date, postDays);
+      const intervalRows = rows.filter(r => r.date >= start && r.date <= end);
       if (intervalRows.length < Math.max(7, Math.floor(days * 0.5))) continue;
 
+      // Require minimum future weight readings AFTER the candidate
+      const futureWeightRows = intervalRows.filter(
+        r => r.date > row.date && r.wt_smooth_lb != null
+      );
+      if (futureWeightRows.length < minPostWeights) {
+        anyWindowNeedsFutureData = true;
+        continue;
+      }
+
+      // Pre-candidate weight rows (must also have some)
       const weightRows = intervalRows.filter(r => r.wt_smooth_lb != null);
       if (weightRows.length < 5) continue;
 
@@ -1716,17 +1747,15 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
       const coverage = nonCandidateRows.length > 0 ? loggedCount / nonCandidateRows.length : 0;
       if (coverage < 0.5) continue;
 
-      // Weight-based energy storage change across the window
+      // Water-corrected smoothed weight endpoints (wt_smooth_lb is already water-corrected EWMA)
       const firstW = weightRows[0].wt_smooth_lb;
       const lastW  = weightRows[weightRows.length - 1].wt_smooth_lb;
       const weightImpliedStorage = Math.round((lastW - firstW) * 3500);
 
-      // Reported intake. For blank candidate days, treat intake as 0 (the day is unfilled).
-      // Other imputed non-candidate days can still contribute their imputed calories.
+      // Reported intake — exclude candidate blank day's imputed value
       let reportedIntake = 0;
       for (const r of intervalRows) {
         if (r.date === row.date && type === 'blank') {
-          // Candidate blank day has not been logged — exclude any imputed calories
           reportedIntake += 0;
         } else {
           const e = dailyEntries.get(r.date);
@@ -1737,31 +1766,36 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
       }
       reportedIntake = Math.round(reportedIntake);
 
-      // Expected expenditure from TDEE model
-      const tdeeRows = intervalRows.filter(r => r.tdee_block != null);
-      if (tdeeRows.length < 3 && (!bmrModel || bmrModel.error)) continue;
-      const avgTdee = tdeeRows.length >= 3
-        ? tdeeRows.reduce((s, r) => s + r.tdee_block, 0) / tdeeRows.length
-        : (bmrModel?.tdee_current || 2000);
+      // Expected expenditure — prefer TDEE from blocks OUTSIDE this interval
+      // to avoid circularity (blocks inside include the missing-calorie effect).
+      const outsideBlocks = rows.filter(r =>
+        r.tdee_block != null && (r.date < start || r.date > end)
+      );
+      const insideBlocks = intervalRows.filter(r => r.tdee_block != null);
 
-      const expectedExpenditure = Math.round(avgTdee * intervalRows.length);
+      const refTdee = outsideBlocks.length >= 5
+        ? trimmedMean(outsideBlocks.map(r => r.tdee_block))
+        : (bmrModel?.observedTdee || bmrModel?.tdee_current ||
+           (insideBlocks.length >= 3
+             ? insideBlocks.reduce((s, r) => s + r.tdee_block, 0) / insideBlocks.length
+             : 2000));
 
-      // Energy balance: residual > 0 → under-reported (ate more than logged shows)
-      // residual = expenditure - intake + storage_change (fat gain costs energy)
+      if (!refTdee || refTdee <= 0) continue;
+
+      const expectedExpenditure = Math.round(refTdee * intervalRows.length);
       const residualBefore = expectedExpenditure - reportedIntake + weightImpliedStorage;
       const perDay = Math.round(residualBefore / intervalRows.length);
 
-      // Only useful when there is a positive gap supporting underreporting
       if (perDay <= 0) continue;
 
-      const deltaForCandidate = Math.min(perDay, avgTdee);
+      const deltaForCandidate = Math.min(perDay, refTdee);
       const residualAfter = Math.round(residualBefore - deltaForCandidate);
 
       intervalsUsed.push({
         name,
         days,
         intervalStart: start,
-        intervalEnd: row.date,
+        intervalEnd: end,
         perDayResidual: perDay,
         reportedIntake,
         expectedExpenditure,
@@ -1770,10 +1804,24 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
         residualAfter,
         coverage: Math.round(coverage * 100),
         weightPoints: weightRows.length,
+        futureWeightPoints: futureWeightRows.length,
       });
     }
 
-    if (intervalsUsed.length === 0) continue;
+    // If no interval passed but some could pass with more future data → pending
+    if (intervalsUsed.length === 0) {
+      if (anyWindowNeedsFutureData) {
+        const neededPost = INTERVALS[0].postDays; // smallest window needs this many future days
+        pendingCandidates.push({
+          date: row.date,
+          type,
+          loggedCalories: Math.round(loggedCalories),
+          needsFutureData: true,
+          pendingReason: `Needs ${neededPost}+ days of future weight data after ${row.date}.`,
+        });
+      }
+      continue;
+    }
 
     // Pick best interval (prefer 28d > 42d > 14d)
     const sortedIntervals = [...intervalsUsed].sort((a, b) => {
@@ -1785,21 +1833,14 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
     const avgTdeeForCandidate = primary.expectedExpenditure / primary.days;
 
     // ── Intentional-deficit guard ────────────────────────────────────────────
-    // A partial day that is ALREADY near the user's calorie target and has a
-    // small interval residual should NOT be flagged as underreported.
     if (type === 'partial') {
-      // Close to target → likely intentional
       if (targetCals > 0 && loggedCalories >= targetCals * 0.85) continue;
-      // Tiny residual → interval evidence too weak to act on
       if (perDay < 200) continue;
     }
 
     // ── Cap and build recommendation ────────────────────────────────────────
-    // Blank days: recommendedDelta = full-day calorie estimate, saved as the entry total.
-    // Partial days: recommendedDelta = additive missing-calorie adjustment, appended to existing food.
     let recommendedDelta;
     if (type === 'blank') {
-      // Prefer imputed row calories; fall back to interval TDEE, then baseline, then 2000
       const imputedCals = row.calories_imputed ? (row.calories || 0) : 0;
       const fullDayEst = imputedCals > 600
         ? imputedCals
@@ -1813,7 +1854,7 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
 
     const expectedCalories = Math.round(loggedCalories + recommendedDelta);
 
-    // ── Derive confidence ────────────────────────────────────────────────────
+    // ── Confidence ────────────────────────────────────────────────────────────
     const has28 = intervalsUsed.some(i => i.name === '28d');
     const has42 = intervalsUsed.some(i => i.name === '42d');
     const multiInterval = has28 || has42;
@@ -1823,27 +1864,28 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
     const agree = residuals.length >= 2
       ? Math.max(...residuals) - Math.min(...residuals) < 200
       : true;
+    const hasFutureWeight = intervalsUsed.every(i => i.futureWeightPoints >= 3);
 
     const drivers = [];
     let score = 0;
     if (has28 && has42) { score += 30; drivers.push('28d+42d agree'); }
     else if (multiInterval) { score += 15; drivers.push('multi-interval'); }
     else drivers.push('14d only');
-    if (highCoverage) { score += 25; drivers.push('≥70% coverage'); }
+    if (highCoverage)  { score += 25; drivers.push('≥70% coverage'); }
     if (enoughWeight)  { score += 20; drivers.push('≥10 wt points'); }
     if (agree)         { score += 15; drivers.push('intervals agree'); }
     if (type === 'blank') { score += 10; drivers.push('completely blank'); }
+    if (hasFutureWeight) { score += 5;  drivers.push('future wt confirmed'); }
     if (!highCoverage) drivers.push('low coverage');
     if (!enoughWeight)  drivers.push('few wt readings');
 
     const confidence = score >= 60 ? 'high' : score >= 35 ? 'medium' : 'low';
 
-    // >1000 kcal recommendations are unchecked unless high confidence AND multi-window
     const reviewManually = recommendedDelta > 1000 && !(confidence === 'high' && has28 && has42);
     const checkedByDefault = !reviewManually && confidence !== 'low';
 
     const reason = type === 'blank'
-      ? `No food logged — ${primary.days}-day window implies ~${expectedCalories} kcal (${perDay} kcal/day gap).`
+      ? `No food logged — ${primary.days}-day centered window implies ~${expectedCalories} kcal (${perDay} kcal/day gap).`
       : (perDay > 600
         ? 'Large gap — likely missed meals or significantly under-logged.'
         : 'Moderate gap — possible missed snacks or partial log.');
@@ -1863,10 +1905,16 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
       reason,
       checkedByDefault,
       reviewManually,
+      needsFutureData: false,
     });
   }
 
-  return candidates.sort((a, b) => b.date.localeCompare(a.date));
+  // Return actionable candidates sorted descending by date,
+  // then append pending candidates (sorted descending) at the end via property
+  const actionable = candidates.sort((a, b) => b.date.localeCompare(a.date));
+  // Attach pending as a property so callers can access it
+  actionable._pending = pendingCandidates.sort((a, b) => b.date.localeCompare(a.date));
+  return actionable;
 }
 
 /**
@@ -1888,12 +1936,57 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
 export function buildBlankDayEstimateEntry(dateStr, candidate, analysisResults, dailyEntries, baselineTargets) {
   const estCals      = candidate.recommendedDelta ?? Math.round(parseFloat(baselineTargets?.calories) || 2000);
   const targetCal    = parseFloat(baselineTargets?.calories) || 2000;
-  const targetProtein = parseFloat(baselineTargets?.protein) || 150;
-  const targetFat    = parseFloat(baselineTargets?.fatMinimum ?? baselineTargets?.fat) || 50;
 
+  // ── Historical nutrient averages from real food entries ───────────────────
+  const MICRO_KEYS = [
+    'fiber','potassium','magnesium','sodium','calcium','choline',
+    'vitaminB12','folate','vitaminC','vitaminB6',
+    'vitaminA','vitaminD','vitaminE','vitaminK',
+    'selenium','iodine','phosphorus','iron','zinc','omega3',
+  ];
+
+  const realDayTotals = [];
+  for (const e of dailyEntries.values()) {
+    if (e.entryType === 'estimate') continue;
+    const items = Array.isArray(e.foodItems) ? e.foodItems : [];
+    if (items.length > 0) {
+      const real = items.filter(fi => !isSyntheticItem(fi));
+      if (real.length === 0) continue;
+      const daySum = {};
+      for (const fi of real) {
+        const qty = parseFloat(fi.quantity ?? 1) || 0;
+        for (const k of Object.keys(fi)) {
+          if (k === 'quantity') continue;
+          const v = parseFloat(fi[k]);
+          if (!isNaN(v)) daySum[k] = (daySum[k] || 0) + qty * v;
+        }
+      }
+      realDayTotals.push(daySum);
+    } else {
+      const cal = parseFloat(e.calories) || 0;
+      if (cal <= 0) continue;
+      realDayTotals.push(e);
+    }
+  }
+
+  function avgNutrient(key, fallback) {
+    const vals = realDayTotals.map(d => parseFloat(d[key]) || 0).filter(v => v > 0);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : (fallback ?? 0);
+  }
+
+  const targetProtein = parseFloat(baselineTargets?.protein) || 150;
+  const targetFat     = parseFloat(baselineTargets?.fatMinimum ?? baselineTargets?.fat) || 50;
+
+  const avgProtein = avgNutrient('protein', targetProtein);
+  const avgFat     = avgNutrient('fat', targetFat);
+  const avgMicros  = Object.fromEntries(
+    MICRO_KEYS.map(k => [k, avgNutrient(k, parseFloat(baselineTargets?.[k]) || 0)])
+  );
+
+  // Scale macros to the estimated calorie total
   const fraction = targetCal > 0 ? Math.min(Math.max(estCals / targetCal, 0), 1.5) : 1;
-  const adjProtein = Math.round(targetProtein * fraction);
-  const adjFat     = Math.round(targetFat * fraction);
+  const adjProtein = Math.round(avgProtein * fraction);
+  const adjFat     = Math.round(avgFat * fraction);
   const adjCarbs   = Math.max(0, Math.round((estCals - adjProtein * 4 - adjFat * 9) / 4));
 
   const now = new Date().toISOString();
@@ -1909,6 +2002,7 @@ export function buildBlankDayEstimateEntry(dateStr, candidate, analysisResults, 
     protein: adjProtein,
     fat: adjFat,
     carbs: adjCarbs,
+    ...avgMicros,
     foodItems: [{
       id: `est-${dateStr}`,
       name: "Day's estimate",
@@ -1918,6 +2012,7 @@ export function buildBlankDayEstimateEntry(dateStr, candidate, analysisResults, 
       protein: adjProtein,
       fat: adjFat,
       carbs: adjCarbs,
+      ...avgMicros,
     }],
     exerciseSessions: [],
     dayActivityLevel: null,

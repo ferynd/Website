@@ -100,6 +100,9 @@ export function populateProfileForm() {
   // Target weight / date
   setVal('profile-target-weight', g.targetWeightLb ?? '');
   setVal('profile-target-date',   g.targetDate     ?? '');
+
+  // Protein basis
+  setSelectVal('profile-protein-basis', g.proteinBasis ?? '');
 }
 
 // ---------------------------------------------------------------------------
@@ -205,9 +208,10 @@ function readProfileFromForm() {
 
 function readGoalsFromForm() {
   return {
-    goalType:      getSelectVal('profile-goal-type') || 'maintenance',
+    goalType:       getSelectVal('profile-goal-type') || 'maintenance',
     targetWeightLb: getNum('profile-target-weight') || null,
-    targetDate:    getVal('profile-target-date')    || null,
+    targetDate:     getVal('profile-target-date')    || null,
+    proteinBasis:   getSelectVal('profile-protein-basis') || null,
   };
 }
 
@@ -474,7 +478,7 @@ export function wireProfileTab() {
   const autoFields = [
     'profile-manual-weight', 'profile-birthdate', 'profile-age',
     'profile-height', 'profile-bodyfat', 'profile-goal-type',
-    'profile-target-weight', 'profile-target-date',
+    'profile-target-weight', 'profile-target-date', 'profile-protein-basis',
   ];
   for (const id of autoFields) {
     on(id, 'input', scheduleAutoCalculate);

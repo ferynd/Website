@@ -706,3 +706,54 @@ describe('profile changes affect formula targets immediately', () => {
     expect(r1.targets.calories).not.toEqual(r2.targets.calories);
   });
 });
+
+// ── computeProteinTarget — proteinBasis ───────────────────────────────────────
+
+describe('computeProteinTarget — proteinBasis', () => {
+  it('fat loss with no BF% and targetWeight < currentWeight uses target weight basis (auto)', () => {
+    // 185 lb current, 165 lb target, no BF%
+    // 165 lb × 0.45359 = 74.8 kg × 2.2 = 164.6 → should be ~165g (less than current 185 lb basis ~185g)
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 165 });
+    const { protein, proteinBasisUsed } = computeProteinTarget('fatLoss', 185, null, goals);
+    const currentBasis = computeProteinTarget('fatLoss', 185, null, null);
+    expect(protein).toBeLessThan(currentBasis.protein); // target-weight basis gives lower protein
+    expect(protein).toBeGreaterThan(130);
+    expect(proteinBasisUsed).toBe('targetWeight');
+  });
+
+  it('fat loss with no BF% and no targetWeight falls back to current weight', () => {
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: null });
+    const { protein, proteinBasisUsed } = computeProteinTarget('fatLoss', 185, null, goals);
+    const currentBasis = computeProteinTarget('fatLoss', 185, null, null);
+    expect(protein).toBe(currentBasis.protein);
+    expect(proteinBasisUsed).toBe('currentWeight');
+  });
+
+  it('fat loss with BF% uses leanMass basis (auto selects leanMass)', () => {
+    // 185 lb, 15% BF → FFM = 185 × 0.45359 × 0.85 = 71.4 kg
+    const ffm_kg = 185 * 0.45359237 * 0.85;
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 165 });
+    const { proteinBasisUsed, protein } = computeProteinTarget('fatLoss', 185, ffm_kg, goals);
+    // leanMass should win over targetWeight when BF% is available
+    expect(proteinBasisUsed).toBe('leanMass');
+    // 2.7 g/kg FFM = 71.4 × 2.7 = 192.8 → ~193
+    expect(protein).toBeGreaterThan(185);
+  });
+
+  it('maintenance with targetWeight set still uses current weight by default', () => {
+    const goals = makeGoals({ goalType: 'maintenance', targetWeightLb: 165 });
+    const { protein, proteinBasisUsed } = computeProteinTarget('maintenance', 185, null, goals);
+    const currentBasis = computeProteinTarget('maintenance', 185, null, null);
+    expect(protein).toBe(currentBasis.protein);
+    expect(proteinBasisUsed).toBe('currentWeight');
+  });
+
+  it('explicit proteinBasis=currentWeight overrides auto for fat loss', () => {
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 165, proteinBasis: 'currentWeight' });
+    const { protein, proteinBasisUsed } = computeProteinTarget('fatLoss', 185, null, goals);
+    expect(proteinBasisUsed).toBe('currentWeight');
+    // Should be the same as current-weight basis
+    const currentBasis = computeProteinTarget('fatLoss', 185, null, null);
+    expect(protein).toBe(currentBasis.protein);
+  });
+});
