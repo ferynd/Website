@@ -410,6 +410,22 @@
               <input type="date" id="profile-target-date">
             </div>
 
+            <div>
+              <label for="profile-protein-basis" class="block text-sm font-medium text-primary mb-1">
+                Protein Basis <span class="text-muted font-normal">(fat loss)</span>
+              </label>
+              <select id="profile-protein-basis">
+                <option value="">Auto (recommended)</option>
+                <option value="currentWeight">Current Weight</option>
+                <option value="targetWeight">Target Weight</option>
+                <option value="adjustedWeight">Adjusted Weight (midpoint)</option>
+                <option value="leanMass">Lean Mass (requires BF%)</option>
+              </select>
+              <p class="text-xs text-muted mt-1">
+                Auto: uses lean mass if BF% is set, otherwise target weight if a lower target is set, otherwise current weight.
+              </p>
+            </div>
+
           </div>
         </div>
 

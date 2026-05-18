@@ -288,13 +288,20 @@ The **Energy** tab runs a statistical analysis engine (`analysis/engine.js`) on 
 2. **Empirical TDEE** — once the user has enough paired weight+calorie days (≥14 days rough, ≥42 days high confidence), the engine fits a multi-horizon rolling TDEE using EWMA-smoothed weight trends and linear regression, with an OLS water-weight noise correction layer for high-sodium and high-carb days.
 3. **Confidence and data sufficiency** — each estimate is tagged rough / moderate / high based on how many complete data days are available; the UI shows the confidence level so the user knows how much to trust the number.
 4. **Exercise integration** — `exerciseSessions` entries use MET-based estimates (2024 Compendium), overridable by wearable or manual calorie values. The calorie priority per session is: manual override > wearable reading > MET estimate. The day-level `dayActivityLevel` quick-select provides a simpler alternative when detailed session logging is not needed.
-5. **Missing/vacation/true-up estimates** — the engine identifies days with no log and can fill them with a statistical estimate, flag vacation ranges with a calorie estimate for the day type, or apply an underreporting true-up adjustment. Estimates are stored as synthetic food items with `entryType: ‘estimate’`; they can be locked (to prevent auto-overwrite) or individually removed without affecting real logged foods.
+5. **Missing/vacation/true-up estimates** — the engine identifies days with no log and can fill them with a statistical estimate, flag vacation ranges with a calorie estimate for the day type, or apply an underreporting true-up adjustment. Estimates are stored as synthetic food items with `entryType: ‘estimate’`; they can be locked (to prevent auto-overwrite) or individually removed without affecting real logged foods. Blank-day synthetic entries include historical micronutrient averages (fiber, potassium, calcium, etc.) derived from real logged food, scaled to the estimated calorie total.
+
+#### True-up candidate model
+
+`getTrueUpCandidates()` uses **candidate-centered** evidence windows: each candidate day D is tested with `[D−preDays, D+postDays]` intervals (14d/28d/42d) so evidence comes from both before and after the candidate, not solely preceding history. Each interval requires a minimum number of future weight readings after D to reduce false positives. Reference TDEE is derived from blocks *outside* the candidate interval to avoid the circularity of using a rolling TDEE that was itself distorted by the missing calories. Days that pass age and classification filters but lack sufficient post-candidate weight data appear as pending candidates (`_pending` array property) rather than being silently dropped.
+
+Weekday calorie averages use a **trimmed mean** (10% trim) instead of arithmetic mean to resist outlier days that would otherwise inflate estimates.
 
 #### Target engine
 
 `targets/targetEngine.js` generates per-nutrient targets from the profile:
 
 - **Auto targets** — calories set by deficit/surplus over empirical or formula TDEE; protein by g/kg body weight at goal-specific rates; fat with a configurable floor; carbs from remaining calories.
+- **Protein basis** — configurable via `goalSettings.proteinBasis`: `auto` (fat loss: lean mass → target weight → current weight), `currentWeight`, `targetWeight`, `leanMass` (requires body-fat%), or `adjustedWeight` (avg of current and target). UI control in the Profile & Goals tab.
 - **Manual overrides** — any nutrient can be pinned to a custom value and saved in `goalSettings.manualTargetOverrides`; the engine respects these on every re-run.
 - **Macro floors** — fat is always ≥ `fatMinimum` (default 50 g); protein never drops below lean-mass-based minimums for fat-loss goals.
 - **DRI micronutrients** — age- and sex-specific Dietary Reference Intakes from `targets/nutritionReferences.js` with Tolerable Upper Intake Level (UL) warnings.

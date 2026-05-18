@@ -7,8 +7,6 @@
 import { state } from '../state/store.js';
 import {
   runAnalysis,
-  getBlankDaysForPopulation,
-  getPartialDaysForAdjustment,
   getTrueUpCandidates,
   buildBlankDayEstimateEntry,
   buildVacationDayEntry,
@@ -41,14 +39,6 @@ export function renderAnalysisSection() {
     state.weightEntriesMulti || null,
   );
   state.analysisResults = results;
-
-  state._blankDaysForPopulation = results.error
-    ? []
-    : getBlankDaysForPopulation(results.rows, state.dailyEntries, state.baselineTargets);
-
-  state._partialDaysForAdjustment = results.error
-    ? []
-    : getPartialDaysForAdjustment(results.rows, state.dailyEntries, results.bmrModel);
 
   state._trueUpCandidates = results.error
     ? []
@@ -1213,8 +1203,48 @@ function dayTypeBadge(type) {
  */
 function renderMissingCaloriesSection(candidates) {
   const rows = candidates && candidates.length > 0 ? candidates : [];
+  const pendingRows = candidates?._pending || [];
 
-  if (rows.length === 0) return '';
+  if (rows.length === 0) {
+    const emptyMsg = pendingRows.length > 0
+      ? `No actionable candidates yet. ${pendingRows.length} candidate(s) are waiting for more future weight data.`
+      : 'No missing days detected. Either all days are logged, the weight trend matches reported intake, or more data is needed.';
+
+    const pendingSection = pendingRows.length > 0 ? `
+      <details class="mt-4">
+        <summary class="cursor-pointer text-sm text-accent font-medium select-none">
+          Pending candidates (${pendingRows.length}) — awaiting future data ▸
+        </summary>
+        <div class="mt-2 overflow-x-auto">
+          <table class="w-full border rounded-lg text-sm">
+            <thead class="surface-2">
+              <tr>
+                <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Date</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Type</th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Reason</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              ${pendingRows.map(p => `
+                <tr>
+                  <td class="px-3 py-2 text-sm">${formatDisplayDate(p.date)}</td>
+                  <td class="px-3 py-2 text-sm text-center">${dayTypeBadge(p.type)}</td>
+                  <td class="px-3 py-2 text-xs text-muted">${p.pendingReason ?? 'Awaiting more data.'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </details>` : '';
+
+    return `
+      <div class="mb-6 card p-6 shadow-lg">
+        <h3 class="text-responsive-xl font-bold text-secondary mb-2">📅 Fill Missing Calories</h3>
+        <div class="p-4 surface-2 rounded-lg border text-sm text-muted">
+          <i class="fas fa-circle-check text-positive mr-2"></i>${emptyMsg}
+        </div>
+        ${pendingSection}
+      </div>`;
+  }
 
   const allDates = rows.map(r => r.date);
   const minDate = allDates.reduce((a, b) => a < b ? a : b);
@@ -1323,6 +1353,33 @@ function renderMissingCaloriesSection(candidates) {
       <button id="blank-fill-btn" class="btn btn-primary" disabled>
         <i class="fas fa-fill-drip mr-2"></i>Fill <span id="blank-fill-count">0</span> Selected Day(s)
       </button>
+
+      ${pendingRows.length > 0 ? `
+      <details class="mt-6">
+        <summary class="cursor-pointer text-sm text-accent font-medium select-none">
+          Pending candidates (${pendingRows.length}) — awaiting future data ▸
+        </summary>
+        <p class="text-xs text-muted mt-2 mb-2">These days may be flagged once more future weight readings are available.</p>
+        <div class="overflow-x-auto">
+          <table class="w-full border rounded-lg text-sm">
+            <thead class="surface-2">
+              <tr>
+                <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Date</th>
+                <th class="px-3 py-2 text-center text-xs font-medium text-secondary uppercase">Type</th>
+                <th class="px-3 py-2 text-left text-xs font-medium text-secondary uppercase">Reason</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y">
+              ${pendingRows.map(p => `
+                <tr>
+                  <td class="px-3 py-2 text-sm">${formatDisplayDate(p.date)}</td>
+                  <td class="px-3 py-2 text-sm text-center">${dayTypeBadge(p.type)}</td>
+                  <td class="px-3 py-2 text-xs text-muted">${p.pendingReason ?? 'Awaiting more data.'}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </details>` : ''}
     </div>
   `;
 }

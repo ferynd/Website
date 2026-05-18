@@ -324,31 +324,118 @@ export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb) {
 
 /**
  * Compute daily protein target in grams.
- * Uses body-weight-based rates; switches to FFM-based rate for lean dieters
- * when body fat % data is available.
+ *
+ * proteinBasis controls which weight is used for rate × weight_kg:
+ *   null / 'auto'       — fat loss/recomp: leanMass → targetWeight → currentWeight
+ *                         other goals: currentWeight
+ *   'currentWeight'     — g/kg current weight (explicit, no auto override)
+ *   'targetWeight'      — g/kg goal weight; falls back to currentWeight if no valid target
+ *   'adjustedWeight'    — g/kg midpoint of current + target; falls back if target missing/invalid
+ *   'leanMass'          — 2.7 g/kg FFM; falls back to currentWeight if BF% not set
  *
  * @param {string}      goalType
  * @param {number}      weightLb
  * @param {number|null} ffm_kg   - fat-free mass in kg (from Cunningham BMR step), or null
- * @returns {{ protein: number, note: string }}
+ * @param {object|null} goals    - state.goalSettings, or null
+ * @returns {{ protein: number, note: string, proteinBasisUsed: string, proteinBasisFallbackReason: string|null }}
  */
-export function computeProteinTarget(goalType, weightLb, ffm_kg) {
+export function computeProteinTarget(goalType, weightLb, ffm_kg, goals = null) {
   const weight_kg = weightLb * LB_TO_KG;
   const { rate, note } = PROTEIN_RATES[goalType] ?? PROTEIN_RATES.maintenance;
+  const proteinBasis = goals?.proteinBasis ?? 'auto';
 
-  if (ffm_kg && (goalType === 'fatLoss' || goalType === 'recomp')) {
-    const ffmRate = 2.7;
-    const proteinFFM = roundInt(ffm_kg * ffmRate);
-    const proteinBW  = roundInt(weight_kg * rate);
-    if (proteinFFM > proteinBW) {
+  // ── Explicit: leanMass ───────────────────────────────────────────────────
+  if (proteinBasis === 'leanMass') {
+    if (ffm_kg) {
       return {
-        protein: proteinFFM,
+        protein: roundInt(ffm_kg * 2.7),
+        note: `2.7 g/kg fat-free mass (${round1(ffm_kg)} kg FFM)`,
+        proteinBasisUsed: 'leanMass',
+        proteinBasisFallbackReason: null,
+      };
+    }
+    return {
+      protein: roundInt(weight_kg * rate),
+      note: `${note} — lean-mass basis requested but body-fat % not set`,
+      proteinBasisUsed: 'currentWeight',
+      proteinBasisFallbackReason: 'leanMass requested but BF% is not set; using current weight instead',
+    };
+  }
+
+  // ── Explicit: targetWeight ───────────────────────────────────────────────
+  if (proteinBasis === 'targetWeight') {
+    const targetLb = parseFloat(goals?.targetWeightLb);
+    if (targetLb > 0) {
+      const targetKg = targetLb * LB_TO_KG;
+      return {
+        protein: roundInt(targetKg * rate),
+        note: `${rate} g/kg target weight (${round1(targetLb)} lb / ${round1(targetKg)} kg)`,
+        proteinBasisUsed: 'targetWeight',
+        proteinBasisFallbackReason: null,
+      };
+    }
+    return {
+      protein: roundInt(weight_kg * rate),
+      note,
+      proteinBasisUsed: 'currentWeight',
+      proteinBasisFallbackReason: 'targetWeight requested but no valid target weight set; using current weight instead',
+    };
+  }
+
+  // ── Explicit: adjustedWeight (midpoint of current + target) ─────────────
+  if (proteinBasis === 'adjustedWeight') {
+    const targetLb = parseFloat(goals?.targetWeightLb);
+    if (targetLb > 0 && targetLb < weightLb) {
+      const adjustedLb = (weightLb + targetLb) / 2;
+      const adjustedKg = adjustedLb * LB_TO_KG;
+      return {
+        protein: roundInt(adjustedKg * rate),
+        note: `${rate} g/kg adjusted weight (${round1(adjustedLb)} lb — midpoint of ${round1(weightLb)} lb current and ${round1(targetLb)} lb target)`,
+        proteinBasisUsed: 'adjustedWeight',
+        proteinBasisFallbackReason: null,
+      };
+    }
+    const fallbackReason = (!targetLb || targetLb <= 0)
+      ? 'adjustedWeight requested but no valid target weight set; using current weight instead'
+      : 'adjustedWeight requested but target weight is not lower than current weight; using current weight instead';
+    return {
+      protein: roundInt(weight_kg * rate),
+      note,
+      proteinBasisUsed: 'currentWeight',
+      proteinBasisFallbackReason: fallbackReason,
+    };
+  }
+
+  // ── Explicit: currentWeight ──────────────────────────────────────────────
+  if (proteinBasis === 'currentWeight') {
+    return { protein: roundInt(weight_kg * rate), note, proteinBasisUsed: 'currentWeight', proteinBasisFallbackReason: null };
+  }
+
+  // ── Auto ─────────────────────────────────────────────────────────────────
+  // fat loss / recomp: leanMass → targetWeight → currentWeight
+  // all other goals:   currentWeight
+  if (goalType === 'fatLoss' || goalType === 'recomp') {
+    if (ffm_kg) {
+      return {
+        protein: roundInt(ffm_kg * 2.7),
         note: `2.7 g/kg fat-free mass (${round1(ffm_kg)} kg FFM) — high-end for lean resistance-trained dieting`,
+        proteinBasisUsed: 'leanMass',
+        proteinBasisFallbackReason: null,
+      };
+    }
+    const targetLb = parseFloat(goals?.targetWeightLb);
+    if (!isNaN(targetLb) && targetLb > 0 && targetLb < weightLb) {
+      const targetKg = targetLb * LB_TO_KG;
+      return {
+        protein: roundInt(targetKg * rate),
+        note: `${rate} g/kg target weight (${round1(targetLb)} lb) — uses goal weight to avoid excess protein during a deficit`,
+        proteinBasisUsed: 'targetWeight',
+        proteinBasisFallbackReason: null,
       };
     }
   }
 
-  return { protein: roundInt(weight_kg * rate), note };
+  return { protein: roundInt(weight_kg * rate), note, proteinBasisUsed: 'currentWeight', proteinBasisFallbackReason: null };
 }
 
 // ---------------------------------------------------------------------------
@@ -480,7 +567,7 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
   const calResult = computeCalorieTarget(goalType, tdeeResult.tdee, bmrResult.bmr, goals, weightLb);
 
   // ── Protein ───────────────────────────────────────────────────────────────
-  const proteinResult = computeProteinTarget(goalType, weightLb, bmrResult.ffm_kg);
+  const proteinResult = computeProteinTarget(goalType, weightLb, bmrResult.ffm_kg, goals);
 
   // ── Fat ───────────────────────────────────────────────────────────────────
   const fatResult = computeFatTarget(weightLb, calResult.calories);
@@ -524,7 +611,15 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
     deficitClamped: (goalType === 'fatLoss' && calResult.deficitClampReason !== 'none')
       ? buildDeficitClampNote(calResult, tdeeResult)
       : null,
-    protein: `${proteinResult.protein} g/day — ${proteinResult.note}`,
+    protein: `${proteinResult.protein} g/day — ${proteinResult.note}${
+      proteinResult.proteinBasisUsed && proteinResult.proteinBasisUsed !== 'currentWeight'
+        ? ` (basis: ${proteinResult.proteinBasisUsed})`
+        : ''
+    }${
+      proteinResult.proteinBasisFallbackReason
+        ? ` ⚠ ${proteinResult.proteinBasisFallbackReason}`
+        : ''
+    }`,
     fat: `${fatResult.fat} g/day — ${fatResult.note}`,
     carbs: `${carbsResult.carbs} g/day — fills remaining calories after protein (${proteinResult.protein * 4} kcal) and fat (${fatResult.fat * 9} kcal)`,
     micronutrients: `NASEM/DRI values for ${age}-year-old ${profile.sex ?? 'adult'} (age band: ${getAgeBand(age)}); RDA/AI for most nutrients, CDRR for sodium`,

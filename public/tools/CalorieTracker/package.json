@@ -11,7 +11,8 @@
     "test": "../../../node_modules/.bin/vitest run analysis/weightParser.test.js state/schema.test.js targets/targetEngine.test.js analysis/engine.test.js exercise/met.test.js ui/nutrientHelpers.test.js"
   },
   "devDependencies": {
-    "vite": "^5.0.0"
+    "vite": "^5.0.0",
+    "vitest": "^4.1.6"
   },
   "engines": {
     "node": ">=18.0.0"

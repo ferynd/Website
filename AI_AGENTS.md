@@ -64,6 +64,23 @@ This document is the **single source of truth** for automated assistants (Claude
 - Real-time reads via Firestore listeners in `TripContext.tsx` and screens under `components/TripDetail/**`.
 - Conflict Tracker persists to Firestore under `artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{personA|personB}`. Typed helpers in `app/tools/conflict-tracker/lib/`. Real-time state from `ConflictContext.tsx`. The tracker groups all conflicts for a two-person pair; each conflict has independent per-person reflections that are hidden until both sides submit.
 
+## CalorieTracker specifics (`public/tools/CalorieTracker/`)
+Static client-side app. No React. Firebase Auth + Firestore for persistence (config in `firebaseConfig.js`).
+
+Key engine/target files:
+- `analysis/engine.js` — pure analysis engine (no Firebase/DOM). Key exports: `runAnalysis`, `getTrueUpCandidates`, `buildBlankDayEstimateEntry`, `buildVacationDayEntry`, `computeWeekdayAverages`.
+- `targets/targetEngine.js` — pure target calculator. Key export: `generateTargets(profile, goals, analysisResults)`.
+- `targets/nutritionReferences.js` — DRI/UL tables for micronutrients.
+
+Critical design constraints:
+- `getTrueUpCandidates` uses **centered windows** `[D-preDays, D+postDays]` — do not revert to end-anchored windows. Requires `minPostWeights` future weight readings per interval. TDEE reference comes from blocks *outside* the candidate interval (avoid circularity). Pending candidates attach as `results._pending` (non-enumerable-style array property).
+- `computeWeekdayAverages` uses `trimmedMean(arr, 0.1)` — do not revert to arithmetic mean.
+- `buildBlankDayEstimateEntry` spreads historical micronutrient averages (20 keys) onto both the entry and its `foodItems[0]`, falling back to `baselineTargets`.
+- `computeProteinTarget(goalType, weightLb, ffm_kg, goals)` implements proteinBasis: auto fat-loss priority is leanMass → targetWeight → currentWeight. `goalSettings.proteinBasis` is `null` / `'auto'` / `'currentWeight'` / `'targetWeight'` / `'leanMass'` / `'adjustedWeight'`.
+- `getBlankDaysForPopulation` and `getPartialDaysForAdjustment` are `@legacy` — not called from any live UI path; kept for backward compat only.
+
+Test suite: 364 tests across 6 files, run with `node_modules/.bin/vitest run` from `public/tools/CalorieTracker/`. All pure-function tests — no Firebase or DOM.
+
 ## Documentation requirements (non-negotiable)
 Any **fundamental change** (routing, structure, build commands, data model, security rules, theming, component API) must update in the **same PR**:
 - `README.md`

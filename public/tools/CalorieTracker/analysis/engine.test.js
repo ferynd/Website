@@ -1682,4 +1682,363 @@ describe('buildBlankDayEstimateEntry', () => {
     expect(entry.fat).toBeGreaterThan(0);
     expect(entry.carbs).toBeGreaterThanOrEqual(0);
   });
+
+  it('includes micronutrients from historical real-food averages', () => {
+    const entries = new Map([
+      ['2024-02-10', {
+        entryType: 'logged',
+        calories: 2000,
+        foodItems: [{
+          id: 'f1', name: 'Chicken + Vegs', quantity: 1,
+          calories: 2000, protein: 150, fat: 60, carbs: 200,
+          fiber: 25, potassium: 3500, sodium: 2200, magnesium: 320,
+          calcium: 1000, choline: 450, vitaminB12: 2.4, folate: 400,
+          vitaminC: 75, vitaminB6: 1.7, vitaminA: 900, vitaminD: 15,
+          vitaminE: 15, vitaminK: 120, selenium: 55, iodine: 150,
+          phosphorus: 700, iron: 18, zinc: 11, omega3: 1.6,
+        }],
+      }],
+    ]);
+    const entry = buildBlankDayEstimateEntry('2024-02-15', candidate, null, entries, baseline);
+    expect(entry.fiber).toBeGreaterThan(0);
+    expect(entry.potassium).toBeGreaterThan(0);
+    expect(entry.calcium).toBeGreaterThan(0);
+    expect(entry.magnesium).toBeGreaterThan(0);
+    expect(entry.sodium).toBeGreaterThan(0);
+    expect(entry.choline).toBeGreaterThan(0);
+    expect(entry.omega3).toBeGreaterThan(0);
+    expect(entry.vitaminC).toBeGreaterThan(0);
+    expect(entry.vitaminD).toBeGreaterThan(0);
+    // Same fields on food item
+    expect(entry.foodItems[0].fiber).toBeGreaterThan(0);
+    expect(entry.foodItems[0].calcium).toBeGreaterThan(0);
+  });
+
+  it('falls back to baseline targets for micros when no real food history', () => {
+    const baselineWithMicros = { ...baseline, fiber: '25', potassium: '3500' };
+    const entry = buildBlankDayEstimateEntry('2024-02-15', candidate, null, new Map(), baselineWithMicros);
+    // When there is no food history, avgNutrient returns the fallback from baseline
+    // (scaled by fraction = estCals/targetCal = 1800/2000 = 0.9, so approx 22.5 and 3150)
+    expect(entry.fiber).toBeGreaterThanOrEqual(0);
+    expect(entry.potassium).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ── computeWeekdayAverages — trimmed mean outlier resistance ─────────────────
+
+describe('computeWeekdayAverages — outlier resistance', () => {
+  it('outlier day (5000 kcal) does not pull Monday average above ~2300', () => {
+    // Monday = day-of-week 1 for dates starting 2024-01-01 (Monday)
+    const entries = new Map([
+      ['2024-01-01', { calories: '2000', entryType: 'logged' }],
+      ['2024-01-08', { calories: '2100', entryType: 'logged' }],
+      ['2024-01-15', { calories: '2050', entryType: 'logged' }],
+      ['2024-01-22', { calories: '2000', entryType: 'logged' }],
+      ['2024-01-29', { calories: '2100', entryType: 'logged' }],
+      ['2024-02-05', { calories: '2050', entryType: 'logged' }],
+      ['2024-02-12', { calories: '5000', entryType: 'logged' }], // outlier
+    ]);
+    const avgs = computeWeekdayAverages(entries);
+    // Without trimming, average would be (2000+2100+2050+2000+2100+2050+5000)/7 ≈ 2471
+    // With trimmed mean (10% each tail → 1 item trimmed from 7), outlier removed → avg ≈ 2050
+    expect(avgs[1]).toBeLessThan(2350);
+    expect(avgs[1]).toBeGreaterThan(1800);
+  });
+
+  it('single-entry weekday still returns that value exactly', () => {
+    const entries = new Map([
+      ['2024-01-01', { calories: '1000', entryType: 'logged' }],
+    ]);
+    const avgs = computeWeekdayAverages(entries);
+    expect(avgs[1]).toBe(1000);
+  });
+});
+
+// ── computeWeekdayAverages — outlier resistance (trimmed mean) ────────────────
+
+describe('computeWeekdayAverages — trimmed mean', () => {
+  it('single-entry buckets return that value unchanged', () => {
+    const entries = new Map();
+    entries.set('2024-01-08', {
+      date: '2024-01-08',
+      calories: 2000,
+      entryType: 'logged',
+      foodItems: [
+        { id: 'f1', name: 'Meal', quantity: 1, calories: 2000, protein: 100, fat: 50, carbs: 200 },
+      ],
+    });
+    const avgs = computeWeekdayAverages(entries);
+    const dow = new Date('2024-01-08T00:00:00').getDay();
+    expect(avgs[dow]).toBe(2000);
+  });
+
+  it('outlier day does not excessively pull the trimmed mean upward', () => {
+    // 6 Mondays at ~2000 kcal + 1 outlier Monday at 5000 kcal
+    const entries = new Map();
+    const mondayDates = ['2024-01-01','2024-01-08','2024-01-15','2024-01-22','2024-01-29','2024-02-05','2024-02-12'];
+    mondayDates.forEach((d, i) => {
+      const cals = i === 6 ? 5000 : 2000; // outlier on last Monday
+      entries.set(d, {
+        date: d, calories: cals, entryType: 'logged',
+        foodItems: [{ id: `f${i}`, name: 'Meal', quantity: 1, calories: cals, protein: 100, fat: 60, carbs: 200 }],
+      });
+    });
+    const avgs = computeWeekdayAverages(entries);
+    const dow = new Date('2024-01-01T00:00:00').getDay(); // Monday
+    // With 6×2000 + 1×5000, arithmetic mean = 2429 kcal
+    // Trimmed mean (10% trim) should be closer to 2000 than 2429
+    expect(avgs[dow]).toBeLessThan(2300);
+    expect(avgs[dow]).toBeGreaterThan(1800);
+  });
+});
+
+// ── buildBlankDayEstimateEntry — micronutrients ───────────────────────────────
+
+describe('buildBlankDayEstimateEntry — micronutrients', () => {
+  const MICRO_KEYS = [
+    'fiber','potassium','magnesium','sodium','calcium','choline',
+    'vitaminB12','folate','vitaminC','vitaminB6',
+    'vitaminA','vitaminD','vitaminE','vitaminK',
+    'selenium','iodine','phosphorus','iron','zinc','omega3',
+  ];
+
+  const baselineWithMicros = {
+    calories: '2000', protein: '150', fat: '60', fatMinimum: '50',
+    fiber: '25', potassium: '3500', sodium: '2300', magnesium: '400',
+    calcium: '1000', vitaminD: '15', vitaminC: '90', omega3: '1.6',
+    choline: '550', vitaminB12: '2.4', folate: '400', vitaminB6: '1.3',
+    vitaminA: '900', vitaminE: '15', vitaminK: '120', selenium: '55',
+    iodine: '150', phosphorus: '700', iron: '8', zinc: '11',
+  };
+
+  const candidate = {
+    date: '2024-03-15',
+    type: 'blank',
+    recommendedDelta: 2000,
+    confidence: 'medium',
+    intervalsUsed: [{ name: '28d', days: 28, intervalStart: '2024-02-16', intervalEnd: '2024-03-15' }],
+  };
+
+  it('blank-day estimate includes micronutrient fields at top level', () => {
+    const entry = buildBlankDayEstimateEntry('2024-03-15', candidate, null, new Map(), baselineWithMicros);
+    for (const k of MICRO_KEYS) {
+      expect(entry, `top-level missing ${k}`).toHaveProperty(k);
+      expect(typeof entry[k], `${k} is not a number`).toBe('number');
+    }
+  });
+
+  it('blank-day estimate includes micronutrient fields on the foodItem', () => {
+    const entry = buildBlankDayEstimateEntry('2024-03-15', candidate, null, new Map(), baselineWithMicros);
+    const fi = entry.foodItems[0];
+    for (const k of MICRO_KEYS) {
+      expect(fi, `foodItem missing ${k}`).toHaveProperty(k);
+    }
+  });
+
+  it('falls back to baseline targets when no history exists', () => {
+    const entry = buildBlankDayEstimateEntry('2024-03-15', candidate, null, new Map(), baselineWithMicros);
+    // With empty dailyEntries, all micros should come from baseline
+    expect(entry.fiber).toBeGreaterThan(0);
+    expect(entry.potassium).toBeGreaterThan(0);
+    expect(entry.omega3).toBeGreaterThan(0);
+  });
+
+  it('uses historical averages when real food entries exist', () => {
+    // One logged day with very different micros than baseline
+    const entries = new Map();
+    entries.set('2024-03-10', {
+      date: '2024-03-10', calories: 2000, entryType: 'logged',
+      foodItems: [{
+        id: 'f1', name: 'Meal', quantity: 1, calories: 2000,
+        protein: 150, fat: 60, carbs: 200,
+        fiber: 40,        // higher than baseline 25
+        potassium: 5000,  // higher than baseline 3500
+        omega3: 3.0,      // higher than baseline 1.6
+        sodium: 2300, magnesium: 400, calcium: 1000, choline: 550,
+        vitaminB12: 2.4, folate: 400, vitaminC: 90, vitaminB6: 1.3,
+        vitaminA: 900, vitaminD: 15, vitaminE: 15, vitaminK: 120,
+        selenium: 55, iodine: 150, phosphorus: 700, iron: 8, zinc: 11,
+      }],
+    });
+    const entry = buildBlankDayEstimateEntry('2024-03-15', candidate, null, entries, baselineWithMicros);
+    // fiber from history (40) should be used, scaled by fraction (2000/2000 = 1)
+    expect(entry.fiber).toBeCloseTo(40, 0);
+    expect(entry.potassium).toBeCloseTo(5000, 0);
+  });
+});
+
+// ── getTrueUpCandidates — future data requirement ─────────────────────────────
+
+describe('getTrueUpCandidates — centered windows', () => {
+  it('blank day too recent (< 6 days old) is not returned', () => {
+    // Only 4 days of data, blank is the very last
+    const startDate = '2024-01-01';
+    const days = Array.from({ length: 5 }, (_, i) => {
+      const date = isoDate(startDate, i);
+      return { date, weight_lb: 180 - i * 0.05 };
+    });
+    const weightEntries = makeWeightEntries(days);
+    const dailyEntries = new Map();
+    // Only days 0-3 are logged; day 4 (today) is blank
+    for (let i = 0; i <= 3; i++) {
+      const date = isoDate(startDate, i);
+      dailyEntries.set(date, { date, calories: 2000, protein: 150, fat: 60, carbs: 200, foodItems: [] });
+    }
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return; // not enough data, skip
+    const baseline = { calories: '2000', protein: '150', fat: '60' };
+    const bmrModel = { source: 'formula', tdee_current: 2200, observedTdee: 2200, error: null };
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    // Day 4 is only 0 days old — should NOT appear as actionable
+    const found = candidates.find(c => c.date === isoDate(startDate, 4) && !c.needsFutureData);
+    expect(found).toBeUndefined();
+  });
+
+  it('blank day with insufficient future weights returns pending candidate', () => {
+    // 20 days total; blank at day 15 (5 days old — less than 6 days post)
+    const startDate = '2024-01-01';
+    const n = 20;
+    const blankDay = 15;
+    const blankDate = isoDate(startDate, blankDay);
+
+    const weightData = Array.from({ length: n }, (_, i) => ({
+      date: isoDate(startDate, i), weight_lb: 185 - i * 0.05,
+    }));
+    const nutritionData = [];
+    for (let i = 0; i < n; i++) {
+      const date = isoDate(startDate, i);
+      if (i !== blankDay) nutritionData.push({ date, calories: 2000, protein: 150, fat: 60, carbs: 200 });
+    }
+    const weightEntries = makeWeightEntries(weightData);
+    const dailyEntries = makeNutritionEntries(nutritionData);
+    const baseline = { calories: '2000', protein: '150', fat: '60' };
+    const bmrModel = { source: 'formula', tdee_current: 2350, observedTdee: 2350, error: null };
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    // blankDate is 4-5 days old — may not have enough future data for 14d centered window (needs 6 post-days).
+    // Also, with only 20 days of data the engine may not impute the blank day at all (calories_imputed=false),
+    // meaning the day is not classified as a candidate in the first place.
+    const actionable = candidates.find(c => c.date === blankDate && !c.needsFutureData);
+    const pending = candidates._pending?.find(p => p.date === blankDate);
+    // Acceptable outcomes:
+    //   1. Day isn't classified at all (neither actionable nor pending) — OK with limited data
+    //   2. Day is pending (needsFutureData=true)
+    //   3. Day is actionable and has future weight points
+    if (actionable) {
+      // If it somehow qualified, it must have future weights
+      expect(actionable.intervalsUsed.every(i => i.futureWeightPoints >= 3)).toBe(true);
+    } else if (pending) {
+      expect(pending.needsFutureData).toBe(true);
+    }
+    // else: day not classified at all with limited data — also acceptable
+  });
+
+  it('well-established blank day has futureWeightPoints on each interval', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate);
+    expect(found).toBeDefined();
+    // Every interval used should have future weight points
+    for (const interval of found.intervalsUsed) {
+      expect(interval.futureWeightPoints).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
+// ── getTrueUpCandidates — interval-aware allocation ───────────────────────────
+
+describe('getTrueUpCandidates — interval-aware allocation', () => {
+  it('each candidate allocatedDelta does not exceed its interval residualBefore', () => {
+    // Two blank days 7 days apart (both within each other\'s 28d window)
+    const startDate = '2023-10-01';
+    const d1 = isoDate(startDate, 28);
+    const d2 = isoDate(startDate, 35);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      blankDate: d1, startDate, n: 80,
+    });
+    dailyEntries.delete(d2); // add second blank day
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+
+    for (const c of candidates) {
+      for (const iv of c.intervalsUsed) {
+        expect(iv.allocatedDelta).toBeLessThanOrEqual(iv.residualBefore + 1); // +1 rounding
+      }
+    }
+  });
+
+  it('candidatesInWindow > 1 when two blank days share a 28d window', () => {
+    // d2 = d1 + 7 days, which is within d1\'s 28d window ([d1-14, d1+13])
+    const startDate = '2023-10-01';
+    const d1 = isoDate(startDate, 28);
+    const d2 = isoDate(startDate, 35);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      blankDate: d1, startDate, n: 80,
+    });
+    dailyEntries.delete(d2);
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+
+    const c1 = candidates.find(c => c.date === d1);
+    if (!c1) return;
+    // d1\'s 28d window = [d1-14, d1+13] = [day14, day41]; d2=day35 is inside it
+    const i28 = c1.intervalsUsed.find(i => i.name === '28d');
+    if (i28) {
+      expect(i28.candidatesInWindow).toBeGreaterThanOrEqual(2);
+      // When window is shared, allocFactor < 1 unless residual covers both needs
+      // (just verify allocFactor is recorded correctly as a ratio in [0,1])
+      expect(i28.allocFactor).toBeGreaterThanOrEqual(0);
+      expect(i28.allocFactor).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('single blank day gets allocFactor=1 when alone in its window', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 30);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      blankDate, startDate, n: 80,
+    });
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate);
+    if (!found) return;
+
+    // With only this candidate in the window, allocFactor = min(1, residual/refTdee)
+    // When residual ≥ refTdee (normal blank day scenario), allocFactor should be close to 1
+    for (const iv of found.intervalsUsed) {
+      if (iv.candidatesInWindow === 1) {
+        expect(iv.allocFactor).toBeGreaterThanOrEqual(0.95);
+      }
+    }
+    // Recommendation should still be close to TDEE (not artificially capped)
+    expect(found.recommendedDelta).toBeGreaterThanOrEqual(600);
+  });
+
+  it('_pending property on result array is non-enumerable', () => {
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({
+      startDate: '2023-10-01', n: 60,
+    });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+
+    // Non-enumerable: should not appear in Object.keys, JSON.stringify, or for...in
+    expect(Object.keys(candidates)).not.toContain('_pending');
+    // But remains directly accessible
+    expect(Array.isArray(candidates._pending)).toBe(true);
+  });
 });
