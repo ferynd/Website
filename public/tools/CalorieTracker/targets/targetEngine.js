@@ -690,6 +690,24 @@ export function applyManualOverrides(generated, manualOverrides = {}) {
 }
 
 /**
+ * Pure helper: returns the latest weight_lb from a weightEntries Map, or null.
+ * Accepts the same Map<docId, {date, weight_lb, ...}> shape as state.weightEntries.
+ * Used by resolveDailyBaseTargets so auto-goal works before the Energy tab is visited.
+ */
+export function latestWeightLbFromEntries(weightEntries) {
+  if (!weightEntries || weightEntries.size === 0) return null;
+  let latestDate = '';
+  let latestWeight = null;
+  for (const entry of weightEntries.values()) {
+    if (entry.date > latestDate && parseFloat(entry.weight_lb) > 0) {
+      latestDate = entry.date;
+      latestWeight = parseFloat(entry.weight_lb);
+    }
+  }
+  return latestWeight;
+}
+
+/**
  * Resolve today's base calorie/macro targets for a given date.
  *
  * In 'manual' mode  — returns state.baselineTargets unchanged.
@@ -713,19 +731,22 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
     };
   }
 
+  const rawLatestWeightLb = latestWeightLbFromEntries(stateLike.weightEntries ?? null);
+
   const result = generateTargets(
     stateLike.userProfile  ?? {},
     stateLike.goalSettings ?? {},
     stateLike.analysisResults ?? null,
-    null,
+    rawLatestWeightLb,
     dateStr
   );
 
   if (!result.targets) {
+    const reason = result.warnings[0] ?? 'unknown reason';
     return {
       targets: { ...stateLike.baselineTargets },
       source: 'manual_fallback',
-      warnings: ['Auto-goal targets unavailable, using manual baseline. ' + (result.warnings[0] ?? '')],
+      warnings: [`Auto-goal targets unavailable (${reason}); falling back to manual baseline.`],
     };
   }
 

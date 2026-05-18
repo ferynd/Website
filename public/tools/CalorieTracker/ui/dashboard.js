@@ -307,8 +307,14 @@ export function calculateBankingData(targetDateStr) {
     // Resolve today's base macro targets for display.
     // carbsG above can be 0 when the rolling target < protein+fat budget (e.g. after over-eating);
     // macro progress bars should show the stable daily base targets instead.
+    // Also capture the resolution source so display labels can be mode-accurate.
+    let resolvedTargetSource = targetMode;  // 'manual' or 'autoGoal'
     const displayBaseTargets = targetMode === 'autoGoal'
-      ? (resolveDailyBaseTargets(targetDateStr, state).targets || {})
+      ? (() => {
+        const r = resolveDailyBaseTargets(targetDateStr, state);
+        resolvedTargetSource = r.source;   // may be 'manual_fallback' if weight unavailable
+        return r.targets || {};
+      })()
       : state.baselineTargets;
     const displayProteinG = Math.round(parseFloat(displayBaseTargets.protein) || scaledProteinG);
     const displayFatG     = Math.round(parseFloat(displayBaseTargets.fatMinimum ?? displayBaseTargets.fat) || fatFloorG);
@@ -368,6 +374,10 @@ export function calculateBankingData(targetDateStr) {
       displayFatG,
       displayCarbsG,
 
+      // Today's resolved base calorie target (may differ from baseKcal in autoGoal mode)
+      todayBaseCalories,
+      resolvedTargetSource,
+
       // Bank completeness
       bankIncomplete,
       unknownDays,
@@ -397,6 +407,8 @@ export function calculateBankingData(targetDateStr) {
       displayProteinG: BANKING_CONFIG.PROTEIN_G,
       displayFatG: BANKING_CONFIG.FAT_FLOOR_G,
       displayCarbsG: 0,
+      todayBaseCalories: BANKING_CONFIG.BASE_KCAL,
+      resolvedTargetSource: 'manual',
       bankIncomplete: false,
       unknownDays: [],
       targetMode: 'manual',
@@ -803,9 +815,12 @@ function renderEnergyOutput() {
  */
 function renderCalcDetailsPanel(bankingData) {
   const {
-    baseKcal, todaysTrainingBump, bankBalance,
+    todayBaseCalories, todaysTrainingBump, bankBalance, targetMode,
     sumPast6Actual, sumPastTargets, windowBudget, todayKcalTarget, trainingIntensity
   } = bankingData;
+  const tomorrowNote = targetMode === 'autoGoal'
+    ? 'Hit this target and tomorrow recalculates from Auto Goal mode.'
+    : `Hit this target and tomorrow resets to ${todayBaseCalories} kcal (rest day).`;
 
   return `
     <div class="section-card p-4 mb-6">
@@ -834,7 +849,7 @@ function renderCalcDetailsPanel(bankingData) {
         ` : ''}
         <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
           <div>${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal today</strong></div>
-          <div>Hit this target and tomorrow resets to ${baseKcal} kcal (rest day).</div>
+          <div>${tomorrowNote}</div>
         </div>
       </div>
     </div>
@@ -846,8 +861,8 @@ function renderCalcDetailsPanel(bankingData) {
  */
 function renderTodayCompact(bankingData) {
   const {
-    todayKcalTarget, displayProteinG, displayFatG, displayCarbsG, baseKcal,
-    todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
+    todayKcalTarget, displayProteinG, displayFatG, displayCarbsG,
+    todayBaseCalories, todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
   } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
@@ -899,7 +914,7 @@ function renderTodayCompact(bankingData) {
       <div class="text-4xl font-bold ${remainColor}">${Math.round(remaining)}</div>
       <div class="text-xs text-muted mt-1">${Math.round(totals.calories)} eaten · ${todayKcalTarget} target</div>
       <div class="text-xs text-muted mt-1">
-        Target: ${modeBadge} · Base: ${baseKcal}${todaysTrainingBump > 0 ? ` + Exercise: +${todaysTrainingBump}` : ''}${bankBalance !== 0 ? ` + Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance}` : ''} = ${todayKcalTarget} kcal
+        Target: ${modeBadge} · Base: ${todayBaseCalories}${todaysTrainingBump > 0 ? ` + Exercise: +${todaysTrainingBump}` : ''}${bankBalance !== 0 ? ` + Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance}` : ''} = ${todayKcalTarget} kcal
       </div>
       ${bankNote}
       ${profileNote}
@@ -1151,7 +1166,13 @@ function renderInfoBox() {
  * Render banking panel showing rolling 7-day balance
  */
 function renderBankingPanel(bankingData) {
-  const { bankBalance, pastDays, sumPast6Actual, sumPastTargets, windowBudget, baseKcal } = bankingData;
+  const { bankBalance, pastDays, sumPast6Actual, sumPastTargets, windowBudget, todayBaseCalories, targetMode } = bankingData;
+  const budgetExplain = targetMode === 'autoGoal'
+    ? `${windowBudget} kcal (per-day auto-goal targets + training bumps).`
+    : `${windowBudget} kcal (${todayBaseCalories}/day × 7 + training bumps).`;
+  const tomorrowNote = targetMode === 'autoGoal'
+    ? 'Hit this target and tomorrow recalculates from Auto Goal mode.'
+    : `If you hit today's target, tomorrow's target resets to exactly ${todayBaseCalories} kcal (on a rest day).`;
 
   const contributionRows = pastDays.map(d => `
     <tr${d.unknown ? ' class="opacity-60"' : ''}>
@@ -1215,9 +1236,9 @@ function renderBankingPanel(bankingData) {
         </div>
 
         <div class="mt-3 p-3 surface-2 rounded-lg text-xs text-muted space-y-1">
-          <p><strong>How it works:</strong> Your 7-day calorie budget is ${windowBudget} kcal (${baseKcal}/day × 7 + training bumps).</p>
+          <p><strong>How it works:</strong> Your 7-day calorie budget is ${budgetExplain}</p>
           <p>You've consumed ${sumPast6Actual} kcal over the last 6 days against a target of ${sumPastTargets} kcal.</p>
-          <p>If you hit today's target, tomorrow's target resets to exactly ${baseKcal} kcal (on a rest day).</p>
+          <p>${tomorrowNote}</p>
         </div>
       </div>
     </div>
@@ -1344,7 +1365,7 @@ function renderTodaysPlanPanel(bankingData, todaysEntry) {
             <div class="mt-2 pt-2 border-t border">
               <div class="text-xs text-muted space-y-1">
                 <div>Final target: ${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal</strong></div>
-                <div>If you eat exactly this, tomorrow's target will be ${baseKcal} kcal (on a rest day).</div>
+                <div>If you eat exactly this, tomorrow's target will be ${todayBaseCalories ?? baseKcal} kcal (on a rest day).</div>
               </div>
             </div>
           </div>

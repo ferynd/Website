@@ -253,6 +253,15 @@ function renderFoodItemsContent(container) {
     const totalFat = qty * (parseFloat(item.fat) || 0);
     const macroLine = `${Math.round(totalCals)} cal · ${Math.round(totalProtein)}p · ${Math.round(totalCarbs)}c · ${Math.round(totalFat)}f`;
 
+    let timeStampHtml = '';
+    if (item.timestamp) {
+      try {
+        const time = new Date(item.timestamp);
+        const formatted = time.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+        timeStampHtml = `<div class="food-item-timestamp">${formatted}</div>`;
+      } catch (_) { /* ignore unparseable timestamps */ }
+    }
+
     const qtyInput = typeof window.updateItemQuantity === 'function'
       ? `<input type="number" step="0.01" min="0"
           class="input input-xs food-item-qty"
@@ -266,6 +275,7 @@ function renderFoodItemsContent(container) {
           <span class="food-item-name" title="${name}">${name}</span>
           <button onclick="removeFoodItem(${index})" class="food-item-delete btn btn-danger icon-btn" aria-label="Delete" title="Delete">&times;</button>
         </div>
+        ${timeStampHtml}
         <div class="food-item-bottom">
           <span class="food-item-macros">${qty > 0 ? `×${qty} · ` : ''}${macroLine}</span>
           ${qtyInput}

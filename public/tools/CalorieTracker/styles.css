@@ -843,23 +843,38 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
   width: 4.5rem;
 }
 
+.food-item-timestamp {
+  font-size: .7rem;
+  color: hsl(var(--text-3));
+  padding-left: .125rem;
+}
+
 /* ============================================================
-   MOBILE TWEAKS  (< 640 px)  — header email truncation
+   MOBILE TWEAKS  (< 640 px)  — header two-row deterministic layout
    ============================================================ */
 @media (max-width: 640px) {
-  /* Allow controls row to wrap so the email doesn't overflow */
-  .app-header-controls { flex-wrap: wrap; }
-
-  /* Email shrinks and truncates instead of forcing the header wider */
+  /* Stack header vertically so controls never overflow */
+  .app-header { flex-direction: column; align-items: stretch; }
+  .app-header-title { width: 100%; flex-basis: auto; }
+  .app-header-controls {
+    width: 100%;
+    min-width: 0;
+    flex-shrink: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .375rem;
+  }
+  /* Email fills its own row and truncates */
   .app-header-email {
     flex: 1 1 100%;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    order: -1;            /* email appears first within the controls block */
     font-size: .75rem;
   }
+  /* Logout and Settings remain visible side by side */
+  #logout-btn, #open-settings-btn { flex-shrink: 0; }
 }
 
 /* ============================================================

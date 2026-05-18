@@ -19,6 +19,7 @@ import {
   generateTargets,
   applyManualOverrides,
   resolveDailyBaseTargets,
+  latestWeightLbFromEntries,
 } from './targetEngine.js';
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -892,6 +893,40 @@ describe('applyManualOverrides — macro recomposition', () => {
   });
 });
 
+// ── latestWeightLbFromEntries ─────────────────────────────────────────────────
+
+describe('latestWeightLbFromEntries', () => {
+  it('returns null for empty map', () => {
+    expect(latestWeightLbFromEntries(new Map())).toBeNull();
+  });
+
+  it('returns null for null input', () => {
+    expect(latestWeightLbFromEntries(null)).toBeNull();
+  });
+
+  it('returns the single entry weight', () => {
+    const m = new Map([['a', { date: '2025-01-05', weight_lb: 180 }]]);
+    expect(latestWeightLbFromEntries(m)).toBe(180);
+  });
+
+  it('returns the most recent weight when multiple entries exist', () => {
+    const m = new Map([
+      ['a', { date: '2025-01-01', weight_lb: 195 }],
+      ['b', { date: '2025-01-10', weight_lb: 190 }],
+      ['c', { date: '2025-01-05', weight_lb: 192 }],
+    ]);
+    expect(latestWeightLbFromEntries(m)).toBe(190);
+  });
+
+  it('ignores entries with weight_lb <= 0', () => {
+    const m = new Map([
+      ['a', { date: '2025-01-15', weight_lb: 0 }],
+      ['b', { date: '2025-01-10', weight_lb: 185 }],
+    ]);
+    expect(latestWeightLbFromEntries(m)).toBe(185);
+  });
+});
+
 // ── resolveDailyBaseTargets (Issue 2 — target mode) ──────────────────────────
 
 describe('resolveDailyBaseTargets', () => {
@@ -944,6 +979,62 @@ describe('resolveDailyBaseTargets', () => {
     const { source, warnings } = resolveDailyBaseTargets('2025-01-01', s);
     expect(source).toBe('manual_fallback');
     expect(warnings.length).toBeGreaterThan(0);
+  });
+
+  it('autoGoal resolves from raw uploaded weight when analysisResults is null', () => {
+    const weightEntries = new Map([
+      ['docA', { date: '2025-01-01', weight_lb: 185, time_min: null, source: 'upload' }],
+    ]);
+    const s = makeState({
+      userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: true }),
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: null,
+      weightEntries,
+    });
+    const { source, targets } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('autoGoal');
+    expect(targets.calories).toBeGreaterThan(1500);
+  });
+
+  it('autoGoal falls back to manual only when no manual weight, no analysis weight, and no raw uploaded weight', () => {
+    const s = makeState({
+      userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: false }),
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: null,
+      weightEntries: new Map(),
+    });
+    const { source } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('manual_fallback');
+  });
+
+  it('autoGoal fallback warning names the reason for fallback', () => {
+    const s = makeState({
+      userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: false }),
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: null,
+      weightEntries: new Map(),
+    });
+    const { warnings } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(warnings[0]).toMatch(/weight/i);
+    expect(warnings[0]).toMatch(/falling back/i);
+  });
+
+  it('autoGoal picks the most recent weight from weightEntries with multiple entries', () => {
+    const weightEntries = new Map([
+      ['docA', { date: '2025-01-01', weight_lb: 195, time_min: null, source: 'upload' }],
+      ['docB', { date: '2025-01-10', weight_lb: 190, time_min: null, source: 'upload' }],
+    ]);
+    const s = makeState({
+      userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: true }),
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: null,
+      weightEntries,
+    });
+    // 190 lb profile (more recent) should produce a lower calorie target than 195 lb
+    const { targets: t190 } = resolveDailyBaseTargets('2025-01-01', s);
+    const sHeavy = { ...s, weightEntries: new Map([['docA', { date: '2025-01-01', weight_lb: 195, time_min: null, source: 'upload' }]]) };
+    const { targets: t195 } = resolveDailyBaseTargets('2025-01-01', sHeavy);
+    expect(t190.calories).toBeLessThan(t195.calories);
   });
 
   it('autoGoal applies manualTargetOverrides on top of computed targets', () => {
