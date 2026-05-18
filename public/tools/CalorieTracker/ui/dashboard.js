@@ -30,6 +30,7 @@ import { initializeChartControls } from './chart.js';
 import { CONFIG } from '../config.js';
 import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
 import { UL_TABLE } from '../targets/nutritionReferences.js';
+import { resolveDailyBaseTargets } from '../targets/dailyTargetResolver.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -221,6 +222,16 @@ export function calculateBankingData(targetDateStr) {
     }
 
     const weightKg = resolveWeightKg();
+    const targetMode = state.goalSettings?.targetMode ?? 'manual';
+
+    // Helper: resolve per-day calorie target.
+    // In autoGoal mode, each past day uses the date-specific dynamically computed target.
+    // In manual mode, every day uses the same baseKcal from baseline targets.
+    function resolveDayCalorieTarget(dateStr) {
+      if (targetMode !== 'autoGoal') return baseKcal;
+      const resolved = resolveDailyBaseTargets(dateStr, state);
+      return parseFloat(resolved.targets?.calories) || baseKcal;
+    }
 
     // Sum actual intake AND exercise bumps for the previous (windowDays - 1) days.
     // For days with no logged data ("unknown"), we use the day's target as a
@@ -228,6 +239,7 @@ export function calculateBankingData(targetDateStr) {
     const pastDays = [];
     let sumPast6Actual       = 0;
     let sumPastTrainingBumps = 0;
+    let sumPastBaseTargets   = 0; // window budget accumulator
     const unknownDays        = [];
 
     for (let i = 1; i < windowDays; i++) {
@@ -235,8 +247,9 @@ export function calculateBankingData(targetDateStr) {
       const pastDateStr = formatDate(pastDate);
       const entry       = state.dailyEntries.get(pastDateStr) || {};
 
-      const trainingBump = getEntryExerciseKcal(entry, weightKg);
-      const dailyTarget  = baseKcal + trainingBump;
+      const trainingBump    = getEntryExerciseKcal(entry, weightKg);
+      const dayBaseCalories = resolveDayCalorieTarget(pastDateStr);
+      const dailyTarget     = dayBaseCalories + trainingBump;
 
       const trusted = _hasTrustedCalories(entry);
       // Unknown days: use target calories so they contribute 0 to bank balance
@@ -258,17 +271,19 @@ export function calculateBankingData(targetDateStr) {
 
       sumPast6Actual       += actualKcal;
       sumPastTrainingBumps += trainingBump;
+      sumPastBaseTargets   += dayBaseCalories;
     }
 
     const bankIncomplete = unknownDays.length > 0;
 
-    // Today's entry exercise calories
-    const todaysEntry        = state.dailyEntries.get(targetDateStr) || {};
-    const todaysTrainingBump = getEntryExerciseKcal(todaysEntry, weightKg);
+    // Today's base calorie target and exercise bump
+    const todaysEntry         = state.dailyEntries.get(targetDateStr) || {};
+    const todaysTrainingBump  = getEntryExerciseKcal(todaysEntry, weightKg);
+    const todayBaseCalories   = resolveDayCalorieTarget(targetDateStr);
 
-    // The full 7-day window budget includes base calories for every day
+    // The full 7-day window budget uses each day's own base target
     // PLUS training bumps for every day (past and today).
-    const windowBudget = baseKcal * windowDays + sumPastTrainingBumps + todaysTrainingBump;
+    const windowBudget = sumPastBaseTargets + todayBaseCalories + sumPastTrainingBumps + todaysTrainingBump;
 
     // Rolling target = how much of the window budget remains for today.
     const rollingTarget = windowBudget - sumPast6Actual;
@@ -277,7 +292,7 @@ export function calculateBankingData(targetDateStr) {
     // Positive = you under-ate relative to targets = more room today.
     // Negative = you over-ate relative to targets = less room today.
     // When bankIncomplete, the balance is a lower-bound estimate (unknown days neutral).
-    const bankBalance = rollingTarget - baseKcal - todaysTrainingBump;
+    const bankBalance = rollingTarget - todayBaseCalories - todaysTrainingBump;
 
     // Round to nearest 25 for display friendliness
     const todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
@@ -290,10 +305,7 @@ export function calculateBankingData(targetDateStr) {
     const carbsG         = Math.round(remainingKcal / 4);
 
     // Sum of all past day targets (for display in the table footer)
-    const sumPastTargets = baseKcal * pastDays.length + sumPastTrainingBumps;
-
-    // Resolve target mode label for display
-    const targetMode = state.goalSettings?.targetMode ?? 'manual';
+    const sumPastTargets = sumPastBaseTargets + sumPastTrainingBumps;
 
     debugLog('calculation-summary', {
       windowBudget,

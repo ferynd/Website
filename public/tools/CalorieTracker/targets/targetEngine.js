@@ -222,14 +222,16 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
  * Compute daily calorie target based on goal type, TDEE, BMR floor, and
  * optional time-based fat loss calculation.
  *
- * @param {string} goalType
- * @param {number} tdee
- * @param {number} bmr
- * @param {object} goals  - state.goalSettings (targetWeightLb, targetDate)
- * @param {number} weightLb
+ * @param {string}      goalType
+ * @param {number}      tdee
+ * @param {number}      bmr
+ * @param {object}      goals       - state.goalSettings (targetWeightLb, targetDate)
+ * @param {number}      weightLb
+ * @param {string|null} asOfDateStr - 'YYYY-MM-DD'; when provided, days-left math uses this
+ *                                    date instead of today (timezone-safe, historical-date safe).
  * @returns {{ calories: number, deficit: number, deficitNote: string, daysLeft: number|null, targetWeightDeltaLb: number|null, rawRequiredDeficit: number|null, appliedDeficit: number, deficitClampReason: string, calorieFloor: number }}
  */
-export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb) {
+export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb, asOfDateStr = null) {
   const minSafeFloor = Math.max(1000, roundInt(bmr * 0.85));
 
   switch (goalType) {
@@ -245,7 +247,11 @@ export function computeCalorieTarget(goalType, tdee, bmr, goals, weightLb) {
       const targetDate = goals.targetDate;
 
       if (!isNaN(targetLb) && targetLb > 0 && targetDate && weightLb > targetLb) {
-        daysLeft = (new Date(targetDate).getTime() - Date.now()) / 86400000;
+        // Use local date-only math (no time-of-day noise, works for historical dates)
+        const asOfMs = asOfDateStr
+          ? new Date(`${asOfDateStr}T00:00:00`).getTime()
+          : (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); })();
+        daysLeft = (new Date(`${targetDate}T00:00:00`).getTime() - asOfMs) / 86400000;
         targetWeightDeltaLb = round1(weightLb - targetLb);
         if (daysLeft > 14) {
           const deltaKg = (weightLb - targetLb) * LB_TO_KG;
@@ -538,9 +544,10 @@ function buildDeficitClampNote(calResult, tdeeResult) {
  * @param {object}      goals              - state.goalSettings (normalizeGoalSettings() shape)
  * @param {object|null} analysisResults    - from runAnalysis(), or null
  * @param {number|null} rawLatestWeightLb  - raw latest weight from state.weightEntries, or null
+ * @param {string|null} asOfDateStr        - 'YYYY-MM-DD'; forwarded to computeCalorieTarget
  * @returns {{ targets: object|null, explanation: object|null, warnings: string[], meta: object }}
  */
-export function generateTargets(profile, goals, analysisResults = null, rawLatestWeightLb = null) {
+export function generateTargets(profile, goals, analysisResults = null, rawLatestWeightLb = null, asOfDateStr = null) {
   const warnings = [];
 
   // ── Current weight ────────────────────────────────────────────────────────
@@ -564,7 +571,7 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
 
   // ── Calorie target ────────────────────────────────────────────────────────
   const goalType = goals.goalType ?? 'maintenance';
-  const calResult = computeCalorieTarget(goalType, tdeeResult.tdee, bmrResult.bmr, goals, weightLb);
+  const calResult = computeCalorieTarget(goalType, tdeeResult.tdee, bmrResult.bmr, goals, weightLb, asOfDateStr);
 
   // ── Protein ───────────────────────────────────────────────────────────────
   const proteinResult = computeProteinTarget(goalType, weightLb, bmrResult.ffm_kg, goals);
@@ -691,11 +698,11 @@ export function applyManualOverrides(generated, manualOverrides = {}) {
  *
  * Falls back gracefully to manual baseline when auto-goal computation fails.
  *
- * @param {string} _dateStr  - Date string 'YYYY-MM-DD' (reserved for future per-day logic)
+ * @param {string} dateStr   - Date string 'YYYY-MM-DD'; forwarded to computeCalorieTarget for date-aware deficit math
  * @param {object} stateLike - Object with { baselineTargets, goalSettings, userProfile, analysisResults }
  * @returns {{ targets: object, source: 'manual'|'autoGoal'|'manual_fallback', warnings: string[] }}
  */
-export function resolveDailyBaseTargets(_dateStr, stateLike) {
+export function resolveDailyBaseTargets(dateStr, stateLike) {
   const mode = stateLike.goalSettings?.targetMode ?? 'manual';
 
   if (mode !== 'autoGoal') {
@@ -710,7 +717,8 @@ export function resolveDailyBaseTargets(_dateStr, stateLike) {
     stateLike.userProfile  ?? {},
     stateLike.goalSettings ?? {},
     stateLike.analysisResults ?? null,
-    null
+    null,
+    dateStr
   );
 
   if (!result.targets) {

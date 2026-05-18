@@ -624,9 +624,13 @@ export function estimateTDEEByHorizon(rows) {
 // ==========================================
 
 /**
- * Compute a profile-predicted RMR using Mifflin-St Jeor (primary) or a
- * weight-only fallback. This is used as a Bayesian prior / sanity anchor
- * for the data-driven BMR model.
+ * Compute a profile-predicted RMR using the best available method.
+ * Priority matches targetEngine.js computeBMR():
+ *   1. Cunningham (when body-fat % is set) — most accurate for athletes
+ *   2. Mifflin-St Jeor (when height + age + sex are all available)
+ *   3. Weight-only fallback
+ *
+ * Used as a Bayesian prior / sanity anchor for the data-driven BMR model.
  *
  * @param {object|null} profile    - state.userProfile
  * @param {number|null} weightLb   - latest smoothed weight in lb
@@ -638,6 +642,15 @@ export function estimateProfileRmr(profile, weightLb) {
   const weightKg = weightLb * C.LB_TO_KG;
 
   if (profile) {
+    // ── Cunningham (preferred when BF% is available) ──────────────────────────
+    const bf = parseFloat(profile.bodyFatPercent);
+    if (!isNaN(bf) && bf > 5 && bf < 60) {
+      const ffmKg = weightKg * (1 - bf / 100);
+      const rmr = 500 + 22 * ffmKg;
+      return { rmr: Math.round(rmr), method: 'cunningham', note: 'Cunningham equation (lean mass)' };
+    }
+
+    // ── Mifflin-St Jeor (when height + age + sex available) ──────────────────
     const age = (() => {
       if (profile.birthDate) {
         const birth = new Date(profile.birthDate);
@@ -661,7 +674,6 @@ export function estimateProfileRmr(profile, weightLb) {
     const sex = profile.sex; // 'male' | 'female'
 
     if (age && heightCm && (sex === 'male' || sex === 'female')) {
-      // Mifflin-St Jeor
       const rmr = sex === 'male'
         ? 10 * weightKg + 6.25 * heightCm - 5 * age + 5
         : 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
@@ -670,14 +682,6 @@ export function estimateProfileRmr(profile, weightLb) {
         method: 'mifflin_st_jeor',
         note: 'Mifflin-St Jeor equation (height + age + sex)',
       };
-    }
-
-    // Cunningham if BF% available
-    const bf = parseFloat(profile.bodyFatPercent);
-    if (!isNaN(bf) && bf > 0 && bf < 60) {
-      const ffmKg = weightKg * (1 - bf / 100);
-      const rmr = 500 + 22 * ffmKg;
-      return { rmr: Math.round(rmr), method: 'cunningham', note: 'Cunningham equation (lean mass)' };
     }
   }
 
@@ -1861,14 +1865,23 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
     const minAllocDelta = Math.min(...intervalsUsed.map(i => i.allocatedDelta));
 
     // ── Cap and build recommendation ────────────────────────────────────────
+    // Blank-day estimate source priority: prefer centered-interval TDEE over
+    // the in-memory calories_imputed value, which may come from a cruder prior.
+    // The imputed value is preserved as a diagnostic field for debugging.
     let recommendedDelta;
+    let fullDayEstimate = null;
+    let estimateSource = null;
+    let imputedDiagnosticCalories = null;
     if (type === 'blank') {
       const imputedCals = row.calories_imputed ? (row.calories || 0) : 0;
-      const fullDayEst = imputedCals > 600
-        ? imputedCals
-        : (avgTdeeForCandidate > 0 ? Math.round(avgTdeeForCandidate) : (parseFloat(baselineTargets?.calories) || 2000));
+      if (imputedCals > 0) imputedDiagnosticCalories = Math.round(imputedCals);
+      // Centered-interval estimate is the primary source
+      fullDayEstimate = avgTdeeForCandidate > 0
+        ? Math.round(avgTdeeForCandidate)
+        : (parseFloat(baselineTargets?.calories) || 2000);
+      estimateSource = avgTdeeForCandidate > 0 ? 'centered_interval' : 'baseline_target';
       // Cap by interval-aware allocation when multiple candidates share a window
-      recommendedDelta = Math.max(600, Math.min(fullDayEst, minAllocDelta, 6000));
+      recommendedDelta = Math.max(600, Math.min(fullDayEstimate, minAllocDelta, 6000));
     } else {
       const maxDelta = Math.min(primary.perDayResidual, Math.round(avgTdeeForCandidate - loggedCalories));
       recommendedDelta = Math.max(0, Math.min(maxDelta, 1500, minAllocDelta));
@@ -1919,6 +1932,10 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
       recommendedDelta: Math.round(recommendedDelta),
       loggedCalories: Math.round(loggedCalories),
       expectedCalories,
+      // Blank-day estimate provenance fields
+      fullDayEstimate,
+      estimateSource,
+      imputedDiagnosticCalories,
       intervalStart: primary.intervalStart,
       intervalEnd: primary.intervalEnd,
       intervalsUsed,
@@ -1960,7 +1977,8 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
  * @returns {object}  Complete v2 daily entry ready for saveEstimatedEntry()
  */
 export function buildBlankDayEstimateEntry(dateStr, candidate, analysisResults, dailyEntries, baselineTargets) {
-  const estCals      = candidate.recommendedDelta ?? Math.round(parseFloat(baselineTargets?.calories) || 2000);
+  // Prefer centered-interval estimate (fullDayEstimate) over the older recommendedDelta field
+  const estCals = candidate.fullDayEstimate ?? candidate.recommendedDelta ?? Math.round(parseFloat(baselineTargets?.calories) || 2000);
   const targetCal    = parseFloat(baselineTargets?.calories) || 2000;
 
   // ── Historical nutrient averages from real food entries ───────────────────
@@ -2192,6 +2210,21 @@ export function runAnalysis(weightEntries, dailyEntries, profile = null, weightE
   const imputedDays = rows.filter(r => r.calories_imputed);
   const pendingDays = rows.filter(r => r.impute_status === 'pending');
 
+  // Breakdown: manual logged days vs saved estimates vs unsaved engine-imputed days
+  const daysWithManualCalories = rows.filter(r => {
+    if (r.calories == null || r.calories_imputed) return false;
+    const entry = dailyEntries.get(r.date);
+    return entry && entry.entryType !== 'estimate';
+  }).length;
+  const daysWithSavedEstimates = rows.filter(r => {
+    const entry = dailyEntries.get(r.date);
+    return entry && entry.entryType === 'estimate' && parseFloat(entry.calories) > 0;
+  }).length;
+  const daysWithUnsavedImputedCalories = imputedDays.filter(r => {
+    const entry = dailyEntries.get(r.date);
+    return !entry || entry.entryType !== 'estimate';
+  }).length;
+
   return {
     rows,
     bmrModel,
@@ -2210,6 +2243,9 @@ export function runAnalysis(weightEntries, dailyEntries, profile = null, weightE
       totalDays: rows.length,
       daysWithWeight: withWeight.length,
       daysWithCalories: rows.filter(r => r.calories != null).length,
+      daysWithManualCalories,
+      daysWithSavedEstimates,
+      daysWithUnsavedImputedCalories,
       daysImputed: imputedDays.length,
       daysPendingImputation: pendingDays.length,
       tdee: bmrModel.error ? null : bmrModel.tdee_current,

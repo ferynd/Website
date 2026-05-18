@@ -1038,3 +1038,111 @@ describe('target weight/date behavior', () => {
     expect(tH.calories).toBeGreaterThan(tL.calories);
   });
 });
+
+// ── date-aware computeCalorieTarget (Issue 3) ─────────────────────────────────
+
+describe('computeCalorieTarget — date-aware asOfDateStr', () => {
+  function targetDateOffset(asOfStr, daysOffset) {
+    const d = new Date(`${asOfStr}T00:00:00`);
+    d.setDate(d.getDate() + daysOffset);
+    return d.toISOString().slice(0, 10);
+  }
+
+  it('same goal with near asOfDate → larger deficit than far asOfDate', () => {
+    const goals = { goalType: 'fatLoss', targetWeightLb: 175, targetDate: targetDateOffset('2025-06-01', 90) };
+    const tdee = 2400; const bmr = 1800; const weightLb = 190;
+
+    // Close: 30 days to goal
+    const close = computeCalorieTarget('fatLoss', tdee, bmr, goals, weightLb, targetDateOffset('2025-06-01', 60));
+    // Far: 90 days to goal (asOf = start)
+    const far   = computeCalorieTarget('fatLoss', tdee, bmr, goals, weightLb, '2025-06-01');
+
+    // Closer deadline → larger required deficit → fewer or equal calories
+    expect(close.calories).toBeLessThanOrEqual(far.calories);
+  });
+
+  it('asOfDateStr two different dates produce different daysLeft', () => {
+    const targetDate = '2025-12-31';
+    const goals = { goalType: 'fatLoss', targetWeightLb: 170, targetDate };
+
+    const r1 = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185, '2025-06-01');
+    const r2 = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185, '2025-09-01');
+
+    expect(r1.daysLeft).toBeGreaterThan(r2.daysLeft);
+  });
+
+  it('past asOfDate that is already beyond targetDate yields negative daysLeft', () => {
+    const goals = { goalType: 'fatLoss', targetWeightLb: 170, targetDate: '2024-01-01' };
+    const r = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185, '2025-01-01');
+    expect(r.daysLeft).toBeLessThan(0);
+  });
+
+  it('omitting asOfDateStr (null) produces same results as passing today', () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayStr = today.toISOString().slice(0, 10);
+    const futureTarget = new Date(today);
+    futureTarget.setMonth(futureTarget.getMonth() + 3);
+    const targetDate = futureTarget.toISOString().slice(0, 10);
+    const goals = { goalType: 'fatLoss', targetWeightLb: 170, targetDate };
+
+    const r1 = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185, null);
+    const r2 = computeCalorieTarget('fatLoss', 2400, 1800, goals, 185, todayStr);
+
+    expect(r1.calories).toBe(r2.calories);
+    expect(r1.daysLeft).toBeCloseTo(r2.daysLeft, 0);
+  });
+
+  it('resolveDailyBaseTargets passes dateStr into fat-loss deficit in autoGoal mode', () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const near = new Date(today); near.setDate(near.getDate() + 45);
+    const far  = new Date(today); far.setDate(far.getDate() + 120);
+    const nearStr = near.toISOString().slice(0, 10);
+    const farStr  = far.toISOString().slice(0, 10);
+
+    const makeState = (asOfStr) => ({
+      baselineTargets: { calories: 2000 },
+      goalSettings:    { goalType: 'fatLoss', targetMode: 'autoGoal', targetWeightLb: 170, targetDate: farStr, manualTargetOverrides: {} },
+      userProfile:     makeProfile({ manualWeightOverrideLb: 185 }),
+      analysisResults: null,
+    });
+
+    const { targets: tNear } = resolveDailyBaseTargets(nearStr, makeState(nearStr));
+    const { targets: tFar  } = resolveDailyBaseTargets(today.toISOString().slice(0, 10), makeState(farStr));
+
+    // Starting further from the target date → smaller deficit → more calories
+    expect(tFar.calories).toBeGreaterThanOrEqual(tNear.calories);
+  });
+});
+
+// ── computeBMR / estimateProfileRmr BMR alignment (Issue 7) ──────────────────
+
+describe('computeBMR — Cunningham preferred when BF% is set', () => {
+  it('with BF% and full Mifflin data: uses cunningham method', () => {
+    const profile = makeProfile({ bodyFatPercent: 18, age: 35, heightValue: 71, heightUnit: 'in' });
+    const { method } = computeBMR(profile, 185);
+    expect(method).toBe('cunningham');
+  });
+
+  it('without BF%, falls back to mifflin_st_jeor when height+age+sex present', () => {
+    const profile = makeProfile({ bodyFatPercent: null, age: 35, heightValue: 71, heightUnit: 'in', sex: 'male' });
+    const { method } = computeBMR(profile, 185);
+    expect(method).toBe('mifflin_st_jeor');
+  });
+
+  it('Cunningham BMR > Mifflin BMR for same weight when BF% is low (lean individual)', () => {
+    const profileWithBf  = makeProfile({ bodyFatPercent: 12, age: 30, heightValue: 70, heightUnit: 'in', sex: 'male' });
+    const profileNoBf    = makeProfile({ bodyFatPercent: null, age: 30, heightValue: 70, heightUnit: 'in', sex: 'male' });
+    const { bmr: bmrC } = computeBMR(profileWithBf, 180);
+    const { bmr: bmrM } = computeBMR(profileNoBf,   180);
+    // Low BF% → high FFM → Cunningham yields higher RMR
+    expect(bmrC).toBeGreaterThan(bmrM);
+  });
+
+  it('generateTargets with BF% produces cunningham bmrMethod in meta', () => {
+    const profile = makeProfile({ bodyFatPercent: 20, manualWeightOverrideLb: 185 });
+    const { meta } = generateTargets(profile, makeGoals(), null);
+    expect(meta.bmrMethod).toBe('cunningham');
+  });
+});
