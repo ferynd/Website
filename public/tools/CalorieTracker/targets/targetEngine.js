@@ -642,14 +642,89 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
 }
 
 /**
- * Merge generated targets with the user's manual overrides.
- * Only keys explicitly set in manualOverrides replace the generated value.
+ * Merge generated targets with the user's manual overrides, then recompose
+ * macros so the calorie total stays consistent.
  *
- * @param {object|null} generated      - targets from generateTargets()
- * @param {object}      manualOverrides - goals.manualTargetOverrides (sparse dict)
- * @returns {object|null}
+ * Recomposition rules (applied whenever calories, protein, or fat are overridden
+ * and carbs are NOT explicitly pinned):
+ *   carbs = max(0, floor((calories - protein×4 - fat×9) / 4))
+ *
+ * If protein×4 + fat×9 > calories after the merge, carbs is clamped to 0 and
+ * a warning is attached as result._warnings[].
+ *
+ * @param {object|null} generated       - targets from generateTargets()
+ * @param {object}      manualOverrides  - goals.manualTargetOverrides (sparse dict)
+ * @returns {object|null}  New targets object; never mutates inputs.
  */
 export function applyManualOverrides(generated, manualOverrides = {}) {
   if (!generated) return generated;
-  return { ...generated, ...manualOverrides };
+  const merged = { ...generated, ...manualOverrides };
+
+  const calOverridden     = 'calories' in manualOverrides;
+  const proteinOverridden = 'protein'  in manualOverrides;
+  const fatOverridden     = 'fat' in manualOverrides || 'fatMinimum' in manualOverrides;
+  const carbsOverridden   = 'carbs'    in manualOverrides;
+
+  const warnings = [];
+
+  if ((calOverridden || proteinOverridden || fatOverridden) && !carbsOverridden) {
+    const remaining = merged.calories - (merged.protein * 4) - (merged.fat * 9);
+    merged.carbs = Math.max(0, Math.round(remaining / 4));
+    if (remaining < 0) {
+      warnings.push(
+        `Protein (${merged.protein} g × 4 = ${merged.protein * 4} kcal) + Fat (${merged.fat} g × 9 = ${merged.fat * 9} kcal) ` +
+        `exceeds calorie target (${merged.calories} kcal). Carbs set to 0.`
+      );
+    }
+  }
+
+  if (warnings.length) merged._warnings = warnings;
+  return merged;
+}
+
+/**
+ * Resolve today's base calorie/macro targets for a given date.
+ *
+ * In 'manual' mode  — returns state.baselineTargets unchanged.
+ * In 'autoGoal' mode — runs generateTargets() live from profile + goals +
+ *                       latest analysis, then applies manual overrides.
+ *
+ * Falls back gracefully to manual baseline when auto-goal computation fails.
+ *
+ * @param {string} _dateStr  - Date string 'YYYY-MM-DD' (reserved for future per-day logic)
+ * @param {object} stateLike - Object with { baselineTargets, goalSettings, userProfile, analysisResults }
+ * @returns {{ targets: object, source: 'manual'|'autoGoal'|'manual_fallback', warnings: string[] }}
+ */
+export function resolveDailyBaseTargets(_dateStr, stateLike) {
+  const mode = stateLike.goalSettings?.targetMode ?? 'manual';
+
+  if (mode !== 'autoGoal') {
+    return {
+      targets: { ...stateLike.baselineTargets },
+      source: 'manual',
+      warnings: [],
+    };
+  }
+
+  const result = generateTargets(
+    stateLike.userProfile  ?? {},
+    stateLike.goalSettings ?? {},
+    stateLike.analysisResults ?? null,
+    null
+  );
+
+  if (!result.targets) {
+    return {
+      targets: { ...stateLike.baselineTargets },
+      source: 'manual_fallback',
+      warnings: ['Auto-goal targets unavailable, using manual baseline. ' + (result.warnings[0] ?? '')],
+    };
+  }
+
+  const finalTargets = applyManualOverrides(result.targets, stateLike.goalSettings?.manualTargetOverrides ?? {});
+  return {
+    targets: finalTargets,
+    source: 'autoGoal',
+    warnings: result.warnings,
+  };
 }

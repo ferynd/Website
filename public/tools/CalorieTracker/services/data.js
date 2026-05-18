@@ -141,7 +141,10 @@ export async function loadUserData() {
     // Once all data is loaded, populate the UI.
     loadDailyFoodItems();
     populateSettingsForm();
-    if (window.__populateProfileForm) window.__populateProfileForm();
+    // forcePopulateProfileForm ensures the form is re-populated with the freshly
+    // loaded data even if the user had already visited the tab this session.
+    if (window.__forcePopulateProfileForm) window.__forcePopulateProfileForm();
+    else if (window.__populateProfileForm) window.__populateProfileForm();
     updateDashboard();
     updateChart();
     

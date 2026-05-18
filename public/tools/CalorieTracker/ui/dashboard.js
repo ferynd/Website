@@ -182,6 +182,23 @@ const pctClass = (v, tgt) => {
  * @param {string} targetDateStr - Target date in YYYY-MM-DD format
  * @returns {Object} Banking calculation results
  */
+/**
+ * Returns true when an entry contains calories the user (or a saved estimate)
+ * deliberately logged — i.e. calories are a real signal, not an absent default.
+ *
+ * Entries that do NOT count as "real" calories:
+ *   • Empty objects (no Firestore document for that date)
+ *   • Entries where calories === 0 with no food items (user opened the day but logged nothing)
+ *
+ * Entries that DO count:
+ *   • Any entry with calories > 0 (logged food, saved estimates, vacation days, true-up days)
+ */
+function _hasTrustedCalories(entry) {
+  if (!entry || Object.keys(entry).length === 0) return false;
+  const cals = parseFloat(entry.calories);
+  return !isNaN(cals) && cals > 0;
+}
+
 export function calculateBankingData(targetDateStr) {
   try {
     debugLog('calc-start', { targetDateStr, userId: state.userId });
@@ -206,19 +223,27 @@ export function calculateBankingData(targetDateStr) {
     const weightKg = resolveWeightKg();
 
     // Sum actual intake AND exercise bumps for the previous (windowDays - 1) days.
+    // For days with no logged data ("unknown"), we use the day's target as a
+    // bank-neutral stand-in to prevent phantom calorie banks from blank days.
     const pastDays = [];
-    let sumPast6Actual = 0;
+    let sumPast6Actual       = 0;
     let sumPastTrainingBumps = 0;
+    const unknownDays        = [];
 
     for (let i = 1; i < windowDays; i++) {
-      const pastDate = getPastDate(targetDate, i);
+      const pastDate    = getPastDate(targetDate, i);
       const pastDateStr = formatDate(pastDate);
-      const entry = state.dailyEntries.get(pastDateStr) || {};
+      const entry       = state.dailyEntries.get(pastDateStr) || {};
 
-      const actualKcal  = parseFloat(entry.calories) || 0;
       const trainingBump = getEntryExerciseKcal(entry, weightKg);
       const dailyTarget  = baseKcal + trainingBump;
-      const delta        = actualKcal - dailyTarget;
+
+      const trusted = _hasTrustedCalories(entry);
+      // Unknown days: use target calories so they contribute 0 to bank balance
+      const actualKcal = trusted ? parseFloat(entry.calories) : dailyTarget;
+      const delta      = actualKcal - dailyTarget;
+
+      if (!trusted) unknownDays.push(pastDateStr);
 
       pastDays.push({
         date: pastDate,
@@ -227,15 +252,18 @@ export function calculateBankingData(targetDateStr) {
         trainingBump,
         dailyTarget,
         delta,
+        unknown: !trusted,
         dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
       });
 
-      sumPast6Actual     += actualKcal;
+      sumPast6Actual       += actualKcal;
       sumPastTrainingBumps += trainingBump;
     }
 
+    const bankIncomplete = unknownDays.length > 0;
+
     // Today's entry exercise calories
-    const todaysEntry = state.dailyEntries.get(targetDateStr) || {};
+    const todaysEntry        = state.dailyEntries.get(targetDateStr) || {};
     const todaysTrainingBump = getEntryExerciseKcal(todaysEntry, weightKg);
 
     // The full 7-day window budget includes base calories for every day
@@ -248,6 +276,7 @@ export function calculateBankingData(targetDateStr) {
     // Bank balance = how much today's target differs from a plain rest-day goal.
     // Positive = you under-ate relative to targets = more room today.
     // Negative = you over-ate relative to targets = less room today.
+    // When bankIncomplete, the balance is a lower-bound estimate (unknown days neutral).
     const bankBalance = rollingTarget - baseKcal - todaysTrainingBump;
 
     // Round to nearest 25 for display friendliness
@@ -255,13 +284,16 @@ export function calculateBankingData(targetDateStr) {
 
     // Protein floor does not scale with exercise; carbs absorb the extra calories.
     const scaledProteinG = proteinG;
-    const proteinKcal = scaledProteinG * 4;
-    const fatKcal = fatFloorG * 9;
-    const remainingKcal = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
-    const carbsG = Math.round(remainingKcal / 4);
+    const proteinKcal    = scaledProteinG * 4;
+    const fatKcal        = fatFloorG * 9;
+    const remainingKcal  = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
+    const carbsG         = Math.round(remainingKcal / 4);
 
     // Sum of all past day targets (for display in the table footer)
     const sumPastTargets = baseKcal * pastDays.length + sumPastTrainingBumps;
+
+    // Resolve target mode label for display
+    const targetMode = state.goalSettings?.targetMode ?? 'manual';
 
     debugLog('calculation-summary', {
       windowBudget,
@@ -270,7 +302,9 @@ export function calculateBankingData(targetDateStr) {
       todaysTrainingBump,
       rollingTarget: Math.round(rollingTarget),
       bankBalance: Math.round(bankBalance),
-      todayKcalTarget
+      todayKcalTarget,
+      bankIncomplete,
+      unknownDays,
     });
 
     if (DASHBOARD_CONFIG.LOG_CALCULATION_STEPS && pastDays.length > 0) {
@@ -279,7 +313,8 @@ export function calculateBankingData(targetDateStr) {
         actual: Math.round(d.actualKcal),
         training: d.trainingBump,
         target: d.dailyTarget,
-        delta: Math.round(d.delta)
+        delta: Math.round(d.delta),
+        unknown: d.unknown,
       })));
     }
 
@@ -301,10 +336,15 @@ export function calculateBankingData(targetDateStr) {
       fatG: Math.round(fatFloorG),
       carbsG,
 
+      // Bank completeness
+      bankIncomplete,
+      unknownDays,
+
+      // Display meta
+      targetMode,
+
       // Config
-      config: {
-        windowDays
-      }
+      config: { windowDays }
     };
 
   } catch (error) {
@@ -322,6 +362,9 @@ export function calculateBankingData(targetDateStr) {
       proteinG: BANKING_CONFIG.PROTEIN_G,
       fatG: BANKING_CONFIG.FAT_FLOOR_G,
       carbsG: 0,
+      bankIncomplete: false,
+      unknownDays: [],
+      targetMode: 'manual',
       trainingIntensity: 'rest',
       config: { windowDays: BANKING_CONFIG.ROLLING_WINDOW_DAYS }
     };
@@ -767,7 +810,10 @@ function renderCalcDetailsPanel(bankingData) {
  * Render compact calorie + macro summary for the Today tab.
  */
 function renderTodayCompact(bankingData) {
-  const { todayKcalTarget, proteinG, fatG, carbsG, baseKcal, todaysTrainingBump, bankBalance } = bankingData;
+  const {
+    todayKcalTarget, proteinG, fatG, carbsG, baseKcal,
+    todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
+  } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
     const q = parseFloat(item.quantity ?? 0) || 0;
@@ -778,7 +824,7 @@ function renderTodayCompact(bankingData) {
     return acc;
   }, { calories: 0, protein: 0, fat: 0, carbs: 0 });
 
-  const remaining = todayKcalTarget - totals.calories;
+  const remaining  = todayKcalTarget - totals.calories;
   const remainColor = remaining >= 0 ? 'text-positive' : 'text-negative';
 
   const macroRow = (label, actual, target) => {
@@ -800,15 +846,28 @@ function renderTodayCompact(bankingData) {
       </div>`;
   };
 
+  const modeBadge = targetMode === 'autoGoal'
+    ? `<span class="text-xs font-medium text-accent ml-1">Auto Goal</span>`
+    : `<span class="text-xs text-muted ml-1">Manual Baseline</span>`;
+
+  const bankNote = bankIncomplete
+    ? `<div class="text-xs text-warning mt-1">⚠ Rolling bank incomplete — missing data for: ${unknownDays.join(', ')}. Unknown days treated as on-target.</div>`
+    : '';
+
+  const profileNote = targetMode !== 'autoGoal'
+    ? `<div class="text-xs text-muted mt-0.5 italic" style="font-size:0.7rem">Profile &amp; Goals only changes Today after "Apply to Baseline Targets" or switching to Auto Goal mode.</div>`
+    : '';
+
   return `
     <div class="mb-4 p-4 surface-2 rounded-lg border text-center">
       <div class="text-xs text-muted uppercase tracking-wide mb-1">Calories Remaining</div>
       <div class="text-4xl font-bold ${remainColor}">${Math.round(remaining)}</div>
       <div class="text-xs text-muted mt-1">${Math.round(totals.calories)} eaten · ${todayKcalTarget} target</div>
       <div class="text-xs text-muted mt-1">
-        Base: ${baseKcal} kcal${todaysTrainingBump > 0 ? ` · Exercise: +${todaysTrainingBump} kcal` : ''}${bankBalance !== 0 ? ` · Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance} kcal` : ''} · Final: ${todayKcalTarget} kcal
+        Target: ${modeBadge} · Base: ${baseKcal}${todaysTrainingBump > 0 ? ` + Exercise: +${todaysTrainingBump}` : ''}${bankBalance !== 0 ? ` + Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance}` : ''} = ${todayKcalTarget} kcal
       </div>
-      <div class="text-xs text-muted mt-0.5 italic" style="font-size:0.7rem">Profile &amp; Goals only changes Today after "Apply to Baseline Targets"</div>
+      ${bankNote}
+      ${profileNote}
       <div class="hbar mt-2">
         <div class="hbar-fill ${pctClass(totals.calories, todayKcalTarget)}" style="width:${pctWidth(totals.calories, todayKcalTarget)}"></div>
         <div class="hbar-marker" style="left:${markerLeft}"></div>
@@ -1060,12 +1119,12 @@ function renderBankingPanel(bankingData) {
   const { bankBalance, pastDays, sumPast6Actual, sumPastTargets, windowBudget, baseKcal } = bankingData;
 
   const contributionRows = pastDays.map(d => `
-    <tr>
-      <td class="px-3 py-2 text-sm font-medium">${d.dayName}${d.trainingBump > 0 ? ' <span class="text-xs text-accent">+' + d.trainingBump + '</span>' : ''}</td>
-      <td class="px-3 py-2 text-sm text-center">${Math.round(d.actualKcal)}</td>
+    <tr${d.unknown ? ' class="opacity-60"' : ''}>
+      <td class="px-3 py-2 text-sm font-medium">${d.dayName}${d.trainingBump > 0 ? ' <span class="text-xs text-accent">+' + d.trainingBump + '</span>' : ''}${d.unknown ? ' <span class="text-xs text-warning">(missing)</span>' : ''}</td>
+      <td class="px-3 py-2 text-sm text-center">${d.unknown ? '<span class="text-muted">—</span>' : Math.round(d.actualKcal)}</td>
       <td class="px-3 py-2 text-sm text-center text-muted">${Math.round(d.dailyTarget)}</td>
-      <td class="px-3 py-2 text-sm text-center font-medium ${d.delta > 0 ? 'text-negative' : d.delta < 0 ? 'text-positive' : 'text-muted'}">
-        ${d.delta > 0 ? '+' : ''}${Math.round(d.delta)}
+      <td class="px-3 py-2 text-sm text-center font-medium ${d.unknown ? 'text-muted' : d.delta > 0 ? 'text-negative' : d.delta < 0 ? 'text-positive' : 'text-muted'}">
+        ${d.unknown ? '0' : (d.delta > 0 ? '+' : '') + Math.round(d.delta)}
       </td>
     </tr>
   `).join('');

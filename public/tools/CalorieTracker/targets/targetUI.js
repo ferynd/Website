@@ -18,6 +18,15 @@ import { runAnalysis } from '../analysis/engine.js';
 // Cache the last engine result for reference (Apply Targets always recomputes fresh)
 let _lastResult = null;
 
+// Idempotency flag: prevents populateProfileForm() from overwriting edits on
+// tab re-activations. Set to true after first population; cleared when
+// forcePopulateProfileForm() is called (e.g. after a fresh data load).
+let _profileFormInitialized = false;
+
+// Separate debounce timers for calculation vs autosave
+let _calcDebounceTimer  = null;
+let _saveDebounceTimer  = null;
+
 // ---------------------------------------------------------------------------
 // Override key definitions (ordered for display)
 // ---------------------------------------------------------------------------
@@ -59,7 +68,29 @@ const ALL_OVERRIDE_KEYS = [...MACRO_KEYS, ...MICRO_KEYS];
 // Populate form from state
 // ---------------------------------------------------------------------------
 
+/**
+ * Populate the profile form from state — idempotent after first call.
+ * Subsequent calls (from activateTab) are ignored so user edits survive
+ * tab switches. Use forcePopulateProfileForm() after a fresh data load.
+ */
 export function populateProfileForm() {
+  if (_profileFormInitialized) return;
+  _forcePopulate();
+}
+
+/**
+ * Always repopulate the form from the latest state (used after data loads
+ * and after explicit saves). Clears the edit-protection flag so the next
+ * populateProfileForm() call also repopulates.
+ */
+export function forcePopulateProfileForm() {
+  _profileFormInitialized = false;
+  _forcePopulate();
+}
+
+function _forcePopulate() {
+  _profileFormInitialized = true;
+
   const p = state.userProfile  || {};
   const g = state.goalSettings || {};
 
@@ -103,6 +134,14 @@ export function populateProfileForm() {
 
   // Protein basis
   setSelectVal('profile-protein-basis', g.proteinBasis ?? '');
+
+  // Target mode (manual vs auto-goal)
+  const modeVal = g.targetMode ?? 'manual';
+  const modeEl  = document.querySelector(`input[name="profile-target-mode"][value="${modeVal}"]`);
+  if (modeEl) modeEl.checked = true;
+
+  // Clear autosave status when form is freshly loaded
+  _setAutosaveStatus('');
 }
 
 // ---------------------------------------------------------------------------
@@ -212,6 +251,7 @@ function readGoalsFromForm() {
     targetWeightLb: getNum('profile-target-weight') || null,
     targetDate:     getVal('profile-target-date')    || null,
     proteinBasis:   getSelectVal('profile-protein-basis') || null,
+    targetMode:     document.querySelector('input[name="profile-target-mode"]:checked')?.value || 'manual',
   };
 }
 
@@ -229,12 +269,16 @@ function collectManualOverrides() {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-calculate handler
+// Auto-calculate handler (split into core function + button handler)
 // ---------------------------------------------------------------------------
 
-async function handleAutoCalculate() {
+/**
+ * Core calculation: reads form, runs engine, renders explanation + preview.
+ * @param {{ scroll: boolean }} opts - scroll=true only when user clicked the button
+ */
+async function calculateAndRenderTargets({ scroll = false } = {}) {
   const btn = document.getElementById('auto-calculate-targets-btn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Calculating…'; }
+  if (scroll && btn) { btn.disabled = true; btn.textContent = 'Calculating…'; }
 
   try {
     const profileUpdates = readProfileFromForm();
@@ -259,14 +303,51 @@ async function handleAutoCalculate() {
     renderExplanation(result);
     renderTargetPreview(result, mergedGoals.manualTargetOverrides ?? {});
 
-    document.getElementById('target-explanation')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Only scroll when triggered by the explicit button click
+    if (scroll) {
+      document.getElementById('target-explanation')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   } catch (err) {
     handleError('auto-calculate', err, 'Failed to calculate targets.');
   } finally {
-    if (btn) {
+    if (scroll && btn) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-calculator mr-2"></i>Auto-Calculate Targets';
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Autosave helpers
+// ---------------------------------------------------------------------------
+
+function _setAutosaveStatus(status) {
+  const el = document.getElementById('profile-autosave-status');
+  if (!el) return;
+  if (!status) { el.textContent = ''; el.className = 'text-xs text-muted'; return; }
+  const map = {
+    saving:  { text: 'Saving…',         cls: 'text-xs text-muted italic' },
+    saved:   { text: 'Saved',            cls: 'text-xs text-positive'    },
+    unsaved: { text: 'Unsaved changes',  cls: 'text-xs text-warning'     },
+    error:   { text: 'Save failed',      cls: 'text-xs text-negative'    },
+  };
+  const cfg = map[status] ?? { text: status, cls: 'text-xs text-muted' };
+  el.textContent = cfg.text;
+  el.className   = cfg.cls;
+}
+
+async function _doAutosave() {
+  _setAutosaveStatus('saving');
+  try {
+    await saveUserProfile(readProfileFromForm());
+    await saveGoalSettings(readGoalsFromForm());
+    updateWeightDisplay();
+    _setAutosaveStatus('saved');
+    // Fade back to blank after 3 s
+    setTimeout(() => _setAutosaveStatus(''), 3000);
+  } catch (err) {
+    _setAutosaveStatus('error');
+    handleError('autosave-profile', err, 'Failed to autosave profile.');
   }
 }
 
@@ -394,8 +475,11 @@ async function handleSaveProfile() {
     await saveUserProfile(readProfileFromForm());
     await saveGoalSettings(readGoalsFromForm());
     updateWeightDisplay();
+    _setAutosaveStatus('saved');
+    setTimeout(() => _setAutosaveStatus(''), 3000);
     showMessage('Profile and goals saved!');
   } catch (err) {
+    _setAutosaveStatus('error');
     handleError('save-profile', err, 'Failed to save profile.');
   }
 }
@@ -457,22 +541,33 @@ async function handleApplyTargets() {
 // ---------------------------------------------------------------------------
 
 export function wireProfileTab() {
-  on('auto-calculate-targets-btn', 'click', handleAutoCalculate);
+  on('auto-calculate-targets-btn', 'click', () => calculateAndRenderTargets({ scroll: true }));
   on('apply-targets-btn',          'click', handleApplyTargets);
   on('save-profile-btn',           'click', handleSaveProfile);
 
   on('profile-clear-manual-weight', 'click', () => {
     setVal('profile-manual-weight', '');
     updateWeightDisplay();
+    scheduleAutoCalculate();
+    scheduleAutosave();
   });
 
-  // Auto-recalculate with debounce when profile fields change
-  let _debounceTimer = null;
   function scheduleAutoCalculate() {
-    clearTimeout(_debounceTimer);
-    _debounceTimer = setTimeout(() => {
-      handleAutoCalculate();
+    clearTimeout(_calcDebounceTimer);
+    _calcDebounceTimer = setTimeout(() => {
+      calculateAndRenderTargets({ scroll: false });
     }, 800);
+  }
+
+  function scheduleAutosave() {
+    _setAutosaveStatus('unsaved');
+    clearTimeout(_saveDebounceTimer);
+    _saveDebounceTimer = setTimeout(() => { _doAutosave(); }, 1500);
+  }
+
+  function onFieldChange() {
+    scheduleAutoCalculate();
+    scheduleAutosave();
   }
 
   const autoFields = [
@@ -481,12 +576,12 @@ export function wireProfileTab() {
     'profile-target-weight', 'profile-target-date', 'profile-protein-basis',
   ];
   for (const id of autoFields) {
-    on(id, 'input', scheduleAutoCalculate);
-    on(id, 'change', scheduleAutoCalculate);
+    on(id, 'input',  onFieldChange);
+    on(id, 'change', onFieldChange);
   }
-  document.querySelectorAll('input[name="profile-sex"], input[name="profile-activity"]').forEach(el => {
-    el.addEventListener('change', scheduleAutoCalculate);
-  });
+  document.querySelectorAll(
+    'input[name="profile-sex"], input[name="profile-activity"], input[name="profile-target-mode"]'
+  ).forEach(el => el.addEventListener('change', onFieldChange));
 }
 
 // ---------------------------------------------------------------------------

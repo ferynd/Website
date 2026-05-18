@@ -18,6 +18,7 @@ import {
   computeMicronutrientTargets,
   generateTargets,
   applyManualOverrides,
+  resolveDailyBaseTargets,
 } from './targetEngine.js';
 
 // ── Test fixtures ─────────────────────────────────────────────────────────────
@@ -538,12 +539,14 @@ describe('generateTargets', () => {
 // ── applyManualOverrides ──────────────────────────────────────────────────────
 
 describe('applyManualOverrides', () => {
-  it('replaces only the keys present in manualOverrides', () => {
+  it('overriding protein recomputes carbs and leaves calories/fat unchanged', () => {
+    // protein 150→180: carbs = (2000 − 180×4 − 60×9)/4 = (2000−720−540)/4 = 740/4 = 185
     const generated = { calories: 2000, protein: 150, carbs: 200, fat: 60 };
     const result    = applyManualOverrides(generated, { protein: 180 });
     expect(result.protein).toBe(180);
     expect(result.calories).toBe(2000);
-    expect(result.carbs).toBe(200);
+    expect(result.fat).toBe(60);
+    expect(result.carbs).toBe(Math.max(0, Math.round((2000 - 180 * 4 - 60 * 9) / 4)));
   });
 
   it('returns generated unchanged when overrides is empty', () => {
@@ -810,5 +813,228 @@ describe('computeProteinTarget — proteinBasis', () => {
     const { protein, proteinBasisUsed, proteinBasisFallbackReason } = computeProteinTarget('muscleGain', 185, null, goals);
     expect(proteinBasisUsed).toBe('currentWeight');
     expect(proteinBasisFallbackReason).toMatch(/not lower/i);
+  });
+});
+
+// ── applyManualOverrides — macro recomposition (Issue 5) ─────────────────────
+
+describe('applyManualOverrides — macro recomposition', () => {
+  function baseTargets() {
+    return { calories: 2200, protein: 150, fat: 60, fatMinimum: 50, carbs: 205 };
+  }
+
+  it('overriding calories down recomputes carbs proportionally', () => {
+    // 1800 kcal − (150×4 = 600) − (60×9 = 540) = 660 → 165 g carbs
+    const result = applyManualOverrides(baseTargets(), { calories: 1800 });
+    expect(result.calories).toBe(1800);
+    expect(result.protein).toBe(150);
+    expect(result.fat).toBe(60);
+    expect(result.carbs).toBe(Math.max(0, Math.round((1800 - 150 * 4 - 60 * 9) / 4)));
+  });
+
+  it('overriding calories up recomputes carbs proportionally', () => {
+    // 2600 − (150×4) − (60×9) = 2600 − 600 − 540 = 1460 → 365 g carbs
+    const result = applyManualOverrides(baseTargets(), { calories: 2600 });
+    expect(result.carbs).toBe(Math.max(0, Math.round((2600 - 150 * 4 - 60 * 9) / 4)));
+    expect(result.carbs).toBeGreaterThan(205);
+  });
+
+  it('overriding protein + calories recalculates carbs from the overridden values', () => {
+    // calories=1800, protein=180: 1800 − (180×4) − (60×9) = 1800−720−540 = 540 → 135 g
+    const result = applyManualOverrides(baseTargets(), { calories: 1800, protein: 180 });
+    expect(result.protein).toBe(180);
+    expect(result.carbs).toBe(Math.max(0, Math.round((1800 - 180 * 4 - 60 * 9) / 4)));
+  });
+
+  it('protein × 4 + fat × 9 exceeding calories sets carbs to 0 and attaches _warnings', () => {
+    // 1000 kcal, protein=200(800 kcal), fat=30(270 kcal) → 1070 > 1000 → carbs = 0
+    const result = applyManualOverrides(
+      { calories: 1000, protein: 200, fat: 30, carbs: 50 },
+      { calories: 1000, protein: 200 }
+    );
+    expect(result.carbs).toBe(0);
+    expect(result._warnings).toBeDefined();
+    expect(result._warnings.length).toBeGreaterThan(0);
+  });
+
+  it('carbs stay 0 and no underflow when protein+fat barely exceed target calories', () => {
+    const result = applyManualOverrides(
+      { calories: 1200, protein: 120, fat: 80, carbs: 100 },
+      { calories: 1200, fat: 80 }
+    );
+    // 1200 − (120×4=480) − (80×9=720) = 0 → carbs = 0
+    expect(result.carbs).toBe(0);
+  });
+
+  it('does not recompute carbs when carbs are explicitly overridden', () => {
+    const result = applyManualOverrides(baseTargets(), { calories: 1800, carbs: 100 });
+    // carbs explicitly set → should NOT be touched
+    expect(result.carbs).toBe(100);
+  });
+
+  it('does not mutate the input targets object', () => {
+    const base = baseTargets();
+    const copy = { ...base };
+    applyManualOverrides(base, { calories: 1800 });
+    expect(base).toEqual(copy);
+  });
+
+  it('micronutrients are unaffected by calorie override', () => {
+    const base = { ...baseTargets(), fiber: 38, potassium: 3500, vitaminD: 15 };
+    const result = applyManualOverrides(base, { calories: 1600 });
+    expect(result.fiber).toBe(38);
+    expect(result.potassium).toBe(3500);
+    expect(result.vitaminD).toBe(15);
+  });
+
+  it('returns null unchanged when generated is null', () => {
+    expect(applyManualOverrides(null, { calories: 2000 })).toBeNull();
+  });
+});
+
+// ── resolveDailyBaseTargets (Issue 2 — target mode) ──────────────────────────
+
+describe('resolveDailyBaseTargets', () => {
+  function makeState(overrides = {}) {
+    return {
+      baselineTargets: { calories: 2000, protein: 150, fat: 60, carbs: 200 },
+      goalSettings: { goalType: 'maintenance', targetMode: 'manual', manualTargetOverrides: {} },
+      userProfile: makeProfile({ manualWeightOverrideLb: 185 }),
+      analysisResults: null,
+      ...overrides,
+    };
+  }
+
+  it('manual mode returns static baselineTargets', () => {
+    const s = makeState();
+    const { targets, source } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('manual');
+    expect(targets.calories).toBe(2000);
+  });
+
+  it('manual mode is the default when targetMode is missing', () => {
+    const s = makeState();
+    delete s.goalSettings.targetMode;
+    const { source } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('manual');
+  });
+
+  it('manual mode does not recompute targets from profile', () => {
+    const s = makeState({ goalSettings: { targetMode: 'manual', goalType: 'fatLoss', manualTargetOverrides: {} } });
+    const { targets } = resolveDailyBaseTargets('2025-01-01', s);
+    // baselineTargets should be returned as-is, not recalculated
+    expect(targets.calories).toBe(2000);
+  });
+
+  it('autoGoal mode returns computed targets for maintenance', () => {
+    const s = makeState({
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+    });
+    const { targets, source } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('autoGoal');
+    expect(targets.calories).toBeGreaterThan(1500);
+  });
+
+  it('autoGoal mode falls back to manual when weight is unavailable', () => {
+    const s = makeState({
+      userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: false }),
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: null,
+    });
+    const { source, warnings } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('manual_fallback');
+    expect(warnings.length).toBeGreaterThan(0);
+  });
+
+  it('autoGoal applies manualTargetOverrides on top of computed targets', () => {
+    const s = makeState({
+      goalSettings: {
+        goalType: 'maintenance', targetMode: 'autoGoal',
+        manualTargetOverrides: { protein: 999 },
+      },
+    });
+    const { targets } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(targets.protein).toBe(999);
+  });
+});
+
+// ── target date / weight behavior (Issue 6) ───────────────────────────────────
+
+describe('target weight/date behavior', () => {
+  function futureDate(months) {
+    const d = new Date();
+    d.setMonth(d.getMonth() + months);
+    return d.toISOString().slice(0, 10);
+  }
+
+  it('7 lb loss in 2 months has lower base calorie target than 7 lb loss in 4 months (unclamped)', () => {
+    const base = makeProfile({ manualWeightOverrideLb: 185 });
+    const g2 = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(2) });
+    const g4 = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(4) });
+    const r2 = generateTargets(base, g2, null);
+    const r4 = generateTargets(base, g4, null);
+    // Shorter deadline → larger deficit → fewer calories
+    expect(r2.targets.calories).toBeLessThanOrEqual(r4.targets.calories);
+  });
+
+  it('both scenarios clamped to max deficit show clamp reason in explanation', () => {
+    const base = makeProfile({ manualWeightOverrideLb: 185 });
+    // Very aggressive: 30 lb loss in 1 month — both should hit max clamp
+    const g1 = makeGoals({ goalType: 'fatLoss', targetWeightLb: 155, targetDate: futureDate(1) });
+    const r  = generateTargets(base, g1, null);
+    expect(r.explanation.deficitClamped).toBeTruthy();
+    expect(r.explanation.deficitClamped).toMatch(/cap|clamp|750/i);
+  });
+
+  it('moving target date later (more time) increases calorie target when unclamped', () => {
+    const base = makeProfile({ manualWeightOverrideLb: 185 });
+    const g3 = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(3) });
+    const g6 = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(6) });
+    const r3 = generateTargets(base, g3, null);
+    const r6 = generateTargets(base, g6, null);
+    expect(r6.targets.calories).toBeGreaterThanOrEqual(r3.targets.calories);
+  });
+
+  it('moving target date earlier (less time) lowers calorie target when unclamped', () => {
+    const base = makeProfile({ manualWeightOverrideLb: 185 });
+    const g6 = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(6) });
+    const g3 = makeGoals({ goalType: 'fatLoss', targetWeightLb: 178, targetDate: futureDate(3) });
+    const r6 = generateTargets(base, g6, null);
+    const r3 = generateTargets(base, g3, null);
+    expect(r3.targets.calories).toBeLessThanOrEqual(r6.targets.calories);
+  });
+
+  it('in manual mode, changing profile fields does not affect today daily target', () => {
+    const stateBase = {
+      baselineTargets: { calories: 2000, protein: 150, fat: 60, carbs: 200 },
+      goalSettings: { targetMode: 'manual', goalType: 'maintenance', manualTargetOverrides: {} },
+      userProfile: makeProfile({ manualWeightOverrideLb: 185 }),
+      analysisResults: null,
+    };
+    const stateChanged = {
+      ...stateBase,
+      userProfile: makeProfile({ manualWeightOverrideLb: 220 }),
+    };
+    const { targets: t1 } = resolveDailyBaseTargets('2025-01-01', stateBase);
+    const { targets: t2 } = resolveDailyBaseTargets('2025-01-01', stateChanged);
+    // Manual mode: baselineTargets unchanged regardless of profile edits
+    expect(t1.calories).toBe(t2.calories);
+  });
+
+  it('in autoGoal mode, today daily target changes when weight changes', () => {
+    const goalSettings = { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} };
+    const stateLight = {
+      baselineTargets: { calories: 2000 },
+      goalSettings,
+      userProfile: makeProfile({ manualWeightOverrideLb: 150 }),
+      analysisResults: null,
+    };
+    const stateHeavy = {
+      ...stateLight,
+      userProfile: makeProfile({ manualWeightOverrideLb: 220 }),
+    };
+    const { targets: tL } = resolveDailyBaseTargets('2025-01-01', stateLight);
+    const { targets: tH } = resolveDailyBaseTargets('2025-01-01', stateHeavy);
+    expect(tH.calories).toBeGreaterThan(tL.calories);
   });
 });
