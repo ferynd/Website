@@ -1,6 +1,7 @@
 /**
- * @file src/food/save.js
- * @description FIXED: Food saving workflow that preserves staging area for immediate use
+ * @file food/save.js
+ * @description Food saving workflow. The staging area is preserved after a save so the
+ * user can immediately add the food to today's log without re-entering values.
  */
 
 import { state } from '../state/store.js';
@@ -13,15 +14,13 @@ import { appId } from '../config.js';
 import { getStagedValues } from '../staging/parser.js';
 import { selectFoodItem } from './manager.js';
 
-// Configuration at top of file
 const SAVE_CONFIG = {
-  PRESERVE_STAGING_AFTER_SAVE: true, // NEW: Don't clear staging after successful save
-  SUCCESS_MESSAGE_DURATION: 3000, // Show success message for 3 seconds
-  DEBUG_SAVE_OPERATIONS: true // Log save operations for debugging
+  SUCCESS_MESSAGE_DURATION: 3000,
+  DEBUG_SAVE_OPERATIONS: false,
 };
 
 /**
- * UPDATED: Main function to save food item with preserved staging workflow
+ * Main entry point: save the current staging area as a food item.
  */
 export async function saveFoodItemToDatabase() {
   const foodNameInput = document.getElementById('food-item-input');
@@ -46,7 +45,6 @@ export async function saveFoodItemToDatabase() {
       showDuplicateDialog(existingFood, stagedValues, foodName);
       return;
     }
-    // UPDATED: Show message but don't clear staging
     showMessage(`Food item "${foodName}" already exists with identical values. Ready to add to today's log!`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
     return;
   }
@@ -56,7 +54,8 @@ export async function saveFoodItemToDatabase() {
 }
 
 /**
- * UPDATED: Save food item and preserve staging area
+ * Persist a new food item to Firestore and update local state.
+ * The staging area is intentionally not cleared so the user can add to today's log immediately.
  */
 async function processSaveFoodItem(foodName, stagedValues) {
   if (!state.userId) return showMessage('Cannot save food item. Not authenticated.', true);
@@ -74,10 +73,7 @@ async function processSaveFoodItem(foodName, stagedValues) {
       console.log('✅ [FOOD-SAVE] Successfully saved:', { foodId, foodData });
     }
 
-    // UPDATED: Show success message but DON'T clear staging
     showMessage(`✅ "${foodName}" saved to database! Ready to add to today's log.`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
-    
-    // REMOVED: clearStagingArea() call - staging area is preserved for immediate use
     
   } catch (e) {
     handleError('save-food-item', e, 'Failed to save food item');
@@ -89,7 +85,7 @@ async function processSaveFoodItem(foodName, stagedValues) {
 }
 
 /**
- * UPDATED: Handle blank name workflow with preserved staging
+ * Prompt the user for a name when the food item input is blank.
  */
 function handleBlankName(stagedValues) {
   const modal = state.dom.blankFoodNameModal;
@@ -127,7 +123,7 @@ function handleBlankName(stagedValues) {
 }
 
 /**
- * UPDATED: Duplicate dialog workflow with preserved staging
+ * Show a diff dialog when the staged values differ from an existing saved food.
  */
 function showDuplicateDialog(existingFood, newValues, foodName) {
   const modal = state.dom.duplicateFoodModal;

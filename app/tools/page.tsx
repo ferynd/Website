@@ -41,8 +41,8 @@ const toolList = [
     icon: <Calculator size={cardIconSize} className="text-accent" />,
   },
   {
-    name: 'Calorie Tracker',
-    description: 'A simple tool to track daily calorie intake (Static HTML).',
+    name: 'Nutrition Tracker',
+    description: 'Log meals, track full nutrition, monitor energy trends, and auto-generate targets from your profile and weight history.',
     href: '/tools/CalorieTracker/index.html',
     icon: <HeartPulse size={cardIconSize} className="text-accent" />,
   },

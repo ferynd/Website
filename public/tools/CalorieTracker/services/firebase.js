@@ -17,7 +17,6 @@ import {
   prepareGoalSettingsForSave,
 } from '../state/schema.js';
 
-// FIXED: Import from the correct relative path
 import { firebaseConfig as importedConfig } from '../firebaseConfig.js';
 
 // Firebase ESM CDN imports
@@ -247,7 +246,7 @@ export async function loadSavedFoodItems() {
 }
 
 /**
- * ADDED: Fetches user's saved food items and returns as Map
+ * Fetches all saved food items for the user and returns them as a Map.
  * @returns {Promise<Map>} Map of food items
  */
 export async function fetchFoodItems() {
@@ -270,10 +269,10 @@ export async function fetchFoodItems() {
 }
 
 /**
- * ADDED: Fetch daily entries for a date range
- * @param {Date} startDate - Start date
- * @param {Date} endDate - End date
- * @returns {Map} Map of daily entries by date string
+ * Fetch daily entries that fall within a calendar date range.
+ * @param {Date} startDate - Start date (inclusive)
+ * @param {Date} endDate   - End date (inclusive)
+ * @returns {Promise<Map>} Map of daily entries keyed by date string
  */
 export async function fetchEntriesInRange(startDate, endDate) {
   if (!state.userId) return new Map();

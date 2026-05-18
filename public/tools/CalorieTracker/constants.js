@@ -118,8 +118,8 @@ export const DEFAULT_TARGETS = {
   omega3: 1.6
 };
 
-// FIXED: A map to normalize various text inputs into standardized nutrient keys
-// Ordered from most specific to least specific to avoid conflicts
+// Maps text variants to canonical nutrient keys.
+// Ordered from most specific to least specific to avoid prefix conflicts.
 export const nutrientMap = {
   // Multi-word vitamin names (most specific first)
   'vitamin b12': 'vitaminB12',
