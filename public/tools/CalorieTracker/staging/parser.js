@@ -149,8 +149,10 @@ export async function subtractStagedNutrientsFromDailyLog() {
   // Subtract staged values, ensuring totals don't go below zero.
   allNutrients.forEach(n => todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - (qty * (staged[n] || 0))));
 
-  // Create a food item record for this subtraction with negative values.
-  const negativeStaged = Object.fromEntries(Object.entries(staged).map(([k, v]) => [k, -(qty * (v || 0))]));
+  // Create a food item record for this subtraction with negative per-unit values.
+  // qty must NOT be pre-applied here — every downstream reader (display, recalc,
+  // remove, quantity edit) multiplies quantity × item[n] itself.
+  const negativeStaged = Object.fromEntries(Object.entries(staged).map(([k, v]) => [k, -(v || 0)]));
   const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Subtraction)';
   const foodItem = { id: crypto.randomUUID(), name: `${foodName} (subtracted)`, quantity: qty, timestamp: new Date().toISOString(), ...negativeStaged };
   state.dailyFoodItems.push(foodItem);
