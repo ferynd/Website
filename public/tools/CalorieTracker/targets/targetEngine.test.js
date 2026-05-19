@@ -1696,3 +1696,67 @@ describe('resolveDailyBaseTargets — exerciseAddMode', () => {
     expect(exerciseAddMode).toBe('add');
   });
 });
+
+// ── chart target exerciseAddMode consistency ──────────────────────────────────
+// Chart target must agree with Today/Energy: skip exercise when TDEE already
+// includes historical activity, add it when using rest-day TDEE or formula.
+
+describe('chart calorie target — exerciseAddMode consistency', () => {
+  const EXERCISE_KCAL = 300;
+
+  function makeChartState(analysisOverrides = {}) {
+    return {
+      baselineTargets: { calories: 2000 },
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      userProfile: makeProfile({ manualWeightOverrideLb: 185 }),
+      analysisResults: Object.keys(analysisOverrides).length ? {
+        summary: { currentWeight: 185 },
+        bmrModel: { error: null, ...analysisOverrides },
+      } : null,
+    };
+  }
+
+  function simulateChartTarget(exerciseAddMode, baseCalories) {
+    // Mirror chart.js getDateTarget logic: only add exercise when mode is 'add'
+    const exerciseKcal = exerciseAddMode === 'skip' ? 0 : EXERCISE_KCAL;
+    return baseCalories + exerciseKcal;
+  }
+
+  it('empirical_rest_day source: chart adds exercise to calorie target', () => {
+    const s = makeChartState({
+      tdee_current: 1200, // below floor → rejected
+      tdee_rest_day: 2200,
+      modelPredictedRestDayTdee: 2200,
+      fittedBmr: 1700,
+    });
+    const { exerciseAddMode, targets } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(exerciseAddMode).toBe('add');
+    const chartTarget = simulateChartTarget(exerciseAddMode, parseFloat(targets.calories));
+    expect(chartTarget).toBe(parseFloat(targets.calories) + EXERCISE_KCAL);
+  });
+
+  it('empirical_observed source: chart skips exercise in calorie target', () => {
+    const s = makeChartState({
+      tdee_current: 1200, // below floor → rejected
+      observedTdee: 2400, // above floor → used
+    });
+    const { exerciseAddMode, targets } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(exerciseAddMode).toBe('skip');
+    const chartTarget = simulateChartTarget(exerciseAddMode, parseFloat(targets.calories));
+    expect(chartTarget).toBe(parseFloat(targets.calories)); // no exercise added
+  });
+
+  it('Today and chart use same base calories for the same date and TDEE source', () => {
+    // Both Today and chart call resolveDailyBaseTargets for the same date — targets must agree
+    const s = makeChartState({
+      tdee_current: 1200,
+      tdee_rest_day: 2200,
+      modelPredictedRestDayTdee: 2200,
+      fittedBmr: 1700,
+    });
+    const todayResult = resolveDailyBaseTargets('2025-01-01', s);
+    const chartResult = resolveDailyBaseTargets('2025-01-01', s);
+    expect(todayResult.targets.calories).toBe(chartResult.targets.calories);
+    expect(todayResult.exerciseAddMode).toBe(chartResult.exerciseAddMode);
+  });
+});

@@ -110,4 +110,53 @@ describe('classifyTargetSource', () => {
     // Existing call sites that don't pass targetMode get manual_baseline (not breaking)
     expect(classifyTargetSource('vitaminC', { vitaminC: 120 }, defaults, {})).toBe('manual_baseline');
   });
+
+  // ── profileDriTargets (6th parameter) ──────────────────────────────────────
+
+  it('returns dri_profile_default when effective matches profileDriTargets but not DEFAULT_TARGETS', () => {
+    // Older female calcium: profile DRI = 1200, generic DEFAULT_TARGETS = 1000
+    // → labeled as profile DRI default, not custom/auto_goal
+    const defaultsLow = { calcium: 1000 };
+    const profileDri  = { calcium: 1200 };
+    expect(classifyTargetSource('calcium', { calcium: 1200 }, defaultsLow, {}, 'manual', profileDri)).toBe('dri_profile_default');
+  });
+
+  it('returns dri_profile_default in autoGoal mode when value matches profile DRI', () => {
+    const defaultsLow = { calcium: 1000 };
+    const profileDri  = { calcium: 1200 };
+    // Profile DRI match takes priority over auto_goal classification
+    expect(classifyTargetSource('calcium', { calcium: 1200 }, defaultsLow, {}, 'autoGoal', profileDri)).toBe('dri_profile_default');
+  });
+
+  it('returns dri when effective matches generic DEFAULT_TARGETS (profile DRI is same)', () => {
+    // When generic and profile DRI agree, generic match fires first → plain 'dri'
+    const defaults   = { calcium: 1000 };
+    const profileDri = { calcium: 1000 }; // same as defaults
+    expect(classifyTargetSource('calcium', { calcium: 1000 }, defaults, {}, 'manual', profileDri)).toBe('dri');
+  });
+
+  it('returns auto_goal when value differs from both DEFAULT_TARGETS and profileDriTargets', () => {
+    const defaultsLow = { calcium: 1000 };
+    const profileDri  = { calcium: 1200 };
+    // 1300 differs from both 1000 and 1200 → auto_goal in autoGoal mode
+    expect(classifyTargetSource('calcium', { calcium: 1300 }, defaultsLow, {}, 'autoGoal', profileDri)).toBe('auto_goal');
+  });
+
+  it('returns manual_baseline when value differs from both defaults in manual mode', () => {
+    const defaultsLow = { calcium: 1000 };
+    const profileDri  = { calcium: 1200 };
+    expect(classifyTargetSource('calcium', { calcium: 1500 }, defaultsLow, {}, 'manual', profileDri)).toBe('manual_baseline');
+  });
+
+  it('manual_override still wins when profileDriTargets is provided', () => {
+    const defaultsLow = { calcium: 1000 };
+    const profileDri  = { calcium: 1200 };
+    expect(classifyTargetSource('calcium', { calcium: 1200 }, defaultsLow, { calcium: 1300 }, 'autoGoal', profileDri)).toBe('manual_override');
+  });
+
+  it('profileDriTargets null falls back to DEFAULT_TARGETS comparison only', () => {
+    const defaultsLow = { calcium: 1000 };
+    // 1200 differs from 1000 default, no profileDri provided → auto_goal
+    expect(classifyTargetSource('calcium', { calcium: 1200 }, defaultsLow, {}, 'autoGoal', null)).toBe('auto_goal');
+  });
 });

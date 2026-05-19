@@ -31,7 +31,7 @@ import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisU
 import { UL_TABLE } from '../targets/nutritionReferences.js';
 import { resolveDailyBaseTargets, resolveDailyPlanningTargets } from '../targets/dailyTargetResolver.js';
 import { runAnalysis } from '../analysis/engine.js';
-import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries } from '../targets/targetEngine.js';
+import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries, computeMicronutrientTargets } from '../targets/targetEngine.js';
 import { calcBankingCore } from './bankingEngine.js';
 
 // =========================
@@ -226,12 +226,12 @@ export function calculateBankingData(targetDateStr) {
     const weightKg = resolveWeightKg();
     const targetMode = state.goalSettings?.targetMode ?? 'manual';
 
-    // Resolve today's full planning targets ONCE — supplies baseCalories, exerciseAddMode,
-    // displayBaseTargets, and TDEE metadata. Avoids a second resolveDailyBaseTargets call below.
-    const todayResolvedFull   = resolveDailyBaseTargets(targetDateStr, state);
-    const todayBaseCalories   = parseFloat(todayResolvedFull.targets?.calories) || baseKcal;
+    // Resolve today's full planning targets ONCE via the rich planning resolver —
+    // supplies baseCalories, exerciseAddMode, displayBaseTargets, and full TDEE metadata.
+    const todayResolvedFull   = resolveDailyPlanningTargets(targetDateStr, state);
+    const todayBaseCalories   = todayResolvedFull.baseCalories || baseKcal;
     const exerciseAddMode     = todayResolvedFull.exerciseAddMode ?? 'add';
-    const resolvedTargetSource = todayResolvedFull.source;
+    const resolvedTargetSource = todayResolvedFull.mode;
     const displayBaseTargets  = todayResolvedFull.targets || {};
 
     // Helper: resolve per-day calorie target for PAST days only.
@@ -426,10 +426,58 @@ export function calculateBankingData(targetDateStr) {
       floorSource,         // 'bmr_floor' | 'min_daily'
       scheduleCapped,      // true if soft cap was exceeded on debt correction
       exerciseAddMode,     // 'add' | 'skip' — 'skip' when TDEE includes historical activity
-      // TDEE provenance (autoGoal only):
-      tdeeSource:      todayResolvedFull.meta?.tdeeSource      ?? null,
-      tdeeSourceLabel: todayResolvedFull.meta?.tdeeSourceLabel ?? null,
-      planningTdee:    todayResolvedFull.meta?.tdeeValue       ?? null,
+      // TDEE provenance (autoGoal only) — from resolveDailyPlanningTargets:
+      tdeeSource:      todayResolvedFull.planningTdeeSource      ?? null,
+      tdeeSourceLabel: todayResolvedFull.planningTdeeSourceLabel ?? null,
+      planningTdee:    todayResolvedFull.planningTdee            ?? null,
+
+      // Aliases for structured consumers (Today/Energy/Nutrients)
+      finalCalories:    todayKcalTarget,
+      exerciseCalories: todaysTrainingBump,
+
+      // Structured adjustment object
+      adjustment: {
+        type:               bankMode,
+        rawBankBalance,
+        appliedAdjustment:  bankAdjustmentApplied,
+        capped:             scheduleCapped || manualBankCapped,
+        capReason:          scheduleCapped ? 'schedule_cap' : manualBankCapped ? 'manual_cap' : null,
+        overageSpreadPerDay: scheduleAdjustment,
+      },
+
+      // Structured floor object
+      floor: {
+        minDailyCalories: MIN_DAILY_CALORIES,
+        effectiveFloor,
+        source:  floorSource,
+        applied: targetFloorApplied,
+        reason:  floorSource === 'bmr_floor'
+          ? `85% of BMR floor (${effectiveFloor} kcal)`
+          : `Minimum daily floor (${MIN_DAILY_CALORIES} kcal)`,
+      },
+
+      // Explanation: ordered list of what shaped today's target
+      explanation: (() => {
+        const parts = [`Base: ${todayBaseCalories} kcal (${resolvedTargetSource === 'autoGoal' ? 'Auto Goal' : 'Manual Baseline'})`];
+        if (exerciseAddMode === 'skip' && todaysTrainingBumpRaw > 0) {
+          parts.push(`Exercise (${todaysTrainingBumpRaw} kcal): reflected in TDEE — not added separately`);
+        } else if (todaysTrainingBump > 0) {
+          parts.push(`Exercise: +${todaysTrainingBump} kcal`);
+        }
+        if (scheduleAdjustment > 0) {
+          parts.push(`Schedule credit spread forward: +${scheduleAdjustment} kcal/day`);
+        } else if (scheduleAdjustment < 0) {
+          parts.push(`Schedule overage spread: ${scheduleAdjustment} kcal/day`);
+        }
+        if (bankAdjustmentApplied !== 0 && bankMode === 'manualRolling') {
+          parts.push(`Rolling bank: ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal`);
+        }
+        if (targetFloorApplied) {
+          parts.push(`Floor applied: ${effectiveFloor} kcal (${floorSource === 'bmr_floor' ? '85% BMR' : 'minimum'})`);
+        }
+        parts.push(`Final: ${todayKcalTarget} kcal`);
+        return parts;
+      })(),
 
       // Config
       config: { windowDays }
@@ -500,6 +548,10 @@ export function calculateMicronutrientMetrics(dateStr) {
       ? (resolveDailyBaseTargets(dateStr, state).targets ?? state.baselineTargets)
       : state.baselineTargets;
 
+    // Profile-specific DRI targets (age/sex adjusted) for accurate source classification.
+    // These differ from DEFAULT_TARGETS for age groups outside the generic reference range.
+    const { microTargets: profileDriTargets } = computeMicronutrientTargets(state.userProfile ?? {});
+
     const metrics = {};
 
     allNutrients.forEach(nutrient => {
@@ -568,13 +620,15 @@ export function calculateMicronutrientMetrics(dateStr) {
         trendDirection = computeTrendDirection(todaysIntake, priorAvg);
       }
 
-      // Target source classification (pass targetMode so auto-goal vs manual-baseline is distinguished)
+      // Target source classification (pass profileDriTargets so age/sex DRI values aren't
+      // mislabeled as auto_goal or manual_baseline when they merely reflect the user's DRI)
       const targetSource = classifyTargetSource(
         nutrient,
         effectiveTargets,
         DEFAULT_TARGETS,
         state.goalSettings?.manualTargetOverrides,
         targetMode,
+        profileDriTargets,
       );
 
       // Upper-limit check (warn at ≥ 80% of UL)
@@ -922,7 +976,7 @@ function renderCalcDetailsPanel(bankingData) {
           ` : ''}
           ${scheduleAdjustment !== 0 ? `
             <div class="flex justify-between items-center p-2 surface-1 rounded border">
-              <span>Schedule correction (overage spread over goal window):</span>
+              <span>${scheduleAdjustment > 0 ? 'Schedule credit (spread forward over remaining goal days):' : 'Schedule correction (overage spread over goal window):'}</span>
               <span class="font-medium ${scheduleAdjustment > 0 ? 'text-positive' : 'text-negative'}">${scheduleAdjustment > 0 ? '+' : ''}${scheduleAdjustment} kcal</span>
             </div>
           ` : ''}
@@ -935,7 +989,7 @@ function renderCalcDetailsPanel(bankingData) {
           <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
             <div>${todayBaseCalories} + ${todaysTrainingBump} + ${scheduleAdjustment} = <strong>${todayKcalTarget} kcal today</strong></div>
             ${rawBankBalance !== 0 ? `
-              <div class="italic">7-day raw balance: ${rawBankBalance > 0 ? '+' : ''}${rawBankBalance} kcal (${rawBankBalance < 0 ? 'overage spread over remaining goal days — not applied as a single crash day' : 'credit — not added to today\'s target in Auto Goal mode'}).</div>
+              <div class="italic">7-day raw balance: ${rawBankBalance > 0 ? '+' : ''}${rawBankBalance} kcal (${rawBankBalance < 0 ? 'overage spread over remaining goal days — not applied as a single crash day' : 'credit spread forward as a small schedule increase'}).</div>
             ` : ''}
             <div>${tomorrowNote}</div>
             <div>In Auto Goal mode: overages are spread gently, not concentrated. The base target recalculates as your weight changes.</div>
@@ -1089,6 +1143,7 @@ function renderTodayCompact(bankingData) {
     ? `<div class="text-xs text-muted mt-0.5">
         7-day raw ${rawBankBalance < 0 ? 'overage' : 'credit'}: ${Math.abs(rawBankBalance)} kcal
         ${rawBankBalance < 0 && scheduleAdjustment !== 0 ? '— spread over goal window' : ''}
+        ${rawBankBalance > 0 && scheduleAdjustment > 0 ? '— spread forward as a small schedule increase' : ''}
        </div>`
     : '';
 
@@ -1675,6 +1730,8 @@ function renderMicronutrientSections(metrics, filter = 'all') {
       ? `<span class="nt-badge nt-badge-custom" title="Auto Goal calculated target">🎯</span>`
       : targetSource === 'manual_baseline'
       ? `<span class="nt-badge nt-badge-custom" title="Custom target from Settings">✏️</span>`
+      : targetSource === 'dri_profile_default'
+      ? `<span class="nt-badge nt-badge-custom" title="Age/sex-specific DRI for your profile">👤</span>`
       : '';
 
     // Exercise-scaling note
@@ -1693,10 +1750,11 @@ function renderMicronutrientSections(metrics, filter = 'all') {
       : '';
 
     // Source label in target span
-    const srcLabel = targetSource === 'manual_override' ? ' (pinned)'
-                   : targetSource === 'auto_goal'       ? ' (auto goal)'
-                   : targetSource === 'manual_baseline' ? ' (custom)'
-                   : ' (DRI)'; // 'dri' = matches DRI reference value
+    const srcLabel = targetSource === 'manual_override'    ? ' (pinned)'
+                   : targetSource === 'auto_goal'           ? ' (auto goal)'
+                   : targetSource === 'manual_baseline'     ? ' (custom)'
+                   : targetSource === 'dri_profile_default' ? ' (profile DRI)'
+                   : ' (DRI)'; // 'dri' = matches generic DRI reference value
 
     // For averaged nutrients show today's value as sub-detail below the bar
     const subDetail = isAveraged
