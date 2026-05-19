@@ -540,3 +540,63 @@ describe('calcBankingCore — 177→170 lb scenario (regression)', () => {
     expect(r.targetFloorApplied).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// calcBankingCore — banking off (renderBankingPanel / renderCalcDetailsPanel)
+// These tests confirm that banking-off mode never crashes and produces the
+// right shape so the UI panels can render without ReferenceErrors.
+// ---------------------------------------------------------------------------
+
+describe('calcBankingCore — banking off UI safety', () => {
+  const BASE = 2000;
+
+  it('returns bankMode "off" when useRollingBanking is false', () => {
+    const r = calcBankingCore(makeCore({ useRollingBanking: false }));
+    expect(r.bankMode).toBe('off');
+  });
+
+  it('target = base + exercise, ignoring history', () => {
+    // 6 days of large overage — should have zero effect on target
+    const r = calcBankingCore(makeCore({
+      useRollingBanking: false,
+      todayBaseCalories: BASE,
+      todaysTrainingBump: 300,
+      sumPast6Actual: 6 * 3000,   // big overage — irrelevant
+    }));
+    expect(r.todayKcalTarget).toBe(Math.round((BASE + 300) / 25) * 25);
+    expect(r.bankBalance).toBe(0);
+    expect(r.bankAdjustmentApplied).toBe(0);
+  });
+
+  it('large undereating history has no effect on target', () => {
+    const r = calcBankingCore(makeCore({
+      useRollingBanking: false,
+      todayBaseCalories: BASE,
+      sumPast6Actual: 0,          // extreme under-eating — irrelevant
+    }));
+    expect(r.todayKcalTarget).toBe(BASE);
+    expect(r.bankBalance).toBe(0);
+  });
+
+  it('floor still applies when base + exercise is below effectiveFloor', () => {
+    const r = calcBankingCore(makeCore({
+      useRollingBanking: false,
+      todayBaseCalories: 500,
+      todaysTrainingBump: 0,
+      effectiveFloor: 1000,
+    }));
+    expect(r.todayKcalTarget).toBe(1000);
+    expect(r.targetFloorApplied).toBe(true);
+  });
+
+  it('all required output fields are present and numeric', () => {
+    const r = calcBankingCore(makeCore({ useRollingBanking: false }));
+    for (const key of ['bankMode', 'bankBalance', 'bankAdjustmentApplied',
+                        'scheduleAdjustment', 'rawBankBalance',
+                        'todayKcalTarget', 'targetFloorApplied', 'scheduleCapped']) {
+      expect(r).toHaveProperty(key);
+    }
+    expect(typeof r.todayKcalTarget).toBe('number');
+    expect(typeof r.bankBalance).toBe('number');
+  });
+});

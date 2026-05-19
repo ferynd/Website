@@ -921,7 +921,38 @@ function renderCalcDetailsPanel(bankingData) {
     `;
   }
 
-  // Manual mode
+  // Manual — banking off: fixed base + exercise only
+  if (bankMode === 'off') {
+    return `
+      <div class="section-card p-4 mb-6">
+        <h3 class="text-responsive-xl font-bold text-secondary mb-3">🧮 How Today's Target Was Calculated</h3>
+        <div class="grid grid-cols-1 gap-2 text-sm">
+          <div class="flex justify-between items-center p-2 surface-1 rounded border">
+            <span>Manual base target:</span>
+            <span class="font-medium">${todayBaseCalories} kcal</span>
+          </div>
+          ${todaysTrainingBump > 0 ? `
+            <div class="flex justify-between items-center p-2 surface-1 rounded border">
+              <span>Exercise:</span>
+              <span class="font-medium text-accent">+${todaysTrainingBump} kcal</span>
+            </div>
+          ` : ''}
+          ${targetFloorApplied ? `
+            <div class="flex justify-between items-center p-2 surface-1 rounded border text-warning">
+              <span>Minimum daily floor applied${floorSource === 'bmr_floor' ? ' (BMR-based)' : ''}:</span>
+              <span class="font-medium">${effectiveFloor} kcal</span>
+            </div>
+          ` : ''}
+          <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
+            <div>${todayBaseCalories}${todaysTrainingBump > 0 ? ` + ${todaysTrainingBump}` : ''} = <strong>${todayKcalTarget} kcal today</strong></div>
+            <div>Banking is off — past days do not alter today's target.</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Manual mode — rolling bank
   const tomorrowNote = `Hit this target and tomorrow resets to ${todayBaseCalories} kcal (rest day).`;
   return `
     <div class="section-card p-4 mb-6">
@@ -1322,6 +1353,19 @@ function renderInfoBox() {
     `;
   }
 
+  if (state.goalSettings?.useRollingBanking === false) {
+    return `
+      <div class="mb-6 p-4 surface-2 rounded-lg border">
+        <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
+        <div class="text-sm text-muted space-y-1">
+          <p><strong>Fixed Daily Target:</strong> Banking is off. Your target each day is your manual baseline plus any exercise calories — past intake has no effect on today's number.</p>
+          <p><strong>Past 6 Days:</strong> Shown as context only and do not roll into the current target.</p>
+          <p><strong>Training Days:</strong> Select your workout type above — this adds calories and scales electrolytes appropriately.</p>
+        </div>
+      </div>
+    `;
+  }
+
   return `
     <div class="mb-6 p-4 surface-2 rounded-lg border">
       <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
@@ -1342,7 +1386,7 @@ function renderInfoBox() {
 function renderBankingPanel(bankingData) {
   const {
     bankBalance, rawBankBalance, pastDays, sumPast6Actual, sumPastTargets,
-    windowBudget, todayBaseCalories, targetMode, bankMode, scheduleAdjustment,
+    windowBudget, todayBaseCalories, todaysTrainingBump, targetMode, bankMode, scheduleAdjustment,
     targetFloorApplied, effectiveFloor, floorSource, scheduleCapped, todayKcalTarget,
   } = bankingData;
 
