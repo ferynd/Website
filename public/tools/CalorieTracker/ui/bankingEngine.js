@@ -50,16 +50,25 @@ export function calcBankingCore(p) {
 
   if (targetMode === 'autoGoal') {
     // AUTO GOAL: base + exercise + soft schedule correction.
-    // Full rolling bank NOT applied — only spread overages gently.
-    const cumulativeDebt = Math.max(0, -rawBankBalance);
-    if (cumulativeDebt > 0 && goalTargetDate) {
+    // Full rolling bank NOT applied — overages AND credits are spread gently.
+    const cumulativeDebt   = Math.max(0, -rawBankBalance);
+    const cumulativeCredit = Math.max(0, rawBankBalance);
+    const MAX_CREDIT_PER_DAY = BANKING_CONFIG.MAX_SCHEDULE_ADJ_SOFT ?? 150;
+
+    if ((cumulativeDebt > 0 || cumulativeCredit > 0) && goalTargetDate) {
       const targetMs = new Date(`${goalTargetDate}T00:00:00`).getTime();
       const todayMs  = new Date(`${targetDateStr}T00:00:00`).getTime();
       const remainingDays = Math.round((targetMs - todayMs) / 86400000);
       if (remainingDays > 1) {
-        const rawAdj = -cumulativeDebt / remainingDays;
-        scheduleAdjustment = Math.round(Math.max(HARD_CAP, rawAdj));
-        if (rawAdj < SOFT_CAP) scheduleCapped = true;
+        if (cumulativeDebt > 0) {
+          const rawAdj = -cumulativeDebt / remainingDays;
+          scheduleAdjustment = Math.round(Math.max(HARD_CAP, rawAdj));
+          if (rawAdj < SOFT_CAP) scheduleCapped = true;
+        } else {
+          // Spread credit forward; cap at soft-cap to avoid over-eating days
+          const rawAdj = cumulativeCredit / remainingDays;
+          scheduleAdjustment = Math.round(Math.min(MAX_CREDIT_PER_DAY, rawAdj));
+        }
       }
     }
     bankMode = 'autoGoalSchedule';
@@ -76,16 +85,23 @@ export function calcBankingCore(p) {
 
   } else {
     // MANUAL rolling bank: window budget adjusts today's target up/down.
+    // The raw adjustment is capped so a single bad week never crashes the target.
     bankMode = 'manualRolling';
-    const rollingTarget = windowBudget - sumPast6Actual;
-    bankBalance = Math.round(rollingTarget - todayBaseCalories - todaysTrainingBump);
-    bankAdjustmentApplied = bankBalance;
-    todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
+    const MANUAL_DOWN = BANKING_CONFIG.MANUAL_BANK_CAP_DOWN ?? -400;
+    const MANUAL_UP   = BANKING_CONFIG.MANUAL_BANK_CAP_UP   ?? 600;
+    // rawBankBalance already computed above (positive = credit, negative = debt)
+    const cappedBankAdj = Math.max(MANUAL_DOWN, Math.min(MANUAL_UP, rawBankBalance));
+    bankBalance = rawBankBalance;            // keep raw as informational
+    bankAdjustmentApplied = cappedBankAdj;  // what actually moves the target
+    todayKcalTarget = BankingHelpers.roundToNearest25(
+      todayBaseCalories + todaysTrainingBump + cappedBankAdj
+    );
   }
 
   const targetFloorApplied = todayKcalTarget < effectiveFloor;
   if (targetFloorApplied) todayKcalTarget = effectiveFloor;
 
+  const manualBankCapped = bankMode === 'manualRolling' && bankAdjustmentApplied !== bankBalance;
   return {
     bankMode,
     bankBalance: Math.round(bankBalance),
@@ -95,5 +111,6 @@ export function calcBankingCore(p) {
     todayKcalTarget,
     targetFloorApplied,
     scheduleCapped,
+    manualBankCapped,
   };
 }

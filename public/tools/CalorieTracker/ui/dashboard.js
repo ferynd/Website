@@ -29,9 +29,9 @@ import { initializeChartControls } from './chart.js';
 import { CONFIG } from '../config.js';
 import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
 import { UL_TABLE } from '../targets/nutritionReferences.js';
-import { resolveDailyBaseTargets } from '../targets/dailyTargetResolver.js';
+import { resolveDailyBaseTargets, resolveDailyPlanningTargets } from '../targets/dailyTargetResolver.js';
 import { runAnalysis } from '../analysis/engine.js';
-import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries } from '../targets/targetEngine.js';
+import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries, computeMicronutrientTargets } from '../targets/targetEngine.js';
 import { calcBankingCore } from './bankingEngine.js';
 
 // =========================
@@ -226,7 +226,15 @@ export function calculateBankingData(targetDateStr) {
     const weightKg = resolveWeightKg();
     const targetMode = state.goalSettings?.targetMode ?? 'manual';
 
-    // Helper: resolve per-day calorie target.
+    // Resolve today's full planning targets ONCE via the rich planning resolver —
+    // supplies baseCalories, exerciseAddMode, displayBaseTargets, and full TDEE metadata.
+    const todayResolvedFull   = resolveDailyPlanningTargets(targetDateStr, state);
+    const todayBaseCalories   = todayResolvedFull.baseCalories || baseKcal;
+    const exerciseAddMode     = todayResolvedFull.exerciseAddMode ?? 'add';
+    const resolvedTargetSource = todayResolvedFull.mode;
+    const displayBaseTargets  = todayResolvedFull.targets || {};
+
+    // Helper: resolve per-day calorie target for PAST days only.
     // In autoGoal mode, each past day uses the date-specific dynamically computed target.
     // In manual mode, every day uses the same baseKcal from baseline targets.
     function resolveDayCalorieTarget(dateStr) {
@@ -236,8 +244,8 @@ export function calculateBankingData(targetDateStr) {
     }
 
     // Sum actual intake AND exercise bumps for the previous (windowDays - 1) days.
-    // For days with no logged data ("unknown"), we use the day's target as a
-    // bank-neutral stand-in to prevent phantom calorie banks from blank days.
+    // When exerciseAddMode='skip', exercise bumps are excluded — the TDEE already
+    // encodes historical activity, so adding bumps would double-count.
     const pastDays = [];
     let sumPast6Actual       = 0;
     let sumPastTrainingBumps = 0;
@@ -249,7 +257,7 @@ export function calculateBankingData(targetDateStr) {
       const pastDateStr = formatDate(pastDate);
       const entry       = state.dailyEntries.get(pastDateStr) || {};
 
-      const trainingBump    = getEntryExerciseKcal(entry, weightKg);
+      const trainingBump    = exerciseAddMode === 'skip' ? 0 : getEntryExerciseKcal(entry, weightKg);
       const dayBaseCalories = resolveDayCalorieTarget(pastDateStr);
       const dailyTarget     = dayBaseCalories + trainingBump;
 
@@ -278,10 +286,10 @@ export function calculateBankingData(targetDateStr) {
 
     const bankIncomplete = unknownDays.length > 0;
 
-    // Today's base calorie target and exercise bump
-    const todaysEntry         = state.dailyEntries.get(targetDateStr) || {};
-    const todaysTrainingBump  = getEntryExerciseKcal(todaysEntry, weightKg);
-    const todayBaseCalories   = resolveDayCalorieTarget(targetDateStr);
+    // Today's exercise bump (raw = actual logged kcal; effective = 0 when skip mode)
+    const todaysEntry            = state.dailyEntries.get(targetDateStr) || {};
+    const todaysTrainingBumpRaw  = getEntryExerciseKcal(todaysEntry, weightKg);
+    const todaysTrainingBump     = exerciseAddMode === 'skip' ? 0 : todaysTrainingBumpRaw;
 
     // The full 7-day window budget (for display and manual-mode calc).
     const windowBudget = sumPastBaseTargets + todayBaseCalories + sumPastTrainingBumps + todaysTrainingBump;
@@ -317,6 +325,7 @@ export function calculateBankingData(targetDateStr) {
     const {
       bankMode, bankBalance, bankAdjustmentApplied, scheduleAdjustment,
       rawBankBalance, todayKcalTarget, targetFloorApplied, scheduleCapped,
+      manualBankCapped,
     } = coreResult;
 
     // Macro split using today's final target.
@@ -326,22 +335,15 @@ export function calculateBankingData(targetDateStr) {
     const remainingKcal  = Math.max(0, todayKcalTarget - proteinKcal - fatKcal);
     const carbsG         = Math.round(remainingKcal / 4);
 
-    // Resolve today's stable base macro targets for progress bars.
-    // carbsG above can be 0 when rolling target < protein+fat budget — show stable targets instead.
-    let resolvedTargetSource = targetMode;
-    const displayBaseTargets = targetMode === 'autoGoal'
-      ? (() => {
-        const r = resolveDailyBaseTargets(targetDateStr, state);
-        resolvedTargetSource = r.source;
-        return r.targets || {};
-      })()
-      : state.baselineTargets;
-    const displayProteinG = Math.round(parseFloat(displayBaseTargets.protein) || scaledProteinG);
-    const displayFatG     = Math.round(parseFloat(displayBaseTargets.fatMinimum ?? displayBaseTargets.fat) || fatFloorG);
+    // displayBaseTargets and resolvedTargetSource already computed from todayResolvedFull above.
+    // For manual mode, fall back to state.baselineTargets (todayResolvedFull.targets = same).
+    const effectiveDisplayTargets = targetMode === 'autoGoal' ? displayBaseTargets : state.baselineTargets;
+    const displayProteinG = Math.round(parseFloat(effectiveDisplayTargets.protein) || scaledProteinG);
+    const displayFatG     = Math.round(parseFloat(effectiveDisplayTargets.fatMinimum ?? effectiveDisplayTargets.fat) || fatFloorG);
     const displayCarbsG   = (() => {
-      const fromTargets = parseFloat(displayBaseTargets.carbs);
+      const fromTargets = parseFloat(effectiveDisplayTargets.carbs);
       if (fromTargets > 0) return Math.round(fromTargets);
-      const calBudget = parseFloat(displayBaseTargets.calories) || baseKcal;
+      const calBudget = parseFloat(effectiveDisplayTargets.calories) || baseKcal;
       return Math.round(Math.max(0, (calBudget - displayProteinG * 4 - displayFatG * 9) / 4));
     })();
 
@@ -376,6 +378,7 @@ export function calculateBankingData(targetDateStr) {
       // Base parameters
       baseKcal,
       todaysTrainingBump,
+      todaysTrainingBumpRaw,  // actual logged exercise (may differ from bump when skip mode)
 
       // Target results
       todayKcalTarget,
@@ -414,13 +417,67 @@ export function calculateBankingData(targetDateStr) {
       targetMode,
       bankMode,            // 'manualRolling' | 'autoGoalSchedule' | 'off'
       bankAdjustmentApplied,
+      manualBankCapped,    // true when manual bank adj was capped by MANUAL_BANK_CAP_DOWN/UP
       rawBankBalance,      // cumulative 6-day credit/debt (informational in autoGoal mode)
-      scheduleAdjustment,  // auto goal only: spread overage over remaining days
+      scheduleAdjustment,  // auto goal only: spread overage/credit over remaining days
       targetFloorApplied,  // true when effectiveFloor was applied
       minDailyCalories: MIN_DAILY_CALORIES,
       effectiveFloor,      // actual floor used (BMR-based or MIN_DAILY_CALORIES)
       floorSource,         // 'bmr_floor' | 'min_daily'
-      scheduleCapped,      // true if soft cap (150 kcal/day) was hit
+      scheduleCapped,      // true if soft cap was exceeded on debt correction
+      exerciseAddMode,     // 'add' | 'skip' — 'skip' when TDEE includes historical activity
+      // TDEE provenance (autoGoal only) — from resolveDailyPlanningTargets:
+      tdeeSource:      todayResolvedFull.planningTdeeSource      ?? null,
+      tdeeSourceLabel: todayResolvedFull.planningTdeeSourceLabel ?? null,
+      planningTdee:    todayResolvedFull.planningTdee            ?? null,
+
+      // Aliases for structured consumers (Today/Energy/Nutrients)
+      finalCalories:    todayKcalTarget,
+      exerciseCalories: todaysTrainingBump,
+
+      // Structured adjustment object
+      adjustment: {
+        type:               bankMode,
+        rawBankBalance,
+        appliedAdjustment:  bankAdjustmentApplied,
+        capped:             scheduleCapped || manualBankCapped,
+        capReason:          scheduleCapped ? 'schedule_cap' : manualBankCapped ? 'manual_cap' : null,
+        overageSpreadPerDay: scheduleAdjustment,
+      },
+
+      // Structured floor object
+      floor: {
+        minDailyCalories: MIN_DAILY_CALORIES,
+        effectiveFloor,
+        source:  floorSource,
+        applied: targetFloorApplied,
+        reason:  floorSource === 'bmr_floor'
+          ? `85% of BMR floor (${effectiveFloor} kcal)`
+          : `Minimum daily floor (${MIN_DAILY_CALORIES} kcal)`,
+      },
+
+      // Explanation: ordered list of what shaped today's target
+      explanation: (() => {
+        const parts = [`Base: ${todayBaseCalories} kcal (${resolvedTargetSource === 'autoGoal' ? 'Auto Goal' : 'Manual Baseline'})`];
+        if (exerciseAddMode === 'skip' && todaysTrainingBumpRaw > 0) {
+          parts.push(`Exercise (${todaysTrainingBumpRaw} kcal): reflected in TDEE — not added separately`);
+        } else if (todaysTrainingBump > 0) {
+          parts.push(`Exercise: +${todaysTrainingBump} kcal`);
+        }
+        if (scheduleAdjustment > 0) {
+          parts.push(`Schedule credit spread forward: +${scheduleAdjustment} kcal/day`);
+        } else if (scheduleAdjustment < 0) {
+          parts.push(`Schedule overage spread: ${scheduleAdjustment} kcal/day`);
+        }
+        if (bankAdjustmentApplied !== 0 && bankMode === 'manualRolling') {
+          parts.push(`Rolling bank: ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal`);
+        }
+        if (targetFloorApplied) {
+          parts.push(`Floor applied: ${effectiveFloor} kcal (${floorSource === 'bmr_floor' ? '85% BMR' : 'minimum'})`);
+        }
+        parts.push(`Final: ${todayKcalTarget} kcal`);
+        return parts;
+      })(),
 
       // Config
       config: { windowDays }
@@ -491,6 +548,10 @@ export function calculateMicronutrientMetrics(dateStr) {
       ? (resolveDailyBaseTargets(dateStr, state).targets ?? state.baselineTargets)
       : state.baselineTargets;
 
+    // Profile-specific DRI targets (age/sex adjusted) for accurate source classification.
+    // These differ from DEFAULT_TARGETS for age groups outside the generic reference range.
+    const { microTargets: profileDriTargets } = computeMicronutrientTargets(state.userProfile ?? {});
+
     const metrics = {};
 
     allNutrients.forEach(nutrient => {
@@ -559,12 +620,15 @@ export function calculateMicronutrientMetrics(dateStr) {
         trendDirection = computeTrendDirection(todaysIntake, priorAvg);
       }
 
-      // Target source classification (use effectiveTargets so auto-goal values are classified correctly)
+      // Target source classification (pass profileDriTargets so age/sex DRI values aren't
+      // mislabeled as auto_goal or manual_baseline when they merely reflect the user's DRI)
       const targetSource = classifyTargetSource(
         nutrient,
         effectiveTargets,
         DEFAULT_TARGETS,
         state.goalSettings?.manualTargetOverrides,
+        targetMode,
+        profileDriTargets,
       );
 
       // Upper-limit check (warn at ≥ 80% of UL)
@@ -860,7 +924,7 @@ function renderEnergyOutput() {
   if (dateStr) {
     const bankingData = calculateBankingData(dateStr);
     bankingHtml = renderInfoBox()
-      + renderEnergyExerciseBlock(dateStr)
+      + renderEnergyExerciseBlock(dateStr, bankingData.exerciseAddMode)
       + renderBankingPanel(bankingData)
       + renderCalcDetailsPanel(bankingData);
   }
@@ -875,21 +939,35 @@ function renderEnergyOutput() {
  */
 function renderCalcDetailsPanel(bankingData) {
   const {
-    todayBaseCalories, todaysTrainingBump, bankBalance, targetMode, bankMode,
+    todayBaseCalories, todaysTrainingBump, todaysTrainingBumpRaw, bankBalance, targetMode, bankMode,
     sumPast6Actual, sumPastTargets, windowBudget, todayKcalTarget,
     scheduleAdjustment, rawBankBalance, targetFloorApplied, effectiveFloor, floorSource,
+    bankAdjustmentApplied, manualBankCapped, exerciseAddMode, tdeeSourceLabel, planningTdee,
   } = bankingData;
 
   if (bankMode === 'autoGoalSchedule') {
     const tomorrowNote = 'Hit this target and tomorrow recalculates from Auto Goal mode.';
+    const exerciseSkipNote = exerciseAddMode === 'skip' && todaysTrainingBumpRaw > 0
+      ? `<div class="flex justify-between items-center p-2 surface-1 rounded border text-muted text-xs">
+           <span>Exercise logged (+${todaysTrainingBumpRaw} kcal) — not added separately:</span>
+           <span>already in TDEE estimate</span>
+         </div>`
+      : '';
     return `
       <div class="section-card p-4 mb-6">
         <h3 class="text-responsive-xl font-bold text-secondary mb-3">🧮 How Today's Target Was Calculated</h3>
         <div class="grid grid-cols-1 gap-2 text-sm">
+          ${planningTdee ? `
+            <div class="flex justify-between items-center p-2 surface-1 rounded border text-xs text-muted">
+              <span>Planning TDEE:</span>
+              <span>${planningTdee} kcal — ${tdeeSourceLabel ?? ''}</span>
+            </div>
+          ` : ''}
           <div class="flex justify-between items-center p-2 surface-1 rounded border">
             <span>Auto Goal base target (from weight &amp; goal):</span>
             <span class="font-medium">${todayBaseCalories} kcal</span>
           </div>
+          ${exerciseSkipNote}
           ${todaysTrainingBump > 0 ? `
             <div class="flex justify-between items-center p-2 surface-1 rounded border">
               <span>Exercise:</span>
@@ -898,7 +976,7 @@ function renderCalcDetailsPanel(bankingData) {
           ` : ''}
           ${scheduleAdjustment !== 0 ? `
             <div class="flex justify-between items-center p-2 surface-1 rounded border">
-              <span>Schedule correction (overage spread over goal window):</span>
+              <span>${scheduleAdjustment > 0 ? 'Schedule credit (spread forward over remaining goal days):' : 'Schedule correction (overage spread over goal window):'}</span>
               <span class="font-medium ${scheduleAdjustment > 0 ? 'text-positive' : 'text-negative'}">${scheduleAdjustment > 0 ? '+' : ''}${scheduleAdjustment} kcal</span>
             </div>
           ` : ''}
@@ -911,7 +989,7 @@ function renderCalcDetailsPanel(bankingData) {
           <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
             <div>${todayBaseCalories} + ${todaysTrainingBump} + ${scheduleAdjustment} = <strong>${todayKcalTarget} kcal today</strong></div>
             ${rawBankBalance !== 0 ? `
-              <div class="italic">7-day raw balance: ${rawBankBalance > 0 ? '+' : ''}${rawBankBalance} kcal (${rawBankBalance < 0 ? 'overage spread over remaining goal days — not applied as a single crash day' : 'credit — not added to today\'s target in Auto Goal mode'}).</div>
+              <div class="italic">7-day raw balance: ${rawBankBalance > 0 ? '+' : ''}${rawBankBalance} kcal (${rawBankBalance < 0 ? 'overage spread over remaining goal days — not applied as a single crash day' : 'credit spread forward as a small schedule increase'}).</div>
             ` : ''}
             <div>${tomorrowNote}</div>
             <div>In Auto Goal mode: overages are spread gently, not concentrated. The base target recalculates as your weight changes.</div>
@@ -973,14 +1051,20 @@ function renderCalcDetailsPanel(bankingData) {
         ${todaysTrainingBump > 0 ? `
           <p class="text-xs text-muted px-2 italic">Exercise calories included in today's budget (+${todaysTrainingBump} kcal)</p>
         ` : ''}
-        ${bankBalance !== 0 ? `
+        ${bankAdjustmentApplied !== 0 ? `
           <div class="flex justify-between items-center p-2 rounded border surface-2">
-            <span>Rolling balance adjustment:</span>
-            <span class="font-medium ${bankBalance > 0 ? 'text-positive' : 'text-negative'}">${bankBalance > 0 ? '+' : ''}${bankBalance} kcal</span>
+            <span>Rolling balance adjustment${manualBankCapped ? ' (capped)' : ''}:</span>
+            <span class="font-medium ${bankAdjustmentApplied > 0 ? 'text-positive' : 'text-negative'}">${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal</span>
           </div>
+          ${manualBankCapped ? `
+            <div class="flex justify-between items-center p-2 rounded border surface-1 text-xs text-muted">
+              <span>Raw 7-day balance (informational):</span>
+              <span>${bankBalance > 0 ? '+' : ''}${bankBalance} kcal (capped to ${bankAdjustmentApplied} kcal/day)</span>
+            </div>
+          ` : ''}
         ` : ''}
         <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
-          <div>${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal today</strong></div>
+          <div>${todayBaseCalories}${todaysTrainingBump > 0 ? ` + ${todaysTrainingBump}` : ''} + ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied}${manualBankCapped ? ` (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance}, capped)` : ''} = <strong>${todayKcalTarget} kcal today</strong></div>
           <div>${tomorrowNote}</div>
         </div>
       </div>
@@ -996,7 +1080,7 @@ function renderTodayCompact(bankingData) {
     todayKcalTarget, finalProteinG, finalFatG, finalCarbsG,
     todayBaseCalories, todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
     bankMode, scheduleAdjustment, rawBankBalance, targetFloorApplied, effectiveFloor, floorSource, scheduleCapped,
-    macroFloorExceedsCalories,
+    macroFloorExceedsCalories, bankAdjustmentApplied, manualBankCapped,
   } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
@@ -1044,9 +1128,12 @@ function renderTodayCompact(bankingData) {
       adjSegment = ` + Schedule: ${scheduleAdjustment > 0 ? '+' : ''}${scheduleAdjustment}`;
     }
   } else {
-    // Manual mode — rolling bank
-    if (bankBalance !== 0) {
-      adjSegment = ` + Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance}`;
+    // Manual mode — rolling bank (use applied/capped value in formula)
+    if (bankAdjustmentApplied !== 0) {
+      adjSegment = ` + Bank: ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied}`;
+      if (manualBankCapped) {
+        adjSegment += ` (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance}, capped)`;
+      }
     }
   }
   const exerciseSegment = todaysTrainingBump > 0 ? ` + Exercise: +${todaysTrainingBump}` : '';
@@ -1056,6 +1143,7 @@ function renderTodayCompact(bankingData) {
     ? `<div class="text-xs text-muted mt-0.5">
         7-day raw ${rawBankBalance < 0 ? 'overage' : 'credit'}: ${Math.abs(rawBankBalance)} kcal
         ${rawBankBalance < 0 && scheduleAdjustment !== 0 ? '— spread over goal window' : ''}
+        ${rawBankBalance > 0 && scheduleAdjustment > 0 ? '— spread forward as a small schedule increase' : ''}
        </div>`
     : '';
 
@@ -1113,8 +1201,10 @@ function renderTodayCompact(bankingData) {
 /**
  * Render a compact exercise summary card for the Today dashboard output.
  * Shows sessions, calorie estimate, and method source.
+ * @param {string} dateStr
+ * @param {'add'|'skip'} [exerciseAddMode] - when 'skip', show note that calories are in TDEE
  */
-function renderExerciseSummaryCard(dateStr) {
+function renderExerciseSummaryCard(dateStr, exerciseAddMode = 'add') {
   const entry    = state.dailyEntries.get(dateStr) || {};
   const sessions = Array.isArray(entry.exerciseSessions) ? entry.exerciseSessions : [];
   const weightKg = resolveWeightKg();
@@ -1137,6 +1227,9 @@ function renderExerciseSummaryCard(dateStr) {
 
   const { totalKcal, source } = computeSessionTotals(sessions, weightKg);
   const sourceLabel = source === 'manual' ? 'manual override' : source === 'wearable' ? 'wearable device' : 'MET estimate';
+  const skipNote = exerciseAddMode === 'skip'
+    ? `<div class="text-xs text-warning mt-1">⚠ Exercise calories are already reflected in your planning TDEE — not added separately to today's target.</div>`
+    : '';
 
   const sessionLines = sessions.map(s => {
     const { kcal } = estimateSessionCalories(s, weightKg);
@@ -1149,16 +1242,19 @@ function renderExerciseSummaryCard(dateStr) {
     <div class="mb-3 p-3 surface-2 rounded-lg border">
       <div class="flex justify-between items-center mb-1">
         <span class="text-sm font-medium text-secondary">🏋️ Exercise</span>
-        <span class="text-sm font-bold text-accent">+${totalKcal} kcal <span class="text-xs text-muted font-normal">(${sourceLabel})</span></span>
+        <span class="text-sm font-bold text-accent">${exerciseAddMode === 'add' ? '+' : ''}${totalKcal} kcal <span class="text-xs text-muted font-normal">(${sourceLabel})</span></span>
       </div>
       ${sessionLines}
+      ${skipNote}
     </div>`;
 }
 
 /**
  * Render an exercise impact block for the Energy tab.
+ * @param {string} dateStr
+ * @param {'add'|'skip'} [exerciseAddMode]
  */
-function renderEnergyExerciseBlock(dateStr) {
+function renderEnergyExerciseBlock(dateStr, exerciseAddMode = 'add') {
   const entry    = state.dailyEntries.get(dateStr) || {};
   const sessions = Array.isArray(entry.exerciseSessions) ? entry.exerciseSessions : [];
   const weightKg = resolveWeightKg();
@@ -1212,6 +1308,10 @@ function renderEnergyExerciseBlock(dateStr) {
       <p class="text-xs text-muted mt-2">
         MET estimates from the 2024 Compendium of Physical Activities. Add wearable or manual calorie values in the session form to override estimates.
       </p>
+      ${exerciseAddMode === 'skip' ? `
+        <p class="text-xs text-warning mt-1">
+          ⚠ Your planning TDEE is derived from observed data that already includes your historical activity. Exercise calories above are logged but not added separately to today's target — they are already reflected in the base estimate.
+        </p>` : ''}
     </div>`;
 }
 
@@ -1262,7 +1362,7 @@ export function updateDashboard() {
 
     dashboard.innerHTML = `
       <div id="dashboard-errors"></div>
-      ${renderExerciseSummaryCard(dateStr)}
+      ${renderExerciseSummaryCard(dateStr, bankingData.exerciseAddMode)}
       ${renderTodayCompact(bankingData)}
     `;
 
@@ -1340,14 +1440,15 @@ function renderInfoBox() {
 
   if (targetMode === 'autoGoal') {
     const softCap = BANKING_CONFIG.MAX_SCHEDULE_ADJ_SOFT ?? 150;
+    const hardCap = BANKING_CONFIG.MAX_SCHEDULE_ADJ_HARD ?? 250;
     return `
       <div class="mb-6 p-4 surface-2 rounded-lg border">
         <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How Auto Goal Works</h3>
         <div class="text-sm text-muted space-y-1">
           <p><strong>Daily Target:</strong> Recalculated from your current weight, goal, and target date — adapts as your weight changes. The base calorie target never comes from a fixed 7-day window.</p>
-          <p><strong>Schedule Correction:</strong> If you've eaten over target this week, a small correction (max ${softCap} kcal/day) is spread across the remaining goal days — never concentrated into a single crash day.</p>
-          <p><strong>Training Days:</strong> Select your workout type above — this adds calories and scales electrolytes appropriately.</p>
-          <p><strong>7-Day Raw Balance:</strong> Shown as informational context only. In Auto Goal mode it does not directly set today's target.</p>
+          <p><strong>Schedule Correction:</strong> Weekly overages and credits are spread symmetrically across remaining goal days. Overage correction: up to ${softCap} kcal/day normally, up to ${hardCap} kcal/day in extreme cases. Credit bonus: up to ${softCap} kcal/day — never concentrated into a single day.</p>
+          <p><strong>Training Days:</strong> Exercise calories are added when the planning TDEE is a rest-day estimate. If your TDEE was derived from observed data (which already includes your activity), exercise bumps are skipped to avoid double-counting.</p>
+          <p><strong>7-Day Raw Balance:</strong> Shown as informational context only. In Auto Goal mode it feeds the schedule correction but does not directly set today's target.</p>
         </div>
       </div>
     `;
@@ -1388,6 +1489,7 @@ function renderBankingPanel(bankingData) {
     bankBalance, rawBankBalance, pastDays, sumPast6Actual, sumPastTargets,
     windowBudget, todayBaseCalories, todaysTrainingBump, targetMode, bankMode, scheduleAdjustment,
     targetFloorApplied, effectiveFloor, floorSource, scheduleCapped, todayKcalTarget,
+    bankAdjustmentApplied, manualBankCapped, exerciseAddMode,
   } = bankingData;
 
   const contributionRows = pastDays.map(d => `
@@ -1437,7 +1539,10 @@ function renderBankingPanel(bankingData) {
         statusText += ` Spreading correction over remaining goal window (${scheduleAdjustment} kcal/day today).`;
       }
     } else if (rawBankBalance > 0) {
-      statusText = `Under budget by ${rawBankBalance} kcal this week — no upward adjustment applied.`;
+      statusText = `Under budget by ${rawBankBalance} kcal this week.`;
+      if (scheduleAdjustment > 0) {
+        statusText += ` Credit spread forward (+${scheduleAdjustment} kcal/day today).`;
+      }
     } else {
       statusText = `On track this week — no adjustment needed.`;
     }
@@ -1506,9 +1611,9 @@ function renderBankingPanel(bankingData) {
 
   // Manual mode — rolling bank panel
   const bankExplanation = bankBalance > 0
-    ? `You have ${bankBalance} kcal banked from under-eating — today's target is higher to use it.`
+    ? `You have ${bankBalance} kcal banked from under-eating — today's target is ${bankAdjustmentApplied > 0 ? `+${bankAdjustmentApplied}` : `${bankAdjustmentApplied}`} kcal${manualBankCapped ? ` (capped from +${bankBalance})` : ''}.`
     : bankBalance < 0
-    ? `You're ${Math.abs(bankBalance)} kcal over budget — today's target is lower to balance it out.`
+    ? `You're ${Math.abs(bankBalance)} kcal over budget — today's target is reduced by ${Math.abs(bankAdjustmentApplied)} kcal${manualBankCapped ? ` (capped from −${Math.abs(bankBalance)})` : ''}.`
     : "You're perfectly on track — no adjustment needed!";
 
   const budgetExplain = `${windowBudget} kcal (${todayBaseCalories}/day × 7 + training bumps).`;
@@ -1600,7 +1705,7 @@ function renderMicronutrientSections(metrics, filter = 'all') {
       case 'low':      return data.status === 'red';
       case 'near':     return data.status === 'amber';
       case 'above':    return data.status === 'green';
-      case 'override': return data.targetSource === 'override';
+      case 'override': return data.targetSource === 'manual_override';
       default:         return true;
     }
   };
@@ -1619,10 +1724,14 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     const remaining    = targetValue - displayValue;
 
     // Source badge (no badge for DRI defaults — only call out deviations)
-    const sourceBadge = targetSource === 'override'
+    const sourceBadge = targetSource === 'manual_override'
       ? `<span class="nt-badge nt-badge-override" title="Manually pinned target">📌</span>`
-      : targetSource === 'custom'
-      ? `<span class="nt-badge nt-badge-custom" title="Custom target (goal-engine or manual setting)">✏️</span>`
+      : targetSource === 'auto_goal'
+      ? `<span class="nt-badge nt-badge-custom" title="Auto Goal calculated target">🎯</span>`
+      : targetSource === 'manual_baseline'
+      ? `<span class="nt-badge nt-badge-custom" title="Custom target from Settings">✏️</span>`
+      : targetSource === 'dri_profile_default'
+      ? `<span class="nt-badge nt-badge-custom" title="Age/sex-specific DRI for your profile">👤</span>`
       : '';
 
     // Exercise-scaling note
@@ -1641,9 +1750,11 @@ function renderMicronutrientSections(metrics, filter = 'all') {
       : '';
 
     // Source label in target span
-    const srcLabel = targetSource === 'override' ? ' (pinned)'
-                   : targetSource === 'custom'   ? ' (custom)'
-                   : ' (DRI)'; // 'dri' = matches reference value exactly
+    const srcLabel = targetSource === 'manual_override'    ? ' (pinned)'
+                   : targetSource === 'auto_goal'           ? ' (auto goal)'
+                   : targetSource === 'manual_baseline'     ? ' (custom)'
+                   : targetSource === 'dri_profile_default' ? ' (profile DRI)'
+                   : ' (DRI)'; // 'dri' = matches generic DRI reference value
 
     // For averaged nutrients show today's value as sub-detail below the bar
     const subDetail = isAveraged

@@ -50,21 +50,30 @@ export function computeTrendDirection(recentVal, priorVal) {
  * Classify the source of a nutrient target.
  *
  * Returns one of:
- *  - 'override' — user explicitly pinned this nutrient via manualTargetOverrides
- *  - 'custom'   — target differs from the DRI/default (goal-engine or manual settings)
- *  - 'dri'      — target exactly matches the DRI/default value
+ *  - 'manual_override'    — user explicitly pinned this nutrient via manualTargetOverrides
+ *  - 'auto_goal'          — computed by the auto-goal engine (targetMode='autoGoal')
+ *  - 'manual_baseline'    — user saved a custom value via the Settings tab (manual mode)
+ *  - 'dri_profile_default'— matches the age/sex-specific profile DRI (differs from generic default)
+ *  - 'dri'                — matches the generic DEFAULT_TARGETS reference value
  *
  * @param {string} nutrient
- * @param {object} baselineTargets   - state.baselineTargets
- * @param {object} defaultTargets    - DEFAULT_TARGETS (reference values)
+ * @param {object} effectiveTargets  - resolved targets (baseline or auto-goal)
+ * @param {object} defaultTargets    - DEFAULT_TARGETS (generic DRI reference values)
  * @param {object} manualOverrides   - state.goalSettings?.manualTargetOverrides (may be undefined)
- * @returns {'override'|'custom'|'dri'}
+ * @param {string} [targetMode]      - 'manual' | 'autoGoal' (default 'manual')
+ * @param {object} [profileDriTargets] - age/sex-specific DRI from computeMicronutrientTargets()
+ * @returns {'manual_override'|'auto_goal'|'manual_baseline'|'dri_profile_default'|'dri'}
  */
-export function classifyTargetSource(nutrient, baselineTargets, defaultTargets, manualOverrides) {
-  if (manualOverrides?.[nutrient] !== undefined) return 'override';
-  if (
-    baselineTargets[nutrient] !== undefined &&
-    Math.abs((baselineTargets[nutrient] ?? 0) - (defaultTargets[nutrient] ?? 0)) > 0.001
-  ) return 'custom';
+export function classifyTargetSource(nutrient, effectiveTargets, defaultTargets, manualOverrides, targetMode = 'manual', profileDriTargets = null) {
+  if (manualOverrides?.[nutrient] !== undefined) return 'manual_override';
+  const effective = effectiveTargets[nutrient];
+  if (effective !== undefined) {
+    // Exact match against generic default → plain DRI
+    if (Math.abs((effective ?? 0) - (defaultTargets[nutrient] ?? 0)) <= 0.001) return 'dri';
+    // Match against profile-specific DRI (age/sex adjusted) — a profile DRI default, not customized
+    if (profileDriTargets && profileDriTargets[nutrient] !== undefined &&
+        Math.abs((effective ?? 0) - (profileDriTargets[nutrient] ?? 0)) <= 0.001) return 'dri_profile_default';
+    return targetMode === 'autoGoal' ? 'auto_goal' : 'manual_baseline';
+  }
   return 'dri';
 }

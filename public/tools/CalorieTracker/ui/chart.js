@@ -218,6 +218,13 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
 
     const isAutoGoal = (state.goalSettings?.targetMode === 'autoGoal');
 
+    // Resolve exerciseAddMode once from today's target so the chart agrees with Today/Energy.
+    // When TDEE source is empirical_observed or empirical, historical activity is already
+    // baked in and adding logged exercise would double-count it.
+    const chartExerciseAddMode = isAutoGoal
+      ? (resolveDailyBaseTargets(displayLabels[displayLabels.length - 1] ?? formatDate(new Date()), state).exerciseAddMode ?? 'add')
+      : 'add';
+
     nutrientKeys.forEach((nutrient, idx) => {
       const color = CONFIG.CHART_COLORS[idx % CONFIG.CHART_COLORS.length];
       const baseTarget = parseFloat(state.baselineTargets[nutrient]) || 1;
@@ -226,7 +233,10 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
           const calBase = isAutoGoal
             ? (parseFloat(resolveDailyBaseTargets(dateStr, state).targets?.calories) || baseTarget)
             : baseTarget;
-          return calBase + getEntryExerciseKcal(state.dailyEntries.get(dateStr) || {}, weightKg);
+          const exerciseKcal = chartExerciseAddMode === 'skip'
+            ? 0
+            : getEntryExerciseKcal(state.dailyEntries.get(dateStr) || {}, weightKg);
+          return calBase + exerciseKcal;
         }
         if (isAutoGoal) {
           const resolved = parseFloat(resolveDailyBaseTargets(dateStr, state).targets?.[nutrient]);
