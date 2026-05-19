@@ -489,6 +489,12 @@ async function handleSaveProfile() {
     _setAutosaveStatus('saved');
     setTimeout(() => _setAutosaveStatus(''), 3000);
     showMessage('Profile and goals saved!');
+    try {
+      const { updateDashboard } = await import('../ui/dashboard.js');
+      const { updateChart } = await import('../ui/chart.js');
+      updateDashboard();
+      updateChart();
+    } catch (_) {}
   } catch (err) {
     _setAutosaveStatus('error');
     handleError('save-profile', err, 'Failed to save profile.');
