@@ -61,16 +61,16 @@ describe('computeTrendDirection', () => {
 describe('classifyTargetSource', () => {
   const defaults = { vitaminC: 90, zinc: 11 };
 
-  it('returns override when nutrient is in manualTargetOverrides', () => {
+  it('returns manual_override when nutrient is in manualTargetOverrides', () => {
     // Even if baseline matches default, explicit override wins
-    expect(classifyTargetSource('vitaminC', { vitaminC: 90 }, defaults, { vitaminC: 75 })).toBe('override');
+    expect(classifyTargetSource('vitaminC', { vitaminC: 90 }, defaults, { vitaminC: 75 })).toBe('manual_override');
   });
 
-  it('returns override regardless of baseline value', () => {
-    expect(classifyTargetSource('zinc', { zinc: 20 }, defaults, { zinc: 15 })).toBe('override');
+  it('returns manual_override regardless of baseline value', () => {
+    expect(classifyTargetSource('zinc', { zinc: 20 }, defaults, { zinc: 15 })).toBe('manual_override');
   });
 
-  it('returns dri when baseline matches default exactly', () => {
+  it('returns dri when baseline matches default exactly (manual mode)', () => {
     expect(classifyTargetSource('vitaminC', { vitaminC: 90 }, defaults, {})).toBe('dri');
   });
 
@@ -78,12 +78,24 @@ describe('classifyTargetSource', () => {
     expect(classifyTargetSource('vitaminC', {}, defaults, {})).toBe('dri');
   });
 
-  it('returns custom when baseline differs from default', () => {
-    expect(classifyTargetSource('vitaminC', { vitaminC: 120 }, defaults, {})).toBe('custom');
+  it('returns manual_baseline when baseline differs from default (manual mode)', () => {
+    expect(classifyTargetSource('vitaminC', { vitaminC: 120 }, defaults, {})).toBe('manual_baseline');
   });
 
-  it('returns custom when baseline is zero but default is non-zero', () => {
-    expect(classifyTargetSource('vitaminC', { vitaminC: 0 }, defaults, {})).toBe('custom');
+  it('returns manual_baseline when baseline is zero but default is non-zero (manual mode)', () => {
+    expect(classifyTargetSource('vitaminC', { vitaminC: 0 }, defaults, {})).toBe('manual_baseline');
+  });
+
+  it('returns auto_goal when baseline differs from default in autoGoal mode', () => {
+    expect(classifyTargetSource('vitaminC', { vitaminC: 120 }, defaults, {}, 'autoGoal')).toBe('auto_goal');
+  });
+
+  it('returns dri in autoGoal mode when value matches DRI', () => {
+    expect(classifyTargetSource('vitaminC', { vitaminC: 90 }, defaults, {}, 'autoGoal')).toBe('dri');
+  });
+
+  it('manual_override takes priority over auto_goal mode', () => {
+    expect(classifyTargetSource('vitaminC', { vitaminC: 120 }, defaults, { vitaminC: 100 }, 'autoGoal')).toBe('manual_override');
   });
 
   it('returns dri when manualOverrides is undefined', () => {
@@ -92,5 +104,10 @@ describe('classifyTargetSource', () => {
 
   it('returns dri when manualOverrides is null', () => {
     expect(classifyTargetSource('vitaminC', { vitaminC: 90 }, defaults, null)).toBe('dri');
+  });
+
+  it('defaults to manual mode when targetMode omitted', () => {
+    // Existing call sites that don't pass targetMode get manual_baseline (not breaking)
+    expect(classifyTargetSource('vitaminC', { vitaminC: 120 }, defaults, {})).toBe('manual_baseline');
   });
 });

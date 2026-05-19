@@ -50,21 +50,25 @@ export function computeTrendDirection(recentVal, priorVal) {
  * Classify the source of a nutrient target.
  *
  * Returns one of:
- *  - 'override' — user explicitly pinned this nutrient via manualTargetOverrides
- *  - 'custom'   — target differs from the DRI/default (goal-engine or manual settings)
- *  - 'dri'      — target exactly matches the DRI/default value
+ *  - 'manual_override' — user explicitly pinned this nutrient via manualTargetOverrides
+ *  - 'auto_goal'       — computed by the auto-goal engine (targetMode='autoGoal')
+ *  - 'manual_baseline' — user saved a custom value via the Settings tab (manual mode)
+ *  - 'dri'             — matches the DRI/default reference value
  *
  * @param {string} nutrient
- * @param {object} baselineTargets   - state.baselineTargets
- * @param {object} defaultTargets    - DEFAULT_TARGETS (reference values)
+ * @param {object} effectiveTargets  - resolved targets (baseline or auto-goal)
+ * @param {object} defaultTargets    - DEFAULT_TARGETS (DRI reference values)
  * @param {object} manualOverrides   - state.goalSettings?.manualTargetOverrides (may be undefined)
- * @returns {'override'|'custom'|'dri'}
+ * @param {string} [targetMode]      - 'manual' | 'autoGoal' (default 'manual')
+ * @returns {'manual_override'|'auto_goal'|'manual_baseline'|'dri'}
  */
-export function classifyTargetSource(nutrient, baselineTargets, defaultTargets, manualOverrides) {
-  if (manualOverrides?.[nutrient] !== undefined) return 'override';
+export function classifyTargetSource(nutrient, effectiveTargets, defaultTargets, manualOverrides, targetMode = 'manual') {
+  if (manualOverrides?.[nutrient] !== undefined) return 'manual_override';
   if (
-    baselineTargets[nutrient] !== undefined &&
-    Math.abs((baselineTargets[nutrient] ?? 0) - (defaultTargets[nutrient] ?? 0)) > 0.001
-  ) return 'custom';
+    effectiveTargets[nutrient] !== undefined &&
+    Math.abs((effectiveTargets[nutrient] ?? 0) - (defaultTargets[nutrient] ?? 0)) > 0.001
+  ) {
+    return targetMode === 'autoGoal' ? 'auto_goal' : 'manual_baseline';
+  }
   return 'dri';
 }

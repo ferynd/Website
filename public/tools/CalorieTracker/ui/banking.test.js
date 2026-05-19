@@ -229,17 +229,24 @@ function calcBankingAutoGoal(targetDateStr, dailyEntries, baseKcal, goalTargetDa
   const rawBankBalance = Math.round(baseKcal * (WINDOW - 1) - sumPastActual);
   const cumulativeDebt = Math.max(0, -rawBankBalance);
 
+  const cumulativeCredit = Math.max(0, rawBankBalance);
+
   let scheduleAdjustment = 0;
   let scheduleCapped = false;
 
-  if (cumulativeDebt > 0 && goalTargetDate) {
+  if ((cumulativeDebt > 0 || cumulativeCredit > 0) && goalTargetDate) {
     const targetMs    = new Date(`${goalTargetDate}T00:00:00`).getTime();
     const todayMs     = new Date(`${targetDateStr}T00:00:00`).getTime();
     const remainingDays = Math.round((targetMs - todayMs) / 86400000);
     if (remainingDays > 1) {
-      const rawAdj = -cumulativeDebt / remainingDays;
-      scheduleAdjustment = Math.round(Math.max(-MAX_SCHEDULE_ADJ_HARD, rawAdj));
-      if (rawAdj < -MAX_SCHEDULE_ADJ_SOFT) scheduleCapped = true;
+      if (cumulativeDebt > 0) {
+        const rawAdj = -cumulativeDebt / remainingDays;
+        scheduleAdjustment = Math.round(Math.max(-MAX_SCHEDULE_ADJ_HARD, rawAdj));
+        if (rawAdj < -MAX_SCHEDULE_ADJ_SOFT) scheduleCapped = true;
+      } else {
+        const rawAdj = cumulativeCredit / remainingDays;
+        scheduleAdjustment = Math.round(Math.min(MAX_SCHEDULE_ADJ_SOFT, rawAdj));
+      }
     }
   }
 
@@ -338,8 +345,8 @@ describe('Auto Goal mode — schedule adjustment, not full rolling bank', () => 
     if (targetFloorApplied) expect(todayKcalTarget).toBe(MIN_DAILY_CALORIES);
   });
 
-  it('under-eating in auto goal mode produces zero schedule adjustment (no bonus calories)', () => {
-    // 6 × 1600 vs 2000 = +2400 kcal credit → rawBankBalance > 0 → no schedule adjustment
+  it('under-eating in auto goal mode with goal date → positive schedule credit spreads forward', () => {
+    // 6 × 1600 vs 2000 = +2400 kcal credit; 60 days → 2400/60 = 40 kcal/day bonus
     const entries = makeEntries(Object.fromEntries(
       [1, 2, 3, 4, 5, 6].map(i => [dateStr(i), 1600])
     ));
@@ -348,6 +355,16 @@ describe('Auto Goal mode — schedule adjustment, not full rolling bank', () => 
     const { scheduleAdjustment, rawBankBalance } =
       calcBankingAutoGoal(TODAY, entries, 2000, far.toISOString().slice(0, 10));
     expect(rawBankBalance).toBeGreaterThan(0);
+    expect(scheduleAdjustment).toBeGreaterThan(0); // credit bonus applied
+    expect(scheduleAdjustment).toBeLessThanOrEqual(MAX_SCHEDULE_ADJ_SOFT); // capped at 150
+  });
+
+  it('under-eating in auto goal mode with NO goal date → no adjustment', () => {
+    // Without a goal date, no spread is possible
+    const entries = makeEntries(Object.fromEntries(
+      [1, 2, 3, 4, 5, 6].map(i => [dateStr(i), 1600])
+    ));
+    const { scheduleAdjustment } = calcBankingAutoGoal(TODAY, entries, 2000, null);
     expect(scheduleAdjustment).toBe(0);
   });
 });

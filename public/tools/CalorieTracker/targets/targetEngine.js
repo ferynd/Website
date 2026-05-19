@@ -231,6 +231,7 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
         tdee: roundInt(restDayTdee),
         source: 'empirical_rest_day',
         sourceLabel: `Rest-day TDEE from fitted model${rejectedNote} — exercise calories added on top`,
+        exerciseAddMode: 'add',
         pal: null,
         tdeeCurrent,
         tdeeCurrentRejected,
@@ -240,11 +241,13 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
     }
 
     // 2. Observed TDEE (long-window trimmed-mean block estimate)
+    // Historical activity already baked in — adding exercise bumps would double-count.
     if (observedTdee && observedTdee > 800) {
       return {
         tdee: roundInt(observedTdee),
         source: 'empirical_observed',
         sourceLabel: 'Observed TDEE (trimmed-mean block estimates) — includes historical activity',
+        exerciseAddMode: 'skip',
         pal: null,
         tdeeCurrent,
         tdeeCurrentRejected,
@@ -254,11 +257,13 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
     }
 
     // 3. tdee_current — only if above sedentary floor
+    // Recent-window TDEE includes user's typical activity level; exercise bumps would double-count.
     if (tdeeCurrent && tdeeCurrent > 800 && !tdeeCurrentRejected) {
       return {
         tdee: tdeeCurrent,
         source: 'empirical',
-        sourceLabel: 'Recent TDEE from weight and calorie history',
+        sourceLabel: 'Recent TDEE from weight and calorie history — includes typical activity',
+        exerciseAddMode: 'skip',
         pal: null,
         tdeeCurrent,
         tdeeCurrentRejected: false,
@@ -268,7 +273,7 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
     }
   }
 
-  // 4. Formula fallback
+  // 4. Formula fallback — PAL is a rough multiplier; specific sessions should be added
   const activityKey = profile.baselineActivityLevel;
   const pal = PAL_MULTIPLIERS[activityKey] ?? PAL_MULTIPLIERS.moderate;
   const label = ACTIVITY_LABELS[activityKey] ?? 'Moderate activity (assumed)';
@@ -276,6 +281,7 @@ export function computeTDEE(bmrResult, profile, analysisResults) {
     tdee: roundInt(bmrResult.bmr * pal),
     source: 'formula',
     sourceLabel: `${bmrResult.methodLabel} × ${pal} PAL (${label})`,
+    exerciseAddMode: 'add',
     pal,
     tdeeCurrent: analysisResults?.bmrModel?.tdee_current
       ? roundInt(analysisResults.bmrModel.tdee_current) : null,
@@ -713,11 +719,22 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
     meta: {
       weightLb: round1(weightLb),
       weightSource,
+      weightLabel,
       bmrValue: bmrResult.bmr,
       bmrMethod: bmrResult.method,
+      bmrMethodLabel: bmrResult.methodLabel,
       tdeeValue: tdeeResult.tdee,
       tdeeSource: tdeeResult.source,
+      tdeeSourceLabel: tdeeResult.sourceLabel,
+      exerciseAddMode: tdeeResult.exerciseAddMode ?? 'add',
+      restDayTdee: tdeeResult.restDayTdee ?? null,
+      observedTdee: tdeeResult.observedTdee ?? null,
+      tdeeCurrent: tdeeResult.tdeeCurrent ?? null,
+      tdeeCurrentRejected: tdeeResult.tdeeCurrentRejected ?? false,
       goalType,
+      goalDeficit: calResult.deficit,
+      daysLeft: calResult.daysLeft,
+      targetWeightDeltaLb: calResult.targetWeightDeltaLb,
       calorieFloor: calResult.calorieFloor,
     },
   };
@@ -804,6 +821,8 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
       source: 'manual',
       warnings: [],
       calorieFloor: 1000,
+      exerciseAddMode: 'add',
+      meta: null,
     };
   }
 
@@ -824,6 +843,8 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
       source: 'manual_fallback',
       warnings: [`Auto-goal targets unavailable (${reason}); falling back to manual baseline.`],
       calorieFloor: 1000,
+      exerciseAddMode: 'add',
+      meta: null,
     };
   }
 
@@ -833,6 +854,8 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
     source: 'autoGoal',
     warnings: result.warnings,
     calorieFloor: result.meta?.calorieFloor ?? 1000,
+    exerciseAddMode: result.meta?.exerciseAddMode ?? 'add',
+    meta: result.meta ?? null,
   };
 }
 

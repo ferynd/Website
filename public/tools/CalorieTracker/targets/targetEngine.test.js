@@ -1568,3 +1568,131 @@ describe('Auto Goal calorie floor', () => {
     }
   });
 });
+
+// ── computeTDEE — exerciseAddMode ────────────────────────────────────────────
+
+describe('computeTDEE — exerciseAddMode', () => {
+  const bmrResult = { bmr: 1800, methodLabel: 'Mifflin-St Jeor RMR' };
+
+  it('formula source → exerciseAddMode is add', () => {
+    const { exerciseAddMode, source } = computeTDEE(bmrResult, makeProfile(), null);
+    expect(source).toBe('formula');
+    expect(exerciseAddMode).toBe('add');
+  });
+
+  it('empirical_rest_day source → exerciseAddMode is add', () => {
+    const analysis = makeAnalysis({
+      bmrModel: {
+        tdee_current: 1900, // below floor → rejected
+        tdee_rest_day: 2100,
+        modelPredictedRestDayTdee: 2100,
+        fittedBmr: 1800,
+        error: null,
+      },
+    });
+    const { exerciseAddMode, source } = computeTDEE(bmrResult, makeProfile(), analysis);
+    expect(source).toBe('empirical_rest_day');
+    expect(exerciseAddMode).toBe('add');
+  });
+
+  it('empirical source (tdee_current above floor, no rest-day) → exerciseAddMode is skip', () => {
+    const analysis = makeAnalysis({ bmrModel: { tdee_current: 2500, error: null } });
+    // sedentaryFloor = 1800 * 1.2 = 2160; 2500 > 2160 → uses empirical
+    const { exerciseAddMode, source } = computeTDEE(bmrResult, makeProfile(), analysis);
+    expect(source).toBe('empirical');
+    expect(exerciseAddMode).toBe('skip');
+  });
+
+  it('empirical_observed source → exerciseAddMode is skip', () => {
+    const analysis = makeAnalysis({
+      bmrModel: {
+        tdee_current: 1900, // below floor → rejected
+        observedTdee: 2300,
+        error: null,
+      },
+    });
+    const { exerciseAddMode, source } = computeTDEE(bmrResult, makeProfile(), analysis);
+    expect(source).toBe('empirical_observed');
+    expect(exerciseAddMode).toBe('skip');
+  });
+});
+
+// ── resolveDailyBaseTargets — exerciseAddMode propagation ────────────────────
+
+describe('resolveDailyBaseTargets — exerciseAddMode', () => {
+  function makeState(overrides = {}) {
+    return {
+      baselineTargets: { calories: 2000, protein: 150, fat: 60, carbs: 200 },
+      goalSettings: { goalType: 'maintenance', targetMode: 'manual', manualTargetOverrides: {} },
+      userProfile: makeProfile({ manualWeightOverrideLb: 185 }),
+      analysisResults: null,
+      ...overrides,
+    };
+  }
+
+  it('manual mode → exerciseAddMode is add', () => {
+    const { exerciseAddMode, source } = resolveDailyBaseTargets('2025-01-01', makeState());
+    expect(source).toBe('manual');
+    expect(exerciseAddMode).toBe('add');
+  });
+
+  it('manual_fallback → exerciseAddMode is add', () => {
+    const s = makeState({
+      userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: false }),
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: null,
+      weightEntries: new Map(),
+    });
+    const { exerciseAddMode, source } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('manual_fallback');
+    expect(exerciseAddMode).toBe('add');
+  });
+
+  it('autoGoal with formula analysis → exerciseAddMode is add', () => {
+    // No analysis results → falls back to formula TDEE inside generateTargets
+    const s = makeState({
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: null,
+    });
+    const { exerciseAddMode, source } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(source).toBe('autoGoal');
+    expect(exerciseAddMode).toBe('add');
+  });
+
+  it('autoGoal with empirical_observed TDEE → exerciseAddMode is skip', () => {
+    // observed TDEE above sedentary floor, no rest-day → empirical_observed
+    const analysis = {
+      summary: { currentWeight: 185 },
+      bmrModel: {
+        tdee_current: 1200, // below floor → rejected
+        observedTdee: 2400,
+        error: null,
+      },
+    };
+    const s = makeState({
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: analysis,
+    });
+    const { exerciseAddMode } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(exerciseAddMode).toBe('skip');
+  });
+
+  it('autoGoal with empirical_rest_day TDEE → exerciseAddMode is add', () => {
+    const analysis = {
+      summary: { currentWeight: 185 },
+      bmrModel: {
+        tdee_current: 1200, // below floor → rejected
+        tdee_rest_day: 2200,
+        modelPredictedRestDayTdee: 2200,
+        fittedBmr: 1700,
+        error: null,
+      },
+    };
+    const s = makeState({
+      goalSettings: { goalType: 'maintenance', targetMode: 'autoGoal', manualTargetOverrides: {} },
+      analysisResults: analysis,
+    });
+    const { exerciseAddMode } = resolveDailyBaseTargets('2025-01-01', s);
+    expect(exerciseAddMode).toBe('add');
+  });
+});
