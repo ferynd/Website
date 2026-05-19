@@ -76,16 +76,23 @@ export function calcBankingCore(p) {
 
   } else {
     // MANUAL rolling bank: window budget adjusts today's target up/down.
+    // The raw adjustment is capped so a single bad week never crashes the target.
     bankMode = 'manualRolling';
-    const rollingTarget = windowBudget - sumPast6Actual;
-    bankBalance = Math.round(rollingTarget - todayBaseCalories - todaysTrainingBump);
-    bankAdjustmentApplied = bankBalance;
-    todayKcalTarget = BankingHelpers.roundToNearest25(rollingTarget);
+    const MANUAL_DOWN = BANKING_CONFIG.MANUAL_BANK_CAP_DOWN ?? -400;
+    const MANUAL_UP   = BANKING_CONFIG.MANUAL_BANK_CAP_UP   ?? 600;
+    // rawBankBalance already computed above (positive = credit, negative = debt)
+    const cappedBankAdj = Math.max(MANUAL_DOWN, Math.min(MANUAL_UP, rawBankBalance));
+    bankBalance = rawBankBalance;            // keep raw as informational
+    bankAdjustmentApplied = cappedBankAdj;  // what actually moves the target
+    todayKcalTarget = BankingHelpers.roundToNearest25(
+      todayBaseCalories + todaysTrainingBump + cappedBankAdj
+    );
   }
 
   const targetFloorApplied = todayKcalTarget < effectiveFloor;
   if (targetFloorApplied) todayKcalTarget = effectiveFloor;
 
+  const manualBankCapped = bankMode === 'manualRolling' && bankAdjustmentApplied !== bankBalance;
   return {
     bankMode,
     bankBalance: Math.round(bankBalance),
@@ -95,5 +102,6 @@ export function calcBankingCore(p) {
     todayKcalTarget,
     targetFloorApplied,
     scheduleCapped,
+    manualBankCapped,
   };
 }

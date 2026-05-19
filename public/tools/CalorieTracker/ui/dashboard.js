@@ -878,6 +878,7 @@ function renderCalcDetailsPanel(bankingData) {
     todayBaseCalories, todaysTrainingBump, bankBalance, targetMode, bankMode,
     sumPast6Actual, sumPastTargets, windowBudget, todayKcalTarget,
     scheduleAdjustment, rawBankBalance, targetFloorApplied, effectiveFloor, floorSource,
+    bankAdjustmentApplied, manualBankCapped,
   } = bankingData;
 
   if (bankMode === 'autoGoalSchedule') {
@@ -973,14 +974,20 @@ function renderCalcDetailsPanel(bankingData) {
         ${todaysTrainingBump > 0 ? `
           <p class="text-xs text-muted px-2 italic">Exercise calories included in today's budget (+${todaysTrainingBump} kcal)</p>
         ` : ''}
-        ${bankBalance !== 0 ? `
+        ${bankAdjustmentApplied !== 0 ? `
           <div class="flex justify-between items-center p-2 rounded border surface-2">
-            <span>Rolling balance adjustment:</span>
-            <span class="font-medium ${bankBalance > 0 ? 'text-positive' : 'text-negative'}">${bankBalance > 0 ? '+' : ''}${bankBalance} kcal</span>
+            <span>Rolling balance adjustment${manualBankCapped ? ' (capped)' : ''}:</span>
+            <span class="font-medium ${bankAdjustmentApplied > 0 ? 'text-positive' : 'text-negative'}">${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal</span>
           </div>
+          ${manualBankCapped ? `
+            <div class="flex justify-between items-center p-2 rounded border surface-1 text-xs text-muted">
+              <span>Raw 7-day balance (informational):</span>
+              <span>${bankBalance > 0 ? '+' : ''}${bankBalance} kcal (capped to ${bankAdjustmentApplied} kcal/day)</span>
+            </div>
+          ` : ''}
         ` : ''}
         <div class="mt-2 pt-2 border-t border text-xs text-muted space-y-1">
-          <div>${windowBudget} − ${sumPast6Actual} = <strong>${todayKcalTarget} kcal today</strong></div>
+          <div>${todayBaseCalories}${todaysTrainingBump > 0 ? ` + ${todaysTrainingBump}` : ''} + ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied}${manualBankCapped ? ` (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance}, capped)` : ''} = <strong>${todayKcalTarget} kcal today</strong></div>
           <div>${tomorrowNote}</div>
         </div>
       </div>
@@ -996,7 +1003,7 @@ function renderTodayCompact(bankingData) {
     todayKcalTarget, finalProteinG, finalFatG, finalCarbsG,
     todayBaseCalories, todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
     bankMode, scheduleAdjustment, rawBankBalance, targetFloorApplied, effectiveFloor, floorSource, scheduleCapped,
-    macroFloorExceedsCalories,
+    macroFloorExceedsCalories, bankAdjustmentApplied, manualBankCapped,
   } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
@@ -1044,9 +1051,12 @@ function renderTodayCompact(bankingData) {
       adjSegment = ` + Schedule: ${scheduleAdjustment > 0 ? '+' : ''}${scheduleAdjustment}`;
     }
   } else {
-    // Manual mode — rolling bank
-    if (bankBalance !== 0) {
-      adjSegment = ` + Bank: ${bankBalance > 0 ? '+' : ''}${bankBalance}`;
+    // Manual mode — rolling bank (use applied/capped value in formula)
+    if (bankAdjustmentApplied !== 0) {
+      adjSegment = ` + Bank: ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied}`;
+      if (manualBankCapped) {
+        adjSegment += ` (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance}, capped)`;
+      }
     }
   }
   const exerciseSegment = todaysTrainingBump > 0 ? ` + Exercise: +${todaysTrainingBump}` : '';
@@ -1388,6 +1398,7 @@ function renderBankingPanel(bankingData) {
     bankBalance, rawBankBalance, pastDays, sumPast6Actual, sumPastTargets,
     windowBudget, todayBaseCalories, todaysTrainingBump, targetMode, bankMode, scheduleAdjustment,
     targetFloorApplied, effectiveFloor, floorSource, scheduleCapped, todayKcalTarget,
+    bankAdjustmentApplied, manualBankCapped,
   } = bankingData;
 
   const contributionRows = pastDays.map(d => `
@@ -1506,9 +1517,9 @@ function renderBankingPanel(bankingData) {
 
   // Manual mode — rolling bank panel
   const bankExplanation = bankBalance > 0
-    ? `You have ${bankBalance} kcal banked from under-eating — today's target is higher to use it.`
+    ? `You have ${bankBalance} kcal banked from under-eating — today's target is ${bankAdjustmentApplied > 0 ? `+${bankAdjustmentApplied}` : `${bankAdjustmentApplied}`} kcal${manualBankCapped ? ` (capped from +${bankBalance})` : ''}.`
     : bankBalance < 0
-    ? `You're ${Math.abs(bankBalance)} kcal over budget — today's target is lower to balance it out.`
+    ? `You're ${Math.abs(bankBalance)} kcal over budget — today's target is reduced by ${Math.abs(bankAdjustmentApplied)} kcal${manualBankCapped ? ` (capped from −${Math.abs(bankBalance)})` : ''}.`
     : "You're perfectly on track — no adjustment needed!";
 
   const budgetExplain = `${windowBudget} kcal (${todayBaseCalories}/day × 7 + training bumps).`;

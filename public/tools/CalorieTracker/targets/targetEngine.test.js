@@ -243,6 +243,144 @@ describe('computeTDEE', () => {
     const veryActive = computeTDEE(bmrResult, makeProfile({ baselineActivityLevel: 'very_active' }), null);
     expect(sedentary.tdee).toBeLessThan(veryActive.tdee);
   });
+
+  it('prefers rest-day TDEE over tdee_current when both are available', () => {
+    const analysis = makeAnalysis({
+      bmrModel: {
+        tdee_current: 2500,
+        tdee_rest_day: 2100,
+        modelPredictedRestDayTdee: 2100,
+        fittedBmr: 1800,
+        error: null,
+      },
+    });
+    const { tdee, source } = computeTDEE(bmrResult, makeProfile(), analysis);
+    expect(tdee).toBe(2100);
+    expect(source).toBe('empirical_rest_day');
+  });
+
+  it('rejects tdee_current below sedentary floor and uses rest-day TDEE', () => {
+    // bmrResult.bmr = 1800; sedentaryFloor = 1800 * 1.2 = 2160; tdeeCurrent = 1900 < 2160
+    const analysis = makeAnalysis({
+      bmrModel: {
+        tdee_current: 1900,
+        tdee_rest_day: 2100,
+        modelPredictedRestDayTdee: 2100,
+        fittedBmr: 1800,
+        error: null,
+      },
+    });
+    const { tdee, source, tdeeCurrentRejected } = computeTDEE(bmrResult, makeProfile(), analysis);
+    expect(tdeeCurrentRejected).toBe(true);
+    expect(tdee).toBe(2100);
+    expect(source).toBe('empirical_rest_day');
+  });
+
+  it('uses tdee_current when it is above sedentary floor and no rest-day available', () => {
+    const analysis = makeAnalysis({ bmrModel: { tdee_current: 2500, error: null } });
+    // sedentaryFloor = 1800 * 1.2 = 2160; 2500 > 2160 → not rejected
+    const { tdee, source, tdeeCurrentRejected } = computeTDEE(bmrResult, makeProfile(), analysis);
+    expect(tdeeCurrentRejected).toBe(false);
+    expect(tdee).toBe(2500);
+    expect(source).toBe('empirical');
+  });
+
+  it('falls back to formula when tdee_current is below floor and no rest-day exists', () => {
+    const analysis = makeAnalysis({
+      bmrModel: { tdee_current: 1900, error: null }, // no rest-day
+    });
+    // sedentaryFloor = 2160; 1900 < 2160 → rejected; no rest-day or observed → formula
+    const { source } = computeTDEE(bmrResult, makeProfile({ baselineActivityLevel: 'moderate' }), analysis);
+    expect(source).toBe('formula');
+  });
+
+  it('uses observedTdee when rest-day is unavailable but observed is above floor', () => {
+    const analysis = makeAnalysis({
+      bmrModel: {
+        tdee_current: 1900, // below floor → rejected
+        observedTdee: 2300,
+        error: null,
+      },
+    });
+    const { tdee, source } = computeTDEE(bmrResult, makeProfile(), analysis);
+    expect(tdee).toBe(2300);
+    expect(source).toBe('empirical_observed');
+  });
+});
+
+// ── 176.1 → 170 lb regression scenario ──────────────────────────────────────
+
+describe('176.1 → 170 lb by 2026-07-31 planning target (regression)', () => {
+  const analysis176 = {
+    summary: { currentWeight: 176.1 },
+    bmrModel: {
+      tdee_current: 1804,          // recent low estimate — below sedentary floor
+      tdee_rest_day: 2094,
+      modelPredictedRestDayTdee: 2094,
+      fittedBmr: 1746,
+      observedTdee: 2213,
+      error: null,
+    },
+  };
+
+  it('computeTDEE rejects tdee_current=1804 (below floor) and uses rest-day 2094', () => {
+    const bmr = computeBMR(makeProfile({ sex: 'male', age: 35, heightValue: 70 }), 176.1);
+    const { tdee, source, tdeeCurrentRejected } = computeTDEE(bmr, makeProfile(), analysis176);
+    expect(tdeeCurrentRejected).toBe(true);
+    expect(source).toBe('empirical_rest_day');
+    expect(tdee).toBe(2094);
+  });
+
+  it('generateTargets produces base ~1800 kcal (not 1516) when rest-day TDEE is 2094', () => {
+    const profile = makeProfile({ sex: 'male', age: 35, heightValue: 70, heightUnit: 'in' });
+    const goals = makeGoals({
+      goalType: 'fatLoss',
+      targetWeightLb: 170,
+      targetDate: '2026-07-31',
+    });
+    const { targets, meta } = generateTargets(profile, goals, analysis176, null, '2026-05-19');
+    expect(meta.tdeeValue).toBe(2094);
+    // Deficit for 6.1 lb in 73 days ≈ 292 kcal; target ≈ 2094 - 292 = 1802
+    expect(targets.calories).toBeGreaterThan(1700);
+    expect(targets.calories).toBeLessThan(1900);
+    expect(targets.calories).not.toBe(1516); // old broken value
+  });
+
+  it('moving target date later increases calorie target', () => {
+    const profile = makeProfile({ sex: 'male', age: 35, heightValue: 70, heightUnit: 'in' });
+    const goalsNear = makeGoals({ goalType: 'fatLoss', targetWeightLb: 170, targetDate: '2026-07-31' });
+    const goalsFar  = makeGoals({ goalType: 'fatLoss', targetWeightLb: 170, targetDate: '2027-01-31' });
+    const { targets: near } = generateTargets(profile, goalsNear, analysis176, null, '2026-05-19');
+    const { targets: far  } = generateTargets(profile, goalsFar,  analysis176, null, '2026-05-19');
+    expect(far.calories).toBeGreaterThan(near.calories);
+  });
+
+  it('moving target date earlier decreases calorie target', () => {
+    const profile = makeProfile({ sex: 'male', age: 35, heightValue: 70, heightUnit: 'in' });
+    const goalsNear = makeGoals({ goalType: 'fatLoss', targetWeightLb: 170, targetDate: '2026-06-30' });
+    const goalsFar  = makeGoals({ goalType: 'fatLoss', targetWeightLb: 170, targetDate: '2026-07-31' });
+    const { targets: near } = generateTargets(profile, goalsNear, analysis176, null, '2026-05-19');
+    const { targets: far  } = generateTargets(profile, goalsFar,  analysis176, null, '2026-05-19');
+    expect(near.calories).toBeLessThanOrEqual(far.calories);
+  });
+
+  it('target weight >= current weight falls back to default 400 kcal deficit', () => {
+    const profile = makeProfile({ sex: 'male', age: 35, heightValue: 70, heightUnit: 'in' });
+    // target weight above current weight: no time-based deficit
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 180, targetDate: '2026-07-31' });
+    const { targets } = generateTargets(profile, goals, analysis176, null, '2026-05-19');
+    // Should use default 400 deficit: 2094 - 400 = 1694
+    expect(targets.calories).toBeGreaterThan(1600);
+    expect(targets.calories).toBeLessThan(1800);
+  });
+
+  it('final target never below minDailyCalories floor', () => {
+    // Artificially extreme scenario: extremely aggressive date
+    const profile = makeProfile({ sex: 'male', age: 35, heightValue: 70, heightUnit: 'in' });
+    const goals = makeGoals({ goalType: 'fatLoss', targetWeightLb: 130, targetDate: '2026-06-01' });
+    const { targets } = generateTargets(profile, goals, analysis176, null, '2026-05-19');
+    expect(targets.calories).toBeGreaterThanOrEqual(1000);
+  });
 });
 
 // ── computeCalorieTarget ──────────────────────────────────────────────────────

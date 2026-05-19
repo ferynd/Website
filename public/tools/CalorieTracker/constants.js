@@ -38,6 +38,10 @@ export const BANKING_CONFIG = {
   // Hard cap: absolute maximum correction — goal date may need adjustment
   MAX_SCHEDULE_ADJ_HARD: 250,
 
+  // Manual rolling bank adjustment caps (kcal/day)
+  MANUAL_BANK_CAP_DOWN: -400,  // max downward adjustment per day in manual rolling mode
+  MANUAL_BANK_CAP_UP: 600,     // max upward adjustment per day in manual rolling mode
+
   // Safe daily calorie floor — NIDDK Body Weight Planner public lower bound
   MIN_DAILY_CALORIES: 1000,
 };

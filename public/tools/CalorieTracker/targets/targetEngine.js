@@ -184,33 +184,104 @@ export function computeBMR(profile, weightLb) {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute TDEE using empirical analysis data when sufficient, otherwise BMR × PAL.
+ * Compute planning TDEE using the most stable available empirical estimate.
+ *
+ * Priority order:
+ *   1. Rest-day TDEE (modelPredictedRestDayTdee / tdee_rest_day) — best for daily planning
+ *      because exercise is added separately by the banking layer.
+ *   2. Observed TDEE (trimmed-mean block estimates) — includes activity; not preferred
+ *      when rest-day is available, but better than a potentially noisy recent window.
+ *   3. tdee_current — only used when it is above the sedentary floor
+ *      (max(bmr × 1.2, fittedBmr × 1.2)). If below the floor, it is rejected as a
+ *      recent-low and the next available estimate is tried.
+ *   4. Formula BMR × PAL — fallback when no empirical data is available or valid.
  *
  * @param {{ bmr: number, methodLabel: string }} bmrResult
  * @param {object}      profile
  * @param {object|null} analysisResults
- * @returns {{ tdee: number, source: string, sourceLabel: string, pal: number|null }}
+ * @returns {{ tdee: number, source: string, sourceLabel: string, pal: number|null,
+ *             tdeeCurrent: number|null, tdeeCurrentRejected: boolean,
+ *             restDayTdee: number|null, observedTdee: number|null }}
  */
 export function computeTDEE(bmrResult, profile, analysisResults) {
-  const empirical = analysisResults?.bmrModel?.tdee_current;
-  if (empirical && !analysisResults?.bmrModel?.error && empirical > 800) {
-    return {
-      tdee: roundInt(empirical),
-      source: 'empirical',
-      sourceLabel: 'Measured from your weight and calorie history',
-      pal: null,
-    };
+  const bmrModel = analysisResults?.bmrModel;
+
+  if (bmrModel && !bmrModel.error) {
+    // Sedentary floor: tdee_current values below this are suspect
+    const fittedBmr = bmrModel.fittedBmr ?? bmrModel.bmr_current ?? null;
+    const sedentaryFloor = Math.max(
+      bmrResult.bmr * 1.2,
+      fittedBmr ? fittedBmr * 1.2 : 0
+    );
+
+    const tdeeCurrent  = bmrModel.tdee_current  ? roundInt(bmrModel.tdee_current)  : null;
+    const restDayTdee  = bmrModel.modelPredictedRestDayTdee ?? bmrModel.tdee_rest_day ?? null;
+    const observedTdee = bmrModel.observedTdee ?? null;
+
+    const tdeeCurrentRejected = !!(
+      tdeeCurrent && tdeeCurrent < sedentaryFloor
+    );
+    const rejectedNote = tdeeCurrentRejected
+      ? ` (recent TDEE ${tdeeCurrent} kcal rejected — below sedentary floor ${Math.round(sedentaryFloor)} kcal)`
+      : '';
+
+    // 1. Rest-day TDEE (exercise added separately by banking layer)
+    if (restDayTdee && restDayTdee > 800) {
+      return {
+        tdee: roundInt(restDayTdee),
+        source: 'empirical_rest_day',
+        sourceLabel: `Rest-day TDEE from fitted model${rejectedNote} — exercise calories added on top`,
+        pal: null,
+        tdeeCurrent,
+        tdeeCurrentRejected,
+        restDayTdee: roundInt(restDayTdee),
+        observedTdee: observedTdee ? roundInt(observedTdee) : null,
+      };
+    }
+
+    // 2. Observed TDEE (long-window trimmed-mean block estimate)
+    if (observedTdee && observedTdee > 800) {
+      return {
+        tdee: roundInt(observedTdee),
+        source: 'empirical_observed',
+        sourceLabel: 'Observed TDEE (trimmed-mean block estimates) — includes historical activity',
+        pal: null,
+        tdeeCurrent,
+        tdeeCurrentRejected,
+        restDayTdee: null,
+        observedTdee: roundInt(observedTdee),
+      };
+    }
+
+    // 3. tdee_current — only if above sedentary floor
+    if (tdeeCurrent && tdeeCurrent > 800 && !tdeeCurrentRejected) {
+      return {
+        tdee: tdeeCurrent,
+        source: 'empirical',
+        sourceLabel: 'Recent TDEE from weight and calorie history',
+        pal: null,
+        tdeeCurrent,
+        tdeeCurrentRejected: false,
+        restDayTdee: null,
+        observedTdee: null,
+      };
+    }
   }
 
+  // 4. Formula fallback
   const activityKey = profile.baselineActivityLevel;
   const pal = PAL_MULTIPLIERS[activityKey] ?? PAL_MULTIPLIERS.moderate;
   const label = ACTIVITY_LABELS[activityKey] ?? 'Moderate activity (assumed)';
-
   return {
     tdee: roundInt(bmrResult.bmr * pal),
     source: 'formula',
     sourceLabel: `${bmrResult.methodLabel} × ${pal} PAL (${label})`,
     pal,
+    tdeeCurrent: analysisResults?.bmrModel?.tdee_current
+      ? roundInt(analysisResults.bmrModel.tdee_current) : null,
+    tdeeCurrentRejected: false,
+    restDayTdee: null,
+    observedTdee: null,
   };
 }
 
@@ -611,8 +682,11 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
     currentWeight: `${round1(weightLb)} lb — ${weightLabel}`,
     bmr: `${bmrResult.bmr} kcal/day via ${bmrResult.methodLabel}`,
     tdee: `${tdeeResult.tdee} kcal/day — ${tdeeResult.sourceLabel}`,
-    activityIgnored: tdeeResult.source === 'empirical'
-      ? `Baseline activity level setting is ignored — TDEE is measured directly from your weight and calorie history (${tdeeResult.tdee} kcal/day)`
+    tdeeCurrentRejected: tdeeResult.tdeeCurrentRejected
+      ? `Recent TDEE (${tdeeResult.tdeeCurrent} kcal) is below the sedentary floor and was not used for planning. Planning TDEE uses rest-day estimate instead.`
+      : null,
+    activityIgnored: tdeeResult.source !== 'formula'
+      ? `Baseline activity level is ignored — planning TDEE is derived from your weight and calorie history.`
       : null,
     calories: `${calResult.calories} kcal/day — ${calResult.deficitNote}`,
     deficitClamped: (goalType === 'fatLoss' && calResult.deficitClampReason !== 'none')

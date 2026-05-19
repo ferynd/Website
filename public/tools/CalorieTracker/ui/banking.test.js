@@ -438,15 +438,88 @@ describe('calcBankingCore — manual rolling bank', () => {
     expect(r.todayKcalTarget).toBeGreaterThan(2000);
   });
 
-  it('large overage → target floored at effectiveFloor', () => {
+  it('large overage → bank capped at -400/day, target = 1600 (not floored)', () => {
+    // rawBankBalance = 6×2000 − 6×4000 = −12000; cap → −400; target = 2000−400 = 1600
     const r = calcBankingCore(makeCore({ sumPast6Actual: 6 * 4000 }));
-    expect(r.targetFloorApplied).toBe(true);
-    expect(r.todayKcalTarget).toBe(1000);
+    expect(r.rawBankBalance).toBe(-12000);
+    expect(r.bankAdjustmentApplied).toBe(-400);
+    expect(r.todayKcalTarget).toBe(1600);
+    expect(r.targetFloorApplied).toBe(false);
+    expect(r.manualBankCapped).toBe(true);
   });
 
-  it('floor of 1200 (BMR-based) is used when provided', () => {
-    const r = calcBankingCore(makeCore({ sumPast6Actual: 6 * 4000, effectiveFloor: 1200 }));
+  it('floor applies when base + capped adjustment is below effectiveFloor', () => {
+    // base 1200, adjustment −400 → 800 < effectiveFloor 1200 → floored
+    const r = calcBankingCore(makeCore({
+      todayBaseCalories: 1200,
+      sumPastBaseTargets: 6 * 1200,
+      sumPast6Actual: 6 * 4000,
+      effectiveFloor: 1200,
+    }));
+    expect(r.bankAdjustmentApplied).toBe(-400);
+    expect(r.targetFloorApplied).toBe(true);
     expect(r.todayKcalTarget).toBe(1200);
+  });
+});
+
+describe('calcBankingCore — manual rolling bank cap', () => {
+  it('-1980 bank → capped to -400, target = 1600 (not -475)', () => {
+    // 6-day raw balance = -1980 (exactly the bug scenario)
+    const r = calcBankingCore(makeCore({
+      sumPastBaseTargets: 6 * 2000,
+      sumPast6Actual: 6 * 2000 + 1980, // over by 1980
+    }));
+    expect(r.rawBankBalance).toBe(-1980);
+    expect(r.bankAdjustmentApplied).toBe(-400); // capped
+    expect(r.todayKcalTarget).toBe(1600);       // 2000 - 400
+    expect(r.manualBankCapped).toBe(true);
+  });
+
+  it('small overage within cap applied directly (no cap)', () => {
+    // rawBankBalance = -200 (well within -400 cap)
+    const r = calcBankingCore(makeCore({
+      sumPastBaseTargets: 6 * 2000,
+      sumPast6Actual: 6 * 2000 + 200,
+    }));
+    expect(r.rawBankBalance).toBe(-200);
+    expect(r.bankAdjustmentApplied).toBe(-200); // within cap
+    expect(r.todayKcalTarget).toBe(1800);
+    expect(r.manualBankCapped).toBe(false);
+  });
+
+  it('large credit capped at +600 kcal/day', () => {
+    // rawBankBalance = 9000 (6 days at 500 kcal vs 2000 target)
+    const r = calcBankingCore(makeCore({ sumPast6Actual: 6 * 500 }));
+    expect(r.rawBankBalance).toBe(9000);
+    expect(r.bankAdjustmentApplied).toBe(600); // capped at +600
+    expect(r.todayKcalTarget).toBe(2600);
+    expect(r.manualBankCapped).toBe(true);
+  });
+
+  it('floor still applies when base + capped adjustment is below floor', () => {
+    // base = 1100, cap adjustment = -400, raw = 1100 - 400 = 700 → floored to 1000
+    const r = calcBankingCore(makeCore({
+      todayBaseCalories: 1100,
+      sumPastBaseTargets: 6 * 1100,
+      sumPast6Actual: 6 * 4000,
+      effectiveFloor: 1000,
+    }));
+    expect(r.bankAdjustmentApplied).toBe(-400);
+    expect(r.todayKcalTarget).toBe(1000);
+    expect(r.targetFloorApplied).toBe(true);
+  });
+
+  it('Auto Goal mode never gets manual cap (uses schedule adjustment instead)', () => {
+    const far = new Date(TODAY); far.setDate(far.getDate() + 74);
+    const r = calcBankingCore(makeCore({
+      targetMode: 'autoGoal',
+      sumPast6Actual: 6 * 4000,
+      goalTargetDate: far.toISOString().slice(0, 10),
+    }));
+    expect(r.bankMode).toBe('autoGoalSchedule');
+    expect(r.manualBankCapped).toBe(false); // only manual mode uses the cap
+    expect(r.scheduleAdjustment).toBeLessThan(0); // schedule adjustment, not cap
+    expect(Math.abs(r.scheduleAdjustment)).toBeLessThanOrEqual(250); // within hard cap
   });
 });
 
@@ -598,5 +671,42 @@ describe('calcBankingCore — banking off UI safety', () => {
     }
     expect(typeof r.todayKcalTarget).toBe('number');
     expect(typeof r.bankBalance).toBe('number');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Calories remaining display behavior
+// ---------------------------------------------------------------------------
+
+describe('calories remaining display logic', () => {
+  it('eaten < target → remaining is positive', () => {
+    const target = 1800;
+    const eaten = 1200;
+    const remaining = target - eaten;
+    expect(remaining).toBeGreaterThan(0);
+    // UI should show "Calories Remaining"
+  });
+
+  it('eaten > target → remaining is negative (Over by)', () => {
+    const target = 1800;
+    const eaten = 2200;
+    const remaining = target - eaten;
+    expect(remaining).toBeLessThan(0);
+    // UI should show "Calories Over Target"
+    expect(Math.abs(remaining)).toBe(400);
+  });
+
+  it('final target after all adjustments is always at least effectiveFloor', () => {
+    const effectiveFloor = 1484; // BMR-based for 176.1 lb user
+    // Scenario: base 1516 + bank -400 (capped) = 1116 → below floor → floored
+    const r = calcBankingCore(makeCore({
+      todayBaseCalories: 1516,
+      sumPastBaseTargets: 6 * 1516,
+      sumPastTrainingBumps: 0,
+      sumPast6Actual: 6 * 1516 + 1980, // rawBankBalance = -1980
+      windowBudget: 7 * 1516,
+      effectiveFloor,
+    }));
+    expect(r.todayKcalTarget).toBeGreaterThanOrEqual(effectiveFloor);
   });
 });
