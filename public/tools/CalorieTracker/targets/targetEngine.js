@@ -644,6 +644,7 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
       tdeeValue: tdeeResult.tdee,
       tdeeSource: tdeeResult.source,
       goalType,
+      calorieFloor: calResult.calorieFloor,
     },
   };
 }
@@ -728,6 +729,7 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
       targets: { ...stateLike.baselineTargets },
       source: 'manual',
       warnings: [],
+      calorieFloor: 1000,
     };
   }
 
@@ -747,6 +749,7 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
       targets: { ...stateLike.baselineTargets },
       source: 'manual_fallback',
       warnings: [`Auto-goal targets unavailable (${reason}); falling back to manual baseline.`],
+      calorieFloor: 1000,
     };
   }
 
@@ -755,6 +758,7 @@ export function resolveDailyBaseTargets(dateStr, stateLike) {
     targets: finalTargets,
     source: 'autoGoal',
     warnings: result.warnings,
+    calorieFloor: result.meta?.calorieFloor ?? 1000,
   };
 }
 

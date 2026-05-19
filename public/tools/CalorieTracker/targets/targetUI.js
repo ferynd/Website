@@ -339,12 +339,22 @@ function _setAutosaveStatus(status) {
 async function _doAutosave() {
   _setAutosaveStatus('saving');
   try {
-    await saveUserProfile(readProfileFromForm());
-    await saveGoalSettings(readGoalsFromForm());
+    await saveUserProfile(readProfileFromForm(), { silent: true });
+    await saveGoalSettings(readGoalsFromForm(), { silent: true });
     updateWeightDisplay();
     _setAutosaveStatus('saved');
     // Fade back to blank after 3 s
     setTimeout(() => _setAutosaveStatus(''), 3000);
+    // Invalidate cached analysis so profile changes (BF%, weight, age, sex, height)
+    // are reflected immediately rather than using stale TDEE/targets.
+    state.analysisResults = null;
+    // Refresh Today tab and chart so profile changes are immediately reflected
+    try {
+      const { updateDashboard } = await import('../ui/dashboard.js');
+      const { updateChart } = await import('../ui/chart.js');
+      updateDashboard();
+      updateChart();
+    } catch (_) {}
   } catch (err) {
     _setAutosaveStatus('error');
     handleError('autosave-profile', err, 'Failed to autosave profile.');
@@ -475,9 +485,16 @@ async function handleSaveProfile() {
     await saveUserProfile(readProfileFromForm());
     await saveGoalSettings(readGoalsFromForm());
     updateWeightDisplay();
+    state.analysisResults = null;
     _setAutosaveStatus('saved');
     setTimeout(() => _setAutosaveStatus(''), 3000);
     showMessage('Profile and goals saved!');
+    try {
+      const { updateDashboard } = await import('../ui/dashboard.js');
+      const { updateChart } = await import('../ui/chart.js');
+      updateDashboard();
+      updateChart();
+    } catch (_) {}
   } catch (err) {
     _setAutosaveStatus('error');
     handleError('save-profile', err, 'Failed to save profile.');
@@ -518,6 +535,8 @@ async function handleApplyTargets() {
     const finalTargets = applyManualOverrides(result.targets, manualOverrides);
     await saveTargets(finalTargets);
 
+    // Invalidate cached analysis so the new profile/goals take effect immediately.
+    state.analysisResults = null;
     // Refresh all visible tracker UI
     const { populateSettingsForm, updateDashboard } = await import('../ui/dashboard.js');
     const { updateChart } = await import('../ui/chart.js');
@@ -572,7 +591,7 @@ export function wireProfileTab() {
 
   const autoFields = [
     'profile-manual-weight', 'profile-birthdate', 'profile-age',
-    'profile-height', 'profile-bodyfat', 'profile-goal-type',
+    'profile-height', 'profile-height-unit', 'profile-bodyfat', 'profile-goal-type',
     'profile-target-weight', 'profile-target-date', 'profile-protein-basis',
   ];
   for (const id of autoFields) {
