@@ -81,6 +81,15 @@ Critical design constraints:
 
 Test suite: 364 tests across 6 files, run with `node_modules/.bin/vitest run` from `public/tools/CalorieTracker/`. All pure-function tests — no Firebase or DOM.
 
+### Backlog workflow
+Ongoing CalorieTracker work lives in [`public/tools/CalorieTracker/BACKLOG.md`](public/tools/CalorieTracker/BACKLOG.md). Read it at session start — its header documents the full protocol; the points below are a pointer, not a duplicate.
+
+- **Trigger phrase:** _"Continue working on the CalorieTracker backlog."_
+- **Working branch:** `working/calorie-tracker-backlog`, long-lived, branched from `main`. Switch onto it (create from `origin/main` if missing) before doing any CalorieTracker work — do **not** stay on the auto-generated `claude/<adjective>-<noun>-<id>` branch the harness may place you on.
+- **PR:** one long-lived PR from `working/calorie-tracker-backlog` → `main`. On first push, create it via the GitHub MCP tools if not already open; subsequent pushes update the same PR.
+- **Status legend:** `[ ]` not started · `[p]` in progress / awaiting review / blocked / needs follow-up · `[x]` complete. **Never flip `[p]` → `[x]` on your own** — only the user does that after reviewing. Notes are one line, reference the commit hash, and replace (don't append).
+- **New items:** when the user adds a feature/bug, slot it into the appropriate priority section (CRITICAL → HIGH → MEDIUM → LOW) and pick the next free number (#46, #47, …).
+
 ## Documentation requirements (non-negotiable)
 Any **fundamental change** (routing, structure, build commands, data model, security rules, theming, component API) must update in the **same PR**:
 - `README.md`
