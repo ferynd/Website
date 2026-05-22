@@ -2,7 +2,7 @@
 
 A Firebase-backed, client-side nutrition tracker built with plain JavaScript ES modules and Chart.js. Runs as a standalone static app under `/public/tools/CalorieTracker/` and is linked from the main site's Tools page.
 
-> **Active improvement work:** See [`IMPROVEMENTS.md`](./IMPROVEMENTS.md) for the prioritized punch list (45 items across security, math accuracy, mobile UX, accessibility, and code structure) with per-item completion tracking and suggested session groupings for Claude Code agents.
+> **Active work:** See [`BACKLOG.md`](./BACKLOG.md) — the single source of truth for ongoing CalorieTracker work, including the session-continuation protocol, branch/PR strategy, status legend, and the prioritized item list. To pick up where a prior session left off, start a new session with: _"Continue working on the CalorieTracker backlog."_
 
 ---
 

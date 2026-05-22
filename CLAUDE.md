@@ -59,6 +59,12 @@ public/
 - Trip Planner: `app/tools/trip-planner/page.tsx`, `PlanContext.tsx`, and `components/**` wire Firebase Auth, Firestore listeners, and the timeline/ideas/settings/map UI. Shared config + typed helpers live in `app/tools/trip-planner/lib/` alongside client image compression.
 - Conflict Tracker: `app/tools/conflict-tracker/page.tsx`, `ConflictContext.tsx`, and `components/**` implement two-person conflict logging with independent reflections, a shared section that unlocks once both submit, and a trend dashboard. Data lives under `artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{personA|personB}`. Typed helpers in `app/tools/conflict-tracker/lib/`.
 
+## CalorieTracker backlog workflow
+- Ongoing CalorieTracker work is tracked in [`public/tools/CalorieTracker/BACKLOG.md`](public/tools/CalorieTracker/BACKLOG.md). That file is the single source of truth — status, protocol, branch/PR strategy, and the prioritized item list all live there.
+- **Stable working branch:** `working/calorie-tracker-backlog` (long-lived, branched from `main`, one open PR targeting `main`). Sessions must switch to this branch on start rather than working on the auto-generated `claude/*` branch.
+- **Session-start prompt:** _"Continue working on the CalorieTracker backlog."_ — triggers the protocol documented at the top of `BACKLOG.md`.
+- **Status model:** `[ ]` not started · `[p]` in progress / awaiting review / blocked · `[x]` complete (only after explicit user approval — never flip to `[x]` on your own).
+
 ---
 
 **Update this file** whenever structure, commands, or conventions change. Also update **README.md** and **AI_AGENTS.md**.

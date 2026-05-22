@@ -1,31 +1,86 @@
-# CalorieTracker — Improvement Punch List
+# CalorieTracker — Backlog
 
-> **This file is the persistent task board for improving `public/tools/CalorieTracker/`.**
-> It was generated from a full multi-agent review covering code structure, accuracy, usability,
-> mobile visuals, accessibility, and math/algorithm correctness.
->
-> **Branch:** `claude/review-calorie-tracker-dVVZA`
-> **Repo:** `ferynd/website`
->
-> When an item is implemented, check the box (`[x]`) and add a brief note on how it was resolved
-> and the relevant commit hash. Future agents should read this file at session start, confirm
-> which group they are implementing, and update status on completion.
+Single source of truth for ongoing work on `public/tools/CalorieTracker/`. Items started life as
+a 45-point review punch list; new feature requests and bug reports are added here as they come
+up.
 
----
+## Resuming work across sessions
+
+Short prompt to start a new session: **"Continue working on the CalorieTracker backlog."**
+
+When invoked with that (or a close variant), follow this protocol without needing further
+instruction:
+
+1. `git fetch origin`.
+2. Switch to the stable working branch: `git switch working/calorie-tracker-backlog`. If it
+   doesn't exist locally or on origin, create it from `origin/main`:
+   `git switch -c working/calorie-tracker-backlog origin/main`. **Do not** work on the
+   auto-generated `claude/<adjective>-<noun>-<id>` branch the harness may have placed you on —
+   switch off it first.
+3. `git pull --ff-only origin working/calorie-tracker-backlog` (skip if just created).
+4. Read this file end-to-end. Identify (a) any `[p]` items needing follow-up from third-party
+   review or prior session, then (b) the highest-priority `[ ]` items, in section order
+   (CRITICAL → HIGH → MEDIUM → LOW).
+5. Pick the next reasonable batch — usually one suggested session group (A–I) or one to three
+   related items.
+6. Implement, update each touched item's status to `[p]` with a one-line note (see status
+   legend below). Do **not** flip to `[x]` — only the user does that.
+7. Run the Vitest suite from this directory: `npm test`. Keep it green.
+8. Commit with a Conventional-Commit message scoped to the tool, e.g.
+   `feat(calorie-tracker): #1 sanitize user food names (prevent XSS)`. One commit per logical
+   change.
+9. Push: `git push -u origin working/calorie-tracker-backlog`.
+10. If no open PR exists for the branch, create one via the GitHub MCP tools (title:
+    "CalorieTracker backlog"; body: short pointer to this file). All subsequent pushes auto-
+    update the same PR.
 
 ## Status legend
 
 | Mark | Meaning |
 |------|---------|
-| `[ ]` | Not started |
-| `[~]` | In progress (agent session active) |
-| `[x]` | Complete |
+| `[ ]` | Not started. |
+| `[p]` | In progress / awaiting review / blocked / needs follow-up. **Default state once code has been touched** — only the user flips to `[x]`. |
+| `[x]` | Complete. The user has explicitly approved. |
 
----
+The note line under a `[p]` item begins with one of four sub-labels so the state is scannable:
+
+- `> awaiting review — <one-line summary>; tests: <pass/notes>; commit: <short-sha>`
+- `> in progress — <what's left>`
+- `> blocked — <reason>`
+- `> needs follow-up — <what the reviewer said>; commit: <short-sha>`
+
+When the user approves, collapse the note to a single line and flip the box:
+
+- `> Resolved: <one-line summary>; tests: <pass/notes>; commit: <short-sha>`
+
+## Editing rules
+
+- **Never** mark an item `[x]` just because code was changed. Mark `[p]` and wait for explicit
+  user approval.
+- Keep notes to **one line** per item. No pasted diffs, no multi-paragraph rationale — reference
+  the commit hash and let the diff speak.
+- If the same item is revised after review, **replace** the existing note line (don't append) so
+  the file doesn't grow.
+- New items the user asks to add get slotted into the most appropriate existing priority section
+  (CRITICAL → HIGH → MEDIUM → LOW) based on severity, dependencies, and impact — not appended at
+  the bottom.
+- Renumbering is not required when adding items; pick the next free number (#46, #47, …).
+
+## Branch and PR strategy
+
+- **Working branch:** `working/calorie-tracker-backlog`, long-lived, branched from `main`. One
+  PR is open against `main` at any time and is updated by every push. Replaces the ephemeral
+  `claude/*` per-session branches.
+- **Merging:** The user merges the PR when they want to lock in a batch of approved items.
+  After merge, the working branch is reset/rebased onto the new `main` (or deleted and
+  recreated) for the next round.
+- **Why this shape:** stable name → stable PR URL → continuity across sessions, with git as the
+  hand-off rather than chat history.
 
 ## Suggested session groupings
 
-Run sessions in order. Each group is scoped to minimize cross-cutting risk.
+Run in order when starting from a clean backlog. Each group is scoped to minimize cross-cutting
+risk.
 
 | Session | Items | Focus |
 |---------|-------|-------|
@@ -39,7 +94,16 @@ Run sessions in order. Each group is scoped to minimize cross-cutting risk.
 | **H** | #32–40 | Polish (Chart.js upgrade, tooltip tokens, auto-target UX, exercise modal, food search, skeletons, spinner, activity icons, UL null comments) |
 | **I** | #41–45 | Nice-to-have (fluid type, PWA, CSV food import, details arrow, doc checklist) |
 
-Agents should run the Vitest suite (`npm test` from this directory) before and after each session.
+## Test command
+
+From `public/tools/CalorieTracker/`:
+
+```
+npm test
+```
+
+Baseline: **364 tests, 6 files, all passing.** Any session that changes logic must keep this
+green and add tests for new validators or pure functions.
 
 ---
 
