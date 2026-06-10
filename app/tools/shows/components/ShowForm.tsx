@@ -8,6 +8,11 @@ import type { DisambiguationOption } from '../lib/classifyTypes';
 import VibeTagChip from './VibeTagChip';
 import ScoreBlock from './ScoreBlock';
 import { useShows } from '../ShowsContext';
+import {
+  DEFAULT_CLASSIFY_GEMINI_MODEL,
+  readStoredGeminiModel,
+  SHOWS_CLASSIFY_MODEL_STORAGE_KEY,
+} from '@/app/lib/aiModels';
 
 const SERVICES = [
   'Crunchyroll',
@@ -148,6 +153,10 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
 
   async function classify() {
     if (!title.trim()) return;
+    const modelId = readStoredGeminiModel(
+      SHOWS_CLASSIFY_MODEL_STORAGE_KEY,
+      DEFAULT_CLASSIFY_GEMINI_MODEL,
+    );
     setClassifying(true);
     setError('');
     clearDisambig();
@@ -159,6 +168,7 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
           title: title.trim(),
           typeHint: typeTouched ? type : null,
           typeHintWasUserSelected: typeTouched,
+          modelId,
         }),
       });
       if (!res.ok) {

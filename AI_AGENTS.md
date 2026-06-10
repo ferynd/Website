@@ -17,6 +17,7 @@ This document is the **single source of truth** for automated assistants (Claude
   - `tools/trip-planner/**` Trip Planner scaffold (Firebase Auth + UI timeline)
   - `tools/date-night/**` Date Night Roulette (Firebase Auth + Firestore roller + reviews + batch CSV imports; split math in `lib/{decay,stacking,roller}.ts` with Vitest tests)
   - `tools/conflict-tracker/**` Conflict Tracker (Firebase Auth + Firestore; two-person tracker groups, per-conflict reflections, shared section, trend dashboard; helpers in `lib/{firebase,db,types,tags}.ts`)
+  - `tools/shows/**` Movie/TV Show Tracker (Firebase Auth + Firestore; Gemini title classification and mood recommendations via Edge API routes; model metadata in `app/lib/aiModels.ts`)
 - **/components** — Reusable UI (Button via CVA, Input, Select, Nav, ProjectCard)
 - **/public** — Static HTML/CSS/JS sub-sites and assets
   - `/games/**`, `/tools/**`, `/trips/**` each with their own `index.html`

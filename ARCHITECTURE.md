@@ -20,6 +20,7 @@ app/
   tools/date-night/  # Date Night Roulette (Auth + Firestore + weighted roller + reviews)
     lib/decay.ts, lib/stacking.ts, lib/roller.ts # Pure roll math modules
     __tests__/ # Vitest coverage for decay/stacking/rarity behavior
+  tools/shows/       # Movie/TV tracker (Auth + Firestore + Gemini classify/recommend routes)
 components/
   Button.tsx, Input.tsx, Select.tsx, Nav.tsx, ProjectCard.tsx
 public/
@@ -48,6 +49,8 @@ public/
   Path: `/tools/trip-planner`
 - **Date Night Roulette** — Firebase-backed picker for date ideas/modifiers with veto/accept flow, batch CSV uploads for pool items, and photo/review history.
   Path: `/tools/date-night`
+- **Movie/TV Show Tracker** — Firebase-backed shared watchlist with ratings, notes, Gemini title classification, local model settings, and mood recommendations that can include rewatchable completed shows.
+  Path: `/tools/shows`
 - **Calorie Tracker** — A simple tool to track daily calorie intake (Static HTML).
   Path: `/tools/CalorieTracker/index.html`
 - **Social Security (interactive guide)** — Learn how benefits and earnings interact through simulations.  
@@ -58,6 +61,12 @@ public/
 - **Trips** (static):  
 - **Chicago Trip Itinerary** — An itinerary for a trip to Chicago (Static HTML).  
   Path: `/trips/ChicagoTripItinerary/index.html`
+
+## Movie/TV Show Tracker: AI Model Selection
+- **Shared model metadata:** `app/lib/aiModels.ts` is client-safe and holds available Gemini model IDs, display labels, defaults, validation helpers, and localStorage keys.
+- **Gemini request utility:** `app/lib/aiConfig.ts` builds plain JSON Gemini requests for Edge routes without tools, grounding, URL context, code execution, file search, or function calling.
+- **Defaults:** Classification/title expansion defaults to `gemini-3.1-flash-lite`; recommendations default to `gemini-2.5-flash`.
+- **Recommendation eligibility:** `candidateShows` includes Watching, Planned, On Hold, and Completed shows only when relevant viewers marked `wouldRewatch` as `yes` or `maybe`, before applying watcher preference tiers.
 
 ## Trip Cost & Trip Planner: Data & Modules
 - **Config:** `app/tools/trip-cost/firebaseConfig.ts` (admin email `arkkahdarkkahd@gmail.com`).

@@ -4,6 +4,7 @@ import { resolveTitle } from '@/app/tools/shows/lib/titleResolver';
 import { getTmdbConfig } from '@/app/tools/shows/lib/tmdbConfig';
 import type { ClassifyRequestBody } from '@/app/tools/shows/lib/classifyTypes';
 import type { ShowType } from '@/app/tools/shows/types';
+import { DEFAULT_CLASSIFY_GEMINI_MODEL, resolveGeminiModelId } from '@/app/lib/aiConfig';
 
 const ALLOWED_TYPES = new Set<string>(['anime', 'tv', 'movie', 'animated_movie', 'cartoon']);
 
@@ -16,6 +17,7 @@ export async function POST(req: NextRequest) {
   }
 
   const rawTitle = typeof body.title === 'string' ? body.title.trim() : '';
+  const modelId = resolveGeminiModelId(body.modelId, DEFAULT_CLASSIFY_GEMINI_MODEL);
   if (!rawTitle) {
     return NextResponse.json({ error: 'title is required.' }, { status: 400 });
   }
@@ -42,6 +44,7 @@ export async function POST(req: NextRequest) {
       typeHintWasUserSelected,
       tmdbConfig,
       geminiApiKey,
+      modelId,
     });
     return NextResponse.json(result);
   } catch (err) {

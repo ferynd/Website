@@ -3,7 +3,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import type { MoodEntry, ViewerPreferenceProfile } from '@/app/tools/shows/lib/recommendationContext';
 import type { Show } from '@/app/tools/shows/types';
 import { buildPrompt } from '@/app/tools/shows/lib/buildRecommendPrompt';
-import { callGemini, RECOMMEND_TEMPERATURE } from '@/app/lib/aiConfig';
+import {
+  callGemini,
+  DEFAULT_RECOMMEND_GEMINI_MODEL,
+  isGemini25Model,
+  RECOMMEND_TEMPERATURE,
+  resolveGeminiModelId,
+  type GeminiModelId,
+} from '@/app/lib/aiConfig';
 
 interface RecommendBody {
   moods: Record<string, MoodEntry>;
@@ -11,6 +18,7 @@ interface RecommendBody {
   profiles: Record<string, ViewerPreferenceProfile>;
   sharedMood?: string;
   excludeIds?: string[];
+  modelId?: GeminiModelId;
 }
 
 export async function POST(req: NextRequest) {
@@ -27,6 +35,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { moods, candidates: allCandidates, profiles, sharedMood, excludeIds = [] } = body;
+  const modelId = resolveGeminiModelId(body.modelId, DEFAULT_RECOMMEND_GEMINI_MODEL);
 
   if (!moods || !allCandidates || !profiles) {
     return NextResponse.json(
@@ -48,7 +57,11 @@ export async function POST(req: NextRequest) {
 
   let raw: string;
   try {
-    raw = await callGemini(prompt, key, RECOMMEND_TEMPERATURE);
+    raw = await callGemini(prompt, key, {
+      modelId,
+      temperature: isGemini25Model(modelId) ? RECOMMEND_TEMPERATURE : undefined,
+      thinkingLevel: 'medium',
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 500 });

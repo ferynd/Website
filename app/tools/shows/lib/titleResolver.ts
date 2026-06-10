@@ -33,7 +33,14 @@ import type {
 import type { ShowType } from '../types';
 import type { VibeCategory } from './vibeCategories';
 import { VIBE_CATEGORIES } from './vibeCategories';
-import { callGemini, CLASSIFY_TEMPERATURE } from '../../../lib/aiConfig';
+import {
+  callGemini,
+  CLASSIFY_TEMPERATURE,
+  DEFAULT_CLASSIFY_GEMINI_MODEL,
+  isGemini25Model,
+  resolveGeminiModelId,
+  type GeminiModelId,
+} from '../../../lib/aiConfig';
 
 // ─── config ───────────────────────────────────────────────────────────────────
 
@@ -204,8 +211,10 @@ export function shouldDisambiguate(sorted: ScoredCandidate[]): boolean {
 export async function expandTitleWithGemini(
   userQuery: string,
   geminiKey: string,
+  modelId: GeminiModelId = DEFAULT_CLASSIFY_GEMINI_MODEL,
 ): Promise<GeminiExpansionResult> {
-  const cacheKey = `gemini:${normalizeTitleQuery(userQuery)}`;
+  const resolvedModelId = resolveGeminiModelId(modelId, DEFAULT_CLASSIFY_GEMINI_MODEL);
+  const cacheKey = `gemini:${resolvedModelId}:${normalizeTitleQuery(userQuery)}`;
   const cached = geminiCache.get(cacheKey);
   if (cached) return cached;
 
@@ -221,7 +230,11 @@ export async function expandTitleWithGemini(
     `- Return JSON only, no prose.`;
 
   try {
-    const raw = await callGemini(prompt, geminiKey, CLASSIFY_TEMPERATURE);
+    const raw = await callGemini(prompt, geminiKey, {
+      modelId: resolvedModelId,
+      temperature: isGemini25Model(resolvedModelId) ? CLASSIFY_TEMPERATURE : undefined,
+      thinkingLevel: 'low',
+    });
     const match = raw.match(/\{[\s\S]*\}/);
     if (!match) { geminiCache.set(cacheKey, { candidates: [] }); return { candidates: [] }; }
     const parsed = JSON.parse(match[0]) as GeminiExpansionResult;
@@ -287,6 +300,7 @@ export interface ResolveOptions {
   typeHintWasUserSelected?: boolean;
   tmdbConfig?: TmdbConfig;
   geminiApiKey?: string;
+  modelId?: GeminiModelId;
 }
 
 export async function resolveTitle(opts: ResolveOptions): Promise<ClassifyResponse> {
@@ -296,7 +310,9 @@ export async function resolveTitle(opts: ResolveOptions): Promise<ClassifyRespon
     typeHintWasUserSelected = false,
     tmdbConfig,
     geminiApiKey,
+    modelId = DEFAULT_CLASSIFY_GEMINI_MODEL,
   } = opts;
+  const resolvedModelId = resolveGeminiModelId(modelId, DEFAULT_CLASSIFY_GEMINI_MODEL);
 
   const normalized = normalizeTitleQuery(title);
   const variants = buildQueryVariants(normalized);
@@ -316,7 +332,7 @@ export async function resolveTitle(opts: ResolveOptions): Promise<ClassifyRespon
 
   // ── Step 4: Gemini expansion if no good candidates ───────────────────────
   if (!shouldDisambiguate(sorted) && ENABLE_GEMINI_TITLE_EXPANSION && geminiApiKey) {
-    const expansion = await expandTitleWithGemini(title, geminiApiKey);
+    const expansion = await expandTitleWithGemini(title, geminiApiKey, resolvedModelId);
     if (expansion.candidates.length > 0) {
       const expandedScored = await searchAllGeminiExpansions(
         expansion.candidates,
