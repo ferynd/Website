@@ -1,27 +1,50 @@
-// Switch the model here. This affects every AI route in the app.
-//
-// Current free tier model IDs (as of April 2026):
-//   gemini-2.5-flash-lite       Stable. 15 RPM, 1000 RPD. Recommended for this app.
-//   gemini-2.5-flash            Stable. 10 RPM, 250 RPD. Better quality.
-//   gemini-2.5-pro              Stable. 5 RPM, 100 RPD. Best reasoning.
-//
-// Deprecated (do not use): gemini-2.0-flash, gemini-2.0-flash-lite (shut down June 1, 2026)
-// Verify current model IDs at: https://ai.google.dev/gemini-api/docs/models
+import {
+  DEFAULT_RECOMMEND_GEMINI_MODEL,
+  isGemini25Model,
+  isGemini3Model,
+  resolveGeminiModelId,
+  type GeminiModelId,
+} from './aiModels';
 
-export const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+export * from './aiModels';
 
-// Lower temperature for deterministic tasks (classification, title lookup).
+// Lower temperature for deterministic tasks (classification, title lookup) on 2.5 models.
 export const CLASSIFY_TEMPERATURE = 0.2;
-// Moderate temperature for creative/recommendation tasks.
+// Moderate temperature for creative/recommendation tasks on 2.5 models.
 export const RECOMMEND_TEMPERATURE = 0.7;
 
-export const geminiEndpoint = (apiKey: string) =>
-  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
+export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high';
 
-// Standard request body shape for Gemini text generation.
-// Includes role: "user" (required by 2.5+ models, was the cause of the 502 errors)
-// and responseMimeType: "application/json" so Gemini returns clean JSON we can parse directly.
-export function buildGeminiRequest(prompt: string, temperature = RECOMMEND_TEMPERATURE) {
+export interface GeminiRequestOptions {
+  modelId?: GeminiModelId;
+  temperature?: number;
+  thinkingLevel?: GeminiThinkingLevel;
+}
+
+export const geminiEndpoint = (
+  apiKey: string,
+  modelId: GeminiModelId = DEFAULT_RECOMMEND_GEMINI_MODEL,
+) => {
+  const resolvedModelId = resolveGeminiModelId(modelId, DEFAULT_RECOMMEND_GEMINI_MODEL);
+  return `https://generativelanguage.googleapis.com/v1beta/models/${resolvedModelId}:generateContent?key=${apiKey}`;
+};
+
+// Shared Gemini JSON request builder. The app sends plain user text and expects JSON;
+// no Gemini tools, grounding, URL context, code execution, file search, or function calling are configured here.
+export function buildGeminiRequest(prompt: string, options: GeminiRequestOptions = {}) {
+  const modelId = resolveGeminiModelId(options.modelId, DEFAULT_RECOMMEND_GEMINI_MODEL);
+  const generationConfig: Record<string, unknown> = {
+    responseMimeType: 'application/json',
+  };
+
+  if (isGemini25Model(modelId)) {
+    generationConfig.temperature = options.temperature ?? RECOMMEND_TEMPERATURE;
+  }
+
+  if (isGemini3Model(modelId) && options.thinkingLevel) {
+    generationConfig.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+  }
+
   return {
     contents: [
       {
@@ -29,10 +52,7 @@ export function buildGeminiRequest(prompt: string, temperature = RECOMMEND_TEMPE
         parts: [{ text: prompt }],
       },
     ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-      temperature,
-    },
+    generationConfig,
   };
 }
 
@@ -42,12 +62,13 @@ export function buildGeminiRequest(prompt: string, temperature = RECOMMEND_TEMPE
 export async function callGemini(
   prompt: string,
   apiKey: string,
-  temperature = RECOMMEND_TEMPERATURE,
+  options: GeminiRequestOptions = {},
 ): Promise<string> {
-  const res = await fetch(geminiEndpoint(apiKey), {
+  const modelId = resolveGeminiModelId(options.modelId, DEFAULT_RECOMMEND_GEMINI_MODEL);
+  const res = await fetch(geminiEndpoint(apiKey, modelId), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(buildGeminiRequest(prompt, temperature)),
+    body: JSON.stringify(buildGeminiRequest(prompt, { ...options, modelId })),
   });
 
   if (!res.ok) {

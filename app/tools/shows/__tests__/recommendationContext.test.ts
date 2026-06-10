@@ -43,12 +43,12 @@ function makeMember(uid: string, displayName: string): ShowList['members'][numbe
   return { uid, email: `${uid}@test.com`, displayName, role: 'member', joinedAt: ts() };
 }
 
-function makeRating(composite: number): MemberRating {
+function makeRating(composite: number, wouldRewatch: MemberRating['wouldRewatch'] = null): MemberRating {
   return {
     story: composite,
     characters: composite,
     vibes: composite,
-    wouldRewatch: null,
+    wouldRewatch,
     brainPower: null,
     ratedAt: null,
   };
@@ -210,13 +210,58 @@ describe('candidateShows', () => {
   const watching = makeShow({ id: 'w1', status: 'watching' });
   const planned = makeShow({ id: 'p1', status: 'planned' });
   const onHold = makeShow({ id: 'oh1', status: 'on_hold' });
-  const completed = makeShow({ id: 'c1', status: 'completed' });
+  const completed = makeShow({ id: 'c1', status: 'completed', ratings: { u1: makeRating(8, 'yes') } });
   const dropped = makeShow({ id: 'd1', status: 'dropped' });
   const all = [watching, planned, onHold, completed, dropped];
 
-  it('returns only watching/planned/on_hold when no presentUids', () => {
+  it('returns active queue shows plus completed shows marked rewatchable when no presentUids', () => {
     const result = candidateShows(all);
-    expect(result.map((s) => s.id)).toEqual(['w1', 'p1', 'oh1']);
+    expect(result.map((s) => s.id)).toEqual(['w1', 'p1', 'oh1', 'c1']);
+  });
+
+  it('excludes completed shows when relevant viewers did not mark yes or maybe to rewatch', () => {
+    const no = makeShow({ id: 'no', status: 'completed', ratings: { u1: makeRating(8, 'no') } });
+    const unrated = makeShow({ id: 'unrated', status: 'completed', ratings: {} });
+    const missing = makeShow({ id: 'missing', status: 'completed', ratings: { u2: makeRating(8, 'yes') } });
+    const result = candidateShows([no, unrated, missing], ['u1']);
+    expect(result.map((s) => s.id)).toEqual([]);
+  });
+
+  it('includes completed shows when a relevant viewer marked maybe to rewatch', () => {
+    const maybe = makeShow({ id: 'maybe', status: 'completed', ratings: { u1: makeRating(7, 'maybe') } });
+    const result = candidateShows([maybe], ['u1']);
+    expect(result.map((s) => s.id)).toEqual(['maybe']);
+  });
+
+  it('checks watchers instead of all ratings when presentUids is empty and watchers are set', () => {
+    const completed = makeShow({
+      id: 'completed',
+      status: 'completed',
+      watchers: ['u1'],
+      ratings: {
+        u1: makeRating(8, 'no'),
+        u2: makeRating(8, 'yes'),
+      },
+    });
+
+    const result = candidateShows([completed]);
+
+    expect(result.map((s) => s.id)).toEqual([]);
+  });
+
+  it('falls back to all ratings for completed legacy shows with no watchers and no presentUids', () => {
+    const completed = makeShow({
+      id: 'legacy-completed',
+      status: 'completed',
+      watchers: [],
+      ratings: {
+        u2: makeRating(8, 'yes'),
+      },
+    });
+
+    const result = candidateShows([completed]);
+
+    expect(result.map((s) => s.id)).toEqual(['legacy-completed']);
   });
 
   it('filters by present viewers when watchers are set', () => {

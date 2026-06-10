@@ -1,5 +1,6 @@
 import type { ShowType } from '../types';
 import type { VibeCategory } from './vibeCategories';
+import type { GeminiModelId } from '@/app/lib/aiModels';
 
 // ─── provider / source types ────────────────────────────────────────────────
 
@@ -91,6 +92,7 @@ export interface ClassifyRequestBody {
   title: string;
   typeHint?: ShowType | null;
   typeHintWasUserSelected?: boolean;
+  modelId?: GeminiModelId;
 }
 
 export interface ResolveRequestBody {

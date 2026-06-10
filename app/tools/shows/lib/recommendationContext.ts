@@ -112,8 +112,30 @@ export function buildViewerProfiles(
   return profiles;
 }
 
+function hasRelevantRewatchInterest(show: Show, presentUids?: string[]): boolean {
+  const scopedUids =
+    presentUids && presentUids.length > 0
+      ? presentUids
+      : show.watchers.length > 0
+        ? show.watchers
+        : Object.keys(show.ratings);
+
+  return scopedUids.some((uid) => {
+    const wouldRewatch = show.ratings[uid]?.wouldRewatch;
+    return wouldRewatch === 'yes' || wouldRewatch === 'maybe';
+  });
+}
+
+function isRecommendationEligible(show: Show, presentUids?: string[]): boolean {
+  if (show.status === 'watching' || show.status === 'planned' || show.status === 'on_hold') {
+    return true;
+  }
+  return show.status === 'completed' && hasRelevantRewatchInterest(show, presentUids);
+}
+
 /**
- * Returns shows eligible for recommendation (watching / planned / on_hold).
+ * Returns shows eligible for recommendation: active queue statuses plus completed
+ * shows that at least one relevant viewer marked as yes/maybe to rewatch.
  *
  * Tiered preference when presentUids is provided:
  *   Tier 1 — empty-watcher shows (legacy) + shows where ALL present viewers are watchers
@@ -121,9 +143,7 @@ export function buildViewerProfiles(
  *   Tier 3 — all eligible (fallback, ensures the picker is never empty)
  */
 export function candidateShows(shows: Show[], presentUids?: string[]): Show[] {
-  const eligible = shows.filter(
-    (s) => s.status === 'watching' || s.status === 'planned' || s.status === 'on_hold',
-  );
+  const eligible = shows.filter((s) => isRecommendationEligible(s, presentUids));
 
   if (!presentUids || presentUids.length === 0) return eligible;
 

@@ -10,6 +10,11 @@ import VibeTagChip from '../components/VibeTagChip';
 import { buildViewerProfiles, candidateShows } from '../lib/recommendationContext';
 import { formatScore, groupComposite } from '../lib/compositeScore';
 import type { Show } from '../types';
+import {
+  DEFAULT_RECOMMEND_GEMINI_MODEL,
+  readStoredGeminiModel,
+  SHOWS_RECOMMEND_MODEL_STORAGE_KEY,
+} from '@/app/lib/aiModels';
 
 interface RecommendResult {
   show: Show;
@@ -68,6 +73,10 @@ export default function MoodPage() {
       });
 
       const profiles = buildViewerProfiles(shows, presentMembers);
+      const modelId = readStoredGeminiModel(
+        SHOWS_RECOMMEND_MODEL_STORAGE_KEY,
+        DEFAULT_RECOMMEND_GEMINI_MODEL,
+      );
 
       const res = await fetch('/api/recommend', {
         method: 'POST',
@@ -78,6 +87,7 @@ export default function MoodPage() {
           profiles,
           sharedMood: sharedMood.trim() || undefined,
           excludeIds: exclude,
+          modelId,
         }),
       });
       if (!res.ok) {
@@ -166,6 +176,7 @@ export default function MoodPage() {
                 </li>
                 <li>Reads each person&apos;s notes and ratings separately.</li>
                 <li>Prefers shows relevant to the viewers watching tonight.</li>
+                <li>Eligible picks include Watching, Planned, On Hold, and rewatchable Completed shows.</li>
                 <li>Uses status, progress, and service as secondary context.</li>
                 <li>Does not simply pick the highest-rated show.</li>
               </ul>
@@ -176,8 +187,8 @@ export default function MoodPage() {
         {candidates.length === 0 && (
           <div className="rounded-xl border border-dashed border-border p-6 text-center">
             <p className="text-text-2">
-              Add some shows with status <strong>Watching</strong>, <strong>Planned</strong>, or{' '}
-              <strong>On Hold</strong> first.
+              Add some shows with status <strong>Watching</strong>, <strong>Planned</strong>,{' '}
+              <strong>On Hold</strong>, or rewatchable <strong>Completed</strong> first.
             </p>
           </div>
         )}

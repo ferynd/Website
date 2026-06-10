@@ -6,6 +6,17 @@ import { Shield, Trash2, UserMinus, CrownIcon, LogOut } from 'lucide-react';
 import Nav from '@/components/Nav';
 import { db } from '../lib/db';
 import { useShows } from '../ShowsContext';
+import {
+  AVAILABLE_GEMINI_MODELS,
+  DEFAULT_CLASSIFY_GEMINI_MODEL,
+  DEFAULT_RECOMMEND_GEMINI_MODEL,
+  geminiModelOptionLabel,
+  resolveGeminiModelId,
+  saveStoredGeminiModel,
+  SHOWS_CLASSIFY_MODEL_STORAGE_KEY,
+  SHOWS_RECOMMEND_MODEL_STORAGE_KEY,
+  type GeminiModelId,
+} from '@/app/lib/aiModels';
 
 function ConfirmDialog({
   message,
@@ -63,12 +74,43 @@ export default function SettingsPage() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [newName, setNewName] = useState(activeList?.name ?? '');
   const [knownEmails, setKnownEmails] = useState<string[]>([]);
+  const [classifyModelId, setClassifyModelId] = useState<GeminiModelId>(DEFAULT_CLASSIFY_GEMINI_MODEL);
+  const [recommendModelId, setRecommendModelId] = useState<GeminiModelId>(DEFAULT_RECOMMEND_GEMINI_MODEL);
 
   // Display name state
   const [displayNameInput, setDisplayNameInput] = useState(userProfile?.displayName ?? '');
   useEffect(() => {
     setDisplayNameInput(userProfile?.displayName ?? '');
   }, [userProfile?.displayName]);
+
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setClassifyModelId(
+      resolveGeminiModelId(
+        window.localStorage.getItem(SHOWS_CLASSIFY_MODEL_STORAGE_KEY),
+        DEFAULT_CLASSIFY_GEMINI_MODEL,
+      ),
+    );
+    setRecommendModelId(
+      resolveGeminiModelId(
+        window.localStorage.getItem(SHOWS_RECOMMEND_MODEL_STORAGE_KEY),
+        DEFAULT_RECOMMEND_GEMINI_MODEL,
+      ),
+    );
+  }, []);
+
+  function handleClassifyModelChange(value: string) {
+    const modelId = resolveGeminiModelId(value, DEFAULT_CLASSIFY_GEMINI_MODEL);
+    setClassifyModelId(modelId);
+    saveStoredGeminiModel(SHOWS_CLASSIFY_MODEL_STORAGE_KEY, modelId);
+  }
+
+  function handleRecommendModelChange(value: string) {
+    const modelId = resolveGeminiModelId(value, DEFAULT_RECOMMEND_GEMINI_MODEL);
+    setRecommendModelId(modelId);
+    saveStoredGeminiModel(SHOWS_RECOMMEND_MODEL_STORAGE_KEY, modelId);
+  }
 
   useEffect(() => {
     getDocs(query(collection(db, 'artifacts', 'trip-cost', 'users'), limit(100)))
@@ -152,6 +194,59 @@ export default function SettingsPage() {
             {feedback}
           </p>
         )}
+
+
+        {/* AI model selection */}
+        <div className="rounded-xl border border-border bg-surface-1 p-4 space-y-4">
+          <div>
+            <h2 className="font-semibold text-sm">AI model selection</h2>
+            <p className="text-xs text-text-3 mt-0.5">
+              Choose Gemini models for this device only. Settings are saved locally in this browser.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="shows-classify-model" className="block text-sm font-medium text-text">
+              Classification AI Model
+            </label>
+            <select
+              id="shows-classify-model"
+              value={classifyModelId}
+              onChange={(e) => handleClassifyModelChange(e.target.value)}
+              className="w-full rounded-xl bg-surface-2 border border-border px-3 py-2.5 text-sm text-text focus:outline-none focus:border-accent min-h-[44px]"
+            >
+              {AVAILABLE_GEMINI_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {geminiModelOptionLabel(model)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-text-3">
+              Default: Gemini 3.1 Flash-Lite, optimized for title lookup and classification.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="shows-recommend-model" className="block text-sm font-medium text-text">
+              Recommendation AI Model
+            </label>
+            <select
+              id="shows-recommend-model"
+              value={recommendModelId}
+              onChange={(e) => handleRecommendModelChange(e.target.value)}
+              className="w-full rounded-xl bg-surface-2 border border-border px-3 py-2.5 text-sm text-text focus:outline-none focus:border-accent min-h-[44px]"
+            >
+              {AVAILABLE_GEMINI_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>
+                  {geminiModelOptionLabel(model)}
+                </option>
+              ))}
+            </select>
+            <p className="text-xs text-text-3">
+              Default: Gemini 2.5 Flash, optimized for quality versus cost for watch picks.
+            </p>
+          </div>
+        </div>
 
         {/* Display name */}
         <div className="rounded-xl border border-border bg-surface-1 p-4 space-y-3">

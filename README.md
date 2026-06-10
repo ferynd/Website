@@ -126,6 +126,12 @@ Key features:
 
 Data persists under `artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{personA|personB}`. Typed helpers in `app/tools/conflict-tracker/lib/`.
 
+### Movie/TV Show Tracker (Firebase + Gemini-backed)
+
+_"Track shared watchlists, ratings, notes, and mood-based recommendations."_
+
+This React tool lives under **app/tools/shows/** with Edge API routes in **app/api/classify/** and **app/api/recommend/**. Gemini is used as a plain text-in / JSON-out helper for title classification/expansion and watch recommendations. Model choices are client-safe metadata in **app/lib/aiModels.ts**, with local device settings for classification (`gemini-3.1-flash-lite` by default) and recommendations (`gemini-2.5-flash` by default). Recommendation candidates include Watching, Planned, On Hold, and Completed shows that relevant viewers marked as rewatchable.
+
 ### Date Night Roulette (Firebase-backed)
 
 _"Spin to pick a random date idea and modifier, log how it went."_
