@@ -16,6 +16,7 @@ This document is the **single source of truth** for automated assistants (Claude
   - `tools/trip-cost/**` Firebase-backed Trip Cost React app
   - `tools/trip-planner/**` Trip Planner scaffold (Firebase Auth + UI timeline)
   - `tools/date-night/**` Date Night Roulette (Firebase Auth + Firestore roller + reviews + batch CSV imports; split math in `lib/{decay,stacking,roller}.ts` with Vitest tests)
+  - `tools/cifi-research-estimator/page.tsx` CIFI research payout estimator with localStorage-backed inputs/history and hand-built SVG charts
   - `tools/conflict-tracker/**` Conflict Tracker (Firebase Auth + Firestore; two-person tracker groups, per-conflict reflections, shared section, trend dashboard; helpers in `lib/{firebase,db,types,tags}.ts`)
   - `tools/shows/**` Movie/TV Show Tracker (Firebase Auth + Firestore; Gemini title classification and mood recommendations via Edge API routes; model metadata in `app/lib/aiModels.ts`)
 - **/components** — Reusable UI (Button via CVA, Input, Select, Nav, ProjectCard)
