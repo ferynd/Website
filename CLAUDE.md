@@ -42,6 +42,7 @@ app/
   tools/trip-cost/** # Firebase-backed React app (Auth + Firestore)
   tools/trip-planner/** # Planner scaffold (Auth + UI, data layer pending)
   tools/date-night/** # Date Night Roulette (Auth + weighted roller + reviews + history, split math libs + Vitest tests)
+  tools/cifi-research-estimator/page.tsx # CIFI local research payout estimator
   tools/conflict-tracker/** # Conflict Tracker (Auth + Firestore, two-person reflections + trend dashboard)
 
 components/          # Reusable UI: Button, Input, Select, Nav, ProjectCard

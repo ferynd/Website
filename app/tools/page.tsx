@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Nav from '@/components/Nav';
-import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices, Tv, HeartHandshake } from 'lucide-react';
+import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices, Tv, HeartHandshake, LineChart } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: icon size and list of available tools          */
@@ -10,6 +10,12 @@ import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices, Tv, HeartHa
 const cardIconSize = 24;
 
 const toolList = [
+  {
+    name: 'CIFI - Research Estimator',
+    description: 'Estimate CIFI research payout timing with logged rate history, local projections, and interactive SVG model charts.',
+    href: '/tools/cifi-research-estimator',
+    icon: <LineChart size={cardIconSize} className="text-accent" />,
+  },
   {
     name: 'Show Tracker',
     description: 'Track anime, shows, and movies with your group. Rate, score, and get AI-powered mood-based picks.',

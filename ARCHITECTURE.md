@@ -16,6 +16,7 @@ app/
   tools/page.tsx     # Lists React Trip Cost and /public/tools/* static tools
   trips/page.tsx     # Lists /public/trips/** itineraries
   style-guide/page.tsx # Shows tokens (colors, spacing) and base components
+  tools/cifi-research-estimator/page.tsx # Client-only CIFI research payout estimator with localStorage and SVG charts
   tools/trip-cost/   # Firebase-backed app (Auth + Firestore + context + screens)
   tools/date-night/  # Date Night Roulette (Auth + Firestore + weighted roller + reviews)
     lib/decay.ts, lib/stacking.ts, lib/roller.ts # Pure roll math modules
@@ -43,6 +44,8 @@ public/
   Path: `/games/Emeril_A_World_Divided/index.html`
 
 - **Tools**:  
+- **CIFI - Research Estimator** — Estimate CIFI research payout timing using local history, curve fits, and interactive SVG charts.
+  Path: `/tools/cifi-research-estimator`
 - **Trip Cost Calculator** — Split expenses and calculate balances for a group trip.
   Path: `/tools/trip-cost`
 - **Trip Planner** — React-based itinerary planner backed by Firebase Auth + Firestore with a timeline UI, idea library, and shared settings/map panels.

@@ -38,6 +38,9 @@ To keep one source of truth, do not duplicate or partially copy rules in docs; r
 - Avoid `innerHTML` with untrusted data in static apps. Use DOM APIs and escape user input before rendering.
 - Do not include untrusted external scripts/styles in production without review.
 
+## Local-only Tool Data
+- **CIFI - Research Estimator** stores only user-entered estimator settings and logged rate history in browser `localStorage` under the namespaced `website:tools:cifi-research-estimator:v1:*` keys. It does not send this data to Firebase or any external service.
+
 ## Data Minimization & Retention
 - Store only what is necessary for features (e.g., trip participants/emails, expenses, payments). 
 - If you add analytics or additional PII, document the fields and update this SECURITY.md.
