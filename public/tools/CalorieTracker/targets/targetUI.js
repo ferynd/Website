@@ -14,6 +14,8 @@ import { showMessage, handleError } from '../utils/ui.js';
 import { saveUserProfile, saveGoalSettings, saveTargets } from '../services/firebase.js';
 import { generateTargets, applyManualOverrides } from './targetEngine.js';
 import { runAnalysis } from '../analysis/engine.js';
+import { getTodayInTimezone } from '../utils/time.js';
+import { WEIGHT_FRESHNESS_THRESHOLD_DAYS } from '../constants.js';
 
 // Cache the last engine result for reference (Apply Targets always recomputes fresh)
 let _lastResult = null;
@@ -180,7 +182,7 @@ async function buildTargetContext(mergedProfile = null) {
   if (state.weightEntries?.size > 0 && state.dailyEntries?.size > 0) {
     try {
       const profile = mergedProfile ?? state.userProfile ?? null;
-      const results = runAnalysis(state.weightEntries, state.dailyEntries, profile, state.weightEntriesMulti ?? null);
+      const results = runAnalysis(state.weightEntries, state.dailyEntries, profile, state.weightEntriesMulti ?? null, getTodayInTimezone());
       return { analysisResults: results, rawLatestWeightLb: getLatestWeightFromEntries() };
     } catch (_) {
       // Fall through — raw weight only
@@ -206,6 +208,22 @@ export function updateWeightDisplay() {
   if (!isNaN(ovr) && ovr > 0) {
     valueEl.textContent  = `${ovr.toFixed(1)} lb`;
     sourceEl.textContent = 'Manual entry (override)';
+    return;
+  }
+
+  const estimated = analysis?.summary?.estimatedCurrentWeight;
+  if (estimated && estimated > 0) {
+    const method = analysis?.summary?.estimatedWeightMethod;
+    const days   = analysis?.summary?.daysSinceLastWeighIn;
+    const stale  = days != null && days > WEIGHT_FRESHNESS_THRESHOLD_DAYS;
+    valueEl.textContent = `${estimated.toFixed(1)} lb`;
+    if (method === 'energy_balance') {
+      sourceEl.textContent = `Estimated from energy balance${days != null ? ` · last weigh-in ${days}d ago` : ''}${stale ? ' — consider a fresh weigh-in' : ''}`;
+    } else if (method === 'measured') {
+      sourceEl.textContent = 'Smoothed from uploaded CSV (water-corrected EWMA)';
+    } else {
+      sourceEl.textContent = `Carried forward from last weigh-in${days != null ? ` · ${days}d ago` : ''}${stale ? ' — consider a fresh weigh-in' : ''}`;
+    }
     return;
   }
 
@@ -296,7 +314,10 @@ async function calculateAndRenderTargets({ scroll = false } = {}) {
     _lastResult  = result;
 
     if (!result.targets) {
-      showMessage(result.warnings[0] ?? 'Cannot calculate targets.', true);
+      // Only surface the hard "no weight data" notice on an explicit user action.
+      // The debounced auto path can fire before Firestore data finishes loading,
+      // which produced a false "enter your current weight" prompt on every open.
+      if (scroll) showMessage(result.warnings[0] ?? 'Cannot calculate targets.', true);
       return;
     }
 

@@ -33,6 +33,7 @@ import { resolveDailyBaseTargets, resolveDailyPlanningTargets } from '../targets
 import { runAnalysis } from '../analysis/engine.js';
 import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries, computeMicronutrientTargets } from '../targets/targetEngine.js';
 import { calcBankingCore } from './bankingEngine.js';
+import { getTodayInTimezone } from '../utils/time.js';
 
 // =========================
 // CONFIGURATION (Top of file for easy modification)
@@ -1334,7 +1335,8 @@ export function updateDashboard() {
       try {
         state.analysisResults = runAnalysis(
           state.weightEntries, state.dailyEntries,
-          state.userProfile ?? null, state.weightEntriesMulti ?? null
+          state.userProfile ?? null, state.weightEntriesMulti ?? null,
+          getTodayInTimezone()
         );
       } catch (_) {}
     }

@@ -36,6 +36,7 @@ import {
   getTrueUpCandidates,
   buildBlankDayEstimateEntry,
   VACATION_TYPE_CONFIG,
+  projectWeightForward,
 } from './engine.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -2260,5 +2261,91 @@ describe('runAnalysis — summary breakdown fields', () => {
     expect(daysWithManualCalories).toBeGreaterThanOrEqual(0);
     expect(daysWithSavedEstimates).toBeGreaterThanOrEqual(0);
     expect(daysWithUnsavedImputedCalories).toBeGreaterThanOrEqual(0);
+  });
+});
+
+// ── projectWeightForward (energy-balance current-weight estimate) ──────────────
+
+describe('projectWeightForward', () => {
+  const BASE = '2025-01-01';
+  // A real weigh-in on day 0, then calorie-only days (weight forward-filled, no
+  // new weigh-in) through `days`.
+  function rowsAfterWeighIn(days, { w0 = 200, calories = 2000 } = {}) {
+    const rows = [{ date: isoDate(BASE, 0), calories: null, weight_corr: w0, wt_smooth_lb: w0 }];
+    for (let i = 1; i <= days; i++) {
+      rows.push({ date: isoDate(BASE, i), calories, weight_corr: null, wt_smooth_lb: w0 });
+    }
+    return rows;
+  }
+
+  it('projects weight DOWN under a sustained deficit', () => {
+    const r = projectWeightForward(rowsAfterWeighIn(10, { w0: 200, calories: 2000 }), isoDate(BASE, 10), 2500);
+    expect(r.method).toBe('energy_balance');
+    expect(r.daysSinceLastWeighIn).toBe(10);
+    expect(r.lastWeighInDate).toBe(isoDate(BASE, 0));
+    // -500 kcal/day × 10 = -5000 kcal ≈ -1.43 lb
+    expect(r.weightLb).toBeLessThan(200);
+    expect(r.weightLb).toBeCloseTo(198.6, 1);
+  });
+
+  it('stays at baseline when intake equals TDEE (maintenance)', () => {
+    const r = projectWeightForward(rowsAfterWeighIn(10, { w0: 200, calories: 2500 }), isoDate(BASE, 10), 2500);
+    expect(r.weightLb).toBeCloseTo(200, 1);
+    expect(r.method).toBe('energy_balance');
+  });
+
+  it('clamps an implausibly large drift (guardrail)', () => {
+    // raw delta ≈ -7.2 lb, capped to 0.3 lb/day × 10 = 3.0 lb
+    const r = projectWeightForward(rowsAfterWeighIn(10, { w0: 200, calories: 0 }), isoDate(BASE, 10), 2500);
+    expect(r.weightLb).toBe(197);
+  });
+
+  it('carries forward (no projection) when TDEE is implausible', () => {
+    const r = projectWeightForward(rowsAfterWeighIn(10, { w0: 200, calories: 2000 }), isoDate(BASE, 10), 800);
+    expect(r.method).toBe('carry_forward');
+    expect(r.weightLb).toBe(200);
+    expect(r.daysSinceLastWeighIn).toBe(10);
+  });
+
+  it('returns the measured value when as-of is the weigh-in day', () => {
+    const r = projectWeightForward(rowsAfterWeighIn(10, { w0: 200, calories: 2000 }), isoDate(BASE, 0), 2500);
+    expect(r.method).toBe('measured');
+    expect(r.weightLb).toBe(200);
+    expect(r.daysSinceLastWeighIn).toBe(0);
+  });
+
+  it('returns method "none" when there is no real weigh-in', () => {
+    const rows = [
+      { date: isoDate(BASE, 0), calories: 2000, weight_corr: null, wt_smooth_lb: null },
+      { date: isoDate(BASE, 1), calories: 2000, weight_corr: null, wt_smooth_lb: null },
+    ];
+    const r = projectWeightForward(rows, isoDate(BASE, 1), 2500);
+    expect(r.method).toBe('none');
+    expect(r.weightLb).toBeNull();
+  });
+});
+
+describe('runAnalysis — estimated current weight in summary', () => {
+  const BASE = '2025-01-01';
+  function buildDays(n) {
+    const days = [];
+    for (let i = 0; i < n; i++) days.push({ date: isoDate(BASE, i), weight_lb: 200 - i * 0.1, calories: 2200 });
+    return days;
+  }
+
+  it('exposes lastWeighInDate / daysSinceLastWeighIn / estimatedCurrentWeight projected to asOfDate', () => {
+    const days = buildDays(40);
+    const r = runAnalysis(makeWeightEntries(days), makeNutritionEntries(days), null, null, isoDate(BASE, 45));
+    expect(r.summary.lastWeighInDate).toBe(isoDate(BASE, 39));
+    expect(r.summary.daysSinceLastWeighIn).toBe(6);
+    expect(typeof r.summary.estimatedCurrentWeight).toBe('number');
+    expect(r.summary.estimatedWeightMethod).toBeTruthy();
+  });
+
+  it('defaults asOfDate to the last data day (legacy behavior) → measured, 0 days since', () => {
+    const days = buildDays(40);
+    const r = runAnalysis(makeWeightEntries(days), makeNutritionEntries(days));
+    expect(r.summary.daysSinceLastWeighIn).toBe(0);
+    expect(r.summary.estimatedWeightMethod).toBe('measured');
   });
 });

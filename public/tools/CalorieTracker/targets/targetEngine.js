@@ -19,6 +19,7 @@ import {
   mifflinStJeor,
   cunningham,
 } from './nutritionReferences.js';
+import { WEIGHT_FRESHNESS_THRESHOLD_DAYS } from '../constants.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -85,26 +86,50 @@ export function resolveAge(profile) {
 
 /**
  * Resolve current weight in lb from profile + optional analysis results.
- * Priority: manual override > uploaded smoothed weight > raw latest uploaded weight.
+ * Priority: manual override > energy-balance estimate > uploaded smoothed > raw latest.
+ *
+ * The estimate/smoothed/raw values all derive from uploaded weigh-ins. `stale` is
+ * true when the most recent real weigh-in is older than WEIGHT_FRESHNESS_THRESHOLD_DAYS,
+ * so callers can show a soft "refresh your weight" notice without blocking.
  *
  * @param {object}      profile            - state.userProfile
  * @param {object|null} analysisResults    - state.analysisResults or null
  * @param {number|null} rawLatestWeightLb  - latest raw weight_lb from state.weightEntries, or null
- * @returns {{ weightLb: number|null, source: string|null, sourceLabel: string }}
+ * @returns {{ weightLb: number|null, source: string|null, sourceLabel: string,
+ *            stale: boolean, daysSinceLastWeighIn: number|null }}
  */
 export function resolveCurrentWeightLb(profile, analysisResults, rawLatestWeightLb = null) {
+  const summary = analysisResults?.summary ?? null;
+  const daysSinceLastWeighIn = summary?.daysSinceLastWeighIn ?? null;
+  const stale = daysSinceLastWeighIn != null && daysSinceLastWeighIn > WEIGHT_FRESHNESS_THRESHOLD_DAYS;
+
   const ovr = parseFloat(profile.manualWeightOverrideLb);
   if (!isNaN(ovr) && ovr > 0) {
-    return { weightLb: ovr, source: 'manual_override', sourceLabel: 'Manual entry' };
+    return { weightLb: ovr, source: 'manual_override', sourceLabel: 'Manual entry', stale: false, daysSinceLastWeighIn };
   }
 
   if (profile.useUploadedWeightForCurrentWeight !== false) {
-    const smoothed = analysisResults?.summary?.currentWeight;
+    // Primary: energy-balance estimate projected forward from the last weigh-in.
+    const estimated = summary?.estimatedCurrentWeight;
+    if (estimated && estimated > 0) {
+      const method   = summary?.estimatedWeightMethod;
+      const lastDate = summary?.lastWeighInDate;
+      const sourceLabel = method === 'energy_balance'
+        ? `Estimated from energy balance${lastDate ? ` (last weigh-in ${lastDate})` : ''}`
+        : method === 'measured'
+          ? 'Smoothed from uploaded CSV (water-corrected EWMA)'
+          : `Carried forward from last weigh-in${lastDate ? ` (${lastDate})` : ''}`;
+      return { weightLb: estimated, source: 'uploaded_estimated', sourceLabel, stale, daysSinceLastWeighIn };
+    }
+
+    // Secondary: last smoothed weight (Energy tab computed, no projection).
+    const smoothed = summary?.currentWeight;
     if (smoothed && smoothed > 0) {
       return {
         weightLb: smoothed,
         source: 'uploaded_smoothed',
         sourceLabel: 'Smoothed from uploaded CSV (water-corrected EWMA)',
+        stale, daysSinceLastWeighIn,
       };
     }
 
@@ -115,10 +140,11 @@ export function resolveCurrentWeightLb(profile, analysisResults, rawLatestWeight
         weightLb: raw,
         source: 'uploaded_raw',
         sourceLabel: 'Latest uploaded weight (visit Energy tab for EWMA smoothing)',
+        stale, daysSinceLastWeighIn,
       };
     }
   }
-  return { weightLb: null, source: null, sourceLabel: 'Not available' };
+  return { weightLb: null, source: null, sourceLabel: 'Not available', stale: false, daysSinceLastWeighIn };
 }
 
 // ---------------------------------------------------------------------------
@@ -628,7 +654,7 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
   const warnings = [];
 
   // ── Current weight ────────────────────────────────────────────────────────
-  const { weightLb, source: weightSource, sourceLabel: weightLabel } =
+  const { weightLb, source: weightSource, sourceLabel: weightLabel, stale: weightStale, daysSinceLastWeighIn } =
     resolveCurrentWeightLb(profile, analysisResults, rawLatestWeightLb);
 
   if (!weightLb) {
@@ -638,6 +664,14 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
       warnings: ['Current weight is required. Enter a manual weight override or upload weight CSV data.'],
       meta: { weightLb: null, weightSource: null },
     };
+  }
+
+  // Soft notice: a weight resolved, but the last real weigh-in is stale. Targets
+  // still compute off the estimate — we only nudge the user to refresh it.
+  if (weightStale) {
+    warnings.push(
+      `Last weigh-in was ${daysSinceLastWeighIn} days ago — current weight (${round1(weightLb)} lb) is an estimate. Upload a recent weigh-in or set a manual override for best accuracy.`
+    );
   }
 
   // ── BMR ───────────────────────────────────────────────────────────────────
@@ -720,6 +754,8 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
       weightLb: round1(weightLb),
       weightSource,
       weightLabel,
+      weightStale: weightStale ?? false,
+      daysSinceLastWeighIn: daysSinceLastWeighIn ?? null,
       bmrValue: bmrResult.bmr,
       bmrMethod: bmrResult.method,
       bmrMethodLabel: bmrResult.methodLabel,

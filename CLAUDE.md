@@ -61,10 +61,11 @@ public/
 - Conflict Tracker: `app/tools/conflict-tracker/page.tsx`, `ConflictContext.tsx`, and `components/**` implement two-person conflict logging with independent reflections, a shared section that unlocks once both submit, and a trend dashboard. Data lives under `artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{personA|personB}`. Typed helpers in `app/tools/conflict-tracker/lib/`.
 
 ## CalorieTracker backlog workflow
-- Ongoing CalorieTracker work is tracked in [`public/tools/CalorieTracker/BACKLOG.md`](public/tools/CalorieTracker/BACKLOG.md). That file is the single source of truth — status, protocol, branch/PR strategy, and the prioritized item list all live there.
-- **Stable working branch:** `working/calorie-tracker-backlog` (long-lived, branched from `main`, one open PR targeting `main`). Sessions must switch to this branch on start rather than working on the auto-generated `claude/*` branch.
-- **Session-start prompt:** _"Continue working on the CalorieTracker backlog."_ — triggers the protocol documented at the top of `BACKLOG.md`.
-- **Status model:** `[ ]` not started · `[p]` in progress / awaiting review / blocked · `[x]` complete (only after explicit user approval — never flip to `[x]` on your own).
+- Ongoing CalorieTracker work is tracked in [`public/tools/CalorieTracker/BACKLOG.md`](public/tools/CalorieTracker/BACKLOG.md). That file is the single source of truth — protocol, branch/PR strategy, status model, and the prioritized item list all live there.
+- **Trigger (auto-fires the protocol):** any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, _"work on the calorie tracker backlog"_, _"pick up the backlog"_, or a close paraphrase. On recognizing one, do this without being asked: (1) read `BACKLOG.md` end-to-end; (2) run its reconcile step — for each `[p]` item with a recorded commit SHA, mark it `[x]` if that commit has merged to `main`; (3) work the highest-priority `[ ]` items in section order (CRITICAL → HIGH → MEDIUM → LOW), one small batch; (4) mark each touched item `[p]` and record the commit SHA on push.
+- **Working branch:** `working/calorie-tracker-backlog` (long-lived, one open PR targeting `main`). Switch to it when the environment allows; in web/remote sessions the harness may pin a `claude/*` branch — that is fine, since completion keys off commits merged to `main`, not the branch name.
+- **Status model:** `[ ]` not started · `[p]` in progress / pushed / awaiting merge · `[x]` complete. Completion is **hands-off but merge-gated**: a session flips `[p]`→`[x]` automatically once the item's commit is merged to `main` (i.e. the user accepted the PR). Never mark `[x]` for code that is only pushed.
+- **Descriptive artifacts:** Commit messages, PR titles, and PR bodies must clearly state which part of the site changed (scope), which backlog items were addressed (item numbers), and what the change does (plain-English summary). See `BACKLOG.md` steps 9 and 12 for format details.
 
 ---
 

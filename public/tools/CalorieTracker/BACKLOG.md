@@ -6,57 +6,86 @@ up.
 
 ## Resuming work across sessions
 
-Short prompt to start a new session: **"Continue working on the CalorieTracker backlog."**
+Start (or resume) a session with any of these — exact wording is **not** required:
+**"start working on the backlog"**, **"continue working on the CalorieTracker backlog"**,
+**"work on the calorie tracker backlog"**, **"pick up the backlog"**, or a close paraphrase.
 
-When invoked with that (or a close variant), follow this protocol without needing further
-instruction:
+When invoked that way, follow this protocol automatically, without needing further instruction:
 
 1. `git fetch origin`.
 2. Switch to the stable working branch: `git switch working/calorie-tracker-backlog`. If it
    doesn't exist locally or on origin, create it from `origin/main`:
-   `git switch -c working/calorie-tracker-backlog origin/main`. **Do not** work on the
-   auto-generated `claude/<adjective>-<noun>-<id>` branch the harness may have placed you on —
-   switch off it first.
+   `git switch -c working/calorie-tracker-backlog origin/main`. In web/remote sessions the harness
+   may pin you to an auto-generated `claude/<adjective>-<noun>-<id>` branch you cannot switch off —
+   that is fine to work on; completion is detected from commits merged to `main`, not the branch
+   name.
 3. `git pull --ff-only origin working/calorie-tracker-backlog` (skip if just created).
-4. Read this file end-to-end. Identify (a) any `[p]` items needing follow-up from third-party
-   review or prior session, then (b) the highest-priority `[ ]` items, in section order
+4. **Reconcile completed items (auto-mark `[x]`).** `git fetch origin main`. For every `[p]` item
+   whose note records a commit SHA, test whether it has merged to main:
+   `git merge-base --is-ancestor <sha> origin/main` (exit 0 = merged). Cross-check the backlog PR
+   via the GitHub MCP (`mcp__github__pull_request_read`). For each `[p]` item whose commit is on
+   `origin/main`, flip it to `[x]` and rewrite its note to `> Resolved: <summary>; merged <sha>`.
+   Leave pushed-but-unmerged items `[p]`. **This is the only way items reach `[x]`** — hands-off,
+   but never before the user has actually merged the PR.
+5. Read this file end-to-end. Identify (a) any `[p]` items needing follow-up from review or a
+   prior session, then (b) the highest-priority `[ ]` items, in section order
    (CRITICAL → HIGH → MEDIUM → LOW).
-5. Pick the next reasonable batch — usually one suggested session group (A–I) or one to three
+6. Pick the next reasonable batch — usually one suggested session group (A–I) or one to three
    related items.
-6. Implement, update each touched item's status to `[p]` with a one-line note (see status
-   legend below). Do **not** flip to `[x]` — only the user does that.
-7. Run the Vitest suite from this directory: `npm test`. Keep it green.
-8. Commit with a Conventional-Commit message scoped to the tool, e.g.
-   `feat(calorie-tracker): #1 sanitize user food names (prevent XSS)`. One commit per logical
-   change.
-9. Push: `git push -u origin working/calorie-tracker-backlog`.
-10. If no open PR exists for the branch, create one via the GitHub MCP tools (title:
-    "CalorieTracker backlog"; body: short pointer to this file). All subsequent pushes auto-
-    update the same PR.
+7. Implement. Mark each touched item `[p]` with a one-line note (see status legend below).
+8. Run the Vitest suite from this directory: `npm test`. Keep it green.
+9. Commit with a **descriptive** Conventional-Commit message. Format:
+   `type(calorie-tracker): #N short description of the change`
+   The message must include: (a) the Conventional Commit type (`feat`, `fix`, `refactor`, etc.),
+   (b) the `(calorie-tracker)` scope so it's clear which part of the site changed, (c) the
+   backlog item number(s) (`#N`), and (d) a plain-English summary of what the commit does — not
+   just the item title.
+   Examples:
+   - `feat(calorie-tracker): #46 estimate current weight via energy balance when weigh-in data is stale`
+   - `fix(calorie-tracker): #6 raise TDEE plausibility floor from 1200 to 1400 kcal`
+   - `refactor(calorie-tracker): #17 split dashboard.js into focused modules`
+   One commit per logical change. Multi-item commits list all numbers: `#1 #2 ...`.
+10. Push: `git push -u origin working/calorie-tracker-backlog` (or the pinned `claude/*` branch in
+    a web session).
+11. **Record the commit SHA** on every item you pushed (`commit: <short-sha>` in its `[p]` note,
+    plus the PR number when known). The next session's reconcile step keys off this SHA — an item
+    with no recorded SHA can never be auto-completed.
+12. **PR title and body must be descriptive.** If no open PR exists for the branch, create one
+    via the GitHub MCP tools. Format:
+    - **Title:** `CalorieTracker: <short summary of batch> (#N, #N, …)`
+      Example: `CalorieTracker: weight estimation fix, TDEE floor adjustment (#46, #6)`
+    - **Body:** list every item addressed with its number and one-line summary, plus a pointer to
+      this file. Update the body on subsequent pushes when new items are added to the batch.
+    All subsequent pushes auto-update the same PR.
 
 ## Status legend
 
 | Mark | Meaning |
 |------|---------|
 | `[ ]` | Not started. |
-| `[p]` | In progress / awaiting review / blocked / needs follow-up. **Default state once code has been touched** — only the user flips to `[x]`. |
-| `[x]` | Complete. The user has explicitly approved. |
+| `[p]` | In progress / pushed / awaiting merge / blocked / needs follow-up. **Default state once code has been touched.** Records a `commit: <short-sha>` once pushed. |
+| `[x]` | Complete — the item's commit has merged to `main` (the user accepted the PR). Set automatically by the reconcile step (step 4); never set for merely-pushed code. |
 
-The note line under a `[p]` item begins with one of four sub-labels so the state is scannable:
+The note line under a `[p]` item begins with one of these sub-labels so the state is scannable:
 
-- `> awaiting review — <one-line summary>; tests: <pass/notes>; commit: <short-sha>`
+- `> pushed — <one-line summary>; tests: <pass/notes>; commit: <short-sha>` (awaiting merge)
 - `> in progress — <what's left>`
 - `> blocked — <reason>`
 - `> needs follow-up — <what the reviewer said>; commit: <short-sha>`
 
-When the user approves, collapse the note to a single line and flip the box:
+When the item's commit merges to `main`, the next session's reconcile step flips the box and
+collapses the note to a single line:
 
-- `> Resolved: <one-line summary>; tests: <pass/notes>; commit: <short-sha>`
+- `> Resolved: <one-line summary>; tests: <pass/notes>; merged <short-sha>`
 
 ## Editing rules
 
-- **Never** mark an item `[x]` just because code was changed. Mark `[p]` and wait for explicit
-  user approval.
+- **Mark `[p]` when you push; let the reconcile step (step 4) flip `[p]`→`[x]` once the commit is
+  merged to `main`.** Never mark `[x]` for code that is only pushed, and never flip it manually
+  mid-session — merge to `main` is the single signal that an item is done.
+- A not-started `[ ]` item carries the placeholder note `> Resolved in: _pending_`. Replace it
+  with a `[p]` sub-label when you start the item; the reconcile step replaces it with
+  `> Resolved: …; merged <sha>` once merged.
 - Keep notes to **one line** per item. No pasted diffs, no multi-paragraph rationale — reference
   the commit hash and let the diff speak.
 - If the same item is revised after review, **replace** the existing note line (don't append) so
@@ -64,16 +93,20 @@ When the user approves, collapse the note to a single line and flip the box:
 - New items the user asks to add get slotted into the most appropriate existing priority section
   (CRITICAL → HIGH → MEDIUM → LOW) based on severity, dependencies, and impact — not appended at
   the bottom.
-- Renumbering is not required when adding items; pick the next free number (#46, #47, …).
+- Renumbering is not required when adding items; pick the next free number (#47, #48, …).
 
 ## Branch and PR strategy
 
 - **Working branch:** `working/calorie-tracker-backlog`, long-lived, branched from `main`. One
-  PR is open against `main` at any time and is updated by every push. Replaces the ephemeral
-  `claude/*` per-session branches.
-- **Merging:** The user merges the PR when they want to lock in a batch of approved items.
-  After merge, the working branch is reset/rebased onto the new `main` (or deleted and
-  recreated) for the next round.
+  PR is open against `main` at any time and is updated by every push. Preferred over the
+  ephemeral `claude/*` per-session branches when the environment lets you switch.
+- **Web/remote sessions:** the harness may pin a per-session `claude/*` branch you cannot switch
+  off. That is fine — open or append to a PR against `main` from it. Because completion is
+  detected from commits merged to `main` (step 4), the workflow does not depend on the branch
+  name being stable.
+- **Merging:** The user merges the PR when they want to lock in a batch of items. On the next
+  session, the reconcile step auto-marks the merged items `[x]`. After merge, the working branch
+  is reset/rebased onto the new `main` (or deleted and recreated) for the next round.
 - **Why this shape:** stable name → stable PR URL → continuity across sessions, with git as the
   hand-off rather than chat history.
 
@@ -102,7 +135,7 @@ From `public/tools/CalorieTracker/`:
 npm test
 ```
 
-Baseline: **364 tests, 6 files, all passing.** Any session that changes logic must keep this
+Baseline: **554 tests, 8 files, all passing.** Any session that changes logic must keep this
 green and add tests for new validators or pure functions.
 
 ---
@@ -182,6 +215,10 @@ green and add tests for new validators or pure functions.
 - [ ] **#16 — Deleting a food item or exercise session is irreversible**
   There is no undo path after confirmation. Add a 5-second undo toast that re-adds the item before it is written to Firestore, giving users a quick recovery window.
   > Resolved in: _pending_
+
+- [p] **#46 — "Current weight required" nag fires regardless of weigh-in age**
+  `targets/targetEngine.js`, `analysis/engine.js`, `targets/targetUI.js`, `constants.js` — the notice showed unconditionally, on a debounced auto-calc that runs before data loads. Now the current weight is estimated forward from the last weigh-in via energy balance (`projectWeightForward`: calories-in − TDEE since the last weigh-in, water-corrected smoothed baseline, drift-capped); the hard "Current weight is required" notice shows only on an explicit Auto-Calculate when there is no weight data at all; and a soft, non-blocking notice appears only when the last weigh-in is older than `WEIGHT_FRESHNESS_THRESHOLD_DAYS` (21).
+  > pushed — energy-balance current-weight estimate + 21-day freshness gate; tests: 554 pass; commit: be6d028
 
 ---
 
@@ -348,4 +385,4 @@ Run from `public/tools/CalorieTracker/`:
 node_modules/.bin/vitest run
 ```
 
-Baseline: **364 tests, 6 files, all passing.** Any session that changes logic files must keep this green. Add tests for new validators, the date-change cancellation token, and any new pure functions introduced.
+Baseline: **554 tests, 8 files, all passing.** Any session that changes logic files must keep this green. Add tests for new validators, the date-change cancellation token, and any new pure functions introduced.

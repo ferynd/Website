@@ -20,6 +20,7 @@ import { buildEatingPatternTargetSeries } from '../targets/targetEngine.js';
 import { handleWeightUpload } from './weightUpload.js';
 import { debugLog, showMessage } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
+import { getTodayInTimezone } from '../utils/time.js';
 import {
   saveEstimatedEntry,
   removeEstimateItem,
@@ -38,6 +39,7 @@ export function renderAnalysisSection() {
     state.dailyEntries,
     state.userProfile || null,
     state.weightEntriesMulti || null,
+    getTodayInTimezone(),
   );
   state.analysisResults = results;
 

@@ -81,16 +81,18 @@ Critical design constraints:
 - `computeProteinTarget(goalType, weightLb, ffm_kg, goals)` implements proteinBasis: auto fat-loss priority is leanMass → targetWeight → currentWeight. `goalSettings.proteinBasis` is `null` / `'auto'` / `'currentWeight'` / `'targetWeight'` / `'leanMass'` / `'adjustedWeight'`.
 - `getBlankDaysForPopulation` and `getPartialDaysForAdjustment` are `@legacy` — not called from any live UI path; kept for backward compat only.
 
-Test suite: 364 tests across 6 files, run with `node_modules/.bin/vitest run` from `public/tools/CalorieTracker/`. All pure-function tests — no Firebase or DOM.
+Test suite: 554 tests across 8 files, run with `node_modules/.bin/vitest run` from `public/tools/CalorieTracker/`. All pure-function tests — no Firebase or DOM.
 
 ### Backlog workflow
 Ongoing CalorieTracker work lives in [`public/tools/CalorieTracker/BACKLOG.md`](public/tools/CalorieTracker/BACKLOG.md). Read it at session start — its header documents the full protocol; the points below are a pointer, not a duplicate.
 
-- **Trigger phrase:** _"Continue working on the CalorieTracker backlog."_
-- **Working branch:** `working/calorie-tracker-backlog`, long-lived, branched from `main`. Switch onto it (create from `origin/main` if missing) before doing any CalorieTracker work — do **not** stay on the auto-generated `claude/<adjective>-<noun>-<id>` branch the harness may place you on.
-- **PR:** one long-lived PR from `working/calorie-tracker-backlog` → `main`. On first push, create it via the GitHub MCP tools if not already open; subsequent pushes update the same PR.
-- **Status legend:** `[ ]` not started · `[p]` in progress / awaiting review / blocked / needs follow-up · `[x]` complete. **Never flip `[p]` → `[x]` on your own** — only the user does that after reviewing. Notes are one line, reference the commit hash, and replace (don't append).
-- **New items:** when the user adds a feature/bug, slot it into the appropriate priority section (CRITICAL → HIGH → MEDIUM → LOW) and pick the next free number (#46, #47, …).
+- **Trigger (auto-fires the protocol):** _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, _"work on the calorie tracker backlog"_, _"pick up the backlog"_, or a close paraphrase. On recognizing one, read `BACKLOG.md` and run its protocol unprompted — reconcile, then work the top-priority `[ ]` items.
+- **Working branch:** `working/calorie-tracker-backlog`, long-lived, branched from `main`. Switch onto it (create from `origin/main` if missing) when the environment allows. In web/remote sessions the harness may pin a `claude/<adjective>-<noun>-<id>` branch you cannot switch off — that is fine; completion keys off commits merged to `main`, not the branch name.
+- **PR:** one long-lived PR → `main`. On first push, create it via the GitHub MCP tools if not already open; subsequent pushes update the same PR.
+- **Completion is hands-off but merge-gated:** mark `[p]` and record `commit: <short-sha>` on push. A later session's reconcile step flips `[p]`→`[x]` once that commit is merged to `main` (`git merge-base --is-ancestor <sha> origin/main`). **Never mark `[x]` for merely-pushed code, and never flip it manually** — merge to `main` is the only signal.
+- **Status legend:** `[ ]` not started · `[p]` in progress / pushed / awaiting merge / blocked / needs follow-up · `[x]` complete (merged). Notes are one line, reference the commit hash, and replace (don't append).
+- **Descriptive artifacts:** commits use `type(calorie-tracker): #N description`; PR titles use `CalorieTracker: <summary> (#N, #N, …)`. See `BACKLOG.md` steps 9 and 12.
+- **New items:** when the user adds a feature/bug, slot it into the appropriate priority section (CRITICAL → HIGH → MEDIUM → LOW) and pick the next free number (#47, #48, …).
 
 ## Documentation requirements (non-negotiable)
 Any **fundamental change** (routing, structure, build commands, data model, security rules, theming, component API) must update in the **same PR**:
@@ -102,7 +104,7 @@ Any **fundamental change** (routing, structure, build commands, data model, secu
 Add a short **“Docs”** section to the PR body summarizing what changed in the docs.
 
 ## Commit and PR rules (summary)
-- **Commits:** `feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `chore: ...`
+- **Commits:** `feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`, `chore: ...`. Use a scope matching the affected area when the change is localized (e.g., `feat(calorie-tracker): ...`, `fix(trip-planner): ...`). Reference tracked item numbers when applicable (`#N`).
 - **PR checklist:**
   - Build and lint pass locally.
   - Screenshots for UI changes.
