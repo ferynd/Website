@@ -34,17 +34,29 @@ When invoked that way, follow this protocol automatically, without needing furth
    related items.
 7. Implement. Mark each touched item `[p]` with a one-line note (see status legend below).
 8. Run the Vitest suite from this directory: `npm test`. Keep it green.
-9. Commit with a Conventional-Commit message scoped to the tool, e.g.
-   `feat(calorie-tracker): #1 sanitize user food names (prevent XSS)`. One commit per logical
-   change.
+9. Commit with a **descriptive** Conventional-Commit message. Format:
+   `type(calorie-tracker): #N short description of the change`
+   The message must include: (a) the Conventional Commit type (`feat`, `fix`, `refactor`, etc.),
+   (b) the `(calorie-tracker)` scope so it's clear which part of the site changed, (c) the
+   backlog item number(s) (`#N`), and (d) a plain-English summary of what the commit does — not
+   just the item title.
+   Examples:
+   - `feat(calorie-tracker): #46 estimate current weight via energy balance when weigh-in data is stale`
+   - `fix(calorie-tracker): #6 raise TDEE plausibility floor from 1200 to 1400 kcal`
+   - `refactor(calorie-tracker): #17 split dashboard.js into focused modules`
+   One commit per logical change. Multi-item commits list all numbers: `#1 #2 ...`.
 10. Push: `git push -u origin working/calorie-tracker-backlog` (or the pinned `claude/*` branch in
     a web session).
 11. **Record the commit SHA** on every item you pushed (`commit: <short-sha>` in its `[p]` note,
     plus the PR number when known). The next session's reconcile step keys off this SHA — an item
     with no recorded SHA can never be auto-completed.
-12. If no open PR exists for the branch, create one via the GitHub MCP tools (title:
-    "CalorieTracker backlog"; body: short pointer to this file). All subsequent pushes auto-update
-    the same PR.
+12. **PR title and body must be descriptive.** If no open PR exists for the branch, create one
+    via the GitHub MCP tools. Format:
+    - **Title:** `CalorieTracker: <short summary of batch> (#N, #N, …)`
+      Example: `CalorieTracker: weight estimation fix, TDEE floor adjustment (#46, #6)`
+    - **Body:** list every item addressed with its number and one-line summary, plus a pointer to
+      this file. Update the body on subsequent pushes when new items are added to the batch.
+    All subsequent pushes auto-update the same PR.
 
 ## Status legend
 
