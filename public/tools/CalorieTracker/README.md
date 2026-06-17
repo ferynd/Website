@@ -2,7 +2,7 @@
 
 A Firebase-backed, client-side nutrition tracker built with plain JavaScript ES modules and Chart.js. Runs as a standalone static app under `/public/tools/CalorieTracker/` and is linked from the main site's Tools page.
 
-> **Active work:** See [`BACKLOG.md`](./BACKLOG.md) — the single source of truth for ongoing CalorieTracker work, including the session-continuation protocol, branch/PR strategy, status legend, and the prioritized item list. To pick up where a prior session left off, start a new session with: _"Continue working on the CalorieTracker backlog."_
+> **Active work:** See [`BACKLOG.md`](./BACKLOG.md) — the single source of truth for ongoing CalorieTracker work, including the session-continuation protocol, branch/PR strategy, status legend, and the prioritized item list. To pick up where a prior session left off, start a new session with any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, or a close paraphrase — the protocol (reconcile merged items, then work the top-priority items) runs automatically.
 
 ---
 
@@ -236,7 +236,7 @@ The bump values for `dayActivityLevel` are:
 
 `targets/targetEngine.js` runs a pure function `generateTargets(profile, goals, analysisResults)`:
 
-1. Resolves body weight (manual override > smoothed upload > profile).
+1. Resolves the current body weight: manual override > energy-balance estimate projected forward from the last weigh-in > smoothed upload > raw latest. The estimate keeps the app usable between weigh-ins; a soft "stale weight" notice appears only once the last weigh-in is older than `WEIGHT_FRESHNESS_THRESHOLD_DAYS` (21 days, in `constants.js`), and the hard "current weight required" error only when there is no weight data at all.
 2. Computes RMR via Mifflin-St Jeor (sex + age + height + weight) or Cunningham (lean mass, when body fat % is provided).
 3. Applies the PAL multiplier for baseline activity level to get formula TDEE.
 4. Applies goal-specific calorie adjustments (deficit for fat loss, surplus for muscle gain, etc.).
@@ -258,6 +258,7 @@ The analysis engine (`analysis/engine.js`) is designed for gradual fat-loss trac
 - OLS regression on predictor variables (sodium, carbs) estimates water-weight held on high-intake days; corrections are capped at ±2 lb.
 - Multi-horizon TDEE estimates (14, 28, 42, 56 days) let the engine detect whether recent intake has shifted.
 - A grid search constrains empirical TDEE to a plausible PAL range so extreme outliers (illness, data gaps) do not blow up the estimate.
+- `projectWeightForward()` estimates today's weight from the last real weigh-in by accumulating each subsequent day's energy balance (intake − TDEE) at 7700 kcal/kg, so the "current weight" stays current without a fresh measurement. Drift is capped (≈0.3 lb/day) and it falls back to carry-forward when TDEE is unavailable. `runAnalysis(…, asOfDate)` takes the live date so freshness and the projection are computed against today.
 
 **Known limitations:**
 - The engine requires at least 14 weight + calorie days for a rough estimate; accuracy improves significantly above 42 days.
@@ -294,7 +295,7 @@ The analysis engine (`analysis/engine.js`) is designed for gradual fat-loss trac
 Run from `public/tools/CalorieTracker/`:
 
 ```bash
-npm test          # run Vitest test suite (303 tests across 6 files)
+npm test          # run Vitest test suite (554 tests across 8 files)
 npm run dev       # start Vite dev server at localhost:5173
 npm run build     # Vite production build (optional — the app runs directly as static files)
 npm run preview   # preview the Vite build
