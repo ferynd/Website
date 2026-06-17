@@ -212,6 +212,12 @@ export const SCHEMA_VERSIONS = {
   GOAL: 1,     // goalSettings document
 };
 
+// Weight-data freshness. While the most recent weigh-in is within this many days
+// the app estimates the current weight forward (energy balance) silently. Past
+// it, the "enter a current weight" notice is shown — but targets still compute
+// off the estimate so the app keeps working.
+export const WEIGHT_FRESHNESS_THRESHOLD_DAYS = 21;
+
 // Default shape for a new userProfile document.
 // Every field is optional/nullable — an empty object is valid for a first-time
 // user.  normalizeUserProfile() in services/data.js merges this at read time.

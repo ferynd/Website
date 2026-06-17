@@ -1760,3 +1760,90 @@ describe('chart calorie target — exerciseAddMode consistency', () => {
     expect(todayResult.exerciseAddMode).toBe(chartResult.exerciseAddMode);
   });
 });
+
+// ── resolveCurrentWeightLb: energy-balance estimate + staleness ────────────────
+
+describe('resolveCurrentWeightLb — estimate & staleness', () => {
+  function analysisWithSummary(summary) {
+    return { summary, bmrModel: { tdee_current: 2400, error: null } };
+  }
+
+  it('prefers the energy-balance estimate and reports it not stale within the window', () => {
+    const a = analysisWithSummary({
+      currentWeight: 185, estimatedCurrentWeight: 184.2,
+      estimatedWeightMethod: 'energy_balance', lastWeighInDate: '2025-01-01',
+      daysSinceLastWeighIn: 10,
+    });
+    const r = resolveCurrentWeightLb(makeProfile(), a, 186);
+    expect(r.weightLb).toBe(184.2);
+    expect(r.source).toBe('uploaded_estimated');
+    expect(r.stale).toBe(false);
+    expect(r.daysSinceLastWeighIn).toBe(10);
+  });
+
+  it('flags stale when the last weigh-in is older than the threshold', () => {
+    const a = analysisWithSummary({
+      estimatedCurrentWeight: 184.2, estimatedWeightMethod: 'energy_balance',
+      lastWeighInDate: '2024-12-01', daysSinceLastWeighIn: 30,
+    });
+    const r = resolveCurrentWeightLb(makeProfile(), a, 186);
+    expect(r.stale).toBe(true);
+    expect(r.weightLb).toBe(184.2);
+  });
+
+  it('is not stale exactly at the 21-day threshold boundary', () => {
+    const a = analysisWithSummary({
+      estimatedCurrentWeight: 184, estimatedWeightMethod: 'energy_balance', daysSinceLastWeighIn: 21,
+    });
+    expect(resolveCurrentWeightLb(makeProfile(), a, 186).stale).toBe(false);
+  });
+
+  it('falls back to smoothed currentWeight when no estimate is present', () => {
+    const r = resolveCurrentWeightLb(makeProfile(), makeAnalysis(), 186);
+    expect(r.weightLb).toBe(185);
+    expect(r.source).toBe('uploaded_smoothed');
+  });
+
+  it('manual override wins and is never stale', () => {
+    const a = analysisWithSummary({ estimatedCurrentWeight: 184, estimatedWeightMethod: 'energy_balance', daysSinceLastWeighIn: 99 });
+    const r = resolveCurrentWeightLb(makeProfile({ manualWeightOverrideLb: 190 }), a, 186);
+    expect(r.weightLb).toBe(190);
+    expect(r.source).toBe('manual_override');
+    expect(r.stale).toBe(false);
+  });
+
+  it('returns null weight when there is no data at all', () => {
+    const r = resolveCurrentWeightLb(makeProfile(), null, null);
+    expect(r.weightLb).toBeNull();
+    expect(r.stale).toBe(false);
+  });
+});
+
+// ── generateTargets: hard vs soft weight notice ───────────────────────────────
+
+describe('generateTargets — weight notices', () => {
+  function analysisWithSummary(summary) {
+    return { summary, bmrModel: { tdee_current: 2400, error: null } };
+  }
+
+  it('no weight-staleness warning when the estimate is fresh', () => {
+    const a = analysisWithSummary({ estimatedCurrentWeight: 185, estimatedWeightMethod: 'energy_balance', daysSinceLastWeighIn: 5 });
+    const result = generateTargets(makeProfile(), makeGoals(), a, 186);
+    expect(result.targets).toBeTruthy();
+    expect((result.warnings || []).some(w => /Last weigh-in was/.test(w))).toBe(false);
+  });
+
+  it('adds a soft (non-blocking) notice when the weight estimate is stale', () => {
+    const a = analysisWithSummary({ estimatedCurrentWeight: 185, estimatedWeightMethod: 'energy_balance', daysSinceLastWeighIn: 40 });
+    const result = generateTargets(makeProfile(), makeGoals(), a, 186);
+    expect(result.targets).toBeTruthy();            // still computes targets
+    expect(result.warnings.some(w => /Last weigh-in was 40 days ago/.test(w))).toBe(true);
+    expect(result.meta.weightStale).toBe(true);
+  });
+
+  it('returns the hard "current weight is required" error only when no weight exists', () => {
+    const result = generateTargets(makeProfile(), makeGoals(), null, null);
+    expect(result.targets).toBeNull();
+    expect(result.warnings[0]).toMatch(/Current weight is required/);
+  });
+});

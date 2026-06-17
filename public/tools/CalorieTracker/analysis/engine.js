@@ -2153,7 +2153,80 @@ export function buildPartialDayAdjustment(dateStr, residualKcal, dailyEntry, bas
  * @param {Map|null}    weightEntriesMulti - state.weightEntriesMulti (multi-weigh-in map)
  * @returns {object} Complete analysis results
  */
-export function runAnalysis(weightEntries, dailyEntries, profile = null, weightEntriesMulti = null) {
+/**
+ * Project a current body weight forward from the last real weigh-in using the
+ * energy-balance model (calories in − TDEE), so the app can supply a usable
+ * "current weight" without a fresh measurement every day.
+ *
+ * Baseline is the EWMA-smoothed, water-corrected value at the most recent real
+ * weigh-in (the last row with weight_corr != null). Each day after that with a
+ * logged intake contributes (intake − TDEE) kcal to the cumulative energy
+ * balance; days with no logged intake are treated as maintenance (net 0). The
+ * cumulative balance is converted to a weight delta at 7700 kcal/kg.
+ *
+ * Pure — "today" is injected via asOfDate rather than read from the clock.
+ *
+ * @param {Array}        rows      - analysed rows (need date, calories, wt_smooth_lb, weight_corr)
+ * @param {string|null}  asOfDate  - 'YYYY-MM-DD' to project to; defaults to the last row's date
+ * @param {number|null}  tdeeKcal  - stable maintenance TDEE; projection falls back to carry-forward if absent/implausible
+ * @param {object}       opts      - { maxDriftLbPerDay?: number } guardrail (default 0.3)
+ * @returns {{ weightLb: number|null, basisWeightLb: number|null, lastWeighInDate: string|null,
+ *            daysSinceLastWeighIn: number|null, method: string, netKcal: number }}
+ */
+export function projectWeightForward(rows, asOfDate = null, tdeeKcal = null, opts = {}) {
+  const C = ANALYSIS_CONFIG;
+  const maxDriftLbPerDay = opts.maxDriftLbPerDay ?? 0.3;
+  const none = { weightLb: null, basisWeightLb: null, lastWeighInDate: null, daysSinceLastWeighIn: null, method: 'none', netKcal: 0 };
+
+  if (!Array.isArray(rows) || rows.length === 0) return none;
+
+  // Baseline = smoothed value at the most recent real (water-corrected) weigh-in.
+  let lastIdx = -1;
+  for (let i = rows.length - 1; i >= 0; i--) {
+    if (rows[i].weight_corr != null && rows[i].wt_smooth_lb != null) { lastIdx = i; break; }
+  }
+  if (lastIdx === -1) return none;
+
+  const w0 = rows[lastIdx].wt_smooth_lb;
+  const lastDate = rows[lastIdx].date;
+  const endDate = asOfDate || rows[rows.length - 1].date;
+  const daysSince = daysBetween(lastDate, endDate);
+
+  // As-of on/before the last weigh-in → the measured value is current.
+  if (daysSince <= 0) {
+    return { weightLb: +w0.toFixed(1), basisWeightLb: +w0.toFixed(1), lastWeighInDate: lastDate, daysSinceLastWeighIn: 0, method: 'measured', netKcal: 0 };
+  }
+
+  // No plausible TDEE → carry the last weight forward unchanged.
+  const tdee = Number(tdeeKcal);
+  if (!Number.isFinite(tdee) || tdee < C.TDEE_PLAUSIBLE_MIN || tdee > C.TDEE_PLAUSIBLE_MAX) {
+    return { weightLb: +w0.toFixed(1), basisWeightLb: +w0.toFixed(1), lastWeighInDate: lastDate, daysSinceLastWeighIn: daysSince, method: 'carry_forward', netKcal: 0 };
+  }
+
+  // Cumulative net energy for days strictly after the last weigh-in up to as-of.
+  let netKcal = 0;
+  for (const r of rows) {
+    if (r.date > lastDate && r.date <= endDate && r.calories != null && Number.isFinite(r.calories)) {
+      netKcal += r.calories - tdee;
+    }
+  }
+
+  let deltaLb = (netKcal / C.ENERGY_DENSITY_KCAL_PER_KG) / C.LB_TO_KG;
+  // Guardrail: one mis-logged day shouldn't blow up the estimate.
+  const cap = maxDriftLbPerDay * daysSince;
+  deltaLb = Math.max(-cap, Math.min(cap, deltaLb));
+
+  return {
+    weightLb: +(w0 + deltaLb).toFixed(1),
+    basisWeightLb: +w0.toFixed(1),
+    lastWeighInDate: lastDate,
+    daysSinceLastWeighIn: daysSince,
+    method: 'energy_balance',
+    netKcal: Math.round(netKcal),
+  };
+}
+
+export function runAnalysis(weightEntries, dailyEntries, profile = null, weightEntriesMulti = null, asOfDate = null) {
   if (weightEntries.size === 0) {
     return { error: 'No weight data. Upload a weight CSV to begin analysis.', rows: [] };
   }
@@ -2225,6 +2298,12 @@ export function runAnalysis(weightEntries, dailyEntries, profile = null, weightE
     return !entry || entry.entryType !== 'estimate';
   }).length;
 
+  // Energy-balance projection of the current weight, forward from the last real
+  // weigh-in. asOfDate is the live "today" injected by the UI caller (null in
+  // tests → projects to the last row's date, preserving legacy behavior).
+  const stableTdee = bmrModel.error ? null : bmrModel.tdee_current;
+  const weightProjection = projectWeightForward(rows, asOfDate, stableTdee);
+
   return {
     rows,
     bmrModel,
@@ -2238,6 +2317,10 @@ export function runAnalysis(weightEntries, dailyEntries, profile = null, weightE
     profileRmr: profileRmrResult,
     summary: {
       currentWeight: currentWeight ? +currentWeight.toFixed(1) : null,
+      lastWeighInDate: weightProjection.lastWeighInDate,
+      daysSinceLastWeighIn: weightProjection.daysSinceLastWeighIn,
+      estimatedCurrentWeight: weightProjection.weightLb,
+      estimatedWeightMethod: weightProjection.method,
       startWeight: startWeight ? +startWeight.toFixed(1) : null,
       totalWeightChange: currentWeight && startWeight ? +(currentWeight - startWeight).toFixed(1) : null,
       totalDays: rows.length,
