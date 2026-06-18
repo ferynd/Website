@@ -6,7 +6,7 @@
 
 import { state } from '../state/store.js';
 import { allNutrients } from '../constants.js';
-import { showMessage, handleError, formatNutrientName } from '../utils/ui.js';
+import { showMessage, handleError, formatNutrientName, escapeHtml } from '../utils/ui.js';
 import { showConfirmationModal, closeDuplicateDialog } from '../ui/modals.js';
 import { db } from '../services/firebase.js';
 import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
@@ -139,7 +139,7 @@ function showDuplicateDialog(existingFood, newValues, foodName) {
   });
 
   container.innerHTML = `
-    <h3 class="text-lg font-semibold mb-4">Food item "${foodName}" already exists with different values:</h3>
+    <h3 class="text-lg font-semibold mb-4">Food item "${escapeHtml(foodName)}" already exists with different values:</h3>
     <div class="overflow-x-auto mb-6">
       <table class="min-w-full bg-white border border-gray-300">
         <thead class="bg-gray-50">

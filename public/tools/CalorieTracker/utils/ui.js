@@ -57,3 +57,39 @@ export const formatNutrientName = (name) =>
   name.replace(/([A-Z])/g, ' $1').trim()
     .replace(/^vitamin/i, 'Vitamin ')
     .replace(/^omega/i, 'Omega-');
+
+/**
+ * Escapes HTML-special characters so user-controlled strings (e.g. food names)
+ * can be safely interpolated into `innerHTML`. Food names are user input and
+ * must never be rendered as raw HTML — doing so is an XSS vector. Prefer
+ * `textContent`/DOM nodes where practical; use this for template-literal blocks
+ * that remain string-based.
+ * @param {*} value - The value to escape (coerced to string; null/undefined → '').
+ * @returns {string} The escaped string.
+ */
+export const escapeHtml = (value) =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+import { NUTRIENT_MAX_BOUNDS } from '../constants.js';
+
+/**
+ * Clamps a nutrient value to [0, max] and warns the user if the raw value
+ * exceeded the bound. Returns the clamped number.
+ * @param {string} nutrient - The canonical nutrient key (e.g. 'calories').
+ * @param {number} raw - The raw parsed value.
+ * @returns {number} The value clamped to [0, NUTRIENT_MAX_BOUNDS[nutrient]].
+ */
+export function clampNutrient(nutrient, raw) {
+  if (Number.isNaN(raw)) return 0;
+  const max = NUTRIENT_MAX_BOUNDS[nutrient];
+  if (max != null && raw > max) {
+    showMessage(`${formatNutrientName(nutrient)} clamped to ${max} (entered ${raw}).`, true);
+    return max;
+  }
+  return Math.max(0, raw);
+}

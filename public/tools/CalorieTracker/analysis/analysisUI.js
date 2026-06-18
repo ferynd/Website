@@ -18,7 +18,7 @@ import {
 } from './engine.js';
 import { buildEatingPatternTargetSeries } from '../targets/targetEngine.js';
 import { handleWeightUpload } from './weightUpload.js';
-import { debugLog, showMessage } from '../utils/ui.js';
+import { debugLog, showMessage, escapeHtml } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import {
@@ -1343,7 +1343,7 @@ function renderMissingCaloriesSection(candidates) {
       ? `<details class="inline text-xs mt-1"><summary class="cursor-pointer text-accent">Interval math ▸</summary>
           <div class="mt-1 space-y-1 pl-1">
             ${r.intervalsUsed.map(i => `<div class="border-l-2 border-accent/30 pl-2">
-              <strong>${i.name}</strong> [${i.intervalStart} – ${i.intervalEnd}]:
+              <strong>${escapeHtml(i.name)}</strong> [${i.intervalStart} – ${i.intervalEnd}]:
               gap ${i.perDayResidual > 0 ? '+' : ''}${i.perDayResidual} kcal/day
               ${i.reportedIntake != null ? ` · logged ${i.reportedIntake} kcal` : ''}
               ${i.expectedExpenditure != null ? ` · TDEE-est ${i.expectedExpenditure} kcal` : ''}
@@ -1580,7 +1580,7 @@ function renderEstimateManagementSection() {
     const removeButtons = syntheticItems.map(fi => `
       <button class="estimate-remove-btn btn btn-secondary btn-sm"
               data-date="${dateStr}" data-item-id="${fi.id}"
-              title="Remove '${fi.name}' from this day">
+              title="Remove '${escapeHtml(fi.name)}' from this day">
         <i class="fas fa-trash-alt mr-1"></i>Remove
       </button>
     `).join('');

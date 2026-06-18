@@ -9,7 +9,7 @@ import { allNutrients } from '../constants.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { saveDailyEntry, deleteFoodItem } from '../services/firebase.js';
 import { updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
-import { showMessage, handleError } from '../utils/ui.js';
+import { showMessage, handleError, escapeHtml } from '../utils/ui.js';
 import { hideFoodDropdown } from './dropdown.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
@@ -99,7 +99,7 @@ export function openFoodManager() {
   container.innerHTML = list.map(([id, f]) => `
     <div class="flex justify-between items-center p-3 border-b border-default">
       <div>
-        <div class="font-medium">${f.name}</div>
+        <div class="font-medium">${escapeHtml(f.name)}</div>
         <div class="text-sm text-muted">Cal: ${f.calories || 0} | P: ${f.protein || 0} / C: ${f.carbs || 0} / F: ${f.fat || 0} | Qty: ${f.quantity ?? 0}</div>
       </div>
       <div class="flex gap-2">

@@ -162,6 +162,11 @@ function wireSettingsEvents() {
   }
 }
 
+// Token to detect stale date-change renders: each date-change increments this
+// counter; if a second change fires before the first finishes, the first's
+// post-render steps bail out so they don't overwrite the newer date's data.
+let _dateChangeToken = 0;
+
 /**
  * Wire up main control events including date and day activity level
  */
@@ -170,13 +175,16 @@ function wireMainControls() {
     // Date input change handler
     if (state.dom.dateInput) {
       state.dom.dateInput.addEventListener('change', async () => {
+        const token = ++_dateChangeToken;
         try {
           await loadDailyFoodItems();
+          if (token !== _dateChangeToken) return;
           loadDayActivityForDate();
           updateDashboard();
           updateChart();
           debugLog('wire-date', 'Date changed and UI updated');
         } catch (error) {
+          if (token !== _dateChangeToken) return;
           handleError('wire-date-change', error, 'Failed to handle date change');
         }
       });

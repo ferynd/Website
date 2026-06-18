@@ -100,11 +100,31 @@ export function performFoodSearch(searchTerm) {
 export function showFoodDropdown(matches) {
   const dropdownContainer = document.getElementById('food-dropdown');
   state.selectedDropdownIndex = -1;
-  dropdownContainer.innerHTML = matches.map((f, idx) => `
-    <div class="food-dropdown-item" data-food-name="${f.name}" onclick="selectFoodItem('${(f.name || '').replace(/'/g, "\\'")}')" data-index="${idx}">
-      <div class="font-medium">${f.name}</div>
-      <div class="text-xs text-gray-500">Cal: ${f.calories || 0} | P: ${f.protein || 0} / C: ${f.carbs || 0} / F: ${f.fat || 0}</div>
-    </div>`).join('');
+  // Build with DOM nodes + textContent rather than innerHTML: food names are
+  // user-controlled and would otherwise be an XSS vector (and break a quoted
+  // inline onclick handler).
+  dropdownContainer.replaceChildren();
+  matches.forEach((f, idx) => {
+    const name = f.name || '';
+
+    const itemEl = document.createElement('div');
+    itemEl.className = 'food-dropdown-item';
+    itemEl.dataset.foodName = name;
+    itemEl.dataset.index = String(idx);
+    itemEl.addEventListener('click', () => window.selectFoodItem(name));
+
+    const nameEl = document.createElement('div');
+    nameEl.className = 'font-medium';
+    nameEl.textContent = name;
+
+    const macroEl = document.createElement('div');
+    macroEl.className = 'text-xs text-gray-500';
+    macroEl.textContent =
+      `Cal: ${f.calories || 0} | P: ${f.protein || 0} / C: ${f.carbs || 0} / F: ${f.fat || 0}`;
+
+    itemEl.append(nameEl, macroEl);
+    dropdownContainer.appendChild(itemEl);
+  });
   dropdownContainer.classList.remove('hidden');
   state.foodDropdownVisible = true;
 }

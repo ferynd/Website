@@ -165,40 +165,40 @@
                   <label for="actual-quantity" class="block text-sm font-medium text-secondary mb-1">Qty</label>
                   <input id="actual-quantity" type="number" step="0.01" min="0" value="1">
                 </div>
-                <div><label for="actual-calories" class="block text-sm font-medium text-primary mb-1">Calories</label><input type="number" step="any" id="actual-calories"></div>
-                <div><label for="actual-protein"  class="block text-sm font-medium text-primary mb-1">Protein (g)</label><input type="number" step="any" id="actual-protein"></div>
-                <div><label for="actual-carbs"    class="block text-sm font-medium text-primary mb-1">Carbs (g)</label><input type="number" step="any" id="actual-carbs"></div>
-                <div><label for="actual-fat"      class="block text-sm font-medium text-primary mb-1">Fat (g)</label><input type="number" step="any" id="actual-fat"></div>
+                <div><label for="actual-calories" class="block text-sm font-medium text-primary mb-1">Calories</label><input type="number" step="any" min="0" max="10000" id="actual-calories"></div>
+                <div><label for="actual-protein"  class="block text-sm font-medium text-primary mb-1">Protein (g)</label><input type="number" step="any" min="0" max="1000" id="actual-protein"></div>
+                <div><label for="actual-carbs"    class="block text-sm font-medium text-primary mb-1">Carbs (g)</label><input type="number" step="any" min="0" max="1000" id="actual-carbs"></div>
+                <div><label for="actual-fat"      class="block text-sm font-medium text-primary mb-1">Fat (g)</label><input type="number" step="any" min="0" max="1000" id="actual-fat"></div>
 
                 <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Daily Vitamins</h4>
-                <div><label for="actual-vitaminB12" class="block text-sm font-medium text-primary mb-1">Vitamin B12 (mcg)</label><input type="number" step="any" id="actual-vitaminB12"></div>
-                <div><label for="actual-folate"     class="block text-sm font-medium text-primary mb-1">Folate (mcg)</label><input type="number" step="any" id="actual-folate"></div>
-                <div><label for="actual-vitaminC"   class="block text-sm font-medium text-primary mb-1">Vitamin C (mg)</label><input type="number" step="any" id="actual-vitaminC"></div>
-                <div><label for="actual-vitaminB6"  class="block text-sm font-medium text-primary mb-1">Vitamin B6 (mg)</label><input type="number" step="any" id="actual-vitaminB6"></div>
+                <div><label for="actual-vitaminB12" class="block text-sm font-medium text-primary mb-1">Vitamin B12 (mcg)</label><input type="number" step="any" min="0" max="10000" id="actual-vitaminB12"></div>
+                <div><label for="actual-folate"     class="block text-sm font-medium text-primary mb-1">Folate (mcg)</label><input type="number" step="any" min="0" max="10000" id="actual-folate"></div>
+                <div><label for="actual-vitaminC"   class="block text-sm font-medium text-primary mb-1">Vitamin C (mg)</label><input type="number" step="any" min="0" max="20000" id="actual-vitaminC"></div>
+                <div><label for="actual-vitaminB6"  class="block text-sm font-medium text-primary mb-1">Vitamin B6 (mg)</label><input type="number" step="any" min="0" max="1000" id="actual-vitaminB6"></div>
 
                 <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Averaged Vitamins</h4>
-                <div><label for="actual-vitaminA" class="block text-sm font-medium text-primary mb-1">Vitamin A (mcg)</label><input type="number" step="any" id="actual-vitaminA"></div>
-                <div><label for="actual-vitaminD" class="block text-sm font-medium text-primary mb-1">Vitamin D (mcg)</label><input type="number" step="any" id="actual-vitaminD"></div>
-                <div><label for="actual-vitaminE" class="block text-sm font-medium text-primary mb-1">Vitamin E (mg)</label><input type="number" step="any" id="actual-vitaminE"></div>
-                <div><label for="actual-vitaminK" class="block text-sm font-medium text-primary mb-1">Vitamin K (mcg)</label><input type="number" step="any" id="actual-vitaminK"></div>
+                <div><label for="actual-vitaminA" class="block text-sm font-medium text-primary mb-1">Vitamin A (mcg)</label><input type="number" step="any" min="0" max="30000" id="actual-vitaminA"></div>
+                <div><label for="actual-vitaminD" class="block text-sm font-medium text-primary mb-1">Vitamin D (mcg)</label><input type="number" step="any" min="0" max="1000" id="actual-vitaminD"></div>
+                <div><label for="actual-vitaminE" class="block text-sm font-medium text-primary mb-1">Vitamin E (mg)</label><input type="number" step="any" min="0" max="10000" id="actual-vitaminE"></div>
+                <div><label for="actual-vitaminK" class="block text-sm font-medium text-primary mb-1">Vitamin K (mcg)</label><input type="number" step="any" min="0" max="10000" id="actual-vitaminK"></div>
 
                 <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Daily Minerals</h4>
-                <div><label for="actual-iron"      class="block text-sm font-medium text-primary mb-1">Iron (mg)</label><input type="number" step="any" id="actual-iron"></div>
-                <div><label for="actual-calcium"   class="block text-sm font-medium text-primary mb-1">Calcium (mg)</label><input type="number" step="any" id="actual-calcium"></div>
-                <div><label for="actual-magnesium" class="block text-sm font-medium text-primary mb-1">Magnesium (mg)</label><input type="number" step="any" id="actual-magnesium"></div>
-                <div><label for="actual-zinc"      class="block text-sm font-medium text-primary mb-1">Zinc (mg)</label><input type="number" step="any" id="actual-zinc"></div>
-                <div><label for="actual-potassium" class="block text-sm font-medium text-primary mb-1">Potassium (mg)</label><input type="number" step="any" id="actual-potassium"></div>
-                <div><label for="actual-sodium"    class="block text-sm font-medium text-primary mb-1">Sodium (mg)</label><input type="number" step="any" id="actual-sodium"></div>
+                <div><label for="actual-iron"      class="block text-sm font-medium text-primary mb-1">Iron (mg)</label><input type="number" step="any" min="0" max="450" id="actual-iron"></div>
+                <div><label for="actual-calcium"   class="block text-sm font-medium text-primary mb-1">Calcium (mg)</label><input type="number" step="any" min="0" max="25000" id="actual-calcium"></div>
+                <div><label for="actual-magnesium" class="block text-sm font-medium text-primary mb-1">Magnesium (mg)</label><input type="number" step="any" min="0" max="10000" id="actual-magnesium"></div>
+                <div><label for="actual-zinc"      class="block text-sm font-medium text-primary mb-1">Zinc (mg)</label><input type="number" step="any" min="0" max="400" id="actual-zinc"></div>
+                <div><label for="actual-potassium" class="block text-sm font-medium text-primary mb-1">Potassium (mg)</label><input type="number" step="any" min="0" max="50000" id="actual-potassium"></div>
+                <div><label for="actual-sodium"    class="block text-sm font-medium text-primary mb-1">Sodium (mg)</label><input type="number" step="any" min="0" max="23000" id="actual-sodium"></div>
 
                 <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Averaged Minerals</h4>
-                <div><label for="actual-selenium"   class="block text-sm font-medium text-primary mb-1">Selenium (mcg)</label><input type="number" step="any" id="actual-selenium"></div>
-                <div><label for="actual-iodine"     class="block text-sm font-medium text-primary mb-1">Iodine (mcg)</label><input type="number" step="any" id="actual-iodine"></div>
-                <div><label for="actual-phosphorus" class="block text-sm font-medium text-primary mb-1">Phosphorus (mg)</label><input type="number" step="any" id="actual-phosphorus"></div>
+                <div><label for="actual-selenium"   class="block text-sm font-medium text-primary mb-1">Selenium (mcg)</label><input type="number" step="any" min="0" max="4000" id="actual-selenium"></div>
+                <div><label for="actual-iodine"     class="block text-sm font-medium text-primary mb-1">Iodine (mcg)</label><input type="number" step="any" min="0" max="11000" id="actual-iodine"></div>
+                <div><label for="actual-phosphorus" class="block text-sm font-medium text-primary mb-1">Phosphorus (mg)</label><input type="number" step="any" min="0" max="40000" id="actual-phosphorus"></div>
 
                 <h4 class="text-lg font-semibold text-secondary pt-4 staging-sticky">Optional</h4>
-                <div><label for="actual-omega3"  class="block text-sm font-medium text-primary mb-1">Omega-3 (g)</label><input type="number" step="any" id="actual-omega3"></div>
-                <div><label for="actual-fiber"   class="block text-sm font-medium text-primary mb-1">Fiber (g)</label><input type="number" step="any" id="actual-fiber"></div>
-                <div><label for="actual-choline" class="block text-sm font-medium text-primary mb-1">Choline (mg)</label><input type="number" step="any" id="actual-choline"></div>
+                <div><label for="actual-omega3"  class="block text-sm font-medium text-primary mb-1">Omega-3 (g)</label><input type="number" step="any" min="0" max="100" id="actual-omega3"></div>
+                <div><label for="actual-fiber"   class="block text-sm font-medium text-primary mb-1">Fiber (g)</label><input type="number" step="any" min="0" max="500" id="actual-fiber"></div>
+                <div><label for="actual-choline" class="block text-sm font-medium text-primary mb-1">Choline (mg)</label><input type="number" step="any" min="0" max="35000" id="actual-choline"></div>
               </div>
             </div>
           </details>

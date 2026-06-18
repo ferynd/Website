@@ -118,7 +118,8 @@ export async function fetchTargets() {
     debugLog('firebase-fetch', 'Targets fetched successfully');
     return result;
   } catch (e) {
-    return handleError('targets-fetch', e, 'Failed to fetch targets.') || {};
+    handleError('targets-fetch', e, 'Failed to fetch targets.');
+    throw e;
   }
 }
 
@@ -358,7 +359,8 @@ export async function fetchUserProfile() {
     debugLog('firebase-fetch', 'User profile fetched');
     return result;
   } catch (e) {
-    return handleError('profile-fetch', e, 'Failed to fetch user profile.') || {};
+    handleError('profile-fetch', e, 'Failed to fetch user profile.');
+    throw e;
   }
 }
 
@@ -400,7 +402,8 @@ export async function fetchGoalSettings() {
     debugLog('firebase-fetch', 'Goal settings fetched');
     return result;
   } catch (e) {
-    return handleError('goals-fetch', e, 'Failed to fetch goal settings.') || {};
+    handleError('goals-fetch', e, 'Failed to fetch goal settings.');
+    throw e;
   }
 }
 
