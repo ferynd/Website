@@ -232,7 +232,7 @@ Use targeted testing judgment:
 
 - [p] **#16 — Deleting a food item or exercise session is irreversible**
   There is no undo path after confirmation. Add a 5-second undo toast that re-adds the item before it is written to Firestore, giving users a quick recovery window.
-  > pushed — showUndoToast in utils/ui.js; removeFoodItem and removeExerciseSessionById use 5s undo toast instead of confirmation modal; Firestore write deferred until undo window closes; rollback on save error; tests: 575 pass; commit: dc02f4f
+  > pushed — showUndoToast in utils/ui.js; removeFoodItem and removeExerciseSessionById use 5s undo toast instead of confirmation modal; Firestore write deferred until undo window closes; rapid successive deletes flush the previous pending commit before showing the new toast; rollback on save error; tests: 575 pass; commit: dc02f4f
 
 - [x] **#46 — "Current weight required" nag fires regardless of weigh-in age**
   `targets/targetEngine.js`, `analysis/engine.js`, `targets/targetUI.js`, `constants.js` — the notice showed unconditionally, on a debounced auto-calc that runs before data loads. Now the current weight is estimated forward from the last weigh-in via energy balance (`projectWeightForward`: calories-in − TDEE since the last weigh-in, water-corrected smoothed baseline, drift-capped); the hard "Current weight is required" notice shows only on an explicit Auto-Calculate when there is no weight data at all; and a soft, non-blocking notice appears only when the last weigh-in is older than `WEIGHT_FRESHNESS_THRESHOLD_DAYS` (21).
