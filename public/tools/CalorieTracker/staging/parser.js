@@ -220,6 +220,8 @@ export function handleStagingAction(mode) {
 
   if (mode === 'replace') {
     showConfirmationModal(`Replace all of ${dateStr} with staged values? This will overwrite existing data for this day.`, async () => {
+      flushPendingUndo();
+
       const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
       // Start with v2 defaults so the replaced entry retains schema compliance.
       const newEntry = {
