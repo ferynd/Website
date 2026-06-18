@@ -80,7 +80,7 @@ import { NUTRIENT_MAX_BOUNDS } from '../constants.js';
 let _undoTimer = null;
 let _pendingCommit = null;
 
-function flushPendingUndo() {
+export function flushPendingUndo() {
   if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
   if (_pendingCommit) { const fn = _pendingCommit; _pendingCommit = null; fn(); }
 }

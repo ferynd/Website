@@ -9,7 +9,7 @@ import { allNutrients } from '../constants.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { saveDailyEntry, deleteFoodItem } from '../services/firebase.js';
 import { updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
-import { showMessage, handleError, escapeHtml, showUndoToast } from '../utils/ui.js';
+import { showMessage, handleError, escapeHtml, showUndoToast, flushPendingUndo } from '../utils/ui.js';
 import { hideFoodDropdown } from './dropdown.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
@@ -55,6 +55,8 @@ export function selectFoodItem(foodName) {
  */
 export function removeFoodItem(index) {
   if (index < 0 || index >= state.dailyFoodItems.length) return;
+
+  flushPendingUndo();
 
   const itemToRemove = state.dailyFoodItems[index];
   const dateStr = state.dom.dateInput.value;

@@ -4,7 +4,7 @@
  */
 import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
-import { handleError, debugLog, escapeHtml, showUndoToast, showMessage } from '../utils/ui.js';
+import { handleError, debugLog, escapeHtml, showUndoToast, showMessage, flushPendingUndo } from '../utils/ui.js';
 import {
   fetchTargets,
   fetchRecentEntries,
@@ -601,9 +601,12 @@ function removeExerciseSessionById(sessionId) {
 
   if (!Array.isArray(entry.exerciseSessions)) return;
 
-  const original = [...entry.exerciseSessions];
   const removed = entry.exerciseSessions.find(s => s.id === sessionId);
   if (!removed) return;
+
+  flushPendingUndo();
+
+  const original = [...entry.exerciseSessions];
 
   entry.exerciseSessions = entry.exerciseSessions.filter(s => s.id !== sessionId);
   state.dailyEntries.set(dateStr, entry);
