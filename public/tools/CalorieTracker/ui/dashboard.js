@@ -1750,7 +1750,7 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     const trendBadge = `<span class="${trendCls} nt-trend" title="Recent trend">${trendIcon}</span>`;
 
     // UL warning
-    const ulLabel = name === 'sodium'
+    const ulLabel = nutrient === 'sodium'
       ? `Near/above CDRR target (${ul})`
       : `Near/above upper limit (UL: ${ul})`;
     const ulBadge = isUlExceeded

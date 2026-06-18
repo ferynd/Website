@@ -190,11 +190,11 @@ green and add tests for new validators or pure functions.
 
 - [p] **#11 — Sodium "UL" is the CDRR target, not a Tolerable Upper Intake Level**
   `targets/nutritionReferences.js:185-206` — NASEM did not establish a true UL for sodium; 2 300 mg is the Chronic Disease Risk Reduction target. Mislabeling it "UL" causes users to see "over UL" warnings at moderate sodium intakes. Add a comment: `// CDRR target — no established UL per NASEM`. Consider whether the warning copy in the UI should reflect this distinction.
-  > pushed — CDRR comment block on sodium entry; null-UL entries annotated with NASEM rationale; target warning text distinguishes CDRR from UL for sodium; tests: 568 pass; commit: 6ec05bd
+  > pushed — CDRR comment block on sodium entry; null-UL entries annotated with NASEM rationale; target warning + Nutrients tab row/summary badges distinguish CDRR from UL for sodium; tests: 568 pass; commit: 6ec05bd
 
 - [p] **#12 — Body-fat % outside realistic bounds accepted without warning**
   `analysis/engine.js:647`, `targets/targetEngine.js:141` — the valid range is `[5, 60]` but no validation message is shown if a user enters 3% or 70%. Add an inline warning (not a hard block) in the Profile & Goals form for out-of-range values.
-  > pushed — hidden warning element in HTML; validateBodyFatInput() in targetUI.js shows tiered warnings for <5%, <8%, >50%, >60%; tests: 568 pass; commit: 6ec05bd
+  > pushed — hidden warning element in HTML; validateBodyFatInput() in targetUI.js shows tiered warnings for <5%, <8%, >50%, >60%; Cunningham bounds now inclusive (>=5, <=60); tests: 568 pass; commit: 6ec05bd
 
 - [p] **#13 — Carb-clamp-to-zero in auto-generated targets has no user warning**
   `targets/targetEngine.js:566-569` — when protein + fat exceed the calorie total, carbs silently clamp to 0. The override path already has a warning at lines 758-782; apply the same warning to the auto-generated path so users know their goal macro split is infeasible.
