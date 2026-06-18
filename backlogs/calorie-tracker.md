@@ -224,15 +224,15 @@ Use targeted testing judgment:
 
 - [p] **#14 — No duplicate detection in paste-and-parse staging**
   Pasting the same nutrition label twice yields two food entries with identical names and values. Hash on `name + kcal` (or similar fingerprint) and prompt the user to confirm before adding an apparent duplicate.
-  > pushed — findDailyDuplicate checks name+calories before addStagedNutrientsToDailyLog; confirmation modal on match; 7 new tests; tests: 575 pass; commit: _pending_
+  > pushed — findDailyDuplicate checks name+calories before addStagedNutrientsToDailyLog; confirmation modal on match; 7 new tests; tests: 575 pass; commit: dc02f4f
 
 - [p] **#15 — No realtime sync / no offline note**
   Only one-shot `getDoc`/`getDocs` calls — a second device's edits never appear without a page reload. Either migrate `dailyEntries/{today}` to `onSnapshot()` for live sync, or document the single-device limitation prominently in the UI (currently only in README Known Limitations).
-  > pushed — dismissible sync-notice banner above food list after data load; localStorage remembers dismissal; tests: 575 pass; commit: _pending_
+  > pushed — dismissible sync-notice banner above food list after data load; localStorage remembers dismissal; tests: 575 pass; commit: dc02f4f
 
 - [p] **#16 — Deleting a food item or exercise session is irreversible**
   There is no undo path after confirmation. Add a 5-second undo toast that re-adds the item before it is written to Firestore, giving users a quick recovery window.
-  > pushed — showUndoToast in utils/ui.js; removeFoodItem and removeExerciseSessionById use 5s undo toast instead of confirmation modal; Firestore write deferred until undo window closes; rollback on save error; tests: 575 pass; commit: _pending_
+  > pushed — showUndoToast in utils/ui.js; removeFoodItem and removeExerciseSessionById use 5s undo toast instead of confirmation modal; Firestore write deferred until undo window closes; rollback on save error; tests: 575 pass; commit: dc02f4f
 
 - [x] **#46 — "Current weight required" nag fires regardless of weigh-in age**
   `targets/targetEngine.js`, `analysis/engine.js`, `targets/targetUI.js`, `constants.js` — the notice showed unconditionally, on a debounced auto-calc that runs before data loads. Now the current weight is estimated forward from the last weigh-in via energy balance (`projectWeightForward`: calories-in − TDEE since the last weigh-in, water-corrected smoothed baseline, drift-capped); the hard "Current weight is required" notice shows only on an explicit Auto-Calculate when there is no weight data at all; and a soft, non-blocking notice appears only when the last weigh-in is older than `WEIGHT_FRESHNESS_THRESHOLD_DAYS` (21).
