@@ -186,23 +186,27 @@ export const UL_TABLE = {
   vitaminA:    3000,  // mcg RAE
   vitaminD:    100,   // mcg
   vitaminE:    1000,  // mg
-  vitaminK:    null,
+  vitaminK:    null,   // no established UL — insufficient evidence of toxicity (NASEM)
   vitaminC:    2000,  // mg
   vitaminB6:   100,   // mg
   folate:      1000,  // mcg (synthetic/supplemental)
-  vitaminB12:  null,
+  vitaminB12:  null,   // no established UL — no observed adverse effects at high doses (NASEM)
   calcium:     2500,  // mg
   iron:        45,    // mg
   zinc:        40,    // mg
   selenium:    400,   // mcg
   iodine:      1100,  // mcg
-  magnesium:   null,  // no UL for dietary magnesium
-  sodium:      2300,  // mg (CDRR)
+  magnesium:   null,   // no UL for dietary magnesium; supplemental UL is 350 mg (NASEM)
+  // CDRR (Chronic Disease Risk Reduction) target — not a Tolerable Upper Intake Level.
+  // NASEM did not establish a true UL for sodium; 2300 mg is the intake above which
+  // reducing sodium lowers chronic disease risk. "Over limit" warnings for this
+  // nutrient reflect the CDRR threshold, not a toxicity-based UL.
+  sodium:      2300,  // mg (CDRR, not UL)
   phosphorus:  4000,  // mg
   choline:     3500,  // mg
-  fiber:       null,
-  potassium:   null,
-  omega3:      null,
+  fiber:       null,   // no established UL — high intakes may cause GI discomfort but no toxicity threshold set
+  potassium:   null,   // no established UL — healthy kidneys excrete excess; NASEM found no toxicity basis
+  omega3:      null,   // no established UL — insufficient long-term data at high doses (NASEM)
 };
 
 // ---------------------------------------------------------------------------

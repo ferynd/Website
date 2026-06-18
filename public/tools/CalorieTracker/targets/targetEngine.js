@@ -693,6 +693,14 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
   // ── Carbs ─────────────────────────────────────────────────────────────────
   const carbsResult = computeCarbsTarget(calResult.calories, proteinResult.protein, fatResult.fat);
 
+  const proteinFatKcal = (proteinResult.protein * 4) + (fatResult.fat * 9);
+  if (proteinFatKcal > calResult.calories) {
+    warnings.push(
+      `Protein (${proteinResult.protein} g × 4 = ${proteinResult.protein * 4} kcal) + Fat (${fatResult.fat} g × 9 = ${fatResult.fat * 9} kcal) ` +
+      `exceeds calorie target (${calResult.calories} kcal). Carbs set to 0 — your macro split is infeasible at this calorie level.`
+    );
+  }
+
   // ── Micronutrients ────────────────────────────────────────────────────────
   const age = resolveAge(profile) ?? 30;
   const { microTargets, warnings: microWarnings } = computeMicronutrientTargets(profile);
@@ -711,8 +719,11 @@ export function generateTargets(profile, goals, analysisResults = null, rawLates
   // ── UL warnings ───────────────────────────────────────────────────────────
   for (const [key, ul] of Object.entries(UL_TABLE)) {
     if (ul !== null && targets[key] !== undefined && targets[key] > ul) {
+      const limitLabel = key === 'sodium'
+        ? 'NASEM Chronic Disease Risk Reduction (CDRR) target'
+        : 'NASEM Tolerable Upper Intake Level';
       warnings.push(
-        `Warning: ${key} target (${targets[key]}) exceeds the NASEM Tolerable Upper Intake Level (${ul}). Review before saving.`
+        `Warning: ${key} target (${targets[key]}) exceeds the ${limitLabel} (${ul}). Review before saving.`
       );
     }
   }

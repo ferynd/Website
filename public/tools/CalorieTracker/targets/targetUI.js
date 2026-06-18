@@ -620,9 +620,46 @@ export function wireProfileTab() {
     on(id, 'input',  onFieldChange);
     on(id, 'change', onFieldChange);
   }
+
+  on('profile-bodyfat', 'input', validateBodyFatInput);
+  on('profile-bodyfat', 'change', validateBodyFatInput);
   document.querySelectorAll(
     'input[name="profile-sex"], input[name="profile-activity"], input[name="profile-target-mode"]'
   ).forEach(el => el.addEventListener('change', onFieldChange));
+}
+
+// ---------------------------------------------------------------------------
+// Body-fat % inline validation
+// ---------------------------------------------------------------------------
+
+function validateBodyFatInput() {
+  const val = parseFloat(document.getElementById('profile-bodyfat')?.value);
+  const warnEl = document.getElementById('bodyfat-warning');
+  const textEl = document.getElementById('bodyfat-warning-text');
+  if (!warnEl || !textEl) return;
+
+  if (isNaN(val) || val === 0) {
+    warnEl.classList.add('hidden');
+    return;
+  }
+
+  let msg = '';
+  if (val < 5) {
+    msg = `${val}% is below essential fat levels (~5% for men, ~12% for women). This value will be ignored for calculations. Double-check your entry.`;
+  } else if (val > 60) {
+    msg = `${val}% is above the realistic range (typically ≤ 60%). This value will be ignored for calculations. Double-check your entry.`;
+  } else if (val < 8) {
+    msg = `${val}% is very low — typical only for competitive bodybuilders at peak condition. Verify this is accurate.`;
+  } else if (val > 50) {
+    msg = `${val}% is unusually high. If this is from a consumer scale, the reading may not be accurate.`;
+  }
+
+  if (msg) {
+    textEl.textContent = msg;
+    warnEl.classList.remove('hidden');
+  } else {
+    warnEl.classList.add('hidden');
+  }
 }
 
 // ---------------------------------------------------------------------------
