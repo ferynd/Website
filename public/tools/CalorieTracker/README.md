@@ -2,7 +2,7 @@
 
 A Firebase-backed, client-side nutrition tracker built with plain JavaScript ES modules and Chart.js. Runs as a standalone static app under `/public/tools/CalorieTracker/` and is linked from the main site's Tools page.
 
-> **Active work:** See [`BACKLOG.md`](./BACKLOG.md) — the single source of truth for ongoing CalorieTracker work, including the session-continuation protocol, branch/PR strategy, status legend, and the prioritized item list. To pick up where a prior session left off, start a new session with any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, or a close paraphrase — the protocol (reconcile merged items, then work the top-priority items) runs automatically.
+> **Active work:** See [`backlogs/calorie-tracker.md`](../../../backlogs/calorie-tracker.md) at the repo root — the single source of truth for ongoing CalorieTracker work, including the session-continuation protocol, branch/PR strategy, status legend, and the prioritized item list. To pick up where a prior session left off, start a new session with any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, or a close paraphrase — the protocol (reconcile merged items, then work the top-priority items) runs automatically.
 
 ---
 
@@ -295,7 +295,7 @@ The analysis engine (`analysis/engine.js`) is designed for gradual fat-loss trac
 Run from `public/tools/CalorieTracker/`:
 
 ```bash
-npm test          # run Vitest test suite (554 tests across 8 files)
+npm test          # run Vitest test suite (568 tests across 9 files)
 npm run dev       # start Vite dev server at localhost:5173
 npm run build     # Vite production build (optional — the app runs directly as static files)
 npm run preview   # preview the Vite build

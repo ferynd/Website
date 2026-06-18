@@ -1,6 +1,6 @@
 # Security & Privacy
 
-This site is a **client-first** Next.js app with static sub-sites. There is **no server-side secret logic** in this repo. 
+This site is a **client-first** Next.js app with static sub-sites. Selected Edge API routes use environment secrets for external AI/media APIs. Do not expose those secrets client-side.
 Persistence is provided via **Firebase (Auth + Firestore)** for selected tools.
 
 ## Secrets & Keys
@@ -10,7 +10,7 @@ Persistence is provided via **Firebase (Auth + Firestore)** for selected tools.
 - Never log PII, tokens, or auth data to the console. Avoid printing document contents that could include personal information.
 
 ## Authentication
-- Email/password via Firebase Auth on Trip Cost (and optionally in Calorie Tracker).
+- Email/password via Firebase Auth on Trip Cost, Trip Planner, Date Night Roulette, Conflict Tracker, Movie/TV Show Tracker, and Calorie Tracker.
 - The admin user is `arkkahdarkkahd@gmail.com` (see `ADMIN_EMAIL` in the Trip Cost config). Use this only for approvals and privileged actions.
 
 ## Firestore Structure
