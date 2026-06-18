@@ -164,7 +164,7 @@ export function computeBMR(profile, weightLb) {
 
   // Cunningham when body fat % is available (more accurate for athletes)
   const bf = parseFloat(profile.bodyFatPercent);
-  if (!isNaN(bf) && bf > 5 && bf < 60) {
+  if (!isNaN(bf) && bf >= 5 && bf <= 60) {
     const ffm_kg = weight_kg * (1 - bf / 100);
     return {
       bmr: roundInt(cunningham(ffm_kg)),

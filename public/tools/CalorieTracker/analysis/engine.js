@@ -658,7 +658,7 @@ export function estimateProfileRmr(profile, weightLb) {
   if (profile) {
     // ── Cunningham (preferred when BF% is available) ──────────────────────────
     const bf = parseFloat(profile.bodyFatPercent);
-    if (!isNaN(bf) && bf > 5 && bf < 60) {
+    if (!isNaN(bf) && bf >= 5 && bf <= 60) {
       const ffmKg = weightKg * (1 - bf / 100);
       const rmr = 500 + 22 * ffmKg;
       return { rmr: Math.round(rmr), method: 'cunningham', note: 'Cunningham equation (lean mass)' };
