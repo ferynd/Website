@@ -340,6 +340,18 @@ function wireTabs() {
         tabBtns[next].focus();
         activateTab(tabBtns[next].dataset.tab);
       });
+
+      const wrap = tabBar.closest('.tab-bar-wrap');
+      if (wrap) {
+        const updateShadows = () => {
+          const { scrollLeft, scrollWidth, clientWidth } = tabBar;
+          wrap.classList.toggle('scroll-left', scrollLeft > 2);
+          wrap.classList.toggle('scroll-right', scrollLeft + clientWidth < scrollWidth - 2);
+        };
+        tabBar.addEventListener('scroll', updateShadows, { passive: true });
+        window.addEventListener('resize', updateShadows);
+        updateShadows();
+      }
     }
 
     debugLog('wire', 'Tab events wired');

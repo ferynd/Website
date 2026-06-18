@@ -1153,14 +1153,14 @@ describe('estimateVacationCalories', () => {
     expect(result.calories).toBe(2000);
   });
 
-  it('bounds calories between 600 and 6000', () => {
+  it('bounds calories between IMPUTE_CAL_MIN (800) and IMPUTE_CAL_MAX (6000)', () => {
     const highBmr = { error: null, source: 'fitted', observedTdee: 5500 };
     const heavy = estimateVacationCalories('heavy', highBmr, '2024-06-01');
     expect(heavy.calories).toBeLessThanOrEqual(6000);
 
     const lowBmr = { error: null, source: 'fitted', observedTdee: 700 };
     const light = estimateVacationCalories('light', lowBmr, '2024-06-01');
-    expect(light.calories).toBeGreaterThanOrEqual(600);
+    expect(light.calories).toBeGreaterThanOrEqual(800);
   });
 });
 

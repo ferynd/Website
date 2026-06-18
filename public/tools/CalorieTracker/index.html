@@ -49,13 +49,15 @@
         </div>
       </header>
 
-      <nav class="tab-bar" role="tablist" aria-label="App sections">
-        <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today">Today</button>
-        <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients">Nutrients</button>
-        <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy">Energy</button>
-        <button id="tab-btn-profile"   class="tab-btn"        data-tab="profile"   role="tab" aria-selected="false" aria-controls="tab-profile">Profile &amp; Goals</button>
-        <button id="tab-btn-settings"  class="tab-btn"        data-tab="settings"  role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
-      </nav>
+      <div class="tab-bar-wrap">
+        <nav class="tab-bar" role="tablist" aria-label="App sections">
+          <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today">Today</button>
+          <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients">Nutrients</button>
+          <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy">Energy</button>
+          <button id="tab-btn-profile"   class="tab-btn"        data-tab="profile"   role="tab" aria-selected="false" aria-controls="tab-profile">Profile &amp; Goals</button>
+          <button id="tab-btn-settings"  class="tab-btn"        data-tab="settings"  role="tab" aria-selected="false" aria-controls="tab-settings">Settings</button>
+        </nav>
+      </div>
 
       <!-- Compact macro progress bar (Today tab only) -->
       <div id="today-macro-header" class="macro-summary-bar hidden" aria-live="polite"></div>

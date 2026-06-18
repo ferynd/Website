@@ -142,31 +142,31 @@ green and add tests for new validators or pure functions.
 
 ## CRITICAL — fix before broader rollout
 
-- [p] **#1 — XSS via user-named foods**
+- [x] **#1 — XSS via user-named foods**
   `food/save.js:141-162`, `food/manager.js:99` — food names are user-controlled and rendered via template-literal `innerHTML`. Replace with `textContent` / DOM construction at every point where `f.name` or `d.nutrient` enters the DOM.
-  > pushed — escapeHtml helper in utils/ui.js; applied to data.js, manager.js, save.js, analysisUI.js; dropdown.js rebuilt with DOM construction + addEventListener; tests: 568 pass; commit: 9fbc6d1
+  > Resolved: escapeHtml helper in utils/ui.js; applied to data.js, manager.js, save.js, analysisUI.js; dropdown.js rebuilt with DOM construction + addEventListener; tests: 568 pass; merged 9fbc6d1
 
-- [p] **#2 — No max bounds on nutrient inputs**
+- [x] **#2 — No max bounds on nutrient inputs**
   `index.html:166-202`, `events/wire.js:132` — user can save `99999999` kcal, breaking all downstream calculations. Add per-nutrient `max` HTML attributes and a JS validation gate before any Firestore write (kcal ≤ 10 000, macros ≤ 1 000 g, micros at 10× UL).
-  > pushed — HTML max attrs on actual-* and target-* inputs + NUTRIENT_MAX_BOUNDS in constants.js + clampNutrient in getStagedValues, wireSettingsEvents, collectManualOverrides; override grid inputs bounded; tests: 568 pass; commit: 716326e
+  > Resolved: HTML max attrs on actual-* and target-* inputs + NUTRIENT_MAX_BOUNDS in constants.js + clampNutrient in getStagedValues, wireSettingsEvents, collectManualOverrides; override grid inputs bounded; tests: 568 pass; merged 716326e
 
-- [p] **#3 — Date-change race condition**
+- [x] **#3 — Date-change race condition**
   `services/data.js:142`, `ui/dashboard.js:148` — changing the date mid-fetch lets a stale response overwrite the UI with the wrong day's food items. Tag each in-flight request with the requested date string and discard any response that doesn't match the current selection.
-  > pushed — monotonic _dateChangeToken counter in wire.js; stale handlers bail before rendering; tests: 568 pass; commit: 9fbc6d1
+  > Resolved: monotonic _dateChangeToken counter in wire.js; stale handlers bail before rendering; tests: 568 pass; merged 9fbc6d1
 
-- [p] **#4 — Silent Firestore fetch failures default to empty `{}`**
+- [x] **#4 — Silent Firestore fetch failures default to empty `{}`**
   `services/firebase.js:121` — a network blip reads as "no saved targets," so users unknowingly run on system defaults with no indication. Surface a visible banner, retry with exponential backoff, and distinguish "load error" from "empty."
-  > pushed — all five initial-load fetches (targets, entries, weight, profile, goals) now throw on error; loadUserData retries 3× with backoff and shows persistent load-error-banner; tests: 568 pass; commit: 716326e
+  > Resolved: all five initial-load fetches (targets, entries, weight, profile, goals) now throw on error; loadUserData retries 3× with backoff and shows persistent load-error-banner; tests: 568 pass; merged 716326e
 
-- [ ] **#5 — Tab bar overflows ≤ 360 px with no scroll affordance**
+- [p] **#5 — Tab bar overflows ≤ 360 px with no scroll affordance**
   `styles.css:326-334` — five tabs at `flex: 0 0 auto` total ~450 px, silently clipping Profile & Settings on iPhone SE / small Android. The scrollbar is hidden with no visual indicator. Add scroll-shadow edge fades at both ends, or convert to a "more" overflow menu under 640 px.
-  > Resolved in: _pending_
+  > pushed — tab-bar-wrap with CSS gradient pseudo-element scroll shadows; JS scroll/resize listener toggles scroll-left/scroll-right classes; compact tab padding at ≤480 px; tests: 568 pass; commit: ca9a264
 
-- [ ] **#6 — TDEE plausibility floor is physiologically impossible; impute floor also low**
+- [p] **#6 — TDEE plausibility floor is physiologically impossible; impute floor also low**
   `analysis/engine.js:30` `TDEE_PLAUSIBLE_MIN: 1200` — below BMR for any adult with any activity. Raise to 1 400 kcal.
   `analysis/engine.js:48` `IMPUTE_CAL_MIN: 600` — below basal for most users. Raise to 800 kcal.
   Both are single constant changes with an existing test that must be updated.
-  > Resolved in: _pending_
+  > pushed — TDEE_PLAUSIBLE_MIN 1200→1400, IMPUTE_CAL_MIN 600→800; vacation calorie bounds now use config constants; test updated; tests: 568 pass; commit: ca9a264
 
 ---
 

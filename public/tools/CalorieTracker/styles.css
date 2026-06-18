@@ -330,8 +330,35 @@ input:focus, textarea:focus, select:focus {
   -ms-overflow-style: none;
   border-top: 1px solid hsl(var(--border));
   background: hsl(var(--surface-1));
+  position: relative;
 }
 .tab-bar::-webkit-scrollbar { display: none; }
+
+.tab-bar-wrap {
+  position: relative;
+}
+.tab-bar-wrap::before,
+.tab-bar-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 32px;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transition: opacity .2s;
+}
+.tab-bar-wrap::before {
+  left: 0;
+  background: linear-gradient(to right, hsl(var(--surface-1)), transparent);
+}
+.tab-bar-wrap::after {
+  right: 0;
+  background: linear-gradient(to left, hsl(var(--surface-1)), transparent);
+}
+.tab-bar-wrap.scroll-left::before  { opacity: 1; }
+.tab-bar-wrap.scroll-right::after  { opacity: 1; }
 
 .tab-btn {
   flex: 0 0 auto;
@@ -356,6 +383,10 @@ input:focus, textarea:focus, select:focus {
   color: hsl(var(--accent));
   border-bottom-color: hsl(var(--accent));
   font-weight: 600;
+}
+
+@media (max-width: 480px) {
+  .tab-btn { padding: .5rem .625rem; font-size: .8125rem; }
 }
 
 /* ============================================================

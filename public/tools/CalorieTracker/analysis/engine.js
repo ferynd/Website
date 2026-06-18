@@ -27,7 +27,7 @@ export const ANALYSIS_CONFIG = {
 
   // TDEE block
   TDEE_BLOCK_DAYS: 14,
-  TDEE_PLAUSIBLE_MIN: 1200,
+  TDEE_PLAUSIBLE_MIN: 1400,
   TDEE_PLAUSIBLE_MAX: 4500,
 
   // Multi-horizon TDEE estimates (days)
@@ -45,7 +45,7 @@ export const ANALYSIS_CONFIG = {
   // Calorie imputation
   IMPUTE_LAG_DAYS: 14,
   IMPUTE_MIN_FUTURE_WEIGHTS: 7,
-  IMPUTE_CAL_MIN: 600,
+  IMPUTE_CAL_MIN: 800,
   IMPUTE_CAL_MAX: 6000,
 
   // Plateau detection
@@ -1405,7 +1405,8 @@ export function estimateVacationCalories(
   }
 
   const raw = baseTdee * cfg.tdeeMultiplier + cfg.calorieOffset + weekdayAdjust;
-  const bounded = Math.max(600, Math.min(6000, Math.round(raw)));
+  const C = ANALYSIS_CONFIG;
+  const bounded = Math.max(C.IMPUTE_CAL_MIN, Math.min(C.IMPUTE_CAL_MAX, Math.round(raw)));
   const tdeeSource = bmrModel?.source === 'fitted' ? 'empirical TDEE' : 'profile TDEE';
   const offsetStr = weekdayAdjust !== 0
     ? ` and weekday pattern offset (${weekdayAdjust > 0 ? '+' : ''}${weekdayAdjust} kcal)`
