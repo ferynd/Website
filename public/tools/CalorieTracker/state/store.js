@@ -111,10 +111,12 @@ export function cacheDom() {
   };
 }
 
-// Helper to ensure quantity fields are numeric and safely defaulted
+export function parseQty(value) {
+  if (value === undefined || value === null) return 0;
+  return parseFloat(value) || 0;
+}
+
 export function coerceQuantity(item) {
-  item.quantity = (item.quantity === undefined || item.quantity === null)
-    ? 0
-    : parseFloat(item.quantity) || 0;
+  item.quantity = parseQty(item.quantity);
   return item;
 }

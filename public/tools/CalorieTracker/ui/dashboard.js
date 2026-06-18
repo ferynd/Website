@@ -3,7 +3,7 @@
  * @description Dashboard with rolling 7-day balance calculations and micronutrient tracking
  */
 
-import { state } from '../state/store.js';
+import { state, parseQty } from '../state/store.js';
 import {
   allNutrients,
   nutrients,
@@ -32,7 +32,7 @@ import { UL_TABLE } from '../targets/nutritionReferences.js';
 import { resolveDailyBaseTargets, resolveDailyPlanningTargets } from '../targets/dailyTargetResolver.js';
 import { runAnalysis } from '../analysis/engine.js';
 import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries, computeMicronutrientTargets } from '../targets/targetEngine.js';
-import { calcBankingCore } from './bankingEngine.js';
+import { calcBankingCore, hasTrustedCalories, prepareBankingInputs } from './bankingEngine.js';
 import { getTodayInTimezone } from '../utils/time.js';
 
 // =========================
@@ -186,28 +186,10 @@ const pctClass = (v, tgt) => {
  * @param {string} targetDateStr - Target date in YYYY-MM-DD format
  * @returns {Object} Banking calculation results
  */
-/**
- * Returns true when an entry contains calories the user (or a saved estimate)
- * deliberately logged — i.e. calories are a real signal, not an absent default.
- *
- * Entries that do NOT count as "real" calories:
- *   • Empty objects (no Firestore document for that date)
- *   • Entries where calories === 0 with no food items (user opened the day but logged nothing)
- *
- * Entries that DO count:
- *   • Any entry with calories > 0 (logged food, saved estimates, vacation days, true-up days)
- */
-function _hasTrustedCalories(entry) {
-  if (!entry || Object.keys(entry).length === 0) return false;
-  const cals = parseFloat(entry.calories);
-  return !isNaN(cals) && cals > 0;
-}
-
 export function calculateBankingData(targetDateStr) {
   try {
     debugLog('calc-start', { targetDateStr, userId: state.userId });
 
-    const targetDate = new Date(`${targetDateStr}T00:00:00`);
     const windowDays = BANKING_CONFIG.ROLLING_WINDOW_DAYS; // 7
 
     // Get base parameters with proper fallbacks
@@ -235,57 +217,19 @@ export function calculateBankingData(targetDateStr) {
     const resolvedTargetSource = todayResolvedFull.mode;
     const displayBaseTargets  = todayResolvedFull.targets || {};
 
-    // Helper: resolve per-day calorie target for PAST days only.
-    // In autoGoal mode, each past day uses the date-specific dynamically computed target.
-    // In manual mode, every day uses the same baseKcal from baseline targets.
-    function resolveDayCalorieTarget(dateStr) {
-      if (targetMode !== 'autoGoal') return baseKcal;
-      const resolved = resolveDailyBaseTargets(dateStr, state);
-      return parseFloat(resolved.targets?.calories) || baseKcal;
-    }
-
-    // Sum actual intake AND exercise bumps for the previous (windowDays - 1) days.
-    // When exerciseAddMode='skip', exercise bumps are excluded — the TDEE already
-    // encodes historical activity, so adding bumps would double-count.
-    const pastDays = [];
-    let sumPast6Actual       = 0;
-    let sumPastTrainingBumps = 0;
-    let sumPastBaseTargets   = 0; // window budget accumulator
-    const unknownDays        = [];
-
-    for (let i = 1; i < windowDays; i++) {
-      const pastDate    = getPastDate(targetDate, i);
-      const pastDateStr = formatDate(pastDate);
-      const entry       = state.dailyEntries.get(pastDateStr) || {};
-
-      const trainingBump    = exerciseAddMode === 'skip' ? 0 : getEntryExerciseKcal(entry, weightKg);
-      const dayBaseCalories = resolveDayCalorieTarget(pastDateStr);
-      const dailyTarget     = dayBaseCalories + trainingBump;
-
-      const trusted = _hasTrustedCalories(entry);
-      // Unknown days: use target calories so they contribute 0 to bank balance
-      const actualKcal = trusted ? parseFloat(entry.calories) : dailyTarget;
-      const delta      = actualKcal - dailyTarget;
-
-      if (!trusted) unknownDays.push(pastDateStr);
-
-      pastDays.push({
-        date: pastDate,
-        dateStr: pastDateStr,
-        actualKcal,
-        trainingBump,
-        dailyTarget,
-        delta,
-        unknown: !trusted,
-        dayName: pastDate.toLocaleDateString('en-US', { weekday: 'short' })
-      });
-
-      sumPast6Actual       += actualKcal;
-      sumPastTrainingBumps += trainingBump;
-      sumPastBaseTargets   += dayBaseCalories;
-    }
-
-    const bankIncomplete = unknownDays.length > 0;
+    // Gather past-day data via the pure preparation function.
+    const {
+      sumPast6Actual, sumPastBaseTargets, sumPastTrainingBumps,
+      unknownDays, pastDays, bankIncomplete,
+    } = prepareBankingInputs(targetDateStr, state.dailyEntries, {
+      baseKcal,
+      windowDays,
+      getTrainingBump: (entry) => exerciseAddMode === 'skip' ? 0 : getEntryExerciseKcal(entry, weightKg),
+      getDayTarget: targetMode !== 'autoGoal' ? null : (dateStr) => {
+        const resolved = resolveDailyBaseTargets(dateStr, state);
+        return parseFloat(resolved.targets?.calories) || baseKcal;
+      },
+    });
 
     // Today's exercise bump (raw = actual logged kcal; effective = 0 when skip mode)
     const todaysEntry            = state.dailyEntries.get(targetDateStr) || {};
@@ -563,7 +507,7 @@ export function calculateMicronutrientMetrics(dateStr) {
       const scaledTarget = baseTarget * factor;
       const todaysIntake = dateStr === state.dom.dateInput.value
         ? state.dailyFoodItems.reduce((sum, item) => {
-            const q = parseFloat(item.quantity ?? 0) || 0;
+            const q = parseQty(item.quantity);
             const val = parseFloat(item[nutrient]) || 0;
             return sum + q * val;
           }, 0)
@@ -774,7 +718,7 @@ function renderTodayMacroHeader(bankingData) {
   const { todayKcalTarget, finalProteinG, finalFatG, finalCarbsG } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
-    const q = parseFloat(item.quantity ?? 0) || 0;
+    const q = parseQty(item.quantity);
     acc.cal  += q * (parseFloat(item.calories) || 0);
     acc.pro  += q * (parseFloat(item.protein)  || 0);
     acc.fat  += q * (parseFloat(item.fat)      || 0);
@@ -1088,7 +1032,7 @@ function renderTodayCompact(bankingData) {
   } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
-    const q = parseFloat(item.quantity ?? 0) || 0;
+    const q = parseQty(item.quantity);
     acc.calories += q * (parseFloat(item.calories) || 0);
     acc.protein  += q * (parseFloat(item.protein)  || 0);
     acc.fat      += q * (parseFloat(item.fat)      || 0);
