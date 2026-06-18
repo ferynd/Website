@@ -118,7 +118,8 @@ export async function fetchTargets() {
     debugLog('firebase-fetch', 'Targets fetched successfully');
     return result;
   } catch (e) {
-    return handleError('targets-fetch', e, 'Failed to fetch targets.') || {};
+    handleError('targets-fetch', e, 'Failed to fetch targets.');
+    throw e;
   }
 }
 
@@ -237,10 +238,11 @@ export async function fetchRecentEntries() {
       map.set(d.id, data);
     });
     debugLog('firebase-fetch', 'Recent entries fetched successfully', map.size);
+    return map;
   } catch (e) {
     handleError('fetch-recent-entries', e, 'Failed to fetch recent entries.');
+    throw e;
   }
-  return map;
 }
 
 /**
@@ -358,7 +360,8 @@ export async function fetchUserProfile() {
     debugLog('firebase-fetch', 'User profile fetched');
     return result;
   } catch (e) {
-    return handleError('profile-fetch', e, 'Failed to fetch user profile.') || {};
+    handleError('profile-fetch', e, 'Failed to fetch user profile.');
+    throw e;
   }
 }
 
@@ -400,7 +403,8 @@ export async function fetchGoalSettings() {
     debugLog('firebase-fetch', 'Goal settings fetched');
     return result;
   } catch (e) {
-    return handleError('goals-fetch', e, 'Failed to fetch goal settings.') || {};
+    handleError('goals-fetch', e, 'Failed to fetch goal settings.');
+    throw e;
   }
 }
 
@@ -531,10 +535,11 @@ export async function fetchWeightEntries() {
     const qs = await getDocs(qy);
     qs.forEach(d => map.set(d.id, d.data()));
     debugLog('firebase-weight', `Fetched ${map.size} weight entries`);
+    return map;
   } catch (e) {
     handleError('weight-fetch', e, 'Failed to fetch weight entries.');
+    throw e;
   }
-  return map;
 }
 
 // ---------- ESTIMATE MANAGEMENT ----------

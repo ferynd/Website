@@ -10,12 +10,12 @@
  */
 
 import { state } from '../state/store.js';
-import { showMessage, handleError } from '../utils/ui.js';
+import { showMessage, handleError, clampNutrient } from '../utils/ui.js';
 import { saveUserProfile, saveGoalSettings, saveTargets } from '../services/firebase.js';
 import { generateTargets, applyManualOverrides } from './targetEngine.js';
 import { runAnalysis } from '../analysis/engine.js';
 import { getTodayInTimezone } from '../utils/time.js';
-import { WEIGHT_FRESHNESS_THRESHOLD_DAYS } from '../constants.js';
+import { WEIGHT_FRESHNESS_THRESHOLD_DAYS, NUTRIENT_MAX_BOUNDS } from '../constants.js';
 
 // Cache the last engine result for reference (Apply Targets always recomputes fresh)
 let _lastResult = null;
@@ -280,7 +280,7 @@ function collectManualOverrides() {
     const inp = document.getElementById(`ovr-val-${key}`);
     if (chk?.checked && inp) {
       const n = parseFloat(inp.value);
-      if (!isNaN(n)) overrides[key] = n;
+      if (!isNaN(n)) overrides[key] = clampNutrient(key, n);
     }
   }
   return overrides;
@@ -477,7 +477,8 @@ function renderTargetPreview(result, currentOverrides) {
             data-key="${key}" ${hasOvr ? 'checked' : ''}>
           <label for="ovr-chk-${key}" class="text-xs text-muted cursor-pointer" style="min-width:8rem">${label}</label>
           <span class="text-xs text-secondary flex-1 text-right">auto: ${generated}</span>
-          <input type="number" step="any" id="ovr-val-${key}"
+          <input type="number" step="any" min="0" ${NUTRIENT_MAX_BOUNDS[key] != null ? `max="${NUTRIENT_MAX_BOUNDS[key]}"` : ''}
+            id="ovr-val-${key}"
             class="input w-24 text-xs"
             data-key="${key}"
             value="${ovrVal}"

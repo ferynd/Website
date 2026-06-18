@@ -19,7 +19,7 @@ import { saveTargets, saveDailyEntry } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
 import { updateDashboard, activateTab } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
-import { debugLog, handleError } from '../utils/ui.js';
+import { debugLog, handleError, clampNutrient } from '../utils/ui.js';
 import {
   ACTIVITY_TYPES,
   estimateSessionCalories,
@@ -125,18 +125,18 @@ function wireSettingsEvents() {
         try {
           const newTargets = {};
           
-          // Get all nutrient targets
+          // Get all nutrient targets (clamped to safe bounds)
           allNutrients.forEach(nutrient => {
             const input = document.getElementById(`target-${nutrient}`);
             if (input) {
-              newTargets[nutrient] = parseFloat(input.value) || 0;
+              newTargets[nutrient] = clampNutrient(nutrient, parseFloat(input.value) || 0);
             }
           });
-          
-          // Get banking-specific settings
+
+          // Get banking-specific settings (fat floor uses same bound as fat macro)
           const fatMinInput = document.getElementById('target-fatMinimum');
           if (fatMinInput) {
-            newTargets.fatMinimum = parseFloat(fatMinInput.value) || 50;
+            newTargets.fatMinimum = clampNutrient('fat', parseFloat(fatMinInput.value) || 50);
           }
 
           await saveTargets(newTargets);
@@ -162,6 +162,11 @@ function wireSettingsEvents() {
   }
 }
 
+// Token to detect stale date-change renders: each date-change increments this
+// counter; if a second change fires before the first finishes, the first's
+// post-render steps bail out so they don't overwrite the newer date's data.
+let _dateChangeToken = 0;
+
 /**
  * Wire up main control events including date and day activity level
  */
@@ -170,13 +175,16 @@ function wireMainControls() {
     // Date input change handler
     if (state.dom.dateInput) {
       state.dom.dateInput.addEventListener('change', async () => {
+        const token = ++_dateChangeToken;
         try {
           await loadDailyFoodItems();
+          if (token !== _dateChangeToken) return;
           loadDayActivityForDate();
           updateDashboard();
           updateChart();
           debugLog('wire-date', 'Date changed and UI updated');
         } catch (error) {
+          if (token !== _dateChangeToken) return;
           handleError('wire-date-change', error, 'Failed to handle date change');
         }
       });

@@ -4,7 +4,7 @@
  */
 
 import { nutrientMap, allNutrients, SCHEMA_VERSIONS } from '../constants.js';
-import { showMessage, formatNutrientName } from '../utils/ui.js';
+import { showMessage, formatNutrientName, clampNutrient } from '../utils/ui.js';
 import { state } from '../state/store.js';
 import { saveDailyEntry, saveTargets } from '../services/firebase.js';
 import { clearStagingArea, updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
@@ -103,7 +103,7 @@ export function getStagedValues() {
   const vals = {};
   allNutrients.forEach(n => {
     const input = document.getElementById(`actual-${n}`);
-    if (input) vals[n] = parseFloat(input.value) || 0;
+    if (input) vals[n] = clampNutrient(n, parseFloat(input.value) || 0);
   });
   return vals;
 }

@@ -4,7 +4,7 @@
  */
 import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
-import { handleError, debugLog } from '../utils/ui.js';
+import { handleError, debugLog, escapeHtml } from '../utils/ui.js';
 import {
   fetchTargets,
   fetchRecentEntries,
@@ -66,6 +66,36 @@ export function ensureDateInput() {
   }
 }
 
+// Retry a function with exponential backoff. Returns the result on success, throws after all attempts.
+async function retryWithBackoff(fn, { attempts = 3, baseMs = 1000 } = {}) {
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (i === attempts - 1) throw e;
+      await new Promise(r => setTimeout(r, baseMs * 2 ** i));
+    }
+  }
+}
+
+function showLoadErrorBanner(msg) {
+  let banner = document.getElementById('load-error-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.id = 'load-error-banner';
+    banner.className = 'bg-red-600 text-primary text-center py-3 px-4 text-sm font-medium';
+    const mainContent = document.getElementById('main-content');
+    if (mainContent) mainContent.prepend(banner);
+  }
+  banner.textContent = msg;
+  banner.classList.remove('hidden');
+}
+
+function hideLoadErrorBanner() {
+  const banner = document.getElementById('load-error-banner');
+  if (banner) banner.classList.add('hidden');
+}
+
 /**
  * Orchestrates the loading of all user-specific data from Firebase.
  * This function is called on initial load and when the user changes.
@@ -75,12 +105,12 @@ export async function loadUserData() {
     debugLog('data-load', 'No user ID available, skipping data load');
     return; // Do nothing if there's no user.
   }
-  
+
   if (!state.dom.dateInput) {
     debugLog('data-load', 'DOM not cached, caching now');
     cacheDom(); // Ensure DOM is cached.
   }
-  
+
   ensureDateInput();
 
   // Show loader while fetching data.
@@ -89,16 +119,20 @@ export async function loadUserData() {
 
   try {
     debugLog('data-load', 'Starting parallel data fetch for user', state.userId);
-    
-    // Fetch all necessary data in parallel for better performance.
-    // Profile and goals return {} for first-time users (no document yet).
+
+    // Fetch all necessary data in parallel with retry + backoff.
+    // fetchTargets/fetchUserProfile/fetchGoalSettings now throw on network error
+    // instead of silently returning {}. The retry gives transient failures a
+    // chance to recover; a persistent failure surfaces a banner.
     const [targets, entries, weightEntries, rawProfile, rawGoals] = await Promise.all([
-      fetchTargets(),
-      fetchRecentEntries(),
-      fetchWeightEntries(),
-      fetchUserProfile(),
-      fetchGoalSettings(),
+      retryWithBackoff(() => fetchTargets()),
+      retryWithBackoff(() => fetchRecentEntries()),
+      retryWithBackoff(() => fetchWeightEntries()),
+      retryWithBackoff(() => fetchUserProfile()),
+      retryWithBackoff(() => fetchGoalSettings()),
     ]);
+
+    hideLoadErrorBanner();
 
     state.baselineTargets = targets;
     state.weightEntries = weightEntries;
@@ -147,11 +181,12 @@ export async function loadUserData() {
     else if (window.__populateProfileForm) window.__populateProfileForm();
     updateDashboard();
     updateChart();
-    
+
     debugLog('data-load', 'User data loading complete');
 
   } catch (e) {
-    handleError('load-user-data', e, 'Error loading data. Please refresh and try again.');
+    handleError('load-user-data', e, 'Error loading data.');
+    showLoadErrorBanner('Data could not be loaded. Check your connection and refresh the page.');
   }
 
   // Hide loader and show main content.
@@ -242,7 +277,8 @@ function renderFoodItemsContent(container) {
 
   // Generate food items HTML with improved styling
   const itemsHtml = state.dailyFoodItems.map((item, index) => {
-    const name = item.name || '(blank)';
+    // Food names are user-controlled; escape before interpolating into innerHTML (XSS).
+    const name = escapeHtml(item.name || '(blank)');
     const isSubtraction = (item.calories || 0) < 0;
     const qty = parseFloat(item.quantity ?? 0) || 0;
     const nameDisplay = qty > 0 ? `${name} × ${qty}` : name;

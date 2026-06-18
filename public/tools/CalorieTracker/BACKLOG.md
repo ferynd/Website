@@ -135,28 +135,28 @@ From `public/tools/CalorieTracker/`:
 npm test
 ```
 
-Baseline: **554 tests, 8 files, all passing.** Any session that changes logic must keep this
+Baseline: **568 tests, 9 files, all passing.** Any session that changes logic must keep this
 green and add tests for new validators or pure functions.
 
 ---
 
 ## CRITICAL — fix before broader rollout
 
-- [ ] **#1 — XSS via user-named foods**
+- [p] **#1 — XSS via user-named foods**
   `food/save.js:141-162`, `food/manager.js:99` — food names are user-controlled and rendered via template-literal `innerHTML`. Replace with `textContent` / DOM construction at every point where `f.name` or `d.nutrient` enters the DOM.
-  > Resolved in: _pending_
+  > pushed — escapeHtml helper in utils/ui.js; applied to data.js, manager.js, save.js, analysisUI.js; dropdown.js rebuilt with DOM construction + addEventListener; tests: 568 pass; commit: 9fbc6d1
 
-- [ ] **#2 — No max bounds on nutrient inputs**
+- [p] **#2 — No max bounds on nutrient inputs**
   `index.html:166-202`, `events/wire.js:132` — user can save `99999999` kcal, breaking all downstream calculations. Add per-nutrient `max` HTML attributes and a JS validation gate before any Firestore write (kcal ≤ 10 000, macros ≤ 1 000 g, micros at 10× UL).
-  > Resolved in: _pending_
+  > pushed — HTML max attrs on actual-* and target-* inputs + NUTRIENT_MAX_BOUNDS in constants.js + clampNutrient in getStagedValues, wireSettingsEvents, collectManualOverrides; override grid inputs bounded; tests: 568 pass; commit: 716326e
 
-- [ ] **#3 — Date-change race condition**
+- [p] **#3 — Date-change race condition**
   `services/data.js:142`, `ui/dashboard.js:148` — changing the date mid-fetch lets a stale response overwrite the UI with the wrong day's food items. Tag each in-flight request with the requested date string and discard any response that doesn't match the current selection.
-  > Resolved in: _pending_
+  > pushed — monotonic _dateChangeToken counter in wire.js; stale handlers bail before rendering; tests: 568 pass; commit: 9fbc6d1
 
-- [ ] **#4 — Silent Firestore fetch failures default to empty `{}`**
+- [p] **#4 — Silent Firestore fetch failures default to empty `{}`**
   `services/firebase.js:121` — a network blip reads as "no saved targets," so users unknowingly run on system defaults with no indication. Surface a visible banner, retry with exponential backoff, and distinguish "load error" from "empty."
-  > Resolved in: _pending_
+  > pushed — all five initial-load fetches (targets, entries, weight, profile, goals) now throw on error; loadUserData retries 3× with backoff and shows persistent load-error-banner; tests: 568 pass; commit: 716326e
 
 - [ ] **#5 — Tab bar overflows ≤ 360 px with no scroll affordance**
   `styles.css:326-334` — five tabs at `flex: 0 0 auto` total ~450 px, silently clipping Profile & Settings on iPhone SE / small Android. The scrollbar is hidden with no visual indicator. Add scroll-shadow edge fades at both ends, or convert to a "more" overflow menu under 640 px.
@@ -216,9 +216,9 @@ green and add tests for new validators or pure functions.
   There is no undo path after confirmation. Add a 5-second undo toast that re-adds the item before it is written to Firestore, giving users a quick recovery window.
   > Resolved in: _pending_
 
-- [p] **#46 — "Current weight required" nag fires regardless of weigh-in age**
+- [x] **#46 — "Current weight required" nag fires regardless of weigh-in age**
   `targets/targetEngine.js`, `analysis/engine.js`, `targets/targetUI.js`, `constants.js` — the notice showed unconditionally, on a debounced auto-calc that runs before data loads. Now the current weight is estimated forward from the last weigh-in via energy balance (`projectWeightForward`: calories-in − TDEE since the last weigh-in, water-corrected smoothed baseline, drift-capped); the hard "Current weight is required" notice shows only on an explicit Auto-Calculate when there is no weight data at all; and a soft, non-blocking notice appears only when the last weigh-in is older than `WEIGHT_FRESHNESS_THRESHOLD_DAYS` (21).
-  > pushed — energy-balance current-weight estimate + 21-day freshness gate; tests: 554 pass; commit: be6d028
+  > Resolved: energy-balance current-weight estimate + 21-day freshness gate; tests: 554 pass; merged be6d028
 
 ---
 
@@ -385,4 +385,4 @@ Run from `public/tools/CalorieTracker/`:
 node_modules/.bin/vitest run
 ```
 
-Baseline: **554 tests, 8 files, all passing.** Any session that changes logic files must keep this green. Add tests for new validators, the date-change cancellation token, and any new pure functions introduced.
+Baseline: **568 tests, 9 files, all passing.** Any session that changes logic files must keep this green. Add tests for new validators, the date-change cancellation token, and any new pure functions introduced.

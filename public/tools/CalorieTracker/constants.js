@@ -131,6 +131,17 @@ export const DEFAULT_TARGETS = {
   omega3: 1.6
 };
 
+// Per-nutrient upper bounds for input validation (roughly 10× UL or physiological max).
+export const NUTRIENT_MAX_BOUNDS = {
+  calories: 10000, protein: 1000, carbs: 1000, fat: 1000,
+  fiber: 500, potassium: 50000, magnesium: 10000, sodium: 23000,
+  calcium: 25000, choline: 35000,
+  vitaminB12: 10000, folate: 10000, vitaminC: 20000, vitaminB6: 1000,
+  vitaminA: 30000, vitaminD: 1000, vitaminE: 10000, vitaminK: 10000,
+  selenium: 4000, iodine: 11000, phosphorus: 40000,
+  iron: 450, zinc: 400, omega3: 100,
+};
+
 // Maps text variants to canonical nutrient keys.
 // Ordered from most specific to least specific to avoid prefix conflicts.
 export const nutrientMap = {
