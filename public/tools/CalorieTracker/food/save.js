@@ -4,7 +4,7 @@
  * user can immediately add the food to today's log without re-entering values.
  */
 
-import { state } from '../state/store.js';
+import { state, parseQty } from '../state/store.js';
 import { allNutrients } from '../constants.js';
 import { showMessage, handleError, formatNutrientName, escapeHtml } from '../utils/ui.js';
 import { showConfirmationModal, closeDuplicateDialog } from '../ui/modals.js';
@@ -63,7 +63,7 @@ async function processSaveFoodItem(foodName, stagedValues) {
   try {
     // Generate a consistent ID from the food name
     const foodId = foodName.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    const quantity = parseFloat(document.getElementById('actual-quantity')?.value) || 0;
+    const quantity = parseQty(document.getElementById('actual-quantity')?.value);
     const foodData = { name: foodName, quantity, ...stagedValues, lastUpdated: new Date().toISOString() };
 
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
