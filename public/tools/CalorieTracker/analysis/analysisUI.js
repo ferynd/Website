@@ -1342,7 +1342,14 @@ function renderMissingCaloriesSection(candidates) {
     const intervalDetails = r.intervalsUsed && r.intervalsUsed.length > 0
       ? `<details class="inline text-xs mt-1"><summary class="cursor-pointer text-accent">Interval math ▸</summary>
           <div class="mt-1 space-y-1 pl-1">
-            ${r.intervalsUsed.map(i => `<div class="border-l-2 border-accent/30 pl-2">
+            ${r.intervalsUsed.map(i => {
+              const refLabel = i.tdeeRefSource === 'outside_interval' ? 'outside-interval TDEE'
+                : i.tdeeRefSource === 'inside_interval' ? '<span class="text-warning">inside-interval TDEE (gaps may distort)</span>'
+                : i.tdeeRefSource === 'observed_tdee' ? 'observed TDEE'
+                : i.tdeeRefSource === 'formula_tdee' ? 'formula TDEE'
+                : i.tdeeRefSource === 'hardcoded_fallback' ? '<span class="text-warning">default 2000 kcal (no TDEE data)</span>'
+                : '';
+              return `<div class="border-l-2 border-accent/30 pl-2">
               <strong>${escapeHtml(i.name)}</strong> [${i.intervalStart} – ${i.intervalEnd}]:
               gap ${i.perDayResidual > 0 ? '+' : ''}${i.perDayResidual} kcal/day
               ${i.reportedIntake != null ? ` · logged ${i.reportedIntake} kcal` : ''}
@@ -1351,7 +1358,9 @@ function renderMissingCaloriesSection(candidates) {
               ${i.residualBefore != null ? ` · residual before ${i.residualBefore > 0 ? '+' : ''}${i.residualBefore}` : ''}
               ${i.residualAfter != null ? ` → after ${i.residualAfter > 0 ? '+' : ''}${i.residualAfter}` : ''}
               · ${i.coverage}% coverage · ${i.weightPoints} wt pts
-            </div>`).join('')}
+              ${refLabel ? ` · ref: ${refLabel}` : ''}
+            </div>`;
+            }).join('')}
             ${r.confidenceDrivers ? `<div class="text-muted mt-0.5">Confidence factors: ${r.confidenceDrivers}</div>` : ''}
           </div></details>`
       : '';

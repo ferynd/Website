@@ -856,7 +856,10 @@ function renderNutrientSummaryCards(metrics) {
     <div class="mb-3 p-3 surface-2 rounded-lg border">
       <p class="text-sm font-semibold text-warning mb-2">⚠️ Near Upper Limit</p>
       <div class="flex flex-wrap gap-1">
-        ${ulWarn.map(m => `<span class="nutrient-tag nutrient-tag-warn" title="UL: ${m.ul}">${formatNutrientName(m.name)}</span>`).join('')}
+        ${ulWarn.map(m => {
+          const limitLabel = m.name === 'sodium' ? `CDRR: ${m.ul}` : `UL: ${m.ul}`;
+          return `<span class="nutrient-tag nutrient-tag-warn" title="${limitLabel}">${formatNutrientName(m.name)}</span>`;
+        }).join('')}
       </div>
     </div>` : '';
 
@@ -1747,8 +1750,11 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     const trendBadge = `<span class="${trendCls} nt-trend" title="Recent trend">${trendIcon}</span>`;
 
     // UL warning
+    const ulLabel = nutrient === 'sodium'
+      ? `Near/above CDRR target (${ul})`
+      : `Near/above upper limit (UL: ${ul})`;
     const ulBadge = isUlExceeded
-      ? `<span class="nt-badge nt-badge-ul" title="Near/above upper limit (UL: ${ul})">⚠️</span>`
+      ? `<span class="nt-badge nt-badge-ul" title="${ulLabel}">⚠️</span>`
       : '';
 
     // Source label in target span

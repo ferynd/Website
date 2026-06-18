@@ -16,14 +16,21 @@ export const ANALYSIS_CONFIG = {
   LB_TO_KG: 0.45359237,
   ENERGY_DENSITY_KCAL_PER_KG: 7700,
 
-  // EWMA smoothing
-  EWMA_SPAN: 10, // equivalent "span" — alpha = 2/(span+1) ≈ 0.182
+  // EWMA smoothing — alpha = 2/(span+1).
+  // Span 10 (α ≈ 0.182) is more responsive than the Hacker's Diet α ≈ 0.1 (span 19),
+  // allowing the trend line to track real weight changes within a few days. The trade-off
+  // is higher sensitivity to water-weight noise (~2 lb spikes persist ~5 days vs. ~8 at
+  // span 20). We compensate via the OLS/bucket water-correction layer below, so the
+  // faster response outweighs the extra noise for users who log sodium and carbs.
+  EWMA_SPAN: 10,
 
   // Water noise correction: fallback bucket thresholds (used when regression unavailable)
   SODIUM_HIGH_THRESHOLD: 2800, // mg
   CARBS_HIGH_THRESHOLD: 200,   // g
-  // Minimum complete-predictor days required to attempt OLS regression
-  MIN_DAYS_FOR_WATER_REGRESSION: 20,
+  // Minimum complete-predictor days (weight + baseline + sodium + carbs all present)
+  // required for OLS water-weight regression. 14 gives enough degrees of freedom for
+  // the 2–3 predictor model; below that the bucket fallback is used instead.
+  MIN_DAYS_FOR_WATER_REGRESSION: 14,
 
   // TDEE block
   TDEE_BLOCK_DAYS: 14,
@@ -33,7 +40,14 @@ export const ANALYSIS_CONFIG = {
   // Multi-horizon TDEE estimates (days)
   HORIZONS: { QUICK: 14, PRIMARY: 28, STABILITY_1: 42, STABILITY_2: 56 },
 
-  // PAL constraints — maps to training bump levels
+  // PAL constraints — maps exercise calories/day to plausible Physical Activity Level
+  // ranges. Source: WHO/FAO/UNU 2001 and IOM DRI 2005 adult PAL tables, cross-checked
+  // against doubly-labelled-water studies. Each band's lower bound is the minimum PAL
+  // expected at that exercise volume (sedentary floor for 0 kcal); upper bound caps
+  // total expenditure to prevent double-counting when the user's baseline activity
+  // level already reflects training. The 1.85 ceiling at 400 kcal/day is conservative
+  // vs. the IOM "very active" 2.5, because logged exercise is added on top of the
+  // baseline — a higher cap would overstate TDEE for recreational exercisers.
   PAL_RANGES: {
     0:   [1.20, 1.40],
     100: [1.30, 1.55],
@@ -644,7 +658,7 @@ export function estimateProfileRmr(profile, weightLb) {
   if (profile) {
     // ── Cunningham (preferred when BF% is available) ──────────────────────────
     const bf = parseFloat(profile.bodyFatPercent);
-    if (!isNaN(bf) && bf > 5 && bf < 60) {
+    if (!isNaN(bf) && bf >= 5 && bf <= 60) {
       const ffmKg = weightKg * (1 - bf / 100);
       const rmr = 500 + 22 * ffmKg;
       return { rmr: Math.round(rmr), method: 'cunningham', note: 'Cunningham equation (lean mass)' };
@@ -1765,12 +1779,24 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
         r.tdee_block != null && (r.date < start || r.date > end)
       );
       const insideBlocks = intervalRows.filter(r => r.tdee_block != null);
-      const refTdee = outsideBlocks.length >= 5
-        ? trimmedMean(outsideBlocks.map(r => r.tdee_block))
-        : (bmrModel?.observedTdee || bmrModel?.tdee_current ||
-           (insideBlocks.length >= 3
-             ? insideBlocks.reduce((s, r) => s + r.tdee_block, 0) / insideBlocks.length
-             : 2000));
+      let refTdee;
+      let tdeeRefSource;
+      if (outsideBlocks.length >= 5) {
+        refTdee = trimmedMean(outsideBlocks.map(r => r.tdee_block));
+        tdeeRefSource = 'outside_interval';
+      } else if (bmrModel?.observedTdee) {
+        refTdee = bmrModel.observedTdee;
+        tdeeRefSource = 'observed_tdee';
+      } else if (bmrModel?.tdee_current) {
+        refTdee = bmrModel.tdee_current;
+        tdeeRefSource = 'formula_tdee';
+      } else if (insideBlocks.length >= 3) {
+        refTdee = insideBlocks.reduce((s, r) => s + r.tdee_block, 0) / insideBlocks.length;
+        tdeeRefSource = 'inside_interval';
+      } else {
+        refTdee = 2000;
+        tdeeRefSource = 'hardcoded_fallback';
+      }
       if (!refTdee || refTdee <= 0) continue;
 
       // Reported intake: blank candidates always contribute 0 (they have 0 logged);
@@ -1830,6 +1856,7 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
         allocatedDelta,
         allocFactor: Math.round(allocFactor * 100) / 100,
         candidatesInWindow: allCandsInWindow.length,
+        tdeeRefSource,
       });
     }
 
