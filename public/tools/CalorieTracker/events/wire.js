@@ -19,7 +19,7 @@ import { saveTargets, saveDailyEntry } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
 import { updateDashboard, activateTab } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
-import { debugLog, handleError } from '../utils/ui.js';
+import { debugLog, handleError, clampNutrient } from '../utils/ui.js';
 import {
   ACTIVITY_TYPES,
   estimateSessionCalories,
@@ -125,18 +125,18 @@ function wireSettingsEvents() {
         try {
           const newTargets = {};
           
-          // Get all nutrient targets
+          // Get all nutrient targets (clamped to safe bounds)
           allNutrients.forEach(nutrient => {
             const input = document.getElementById(`target-${nutrient}`);
             if (input) {
-              newTargets[nutrient] = parseFloat(input.value) || 0;
+              newTargets[nutrient] = clampNutrient(nutrient, parseFloat(input.value) || 0);
             }
           });
-          
-          // Get banking-specific settings
+
+          // Get banking-specific settings (fat floor uses same bound as fat macro)
           const fatMinInput = document.getElementById('target-fatMinimum');
           if (fatMinInput) {
-            newTargets.fatMinimum = parseFloat(fatMinInput.value) || 50;
+            newTargets.fatMinimum = clampNutrient('fat', parseFloat(fatMinInput.value) || 50);
           }
 
           await saveTargets(newTargets);

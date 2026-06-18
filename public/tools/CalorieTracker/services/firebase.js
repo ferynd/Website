@@ -238,10 +238,11 @@ export async function fetchRecentEntries() {
       map.set(d.id, data);
     });
     debugLog('firebase-fetch', 'Recent entries fetched successfully', map.size);
+    return map;
   } catch (e) {
     handleError('fetch-recent-entries', e, 'Failed to fetch recent entries.');
+    throw e;
   }
-  return map;
 }
 
 /**
@@ -534,10 +535,11 @@ export async function fetchWeightEntries() {
     const qs = await getDocs(qy);
     qs.forEach(d => map.set(d.id, d.data()));
     debugLog('firebase-weight', `Fetched ${map.size} weight entries`);
+    return map;
   } catch (e) {
     handleError('weight-fetch', e, 'Failed to fetch weight entries.');
+    throw e;
   }
-  return map;
 }
 
 // ---------- ESTIMATE MANAGEMENT ----------
