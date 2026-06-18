@@ -56,8 +56,8 @@ function makeWeightEntries(data) {
     const docId = `w-${i}`;
     map.set(docId, {
       date: d.date,
-      weight_lb: d.weight_lb,
-      time_min: d.time_min ?? 480,
+      weightLb: d.weightLb,
+      timeMin: d.timeMin ?? 480,
       timestamp: `${d.date}T08:00:00`,
       source: 'test',
     });
@@ -103,37 +103,37 @@ function syntheticDays(n, dayFn, startDate = '2024-01-01') {
 
 describe('selectDailyWeight', () => {
   it('returns the single reading when only one exists', () => {
-    const r = [{ weight_lb: 180, time_min: 480 }];
-    expect(selectDailyWeight(r, null)?.weight_lb).toBe(180);
+    const r = [{ weightLb: 180, timeMin: 480 }];
+    expect(selectDailyWeight(r, null)?.weightLb).toBe(180);
   });
 
   it('prefers reading inside the preferred window', () => {
     const readings = [
-      { weight_lb: 183, time_min: 900 },
-      { weight_lb: 181, time_min: 420 },
+      { weightLb: 183, timeMin: 900 },
+      { weightLb: 181, timeMin: 420 },
     ];
     const window = { startMin: 360, endMin: 540 };
-    expect(selectDailyWeight(readings, window)?.weight_lb).toBe(181);
+    expect(selectDailyWeight(readings, window)?.weightLb).toBe(181);
   });
 
   it('falls back to earliest when none are in the window', () => {
     const readings = [
-      { weight_lb: 183, time_min: 900 },
-      { weight_lb: 181, time_min: 1200 },
+      { weightLb: 183, timeMin: 900 },
+      { weightLb: 181, timeMin: 1200 },
     ];
     const window = { startMin: 360, endMin: 540 };
-    expect(selectDailyWeight(readings, window)?.time_min).toBe(900);
+    expect(selectDailyWeight(readings, window)?.timeMin).toBe(900);
   });
 
   it('uses median of in-window readings for robustness', () => {
     const readings = [
-      { weight_lb: 181, time_min: 400 },
-      { weight_lb: 182, time_min: 420 },
-      { weight_lb: 190, time_min: 430 }, // outlier
+      { weightLb: 181, timeMin: 400 },
+      { weightLb: 182, timeMin: 420 },
+      { weightLb: 190, timeMin: 430 }, // outlier
     ];
     const window = { startMin: 360, endMin: 540 };
     // Sorted in-window: [181, 182, 190] → median at index 1 = 182
-    expect(selectDailyWeight(readings, window)?.weight_lb).toBe(182);
+    expect(selectDailyWeight(readings, window)?.weightLb).toBe(182);
   });
 });
 
@@ -280,7 +280,7 @@ describe('Stable maintenance (60 days)', () => {
   const STABLE_WEIGHT_LB = 180;
 
   const days = syntheticDays(DAYS, (i) => ({
-    weight_lb: STABLE_WEIGHT_LB + (Math.sin(i) * 0.3),
+    weightLb: STABLE_WEIGHT_LB + (Math.sin(i) * 0.3),
     calories: MAINTENANCE_KCAL,
     trainingBump: 0,
   }));
@@ -333,7 +333,7 @@ describe('Steady fat loss (60 days, −0.5 lb/week)', () => {
   const INTAKE = 1800;
 
   const days = syntheticDays(DAYS, (i) => ({
-    weight_lb: START_WEIGHT - RATE_LB_PER_DAY * i + (Math.sin(i * 1.3) * 0.2),
+    weightLb: START_WEIGHT - RATE_LB_PER_DAY * i + (Math.sin(i * 1.3) * 0.2),
     calories: INTAKE,
     trainingBump: 0,
   }));
@@ -368,7 +368,7 @@ describe('Steady fat loss (60 days, −0.5 lb/week)', () => {
 describe('BMR model correctness (fix 3: no residual in bmr_current)', () => {
   const DAYS = 60;
   const days = syntheticDays(DAYS, (i) => ({
-    weight_lb: 185 - i * 0.03 + Math.sin(i) * 0.2,
+    weightLb: 185 - i * 0.03 + Math.sin(i) * 0.2,
     calories: 2100,
     trainingBump: 0,
   }));
@@ -418,7 +418,7 @@ describe('estimateTDEEByHorizon: calendar date cutoffs (fix 4)', () => {
   it('28-day horizon only uses rows within 28 calendar days of latest', () => {
     const DAYS = 60;
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 180 - i * 0.02,
+      weightLb: 180 - i * 0.02,
       calories: 2100,
     }));
     const weMap = makeWeightEntries(days);
@@ -439,7 +439,7 @@ describe('estimateTDEEByHorizon: calendar date cutoffs (fix 4)', () => {
 
   it('horizon metadata includes calendarStart, calendarEnd, blockCount, coveragePct', () => {
     const DAYS = 50;
-    const days = syntheticDays(DAYS, (i) => ({ weight_lb: 180, calories: 2100 }));
+    const days = syntheticDays(DAYS, (i) => ({ weightLb: 180, calories: 2100 }));
     const weMap = makeWeightEntries(days);
     const nuMap = makeNutritionEntries(days);
     let rows = mergeDailyData(weMap, nuMap);
@@ -456,7 +456,7 @@ describe('estimateTDEEByHorizon: calendar date cutoffs (fix 4)', () => {
   });
 
   it('returns null tdee for short windows when insufficient data', () => {
-    const days = syntheticDays(10, () => ({ weight_lb: 180, calories: 2000 }));
+    const days = syntheticDays(10, () => ({ weightLb: 180, calories: 2000 }));
     const weMap = makeWeightEntries(days);
     const nuMap = makeNutritionEntries(days);
     let rows = mergeDailyData(weMap, nuMap);
@@ -470,7 +470,7 @@ describe('estimateTDEEByHorizon: calendar date cutoffs (fix 4)', () => {
 
   it('returns valid tdee for PRIMARY horizon with 40 days', () => {
     const days = syntheticDays(40, (i) => ({
-      weight_lb: 180 - i * 0.03,
+      weightLb: 180 - i * 0.03,
       calories: 2100,
     }));
     const weMap = makeWeightEntries(days);
@@ -491,7 +491,7 @@ describe('estimateTDEEByHorizon: calendar date cutoffs (fix 4)', () => {
 describe('TDEE block quality (fix 5)', () => {
   it('full-coverage blocks get tdee_block_quality = high', () => {
     const DAYS = 35;
-    const days = syntheticDays(DAYS, (i) => ({ weight_lb: 180, calories: 2100 }));
+    const days = syntheticDays(DAYS, (i) => ({ weightLb: 180, calories: 2100 }));
     const weMap = makeWeightEntries(days);
     const nuMap = makeNutritionEntries(days);
     let rows = mergeDailyData(weMap, nuMap);
@@ -508,7 +508,7 @@ describe('TDEE block quality (fix 5)', () => {
   it('vacation-week blocks get medium quality (low calorie coverage)', () => {
     const DAYS = 40;
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 180 - i * 0.02,
+      weightLb: 180 - i * 0.02,
       calories: (i >= 10 && i <= 16) ? null : 2100, // 7-day gap
     }));
     const weMap = makeWeightEntries(days);
@@ -535,7 +535,7 @@ describe('Water correction guardrails (fix 6)', () => {
     const DAYS = 40;
     // Extreme sodium spikes to force large corrections
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 175 + (i % 3 === 0 ? 5 : 0), // 5 lb spike every 3rd day
+      weightLb: 175 + (i % 3 === 0 ? 5 : 0), // 5 lb spike every 3rd day
       calories: 2000,
       sodium: i % 3 === 0 ? 8000 : 1500, // very high sodium on spike days
       carbs: 200,
@@ -552,7 +552,7 @@ describe('Water correction guardrails (fix 6)', () => {
 
   it('waterCorrectionMethod is returned from waterCorrect', () => {
     const days = syntheticDays(30, (i) => ({
-      weight_lb: 175, calories: 2000, sodium: 2200, carbs: 200,
+      weightLb: 175, calories: 2000, sodium: 2200, carbs: 200,
     }));
     const result = waterCorrect(
       mergeDailyData(makeWeightEntries(days), makeNutritionEntries(days))
@@ -563,7 +563,7 @@ describe('Water correction guardrails (fix 6)', () => {
 
   it('waterWeightUncertaintyLb is reported from runAnalysis', () => {
     const days = syntheticDays(40, (i) => ({
-      weight_lb: 175 + (i === 15 ? 3 : 0),
+      weightLb: 175 + (i === 15 ? 3 : 0),
       calories: 2000,
       sodium: i === 15 ? 6000 : 1800,
       carbs: 200,
@@ -577,7 +577,7 @@ describe('Water correction guardrails (fix 6)', () => {
 
   it('sodium spike increases uncertainty but does not crash', () => {
     const days = syntheticDays(35, (i) => ({
-      weight_lb: 175,
+      weightLb: 175,
       calories: 2000,
       sodium: i === 20 ? 10000 : 2000,
       carbs: 200,
@@ -594,7 +594,7 @@ describe('exerciseSessions integration (fix 2)', () => {
   it('legacy trainingBump entries still produce a valid model', () => {
     const DAYS = 60;
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03,
+      weightLb: 185 - i * 0.03,
       calories: 2200 + (i % 7 === 4 ? 280 : 0),
       trainingBump: i % 7 === 4 ? 280 : 0,
     }));
@@ -606,7 +606,7 @@ describe('exerciseSessions integration (fix 2)', () => {
   it('exerciseSessions override trainingBump in PAL lookup', () => {
     const DAYS = 60;
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03,
+      weightLb: 185 - i * 0.03,
       calories: 2100,
       trainingBump: 100, // legacy bump
       exerciseSessions: [{ manualCalories: 350 }], // should win
@@ -624,7 +624,7 @@ describe('exerciseSessions integration (fix 2)', () => {
   it('mixed entries (some with sessions, some with bump) produce consistent rows', () => {
     const DAYS = 60;
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185,
+      weightLb: 185,
       calories: 2100,
       trainingBump: i % 2 === 0 ? 100 : 0,
       exerciseSessions: i % 3 === 0 ? [{ wearableCalories: 300 }] : [],
@@ -648,7 +648,7 @@ describe('Under-reported calories (weight drops faster than calories suggest)', 
   const RATE_LB_PER_DAY = TRUE_DEFICIT / 7700 * 2.2046;
 
   const days = syntheticDays(DAYS, (i) => ({
-    weight_lb: START_WEIGHT - RATE_LB_PER_DAY * i + (Math.sin(i) * 0.15),
+    weightLb: START_WEIGHT - RATE_LB_PER_DAY * i + (Math.sin(i) * 0.15),
     calories: LOGGED_KCAL,
     trainingBump: 0,
   }));
@@ -665,7 +665,7 @@ describe('Under-reported calories (weight drops faster than calories suggest)', 
   it('model does not over-react to single-day weight changes', () => {
     const r = runAnalysis(weightEntries, dailyEntries);
     const smoothVals = r.rows.map(rw => rw.wt_smooth_lb).filter(v => v != null);
-    const rawVals = r.rows.map(rw => rw.weight_lb).filter(v => v != null);
+    const rawVals = r.rows.map(rw => rw.weightLb).filter(v => v != null);
     if (smoothVals.length < 2 || rawVals.length < 2) return;
     const smoothRange = Math.max(...smoothVals) - Math.min(...smoothVals);
     const rawRange = Math.max(...rawVals) - Math.min(...rawVals);
@@ -680,7 +680,7 @@ describe('High sodium/carb water swing', () => {
   const HIGH_SODIUM_DAY = 15;
 
   const days = syntheticDays(BASE_DAYS, (i) => ({
-    weight_lb: 175 + (i === HIGH_SODIUM_DAY ? 3 : 0),
+    weightLb: 175 + (i === HIGH_SODIUM_DAY ? 3 : 0),
     calories: 2000,
     sodium: i === HIGH_SODIUM_DAY ? 6000 : 1800,
     carbs: 200,
@@ -711,7 +711,7 @@ describe('Missing vacation week (days 20–26 no calories)', () => {
   const DAYS = 60;
 
   const days = syntheticDays(DAYS, (i) => ({
-    weight_lb: 180 - i * 0.03 + Math.sin(i) * 0.2,
+    weightLb: 180 - i * 0.03 + Math.sin(i) * 0.2,
     calories: (i >= 20 && i <= 26) ? null : 2000,
     trainingBump: 0,
   }));
@@ -749,7 +749,7 @@ describe('Exercise-heavy weeks (varied training bumps)', () => {
   const days = syntheticDays(DAYS, (i) => {
     const bump = BUMPS[i % 7];
     return {
-      weight_lb: 185 - i * 0.05 + Math.sin(i * 0.8) * 0.3,
+      weightLb: 185 - i * 0.05 + Math.sin(i * 0.8) * 0.3,
       calories: 2000 + bump,
       trainingBump: bump,
     };
@@ -820,7 +820,7 @@ describe('estimateProfileRmr', () => {
 
 describe('computeConfidence', () => {
   it('returns not_enough with only 7 days', () => {
-    const days = syntheticDays(7, () => ({ weight_lb: 180, calories: 2000 }));
+    const days = syntheticDays(7, () => ({ weightLb: 180, calories: 2000 }));
     const rows = [...mergeDailyData(makeWeightEntries(days), makeNutritionEntries(days))];
     const conf = computeConfidence(rows, {});
     expect(conf.label).toBe('not_enough');
@@ -828,21 +828,21 @@ describe('computeConfidence', () => {
   });
 
   it('returns score > 0 with 14+ days', () => {
-    const days = syntheticDays(20, () => ({ weight_lb: 180, calories: 2000 }));
+    const days = syntheticDays(20, () => ({ weightLb: 180, calories: 2000 }));
     const rows = [...mergeDailyData(makeWeightEntries(days), makeNutritionEntries(days))];
     const conf = computeConfidence(rows, {});
     expect(conf.score).toBeGreaterThan(0);
   });
 
   it('returns high/moderate confidence with 50+ days of weight and calories', () => {
-    const days = syntheticDays(55, (i) => ({ weight_lb: 180 - i * 0.05, calories: 2000 }));
+    const days = syntheticDays(55, (i) => ({ weightLb: 180 - i * 0.05, calories: 2000 }));
     const rows = [...mergeDailyData(makeWeightEntries(days), makeNutritionEntries(days))];
     const conf = computeConfidence(rows, { source: 'fitted', score: 30 });
     expect(['moderate', 'high']).toContain(conf.label);
   });
 
   it('provides reasons array', () => {
-    const days = syntheticDays(30, () => ({ weight_lb: 180, calories: 2000 }));
+    const days = syntheticDays(30, () => ({ weightLb: 180, calories: 2000 }));
     const rows = [...mergeDailyData(makeWeightEntries(days), makeNutritionEntries(days))];
     const conf = computeConfidence(rows, {});
     expect(Array.isArray(conf.reasons)).toBe(true);
@@ -854,7 +854,7 @@ describe('computeConfidence', () => {
 
 describe('Profile-based fallback when < 30 days', () => {
   it('uses profile RMR when not enough data for grid search', () => {
-    const days = syntheticDays(20, () => ({ weight_lb: 185, calories: 2200 }));
+    const days = syntheticDays(20, () => ({ weightLb: 185, calories: 2200 }));
     const weMap = makeWeightEntries(days);
     const nuMap = makeNutritionEntries(days);
     const profile = { age: 35, heightValue: 70, heightUnit: 'in', sex: 'male' };
@@ -874,7 +874,7 @@ describe('Profile-based fallback when < 30 days', () => {
 
   it('restDayCaloriesOut in summary uses modelPredictedRestDayTdee', () => {
     const days = syntheticDays(60, (i) => ({
-      weight_lb: 185 - i * 0.03,
+      weightLb: 185 - i * 0.03,
       calories: 2100,
     }));
     const r = runAnalysis(makeWeightEntries(days), makeNutritionEntries(days));
@@ -890,7 +890,7 @@ describe('Profile-based fallback when < 30 days', () => {
 describe('TDEE block calCoverage is always in [0, 1]', () => {
   it('full-log dataset produces calCoverage === 1.0, not 1.07', () => {
     const DAYS = 40;
-    const days = syntheticDays(DAYS, () => ({ weight_lb: 180, calories: 2100 }));
+    const days = syntheticDays(DAYS, () => ({ weightLb: 180, calories: 2100 }));
     let rows = mergeDailyData(makeWeightEntries(days), makeNutritionEntries(days));
     rows = smoothWeight(waterCorrect(rows).rows);
     rows = estimateTDEE(rows);
@@ -914,13 +914,13 @@ describe('exerciseCalories consistent across residual and imputation', () => {
     // PAL[400] > PAL[0], so predictedTDEE should be higher → residual shifts
     const DAYS = 60;
     const daysNoBump = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03,
+      weightLb: 185 - i * 0.03,
       calories: 2100,
       trainingBump: 0,
       exerciseSessions: [],
     }));
     const daysWithSessions = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03,
+      weightLb: 185 - i * 0.03,
       calories: 2100,
       trainingBump: 0,           // bump is 0 — only sessions carry exercise
       exerciseSessions: [{ manualCalories: 400 }],
@@ -944,7 +944,7 @@ describe('exerciseCalories consistent across residual and imputation', () => {
     const DAYS = 60;
     // Every other day has a 400-kcal manual session but trainingBump = 0
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03,
+      weightLb: 185 - i * 0.03,
       calories: i % 5 === 0 ? null : 2100, // sparse gaps for imputation
       trainingBump: 0,
       exerciseSessions: i % 2 === 0 ? [{ manualCalories: 400 }] : [],
@@ -966,7 +966,7 @@ describe('fittedDataQuality: medium blocks excluded from fit when enough high-qu
   it('fittedDataQuality is high when all data has full coverage', () => {
     const DAYS = 60;
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03 + Math.sin(i) * 0.2,
+      weightLb: 185 - i * 0.03 + Math.sin(i) * 0.2,
       calories: 2100,
     }));
     const r = runAnalysis(makeWeightEntries(days), makeNutritionEntries(days));
@@ -979,7 +979,7 @@ describe('fittedDataQuality: medium blocks excluded from fit when enough high-qu
     const DAYS = 60;
     // Every block overlaps a gap, so almost all blocks will be medium quality
     const days = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03 + Math.sin(i) * 0.2,
+      weightLb: 185 - i * 0.03 + Math.sin(i) * 0.2,
       calories: i % 4 === 0 ? null : 2100, // 25% missing every 4th day
     }));
     const r = runAnalysis(makeWeightEntries(days), makeNutritionEntries(days));
@@ -1000,12 +1000,12 @@ describe('fittedDataQuality: medium blocks excluded from fit when enough high-qu
 
     // Build a clean dataset
     const daysClean = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03 + Math.sin(i) * 0.15,
+      weightLb: 185 - i * 0.03 + Math.sin(i) * 0.15,
       calories: 2100,
     }));
     // Same dataset with a vacation gap
     const daysWithVacation = syntheticDays(DAYS, (i) => ({
-      weight_lb: 185 - i * 0.03 + Math.sin(i) * 0.15,
+      weightLb: 185 - i * 0.03 + Math.sin(i) * 0.15,
       calories: (i >= VACATION_START && i <= VACATION_END) ? null : 2100,
     }));
 
@@ -1383,7 +1383,7 @@ function makeDataForTrueUp(opts = {}) {
   for (let i = 0; i < n; i++) {
     const date = isoDate(startDate, i);
     const wt = parseFloat((weightStart - i * 0.05).toFixed(1));
-    weightData.push({ date, weight_lb: wt });
+    weightData.push({ date, weightLb: wt });
 
     if (date === blankDate) {
       // No food logged for this day
@@ -1882,7 +1882,7 @@ describe('getTrueUpCandidates — centered windows', () => {
     const startDate = '2024-01-01';
     const days = Array.from({ length: 5 }, (_, i) => {
       const date = isoDate(startDate, i);
-      return { date, weight_lb: 180 - i * 0.05 };
+      return { date, weightLb: 180 - i * 0.05 };
     });
     const weightEntries = makeWeightEntries(days);
     const dailyEntries = new Map();
@@ -1909,7 +1909,7 @@ describe('getTrueUpCandidates — centered windows', () => {
     const blankDate = isoDate(startDate, blankDay);
 
     const weightData = Array.from({ length: n }, (_, i) => ({
-      date: isoDate(startDate, i), weight_lb: 185 - i * 0.05,
+      date: isoDate(startDate, i), weightLb: 185 - i * 0.05,
     }));
     const nutritionData = [];
     for (let i = 0; i < n; i++) {
@@ -2192,7 +2192,7 @@ describe('runAnalysis — summary breakdown fields', () => {
       const d = new Date(`${startDate}T00:00:00`);
       d.setDate(d.getDate() + i);
       const dateStr = d.toISOString().slice(0, 10);
-      m.set(`w-${i}`, { date: dateStr, weight_lb: 185, time_min: 480, source: 'test' });
+      m.set(`w-${i}`, { date: dateStr, weightLb: 185, timeMin: 480, source: 'test' });
     }
     return m;
   }
@@ -2329,7 +2329,7 @@ describe('runAnalysis — estimated current weight in summary', () => {
   const BASE = '2025-01-01';
   function buildDays(n) {
     const days = [];
-    for (let i = 0; i < n; i++) days.push({ date: isoDate(BASE, i), weight_lb: 200 - i * 0.1, calories: 2200 });
+    for (let i = 0; i < n; i++) days.push({ date: isoDate(BASE, i), weightLb: 200 - i * 0.1, calories: 2200 });
     return days;
   }
 

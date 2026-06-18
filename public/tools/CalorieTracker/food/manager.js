@@ -4,7 +4,7 @@
  * touching prior daily entries.
  */
 
-import { state } from '../state/store.js';
+import { state, coerceQuantity } from '../state/store.js';
 import { allNutrients } from '../constants.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { saveDailyEntrySnapshot, deleteFoodItem } from '../services/firebase.js';
@@ -63,10 +63,10 @@ export function removeFoodItem(index) {
   const todayEntry = getCurrentDailyEntry();
   const removedIndex = index;
 
+  coerceQuantity(itemToRemove);
   const removedDelta = {};
   allNutrients.forEach(n => {
-    const qty = parseFloat(itemToRemove.quantity ?? 0) || 0;
-    removedDelta[n] = qty * (parseFloat(itemToRemove[n]) || 0);
+    removedDelta[n] = itemToRemove.quantity * (parseFloat(itemToRemove[n]) || 0);
     todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - removedDelta[n]);
   });
 

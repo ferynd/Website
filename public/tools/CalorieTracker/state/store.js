@@ -16,10 +16,10 @@ export const state = {
   dailyEntries: new Map(),
 
   // A Map to store weight entries, keyed by Firestore document ID.
-  // Each value: { date, weight_lb, time_min, timestamp, source }
+  // Each value: { date, weightLb, timeMin, timestamp, source }
   weightEntries: new Map(),
 
-  // Multi-weigh-in map: Map<date-string, Array<{weight_lb, time_min, ...}>>
+  // Multi-weigh-in map: Map<date-string, Array<{weightLb, timeMin, ...}>>
   // Built from weightEntries by grouping all readings that share the same date.
   // Used by the analysis engine to apply preferred-window selection.
   weightEntriesMulti: new Map(),

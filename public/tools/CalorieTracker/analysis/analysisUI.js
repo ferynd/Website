@@ -1658,7 +1658,7 @@ function drawWeightChart(rows) {
   const labels = [], rawData = [], smoothData = [];
   for (const r of visible) {
     labels.push(r.date);
-    rawData.push(r.weight_lb);
+    rawData.push(r.weightLb);
     smoothData.push(r.wt_smooth_lb);
   }
 

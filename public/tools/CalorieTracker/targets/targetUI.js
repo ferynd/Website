@@ -150,15 +150,15 @@ function _forcePopulate() {
 // Weight helpers
 // ---------------------------------------------------------------------------
 
-/** Returns the weight_lb of the most recent entry in state.weightEntries, or null. */
+/** Returns the weightLb of the most recent entry in state.weightEntries, or null. */
 function getLatestWeightFromEntries() {
   if (!state.weightEntries || state.weightEntries.size === 0) return null;
   let latestDate = '';
   let latestWeight = null;
   for (const entry of state.weightEntries.values()) {
-    if (entry.date > latestDate && entry.weight_lb > 0) {
+    if (entry.date > latestDate && entry.weightLb > 0) {
       latestDate = entry.date;
-      latestWeight = entry.weight_lb;
+      latestWeight = entry.weightLb;
     }
   }
   return latestWeight;

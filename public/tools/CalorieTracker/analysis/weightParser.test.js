@@ -35,10 +35,10 @@ describe('tab-delimited smart-scale export', () => {
 
   it('correctly parses weight and timestamp', () => {
     const { entries } = parseWeightCSV(tsv);
-    expect(entries[0].weight_lb).toBe(185.8);
+    expect(entries[0].weightLb).toBe(185.8);
     expect(entries[0].timestamp).toBe('2017-07-13T07-20-13');
     expect(entries[0].date).toBe('2017-07-13');
-    expect(entries[0].time_min).toBe(7 * 60 + 20);
+    expect(entries[0].timeMin).toBe(7 * 60 + 20);
   });
 
   it('uses timestamp as docId when time is present', () => {
@@ -66,13 +66,13 @@ describe('comma-delimited quoted CSV', () => {
     const { entries, diagnostics } = parseWeightCSV(csv);
     ok(entries, 2, 'quoted CSV');
     expect(diagnostics.detectedDelimiter).toBe('comma');
-    expect(entries[0].weight_lb).toBe(185.8);
+    expect(entries[0].weightLb).toBe(185.8);
   });
 
   it('handles month-name date with comma variant "Jul 13, 2017 07:20:13 AM"', () => {
     const { entries } = parseWeightCSV(csv);
     expect(entries[0].date).toBe('2017-07-13');
-    expect(entries[0].time_min).toBe(7 * 60 + 20);
+    expect(entries[0].timeMin).toBe(7 * 60 + 20);
   });
 });
 
@@ -93,8 +93,8 @@ describe('semicolon-delimited European CSV', () => {
   it('converts comma-as-decimal to dot for weight parsing', () => {
     const { entries } = parseWeightCSV(csv);
     ok(entries, 2, 'semicolon CSV');
-    expect(entries[0].weight_lb).toBe(185.8);
-    expect(entries[1].weight_lb).toBe(184.6);
+    expect(entries[0].weightLb).toBe(185.8);
+    expect(entries[1].weightLb).toBe(184.6);
   });
 });
 
@@ -113,8 +113,8 @@ describe('kg weight column with conversion', () => {
     expect(diagnostics.weightUnit).toBe('kg');
     expect(diagnostics.detectedColumns.weight).toBe('Weight(kg)');
     // 84.0 kg × 2.20462 ≈ 185.2 lb (1 decimal rounding)
-    expect(entries[0].weight_lb).toBeGreaterThan(185);
-    expect(entries[0].weight_lb).toBeLessThan(186);
+    expect(entries[0].weightLb).toBeGreaterThan(185);
+    expect(entries[0].weightLb).toBeLessThan(186);
   });
 
   it('stores originalUnit as kg', () => {
@@ -140,7 +140,7 @@ describe('date format variants', () => {
     const { entries } = parseWeightCSV(singleRow('2023-06-15 14:30:00'));
     ok(entries, 1, 'YYYY-MM-DD HH:mm:ss');
     expect(entries[0].date).toBe('2023-06-15');
-    expect(entries[0].time_min).toBe(14 * 60 + 30);
+    expect(entries[0].timeMin).toBe(14 * 60 + 30);
   });
 
   it('MM/DD/YYYY', () => {
@@ -153,28 +153,28 @@ describe('date format variants', () => {
     const { entries } = parseWeightCSV(singleRow('06/15/2023 02:30 PM'));
     ok(entries, 1, 'MM/DD/YYYY HH:mm PM');
     expect(entries[0].date).toBe('2023-06-15');
-    expect(entries[0].time_min).toBe(14 * 60 + 30);
+    expect(entries[0].timeMin).toBe(14 * 60 + 30);
   });
 
   it('MM/DD/YYYY HH:mm:ss (24-hour, no AM/PM)', () => {
     const { entries } = parseWeightCSV(singleRow('06/15/2023 14:30:00'));
     ok(entries, 1, 'MM/DD/YYYY 24h');
     expect(entries[0].date).toBe('2023-06-15');
-    expect(entries[0].time_min).toBe(14 * 60 + 30);
+    expect(entries[0].timeMin).toBe(14 * 60 + 30);
   });
 
   it('MM/DD/YYYY HH:mm (24-hour, no seconds, no AM/PM)', () => {
     const { entries } = parseWeightCSV(singleRow('06/15/2023 14:30'));
     ok(entries, 1, 'MM/DD/YYYY 24h no-sec');
     expect(entries[0].date).toBe('2023-06-15');
-    expect(entries[0].time_min).toBe(14 * 60 + 30);
+    expect(entries[0].timeMin).toBe(14 * 60 + 30);
   });
 
   it('Jul 13 2017 07:20:13 AM (no comma)', () => {
     const { entries } = parseWeightCSV(singleRow('Jul 13 2017 07:20:13 AM'));
     ok(entries, 1, 'month-name no-comma');
     expect(entries[0].date).toBe('2017-07-13');
-    expect(entries[0].time_min).toBe(7 * 60 + 20);
+    expect(entries[0].timeMin).toBe(7 * 60 + 20);
   });
 
   it('Jul 13, 2017 07:20:13 AM (with comma — quoted field)', () => {
@@ -188,13 +188,13 @@ describe('date format variants', () => {
   it('12:xx PM time converted correctly', () => {
     const { entries } = parseWeightCSV(singleRow('Jul 13 2017 12:00:00 PM'));
     ok(entries, 1, '12 PM');
-    expect(entries[0].time_min).toBe(12 * 60);
+    expect(entries[0].timeMin).toBe(12 * 60);
   });
 
   it('12:xx AM (midnight) converted correctly', () => {
     const { entries } = parseWeightCSV(singleRow('Jul 13 2017 12:00:00 AM'));
     ok(entries, 1, '12 AM midnight');
-    expect(entries[0].time_min).toBe(0);
+    expect(entries[0].timeMin).toBe(0);
   });
 });
 
@@ -231,7 +231,7 @@ describe('separate Date and Time columns', () => {
     expect(diagnostics.detectedColumns.date).toBe('Date');
     expect(diagnostics.detectedColumns.time).toBe('Time');
     expect(entries[0].date).toBe('2022-03-22');
-    expect(entries[0].time_min).toBe(7 * 60);
+    expect(entries[0].timeMin).toBe(7 * 60);
   });
 });
 
@@ -244,7 +244,7 @@ describe('UTF-8 BOM', () => {
   it('strips BOM and parses correctly', () => {
     const { entries } = parseWeightCSV(csv);
     ok(entries, 1, 'BOM');
-    expect(entries[0].weight_lb).toBe(185.0);
+    expect(entries[0].weightLb).toBe(185.0);
   });
 });
 
@@ -389,7 +389,7 @@ describe('localDateStr — locale-independent date extraction', () => {
     // The date field should reflect the local calendar date (Jan 5), not UTC (Jan 6).
     // Because parseExplicitDate uses new Date(y, m-1, d, h, mi, s) — local time.
     expect(entries[0].date).toBe('2024-01-05');
-    expect(entries[0].time_min).toBe(23 * 60 + 45);
+    expect(entries[0].timeMin).toBe(23 * 60 + 45);
   });
 
   it('date-only row produces YYYY-MM-DD without locale formatting artifacts', () => {
@@ -443,7 +443,7 @@ describe('timezone-aware parsing (opts.timezone)', () => {
     const { entries } = parseWeightCSV(csv, { timezone: 'America/Chicago' });
     expect(entries.length).toBe(1);
     expect(entries[0].date).toBe('2024-01-05');
-    expect(entries[0].time_min).toBe(23 * 60 + 45);
+    expect(entries[0].timeMin).toBe(23 * 60 + 45);
   });
 
   it('parses "2024-01-06 01:00:00" with Chicago tz — date is Jan 6 (Chicago wall-clock)', () => {
@@ -454,7 +454,7 @@ describe('timezone-aware parsing (opts.timezone)', () => {
     const { entries } = parseWeightCSV(csv, { timezone: 'America/Chicago' });
     expect(entries.length).toBe(1);
     expect(entries[0].date).toBe('2024-01-06');
-    expect(entries[0].time_min).toBe(60); // 1:00 AM = 60 min
+    expect(entries[0].timeMin).toBe(60); // 1:00 AM = 60 min
   });
 
   it('docId timestamp reflects the timezone components', () => {
@@ -475,6 +475,6 @@ describe('timezone-aware parsing (opts.timezone)', () => {
     const csv = 'Weight (lb),Date/Time\n185.0,2024-01-05 23:45:00';
     const { entries } = parseWeightCSV(csv);
     expect(entries[0].date).toBe('2024-01-05');
-    expect(entries[0].time_min).toBe(23 * 60 + 45);
+    expect(entries[0].timeMin).toBe(23 * 60 + 45);
   });
 });

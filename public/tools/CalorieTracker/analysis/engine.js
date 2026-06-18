@@ -205,10 +205,10 @@ function solveOLS(X, y) {
  * Priority:
  *  1. If a preferred window is defined and any reading falls in it, return the
  *     median (by weight) of those in-window readings.
- *  2. Otherwise return the reading with the smallest time_min (earliest in day).
- *  3. If all time_min are null, return the first reading.
+ *  2. Otherwise return the reading with the smallest timeMin (earliest in day).
+ *  3. If all timeMin are null, return the first reading.
  *
- * @param {Array<{weight_lb:number, time_min:number|null}>} readings
+ * @param {Array<{weightLb:number, timeMin:number|null}>} readings
  * @param {{startMin:number, endMin:number}|null} preferredWindow
  * @returns {object}
  */
@@ -219,19 +219,19 @@ export function selectDailyWeight(readings, preferredWindow = null) {
   if (preferredWindow) {
     const { startMin, endMin } = preferredWindow;
     const inWindow = readings.filter(
-      r => r.time_min != null && r.time_min >= startMin && r.time_min <= endMin
+      r => r.timeMin != null && r.timeMin >= startMin && r.timeMin <= endMin
     );
     if (inWindow.length > 0) {
       // Median of in-window readings (robust to single outlier syncs)
-      const sorted = [...inWindow].sort((a, b) => a.weight_lb - b.weight_lb);
+      const sorted = [...inWindow].sort((a, b) => a.weightLb - b.weightLb);
       return sorted[Math.floor(sorted.length / 2)];
     }
   }
 
   // Fall back to earliest reading
-  const withTime = readings.filter(r => r.time_min != null);
+  const withTime = readings.filter(r => r.timeMin != null);
   if (withTime.length > 0) {
-    return withTime.reduce((best, r) => r.time_min < best.time_min ? r : best, withTime[0]);
+    return withTime.reduce((best, r) => r.timeMin < best.timeMin ? r : best, withTime[0]);
   }
   return readings[0];
 }
@@ -328,10 +328,10 @@ export function mergeDailyData(weightEntries, dailyEntries, weightEntriesMulti =
       if (best) weightByDate.set(dateStr, best);
     }
   } else {
-    // Fall back: from the flat map, keep the reading with the lowest time_min per date
+    // Fall back: from the flat map, keep the reading with the lowest timeMin per date
     for (const [, entry] of weightEntries) {
       const d = entry.date;
-      if (!weightByDate.has(d) || entry.time_min < weightByDate.get(d).time_min) {
+      if (!weightByDate.has(d) || entry.timeMin < weightByDate.get(d).timeMin) {
         weightByDate.set(d, entry);
       }
     }
@@ -346,8 +346,8 @@ export function mergeDailyData(weightEntries, dailyEntries, weightEntriesMulti =
     const exFields = deriveExerciseCalories(nEntry || null);
     dateMap.set(dateStr, {
       date: dateStr,
-      weight_lb: wEntry ? wEntry.weight_lb : null,
-      time_min: wEntry ? wEntry.time_min : null,
+      weightLb: wEntry ? wEntry.weightLb : null,
+      timeMin: wEntry ? wEntry.timeMin : null,
       calories: nEntry ? (parseFloat(nEntry.calories) || null) : null,
       sodium: nEntry ? (parseFloat(nEntry.sodium) || null) : null,
       carbs: nEntry ? (parseFloat(nEntry.carbs) || null) : null,
@@ -389,17 +389,17 @@ export function waterCorrect(rows) {
 
   // Pass 1: 7-day rolling baseline
   for (let i = 0; i < result.length; i++) {
-    if (result[i].weight_lb == null) continue;
+    if (result[i].weightLb == null) continue;
     let sum = 0, count = 0;
     for (let j = Math.max(0, i - 6); j <= i; j++) {
-      if (result[j].weight_lb != null) { sum += result[j].weight_lb; count++; }
+      if (result[j].weightLb != null) { sum += result[j].weightLb; count++; }
     }
-    result[i]._baseline = count >= 3 ? sum / count : result[i].weight_lb;
+    result[i]._baseline = count >= 3 ? sum / count : result[i].weightLb;
   }
 
   // Gather rows with complete predictor data
   const trainRows = result.filter(
-    r => r.weight_lb != null && r._baseline != null && r.sodium != null && r.carbs != null
+    r => r.weightLb != null && r._baseline != null && r.sodium != null && r.carbs != null
   );
 
   let correctFn = null;   // (row) => correction in lb
@@ -428,7 +428,7 @@ export function waterCorrect(rows) {
       (r.carbs - carbMean) / carbSd,
       ...(useFiber ? [(r.fiber - fibMean) / fibSd] : []),
     ]);
-    const y = fitRows.map(r => r.weight_lb - r._baseline);
+    const y = fitRows.map(r => r.weightLb - r._baseline);
 
     try {
       const beta = solveOLS(X, y);
@@ -444,7 +444,7 @@ export function waterCorrect(rows) {
         usedOLS = true;
 
         const residAfter = fitRows.map(r => {
-          const resid = r.weight_lb - r._baseline;
+          const resid = r.weightLb - r._baseline;
           return resid - correctFn(r);
         });
         uncertaintyLb = +(Math.sqrt(
@@ -467,9 +467,9 @@ export function waterCorrect(rows) {
 
     const buckets = { hh: [], hl: [], lh: [], ll: [] };
     for (const r of result) {
-      if (r.weight_lb == null || r._baseline == null || r.sodium == null || r.carbs == null) continue;
+      if (r.weightLb == null || r._baseline == null || r.sodium == null || r.carbs == null) continue;
       const key = (r.sodium > sodThr ? 'h' : 'l') + (r.carbs > carbThr ? 'h' : 'l');
-      buckets[key].push(r.weight_lb - r._baseline);
+      buckets[key].push(r.weightLb - r._baseline);
     }
     const medCorr = {};
     for (const key of Object.keys(buckets)) {
@@ -490,11 +490,11 @@ export function waterCorrect(rows) {
   // Apply corrections with per-day cap to prevent over-correction
   const CAP = C.MAX_WATER_CORRECTION_LB;
   for (const r of result) {
-    if (r.weight_lb == null) { r.weight_corr = null; r._waterCorrection = 0; continue; }
+    if (r.weightLb == null) { r.weight_corr = null; r._waterCorrection = 0; continue; }
     const rawCorr = correctFn(r);
     const corr = Math.min(Math.max(rawCorr, -CAP), CAP);
     r._waterCorrection = corr;
-    r.weight_corr = r.weight_lb - corr;
+    r.weight_corr = r.weightLb - corr;
   }
 
   return {
@@ -912,7 +912,7 @@ export function computeConfidence(rows, bmrModel) {
   const C = ANALYSIS_CONFIG;
   const thresholds = C.DATA_SUFFICIENCY_THRESHOLDS;
 
-  const daysWithWeight = rows.filter(r => r.weight_lb != null).length;
+  const daysWithWeight = rows.filter(r => r.weightLb != null).length;
   const daysWithLoggedCalories = rows.filter(r => r.calories != null && !r.calories_imputed).length;
   const minDays = Math.min(daysWithWeight, daysWithLoggedCalories);
 
@@ -948,7 +948,7 @@ export function computeConfidence(rows, bmrModel) {
 
   // Recent gaps
   const recent30 = rows.slice(-30);
-  const recentGaps = recent30.filter(r => r.calories == null && r.weight_lb != null).length;
+  const recentGaps = recent30.filter(r => r.calories == null && r.weightLb != null).length;
   if (recentGaps > 7) {
     reasons.push(`${recentGaps} recent days without calorie logs — gaps reduce recent accuracy.`);
   }
@@ -1055,7 +1055,7 @@ export function imputeCalories(rows, bmrModel) {
     }
 
     const futureWeights = result.slice(i + 1, i + 1 + C.IMPUTE_MIN_FUTURE_WEIGHTS)
-      .filter(fr => fr.weight_lb != null);
+      .filter(fr => fr.weightLb != null);
     if (futureWeights.length < C.IMPUTE_MIN_FUTURE_WEIGHTS) { r.impute_status = 'pending'; continue; }
 
     const palKey = nearestPalKey(palKeys, rowExerciseCalories(r));

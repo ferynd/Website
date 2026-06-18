@@ -222,17 +222,17 @@ Use targeted testing judgment:
 
 ## HIGH — functionality
 
-- [p] **#14 — No duplicate detection in paste-and-parse staging**
+- [x] **#14 — No duplicate detection in paste-and-parse staging**
   Pasting the same nutrition label twice yields two food entries with identical names and values. Hash on `name + kcal` (or similar fingerprint) and prompt the user to confirm before adding an apparent duplicate.
-  > pushed — findDailyDuplicate checks name+calories before addStagedNutrientsToDailyLog; confirmation modal on match; 7 new tests; tests: 575 pass; commit: dc02f4f
+  > Resolved: findDailyDuplicate checks name+calories before addStagedNutrientsToDailyLog; confirmation modal on match; 7 new tests; tests: 575 pass; merged dc02f4f
 
-- [p] **#15 — No realtime sync / no offline note**
+- [x] **#15 — No realtime sync / no offline note**
   Only one-shot `getDoc`/`getDocs` calls — a second device's edits never appear without a page reload. Either migrate `dailyEntries/{today}` to `onSnapshot()` for live sync, or document the single-device limitation prominently in the UI (currently only in README Known Limitations).
-  > pushed — dismissible sync-notice banner above food list after data load; localStorage remembers dismissal; tests: 575 pass; commit: dc02f4f
+  > Resolved: dismissible sync-notice banner above food list after data load; localStorage remembers dismissal; tests: 575 pass; merged dc02f4f
 
-- [p] **#16 — Deleting a food item or exercise session is irreversible**
+- [x] **#16 — Deleting a food item or exercise session is irreversible**
   There is no undo path after confirmation. Add a 5-second undo toast that re-adds the item before it is written to Firestore, giving users a quick recovery window.
-  > pushed — showUndoToast + exported flushPendingUndo in utils/ui.js; removeFoodItem and removeExerciseSessionById flush any pending undo commit before mutating shared state, then show 5s undo toast; Firestore write deferred until undo window closes; rollback on save error; tests: 575 pass; commit: dc02f4f
+  > Resolved: showUndoToast + exported flushPendingUndo in utils/ui.js; removeFoodItem and removeExerciseSessionById flush any pending undo commit before mutating shared state, then show 5s undo toast; Firestore write deferred until undo window closes; rollback on save error; tests: 575 pass; merged dc02f4f
 
 - [x] **#46 — "Current weight required" nag fires regardless of weigh-in age**
   `targets/targetEngine.js`, `analysis/engine.js`, `targets/targetUI.js`, `constants.js` — the notice showed unconditionally, on a debounced auto-calc that runs before data loads. Now the current weight is estimated forward from the last weigh-in via energy balance (`projectWeightForward`: calories-in − TDEE since the last weigh-in, water-corrected smoothed baseline, drift-capped); the hard "Current weight is required" notice shows only on an explicit Auto-Calculate when there is no weight data at all; and a soft, non-blocking notice appears only when the last weigh-in is older than `WEIGHT_FRESHNESS_THRESHOLD_DAYS` (21).
@@ -242,25 +242,25 @@ Use targeted testing judgment:
 
 ## HIGH — code structure
 
-- [ ] **#17 — `ui/dashboard.js` (~1 873 lines) mixes banking math with rendering**
+- [p] **#17 — `ui/dashboard.js` (~1 873 lines) mixes banking math with rendering**
   Extract pure banking calculation logic into `ui/bankingEngine.js`. `ui/banking.test.js:33-68` already re-implements the same math to enable testing — the duplication disappears once the module is separated. Dashboard imports and renders; engine calculates.
-  > Resolved in: _pending_
+  > pushed — already resolved: bankingEngine.js exists with calcBankingCore(); dashboard.js delegates to it; banking.test.js imports and tests calcBankingCore directly; tests: 575 pass; commit: 8ce8ab3
 
-- [ ] **#18 — Two `@legacy` functions with no live callers**
+- [p] **#18 — Two `@legacy` functions with no live callers**
   `analysis/engine.js:1105` `estimateEWMAFromSinglePoint` and `engine.js:1538` `classifyWaterNoiseLevel` — grep confirms zero references outside the file itself. Delete them or move to `analysis/legacy.js` with a note that they are kept for backward compatibility only.
-  > Resolved in: _pending_
+  > pushed — already resolved: estimateEWMAFromSinglePoint and classifyWaterNoiseLevel were removed in prior work; remaining @legacy functions (getBlankDaysForPopulation, getPartialDaysForAdjustment) preserved per invariants; commit: 8ce8ab3
 
-- [ ] **#19 — Import triangle between dashboard, analysisUI, and targetEngine**
+- [p] **#19 — Import triangle between dashboard, analysisUI, and targetEngine**
   `ui/dashboard.js:30` ↔ `ui/analysisUI.js:31` ↔ `targets/targetEngine.js` — shared leaf helpers should be extracted to a neutral module to break the cycle.
-  > Resolved in: _pending_
+  > pushed — already resolved: imports form a one-directional DAG (dashboard→analysisUI→targetEngine); targetEngine imports from neither; no circular dependency exists; commit: 8ce8ab3
 
-- [ ] **#20 — Duplicate quantity coercion in three places**
+- [p] **#20 — Duplicate quantity coercion in three places**
   `state/store.js:115-120` (`coerceQuantity`), `food/manager.js:69`, `services/data.js:206` — consolidate to a single import from `store.js`.
-  > Resolved in: _pending_
+  > pushed — food/manager.js now imports coerceQuantity from store.js instead of inline parseFloat; tests: 575 pass; commit: 8ce8ab3
 
-- [ ] **#21 — Firestore snake_case leaks into UI layer alongside camelCase**
+- [p] **#21 — Firestore snake_case leaks into UI layer alongside camelCase**
   `weight_lb`, `time_min` (Firestore shape) appear alongside `dailyEntries`, `trainingBump` (camelCase) throughout UI code. `state/schema.js` already normalizes some fields — make it the single boundary; no raw Firestore key names should appear outside `services/`.
-  > Resolved in: _pending_
+  > pushed — normalizeWeightEntry/denormalizeWeightEntry in schema.js; firebase.js normalizes on fetch + denormalizes on save; weightParser outputs camelCase; engine, analysisUI, targetEngine, targetUI all use weightLb/timeMin; tests: 575 pass; commit: 8ce8ab3
 
 ---
 
