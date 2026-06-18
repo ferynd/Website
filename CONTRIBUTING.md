@@ -53,7 +53,7 @@ npm run lint
 - [ ] `npm run lint` clean
 - [ ] `npm run build` succeeds
 - [ ] UI changes include screenshots
-- [ ] Updated docs if fundamentals changed (README, AI_AGENTS, ARCHITECTURE, SECURITY)
+- [ ] Updated docs if fundamentals changed (README, AGENTS, ARCHITECTURE, SECURITY)
 - [ ] Manual test: home page and affected pages work
 
 ## Definition of Done

@@ -48,7 +48,7 @@ public/
   Path: `/tools/cifi-research-estimator`
 - **Trip Cost Calculator** — Split expenses and calculate balances for a group trip.
   Path: `/tools/trip-cost`
-- **Trip Planner** — React-based itinerary planner backed by Firebase Auth + Firestore with a timeline UI, idea library, and shared settings/map panels.
+- **Trip Planner** — Firebase-backed itinerary planner with Auth + Firestore, timeline UI, idea library, and shared settings/map panels.
   Path: `/tools/trip-planner`
 - **Date Night Roulette** — Firebase-backed picker for date ideas/modifiers with veto/accept flow, batch CSV uploads for pool items, and photo/review history.
   Path: `/tools/date-night`
