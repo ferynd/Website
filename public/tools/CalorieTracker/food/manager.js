@@ -7,9 +7,9 @@
 import { state } from '../state/store.js';
 import { allNutrients } from '../constants.js';
 import { showConfirmationModal } from '../ui/modals.js';
-import { saveDailyEntry, deleteFoodItem } from '../services/firebase.js';
+import { saveDailyEntrySnapshot, deleteFoodItem } from '../services/firebase.js';
 import { updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
-import { showMessage, handleError, escapeHtml } from '../utils/ui.js';
+import { showMessage, handleError, escapeHtml, showUndoToast, flushPendingUndo } from '../utils/ui.js';
 import { hideFoodDropdown } from './dropdown.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
@@ -50,42 +50,62 @@ export function selectFoodItem(foodName) {
 }
 
 /**
- * Removes a food item from the daily log for the current day.
+ * Removes a food item from the daily log with a 5-second undo window.
  * @param {number} index - The index of the item in the `state.dailyFoodItems` array.
  */
-export async function removeFoodItem(index) {
+export function removeFoodItem(index) {
   if (index < 0 || index >= state.dailyFoodItems.length) return;
 
+  flushPendingUndo();
+
   const itemToRemove = state.dailyFoodItems[index];
-  showConfirmationModal(`Remove "${itemToRemove.name || '(blank)'}"? This will subtract its nutrients from today's totals.`, async () => {
-    try {
-      const dateStr = state.dom.dateInput.value;
-      // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
-      const todayEntry = getCurrentDailyEntry();
+  const dateStr = state.dom.dateInput.value;
+  const todayEntry = getCurrentDailyEntry();
+  const removedIndex = index;
 
-      // Subtract the nutrients of the removed item from the daily total.
-      allNutrients.forEach(n => {
-        const currentTotal = parseFloat(todayEntry[n]) || 0;
-        const qty = parseFloat(itemToRemove.quantity ?? 0) || 0;
-        const itemValue = qty * (parseFloat(itemToRemove[n]) || 0);
-        todayEntry[n] = Math.max(0, currentTotal - itemValue);
-      });
+  const removedDelta = {};
+  allNutrients.forEach(n => {
+    const qty = parseFloat(itemToRemove.quantity ?? 0) || 0;
+    removedDelta[n] = qty * (parseFloat(itemToRemove[n]) || 0);
+    todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - removedDelta[n]);
+  });
 
-      // Remove the item from the local array and update the entry.
-      state.dailyFoodItems.splice(index, 1);
-      todayEntry.foodItems = state.dailyFoodItems;
+  state.dailyFoodItems.splice(index, 1);
+  todayEntry.foodItems = state.dailyFoodItems;
 
-      await saveDailyEntry(dateStr, todayEntry);
-      showMessage(`Removed "${itemToRemove.name || '(blank)'}" and updated totals.`);
+  updateDashboard();
+  updateChart();
+  updateFoodItemsList();
 
-      // Refresh the UI to reflect the changes.
+  showUndoToast(
+    `Removed "${itemToRemove.name || '(blank)'}"`,
+    () => {
+      allNutrients.forEach(n => { todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + removedDelta[n]; });
+      const targetItems = Array.isArray(todayEntry.foodItems) ? todayEntry.foodItems : state.dailyFoodItems;
+      targetItems.splice(Math.min(removedIndex, targetItems.length), 0, itemToRemove);
+      todayEntry.foodItems = targetItems;
+      if (state.dom.dateInput?.value === dateStr) state.dailyFoodItems = targetItems;
       updateDashboard();
       updateChart();
       updateFoodItemsList();
-    } catch (e) {
-      handleError('remove-food-item', e, 'Failed to remove food item.');
+      showMessage('Deletion undone.');
+    },
+    async () => {
+      try {
+        await saveDailyEntrySnapshot(dateStr, todayEntry);
+      } catch (e) {
+        allNutrients.forEach(n => { todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + removedDelta[n]; });
+        const targetItems = Array.isArray(todayEntry.foodItems) ? todayEntry.foodItems : state.dailyFoodItems;
+        targetItems.splice(Math.min(removedIndex, targetItems.length), 0, itemToRemove);
+        todayEntry.foodItems = targetItems;
+        if (state.dom.dateInput?.value === dateStr) state.dailyFoodItems = targetItems;
+        updateDashboard();
+        updateChart();
+        updateFoodItemsList();
+        handleError('remove-food-item', e, 'Failed to remove food item.');
+      }
     }
-  });
+  );
 }
 
 /**

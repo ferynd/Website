@@ -19,7 +19,7 @@ import { saveTargets, saveDailyEntry } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
 import { updateDashboard, activateTab } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
-import { debugLog, handleError, clampNutrient } from '../utils/ui.js';
+import { debugLog, handleError, clampNutrient, flushPendingUndo } from '../utils/ui.js';
 import {
   ACTIVITY_TYPES,
   estimateSessionCalories,
@@ -175,6 +175,7 @@ function wireMainControls() {
     // Date input change handler
     if (state.dom.dateInput) {
       state.dom.dateInput.addEventListener('change', async () => {
+        flushPendingUndo();
         const token = ++_dateChangeToken;
         try {
           await loadDailyFoodItems();
@@ -195,6 +196,7 @@ function wireMainControls() {
     if (dayActivitySelect) {
       dayActivitySelect.addEventListener('change', async (e) => {
         try {
+          flushPendingUndo();
           const dateStr = state.dom.dateInput?.value;
           if (!dateStr) return;
 

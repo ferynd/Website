@@ -77,6 +77,62 @@ export const escapeHtml = (value) =>
 
 import { NUTRIENT_MAX_BOUNDS } from '../constants.js';
 
+let _undoTimer = null;
+let _pendingCommit = null;
+let _pendingCleanup = null;
+
+export function flushPendingUndo() {
+  if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+  if (_pendingCleanup) { const cleanup = _pendingCleanup; _pendingCleanup = null; cleanup(); }
+  if (_pendingCommit) { const fn = _pendingCommit; _pendingCommit = null; fn(); }
+}
+
+/**
+ * Shows a 5-second undo toast. If the user clicks Undo, onUndo runs and the
+ * pending action is cancelled. Otherwise onCommit fires after the delay.
+ * If a previous undo toast is still pending, its onCommit runs immediately
+ * before the new toast is shown.
+ */
+export function showUndoToast(text, onUndo, onCommit, duration = 5000) {
+  const toast = document.getElementById('undo-toast');
+  const label = document.getElementById('undo-toast-text');
+  const btn   = document.getElementById('undo-toast-btn');
+  if (!toast || !label || !btn) return;
+
+  flushPendingUndo();
+
+  _pendingCommit = onCommit;
+  label.textContent = text;
+  toast.classList.remove('hidden');
+
+  let freshBtn;
+
+  const cleanup = () => {
+    toast.classList.add('hidden');
+    freshBtn?.removeEventListener('click', handleUndo);
+    if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+    if (_pendingCleanup === cleanup) _pendingCleanup = null;
+  };
+
+  const handleUndo = () => {
+    _pendingCommit = null;
+    cleanup();
+    onUndo();
+  };
+
+  btn.replaceWith(btn.cloneNode(true));
+  freshBtn = document.getElementById('undo-toast-btn');
+  freshBtn.addEventListener('click', handleUndo);
+  _pendingCleanup = cleanup;
+
+  _undoTimer = setTimeout(() => {
+    const fn = _pendingCommit;
+    _pendingCommit = null;
+    cleanup();
+    if (fn) fn();
+  }, duration);
+}
+
 /**
  * Clamps a nutrient value to [0, max] and warns the user if the raw value
  * exceeded the bound. Returns the clamped number.
