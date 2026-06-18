@@ -10,6 +10,7 @@ import {
   fetchRecentEntries,
   loadSavedFoodItems,
   saveDailyEntry,
+  saveDailyEntrySnapshot,
   fetchWeightEntries,
   fetchUserProfile,
   fetchGoalSettings,
@@ -80,8 +81,25 @@ async function retryWithBackoff(fn, { attempts = 3, baseMs = 1000 } = {}) {
 
 const SYNC_NOTICE_KEY = 'ct-sync-notice-dismissed';
 
+function isSyncNoticeDismissed() {
+  try {
+    return localStorage.getItem(SYNC_NOTICE_KEY) === '1';
+  } catch (e) {
+    debugLog('sync-notice', 'Unable to read dismissal state', e);
+    return false;
+  }
+}
+
+function dismissSyncNotice() {
+  try {
+    localStorage.setItem(SYNC_NOTICE_KEY, '1');
+  } catch (e) {
+    debugLog('sync-notice', 'Unable to persist dismissal state', e);
+  }
+}
+
 function showSyncNotice() {
-  if (localStorage.getItem(SYNC_NOTICE_KEY)) return;
+  if (isSyncNoticeDismissed()) return;
   let notice = document.getElementById('sync-notice');
   if (notice) return;
 
@@ -93,7 +111,7 @@ function showSyncNotice() {
     '<button class="sync-notice-dismiss" aria-label="Dismiss">&times;</button>';
   notice.querySelector('button').addEventListener('click', () => {
     notice.remove();
-    localStorage.setItem(SYNC_NOTICE_KEY, '1');
+    dismissSyncNotice();
   });
 
   const container = document.getElementById('food-items-list');
@@ -573,6 +591,8 @@ export function updateExerciseSessionsList() {
  * UI is only updated after a confirmed cloud save.
  */
 export async function persistExerciseSession(session) {
+  flushPendingUndo();
+
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
   const entry   = getCurrentDailyEntry();
 
@@ -606,7 +626,7 @@ function removeExerciseSessionById(sessionId) {
 
   flushPendingUndo();
 
-  const original = [...entry.exerciseSessions];
+  const removedIndex = entry.exerciseSessions.findIndex(s => s.id === sessionId);
 
   entry.exerciseSessions = entry.exerciseSessions.filter(s => s.id !== sessionId);
   state.dailyEntries.set(dateStr, entry);
@@ -618,7 +638,7 @@ function removeExerciseSessionById(sessionId) {
   showUndoToast(
     `Removed exercise ${label}`,
     () => {
-      entry.exerciseSessions = original;
+      entry.exerciseSessions.splice(Math.min(removedIndex, entry.exerciseSessions.length), 0, removed);
       state.dailyEntries.set(dateStr, entry);
       updateExerciseSessionsList();
       updateDashboard();
@@ -626,9 +646,9 @@ function removeExerciseSessionById(sessionId) {
     },
     async () => {
       try {
-        await saveDailyEntry(dateStr, entry);
+        await saveDailyEntrySnapshot(dateStr, entry);
       } catch (err) {
-        entry.exerciseSessions = original;
+        entry.exerciseSessions.splice(Math.min(removedIndex, entry.exerciseSessions.length), 0, removed);
         state.dailyEntries.set(dateStr, entry);
         handleError('remove-exercise-session', err, 'Failed to remove exercise session from the cloud.');
         updateExerciseSessionsList();
@@ -647,6 +667,8 @@ window.removeExerciseSession = removeExerciseSessionById;
 
 let quantityUpdateTimer;
 window.updateItemQuantity = (id, value) => {
+  flushPendingUndo();
+
   const q = parseFloat(value);
   const item = state.dailyFoodItems.find(x => x.id === id);
   if (!item) return;

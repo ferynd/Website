@@ -7,7 +7,7 @@
 import { state } from '../state/store.js';
 import { allNutrients } from '../constants.js';
 import { showConfirmationModal } from '../ui/modals.js';
-import { saveDailyEntry, deleteFoodItem } from '../services/firebase.js';
+import { saveDailyEntrySnapshot, deleteFoodItem } from '../services/firebase.js';
 import { updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
 import { showMessage, handleError, escapeHtml, showUndoToast, flushPendingUndo } from '../utils/ui.js';
 import { hideFoodDropdown } from './dropdown.js';
@@ -61,14 +61,13 @@ export function removeFoodItem(index) {
   const itemToRemove = state.dailyFoodItems[index];
   const dateStr = state.dom.dateInput.value;
   const todayEntry = getCurrentDailyEntry();
+  const removedIndex = index;
 
-  const savedTotals = {};
-  allNutrients.forEach(n => { savedTotals[n] = parseFloat(todayEntry[n]) || 0; });
-
+  const removedDelta = {};
   allNutrients.forEach(n => {
     const qty = parseFloat(itemToRemove.quantity ?? 0) || 0;
-    const itemValue = qty * (parseFloat(itemToRemove[n]) || 0);
-    todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - itemValue);
+    removedDelta[n] = qty * (parseFloat(itemToRemove[n]) || 0);
+    todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - removedDelta[n]);
   });
 
   state.dailyFoodItems.splice(index, 1);
@@ -81,9 +80,11 @@ export function removeFoodItem(index) {
   showUndoToast(
     `Removed "${itemToRemove.name || '(blank)'}"`,
     () => {
-      allNutrients.forEach(n => { todayEntry[n] = savedTotals[n]; });
-      state.dailyFoodItems.splice(index, 0, itemToRemove);
-      todayEntry.foodItems = state.dailyFoodItems;
+      allNutrients.forEach(n => { todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + removedDelta[n]; });
+      const targetItems = Array.isArray(todayEntry.foodItems) ? todayEntry.foodItems : state.dailyFoodItems;
+      targetItems.splice(Math.min(removedIndex, targetItems.length), 0, itemToRemove);
+      todayEntry.foodItems = targetItems;
+      if (state.dom.dateInput?.value === dateStr) state.dailyFoodItems = targetItems;
       updateDashboard();
       updateChart();
       updateFoodItemsList();
@@ -91,11 +92,13 @@ export function removeFoodItem(index) {
     },
     async () => {
       try {
-        await saveDailyEntry(dateStr, todayEntry);
+        await saveDailyEntrySnapshot(dateStr, todayEntry);
       } catch (e) {
-        allNutrients.forEach(n => { todayEntry[n] = savedTotals[n]; });
-        state.dailyFoodItems.splice(index, 0, itemToRemove);
-        todayEntry.foodItems = state.dailyFoodItems;
+        allNutrients.forEach(n => { todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + removedDelta[n]; });
+        const targetItems = Array.isArray(todayEntry.foodItems) ? todayEntry.foodItems : state.dailyFoodItems;
+        targetItems.splice(Math.min(removedIndex, targetItems.length), 0, itemToRemove);
+        todayEntry.foodItems = targetItems;
+        if (state.dom.dateInput?.value === dateStr) state.dailyFoodItems = targetItems;
         updateDashboard();
         updateChart();
         updateFoodItemsList();

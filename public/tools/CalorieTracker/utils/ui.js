@@ -79,9 +79,11 @@ import { NUTRIENT_MAX_BOUNDS } from '../constants.js';
 
 let _undoTimer = null;
 let _pendingCommit = null;
+let _pendingCleanup = null;
 
 export function flushPendingUndo() {
   if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+  if (_pendingCleanup) { const cleanup = _pendingCleanup; _pendingCleanup = null; cleanup(); }
   if (_pendingCommit) { const fn = _pendingCommit; _pendingCommit = null; fn(); }
 }
 
@@ -103,10 +105,13 @@ export function showUndoToast(text, onUndo, onCommit, duration = 5000) {
   label.textContent = text;
   toast.classList.remove('hidden');
 
+  let freshBtn;
+
   const cleanup = () => {
     toast.classList.add('hidden');
-    btn.removeEventListener('click', handleUndo);
+    freshBtn?.removeEventListener('click', handleUndo);
     if (_undoTimer) { clearTimeout(_undoTimer); _undoTimer = null; }
+    if (_pendingCleanup === cleanup) _pendingCleanup = null;
   };
 
   const handleUndo = () => {
@@ -116,8 +121,9 @@ export function showUndoToast(text, onUndo, onCommit, duration = 5000) {
   };
 
   btn.replaceWith(btn.cloneNode(true));
-  const freshBtn = document.getElementById('undo-toast-btn');
+  freshBtn = document.getElementById('undo-toast-btn');
   freshBtn.addEventListener('click', handleUndo);
+  _pendingCleanup = cleanup;
 
   _undoTimer = setTimeout(() => {
     const fn = _pendingCommit;

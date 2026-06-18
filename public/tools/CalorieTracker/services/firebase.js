@@ -151,6 +151,33 @@ export async function saveDailyEntry(dateStr, entry) {
 }
 
 /**
+ * Saves or updates a daily nutrition entry using the entry's own foodItems array.
+ * This is safe for deferred or historical-day writes because it does not read
+ * state.dailyFoodItems, which may belong to a different selected date.
+ * @param {string} dateStr - The date of the entry in 'YYYY-MM-DD' format.
+ * @param {object} entry - The complete entry data to save.
+ */
+export async function saveDailyEntrySnapshot(dateStr, entry) {
+  if (!state.userId) return showMessage('Cannot save entry. Not authenticated.', true);
+  try {
+    const foodItems = Array.isArray(entry.foodItems)
+      ? entry.foodItems.map(it => ({
+          ...it,
+          id: it.id || safeId(),
+          quantity: coerceQuantity(it).quantity,
+        }))
+      : [];
+    const toSave = prepareEntryForSave({ ...entry, foodItems });
+    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), toSave);
+    state.dailyEntries.set(dateStr, toSave);
+    debugLog('firebase-save', 'Daily entry snapshot saved successfully', dateStr);
+  } catch (e) {
+    handleError('daily-entry-snapshot-save', e, 'Failed to save entry.');
+    throw e;
+  }
+}
+
+/**
  * Saves a pre-built daily entry that already contains its own foodItems array.
  * Unlike saveDailyEntry(), this does NOT overwrite foodItems with state.dailyFoodItems,
  * making it safe to call for historical days without corrupting today's food log.

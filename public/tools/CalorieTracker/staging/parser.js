@@ -4,7 +4,7 @@
  */
 
 import { nutrientMap, allNutrients, SCHEMA_VERSIONS } from '../constants.js';
-import { showMessage, formatNutrientName, clampNutrient } from '../utils/ui.js';
+import { showMessage, formatNutrientName, clampNutrient, flushPendingUndo } from '../utils/ui.js';
 import { state } from '../state/store.js';
 import { saveDailyEntry, saveTargets } from '../services/firebase.js';
 import { clearStagingArea, updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
@@ -124,6 +124,8 @@ function findDailyDuplicate(name, calories) {
  * Core add-to-log logic, extracted so the duplicate confirmation can call it.
  */
 async function commitStagedToLog(staged, qty, foodName) {
+  flushPendingUndo();
+
   const dateStr = state.dom.dateInput.value;
   const todayEntry = getCurrentDailyEntry();
 
@@ -168,6 +170,8 @@ export async function addStagedNutrientsToDailyLog() {
  * Subtracts the staged nutrient values from the current day's log.
  */
 export async function subtractStagedNutrientsFromDailyLog() {
+  flushPendingUndo();
+
   const staged = getStagedValues();
   const dateStr = state.dom.dateInput.value;
   // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
