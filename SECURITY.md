@@ -1,6 +1,6 @@
 # Security & Privacy
 
-This site is a **client-first** Next.js app with static sub-sites. There is **no server-side secret logic** in this repo. 
+This site is a **client-first** Next.js app with static sub-sites. Selected Edge API routes use environment secrets for external AI/media APIs. Do not expose those secrets client-side.
 Persistence is provided via **Firebase (Auth + Firestore)** for selected tools.
 
 ## Secrets & Keys

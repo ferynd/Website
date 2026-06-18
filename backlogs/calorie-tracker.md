@@ -4,6 +4,17 @@ Single source of truth for ongoing work on `public/tools/CalorieTracker/`. Items
 a 45-point review punch list; new feature requests and bug reports are added here as they come
 up.
 
+## CalorieTracker invariants
+
+Preserve these unless the user explicitly asks to change them:
+
+- `getTrueUpCandidates` uses centered windows `[D-preDays, D+postDays]`; do not revert to end-anchored windows.
+- True-up TDEE reference should come from blocks outside the candidate interval when available to avoid circularity.
+- `computeWeekdayAverages` uses `trimmedMean(arr, 0.1)`; do not revert to a plain arithmetic mean.
+- `buildBlankDayEstimateEntry` spreads historical micronutrient averages onto both the entry and its synthetic food item, falling back to baseline targets.
+- `computeProteinTarget` auto basis priority is lean mass, then target weight, then current weight.
+- `getBlankDaysForPopulation` and `getPartialDaysForAdjustment` are legacy compatibility paths unless a live caller is reintroduced.
+
 ## Resuming work across sessions
 
 Start (or resume) a session with any of these — exact wording is **not** required:
@@ -33,7 +44,7 @@ When invoked that way, follow this protocol automatically, without needing furth
 6. Pick the next reasonable batch — usually one suggested session group (A–I) or one to three
    related items.
 7. Implement. Mark each touched item `[p]` with a one-line note (see status legend below).
-8. Run the Vitest suite: `cd public/tools/CalorieTracker && npm test`. Keep it green.
+8. Run tests according to the Test command section below. CalorieTracker code changes must keep the relevant suite green.
 9. Commit with a **descriptive** Conventional-Commit message. Format:
    `type(calorie-tracker): #N short description of the change`
    The message must include: (a) the Conventional Commit type (`feat`, `fix`, `refactor`, etc.),

@@ -42,12 +42,12 @@ npm run lint
 2. Follow existing patterns (client components, Tailwind utilities).
 3. Add an entry in `app/tools/page.tsx`.
 
-## Firebase (Trip Cost + Calorie Tracker)
-- **Trip Cost React app** uses Firebase Auth + Firestore. Config in `app/tools/trip-cost/firebaseConfig.ts` with admin `arkkahdarkkahd@gmail.com`. 
-- Firestore helpers in `app/tools/trip-cost/db.ts` target `artifacts/trip-cost/**` (trips, participants, expenses, payments, audit).
-- **Calorie Tracker static app** (`/public/tools/CalorieTracker/**`) also uses Firebase via web SDKs. Its config lives in that folder.
+## Firebase-backed tools
 
-**Important:** Web Firebase keys are public identifiers. Enforce access through **Firestore Security Rules**. Do **not** commit private server keys.
+Several tools use Firebase Auth + Firestore. See `SECURITY.md` for auth flows and data model, and `ARCHITECTURE.md` for the full list and per-tool details.
+
+- Firebase web config keys are **public identifiers**, not secrets. Access is enforced through **Firestore Security Rules** (`firestore.rules` at repo root).
+- Do **not** commit private server keys, service account JSON, or API tokens.
 
 ## PR checklist
 - [ ] `npm run lint` clean
