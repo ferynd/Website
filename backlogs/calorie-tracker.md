@@ -244,23 +244,23 @@ Use targeted testing judgment:
 
 - [p] **#17 — `ui/dashboard.js` (~1 873 lines) mixes banking math with rendering**
   Extract pure banking calculation logic into `ui/bankingEngine.js`. `ui/banking.test.js:33-68` already re-implements the same math to enable testing — the duplication disappears once the module is separated. Dashboard imports and renders; engine calculates.
-  > pushed — already resolved: bankingEngine.js exists with calcBankingCore(); dashboard.js delegates to it; banking.test.js imports and tests calcBankingCore directly; tests: 575 pass; commit: 8ce8ab3
+  > pushed — already resolved: bankingEngine.js exists with calcBankingCore(); dashboard.js delegates to it; banking.test.js imports and tests calcBankingCore directly; tests: 575 pass; commit: c4661db
 
 - [p] **#18 — Two `@legacy` functions with no live callers**
   `analysis/engine.js:1105` `estimateEWMAFromSinglePoint` and `engine.js:1538` `classifyWaterNoiseLevel` — grep confirms zero references outside the file itself. Delete them or move to `analysis/legacy.js` with a note that they are kept for backward compatibility only.
-  > pushed — already resolved: estimateEWMAFromSinglePoint and classifyWaterNoiseLevel were removed in prior work; remaining @legacy functions (getBlankDaysForPopulation, getPartialDaysForAdjustment) preserved per invariants; commit: 8ce8ab3
+  > pushed — already resolved: estimateEWMAFromSinglePoint and classifyWaterNoiseLevel were removed in prior work; remaining @legacy functions (getBlankDaysForPopulation, getPartialDaysForAdjustment) preserved per invariants; commit: c4661db
 
 - [p] **#19 — Import triangle between dashboard, analysisUI, and targetEngine**
   `ui/dashboard.js:30` ↔ `ui/analysisUI.js:31` ↔ `targets/targetEngine.js` — shared leaf helpers should be extracted to a neutral module to break the cycle.
-  > pushed — already resolved: imports form a one-directional DAG (dashboard→analysisUI→targetEngine); targetEngine imports from neither; no circular dependency exists; commit: 8ce8ab3
+  > pushed — already resolved: imports form a one-directional DAG (dashboard→analysisUI→targetEngine); targetEngine imports from neither; no circular dependency exists; commit: c4661db
 
 - [p] **#20 — Duplicate quantity coercion in three places**
   `state/store.js:115-120` (`coerceQuantity`), `food/manager.js:69`, `services/data.js:206` — consolidate to a single import from `store.js`.
-  > pushed — food/manager.js now imports coerceQuantity from store.js instead of inline parseFloat; tests: 575 pass; commit: 8ce8ab3
+  > pushed — food/manager.js now imports coerceQuantity from store.js instead of inline parseFloat; tests: 575 pass; commit: c4661db
 
 - [p] **#21 — Firestore snake_case leaks into UI layer alongside camelCase**
   `weight_lb`, `time_min` (Firestore shape) appear alongside `dailyEntries`, `trainingBump` (camelCase) throughout UI code. `state/schema.js` already normalizes some fields — make it the single boundary; no raw Firestore key names should appear outside `services/`.
-  > pushed — normalizeWeightEntry/denormalizeWeightEntry in schema.js; firebase.js normalizes on fetch + denormalizes on save; weightParser outputs camelCase; engine, analysisUI, targetEngine, targetUI all use weightLb/timeMin; tests: 575 pass; commit: 8ce8ab3
+  > pushed — normalizeWeightEntry/denormalizeWeightEntry in schema.js; firebase.js normalizes on fetch + denormalizes on save; weightParser outputs camelCase; engine, analysisUI, targetEngine, targetUI all use weightLb/timeMin; tests: 575 pass; commit: c4661db
 
 ---
 
