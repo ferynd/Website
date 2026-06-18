@@ -160,13 +160,13 @@ green and add tests for new validators or pure functions.
 
 - [p] **#5 — Tab bar overflows ≤ 360 px with no scroll affordance**
   `styles.css:326-334` — five tabs at `flex: 0 0 auto` total ~450 px, silently clipping Profile & Settings on iPhone SE / small Android. The scrollbar is hidden with no visual indicator. Add scroll-shadow edge fades at both ends, or convert to a "more" overflow menu under 640 px.
-  > pushed — tab-bar-wrap with CSS gradient pseudo-element scroll shadows; JS scroll/resize listener toggles scroll-left/scroll-right classes; compact tab padding at ≤480 px; tests: 568 pass; commit: 3d44b6b
+  > pushed — tab-bar-wrap with CSS gradient pseudo-element scroll shadows; JS scroll/resize listener toggles scroll-left/scroll-right classes; compact tab padding at ≤480 px; tests: 568 pass; commit: ca9a264
 
 - [p] **#6 — TDEE plausibility floor is physiologically impossible; impute floor also low**
   `analysis/engine.js:30` `TDEE_PLAUSIBLE_MIN: 1200` — below BMR for any adult with any activity. Raise to 1 400 kcal.
   `analysis/engine.js:48` `IMPUTE_CAL_MIN: 600` — below basal for most users. Raise to 800 kcal.
   Both are single constant changes with an existing test that must be updated.
-  > pushed — TDEE_PLAUSIBLE_MIN 1200→1400, IMPUTE_CAL_MIN 600→800; vacation calorie bounds now use config constants; test updated; tests: 568 pass; commit: 3d44b6b
+  > pushed — TDEE_PLAUSIBLE_MIN 1200→1400, IMPUTE_CAL_MIN 600→800; vacation calorie bounds now use config constants; test updated; tests: 568 pass; commit: ca9a264
 
 ---
 
