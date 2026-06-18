@@ -147,7 +147,7 @@ cd public/tools/CalorieTracker
 npm test
 ```
 
-Baseline: **568 tests, 9 files, all passing.**
+Baseline: **575 tests, 9 files, all passing.**
 
 Use targeted testing judgment:
 
@@ -190,49 +190,49 @@ Use targeted testing judgment:
 
 ## HIGH — math / accuracy
 
-- [p] **#7 — EWMA span = 10 (α ≈ 0.182) under-smooths noisy daily weigh-ins**
+- [x] **#7 — EWMA span = 10 (α ≈ 0.182) under-smooths noisy daily weigh-ins**
   `analysis/engine.js:20` — a 2 lb water spike at this alpha persists ~5 days in the trend line. Hacker's Diet uses α ≈ 0.1 (span ≈ 20). Consider raising span to 14 (α ≈ 0.133) or exposing as a user preference. At minimum, add a comment in `ANALYSIS_CONFIG` explaining the trade-off (faster response vs. more noise).
-  > pushed — block comment explaining span 10 trade-off vs Hacker's Diet span 20, and how OLS water-correction compensates; tests: 568 pass; commit: 6ec05bd
+  > Resolved: block comment explaining span 10 trade-off vs Hacker's Diet span 20, and how OLS water-correction compensates; tests: 568 pass; merged 6ec05bd
 
-- [p] **#8 — PAL grid ranges are empirically tuned with no documented rationale**
+- [x] **#8 — PAL grid ranges are empirically tuned with no documented rationale**
   `analysis/engine.js:36-43` — the upper bound of 1.85 at 400 kcal/day exercise could double-count activity if the user's baseline already reflects training. Add a block comment explaining the empirical origin (or basis in literature), and reconsider whether 1.75 is a safer maximum.
-  > pushed — block comment citing WHO/FAO/UNU 2001 and IOM DRI 2005, explaining 1.85 ceiling avoids double-counting for recreational exercisers; tests: 568 pass; commit: 6ec05bd
+  > Resolved: block comment citing WHO/FAO/UNU 2001 and IOM DRI 2005, explaining 1.85 ceiling avoids double-counting for recreational exercisers; tests: 568 pass; merged 6ec05bd
 
-- [p] **#9 — `MIN_DAYS_FOR_WATER_REGRESSION = 20` silently excludes most users**
+- [x] **#9 — `MIN_DAYS_FOR_WATER_REGRESSION = 20` silently excludes most users**
   `analysis/engine.js:26` — most users won't have 20 days of complete sodium + carbs + weight data; they fall back to the bucket method with no notice. Consider lowering the threshold to 14 days (if sodium/carb coverage ≥ 70%) and surface which correction method is active in the Energy tab UI.
-  > pushed — lowered threshold from 20→14 (sufficient degrees of freedom for 2–3 predictor OLS); water correction method was already surfaced in Energy tab confidence card; tests: 568 pass; commit: 6ec05bd
+  > Resolved: lowered threshold from 20→14 (sufficient degrees of freedom for 2–3 predictor OLS); water correction method was already surfaced in Energy tab confidence card; tests: 568 pass; merged 6ec05bd
 
-- [p] **#10 — True-up fallback to inside-interval blocks is not user-visible**
+- [x] **#10 — True-up fallback to inside-interval blocks is not user-visible**
   `analysis/engine.js:1761-1772` — when outside-interval TDEE blocks are scarce, the engine silently falls back to inside-interval data (which can be distorted by the very missing days being estimated). Add a caveat in the Energy tab when fallback mode is active ("estimate uses weeks that contain gaps").
-  > pushed — tdeeRefSource field added to each interval; analysisUI interval-math detail shows ref source with warning labels for inside-interval and hardcoded fallback; tests: 568 pass; commit: 6ec05bd
+  > Resolved: tdeeRefSource field added to each interval; analysisUI interval-math detail shows ref source with warning labels for inside-interval and hardcoded fallback; tests: 568 pass; merged 6ec05bd
 
-- [p] **#11 — Sodium "UL" is the CDRR target, not a Tolerable Upper Intake Level**
+- [x] **#11 — Sodium "UL" is the CDRR target, not a Tolerable Upper Intake Level**
   `targets/nutritionReferences.js:185-206` — NASEM did not establish a true UL for sodium; 2 300 mg is the Chronic Disease Risk Reduction target. Mislabeling it "UL" causes users to see "over UL" warnings at moderate sodium intakes. Add a comment: `// CDRR target — no established UL per NASEM`. Consider whether the warning copy in the UI should reflect this distinction.
-  > pushed — CDRR comment block on sodium entry; null-UL entries annotated with NASEM rationale; target warning + Nutrients tab row/summary badges distinguish CDRR from UL for sodium; tests: 568 pass; commit: 6ec05bd
+  > Resolved: CDRR comment block on sodium entry; null-UL entries annotated with NASEM rationale; target warning + Nutrients tab row/summary badges distinguish CDRR from UL for sodium; tests: 568 pass; merged 6ec05bd
 
-- [p] **#12 — Body-fat % outside realistic bounds accepted without warning**
+- [x] **#12 — Body-fat % outside realistic bounds accepted without warning**
   `analysis/engine.js:647`, `targets/targetEngine.js:141` — the valid range is `[5, 60]` but no validation message is shown if a user enters 3% or 70%. Add an inline warning (not a hard block) in the Profile & Goals form for out-of-range values.
-  > pushed — hidden warning element in HTML; validateBodyFatInput() in targetUI.js shows tiered warnings for <5%, <8%, >50%, >60%; Cunningham bounds now inclusive (>=5, <=60); tests: 568 pass; commit: 6ec05bd
+  > Resolved: hidden warning element in HTML; validateBodyFatInput() in targetUI.js shows tiered warnings for <5%, <8%, >50%, >60%; Cunningham bounds now inclusive (>=5, <=60); tests: 568 pass; merged 6ec05bd
 
-- [p] **#13 — Carb-clamp-to-zero in auto-generated targets has no user warning**
+- [x] **#13 — Carb-clamp-to-zero in auto-generated targets has no user warning**
   `targets/targetEngine.js:566-569` — when protein + fat exceed the calorie total, carbs silently clamp to 0. The override path already has a warning at lines 758-782; apply the same warning to the auto-generated path so users know their goal macro split is infeasible.
-  > pushed — protein+fat vs calorie check after computeCarbsTarget in generateTargets; warning mirrors the manual-override path format; tests: 568 pass; commit: 6ec05bd
+  > Resolved: protein+fat vs calorie check after computeCarbsTarget in generateTargets; warning mirrors the manual-override path format; tests: 568 pass; merged 6ec05bd
 
 ---
 
 ## HIGH — functionality
 
-- [ ] **#14 — No duplicate detection in paste-and-parse staging**
+- [p] **#14 — No duplicate detection in paste-and-parse staging**
   Pasting the same nutrition label twice yields two food entries with identical names and values. Hash on `name + kcal` (or similar fingerprint) and prompt the user to confirm before adding an apparent duplicate.
-  > Resolved in: _pending_
+  > pushed — findDailyDuplicate checks name+calories before addStagedNutrientsToDailyLog; confirmation modal on match; 7 new tests; tests: 575 pass; commit: _pending_
 
-- [ ] **#15 — No realtime sync / no offline note**
+- [p] **#15 — No realtime sync / no offline note**
   Only one-shot `getDoc`/`getDocs` calls — a second device's edits never appear without a page reload. Either migrate `dailyEntries/{today}` to `onSnapshot()` for live sync, or document the single-device limitation prominently in the UI (currently only in README Known Limitations).
-  > Resolved in: _pending_
+  > pushed — dismissible sync-notice banner above food list after data load; localStorage remembers dismissal; tests: 575 pass; commit: _pending_
 
-- [ ] **#16 — Deleting a food item or exercise session is irreversible**
+- [p] **#16 — Deleting a food item or exercise session is irreversible**
   There is no undo path after confirmation. Add a 5-second undo toast that re-adds the item before it is written to Firestore, giving users a quick recovery window.
-  > Resolved in: _pending_
+  > pushed — showUndoToast in utils/ui.js; removeFoodItem and removeExerciseSessionById use 5s undo toast instead of confirmation modal; Firestore write deferred until undo window closes; rollback on save error; tests: 575 pass; commit: _pending_
 
 - [x] **#46 — "Current weight required" nag fires regardless of weigh-in age**
   `targets/targetEngine.js`, `analysis/engine.js`, `targets/targetUI.js`, `constants.js` — the notice showed unconditionally, on a debounced auto-calc that runs before data loads. Now the current weight is estimated forward from the last weigh-in via energy balance (`projectWeightForward`: calories-in − TDEE since the last weigh-in, water-corrected smoothed baseline, drift-capped); the hard "Current weight is required" notice shows only on an explicit Auto-Calculate when there is no weight data at all; and a soft, non-blocking notice appears only when the last weigh-in is older than `WEIGHT_FRESHNESS_THRESHOLD_DAYS` (21).
@@ -404,4 +404,4 @@ cd public/tools/CalorieTracker
 npm test
 ```
 
-Baseline: **568 tests, 9 files, all passing.** Any session that changes logic files must keep this green. Add tests for new validators, the date-change cancellation token, and any new pure functions introduced.
+Baseline: **575 tests, 9 files, all passing.** Any session that changes logic files must keep this green. Add tests for new validators, the date-change cancellation token, and any new pure functions introduced.

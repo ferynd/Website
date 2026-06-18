@@ -102,6 +102,58 @@ describe('quantity editing on subtraction item', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Duplicate detection — mirrors findDailyDuplicate from parser.js
+// ---------------------------------------------------------------------------
+
+function isDailyDuplicate(existingItems, name, calories) {
+  const lowerName = name.toLowerCase();
+  return existingItems.some(
+    item => (item.name || '').toLowerCase() === lowerName
+         && Math.round(parseFloat(item.calories) || 0) === Math.round(parseFloat(calories) || 0)
+  );
+}
+
+describe('daily duplicate detection', () => {
+  const existing = [
+    { name: 'Chicken Breast', calories: 165, protein: 31, quantity: 1 },
+    { name: 'Brown Rice', calories: 215, protein: 5, quantity: 1 },
+  ];
+
+  it('detects exact name+calorie match', () => {
+    expect(isDailyDuplicate(existing, 'Chicken Breast', 165)).toBe(true);
+  });
+
+  it('is case-insensitive', () => {
+    expect(isDailyDuplicate(existing, 'chicken breast', 165)).toBe(true);
+    expect(isDailyDuplicate(existing, 'BROWN RICE', 215)).toBe(true);
+  });
+
+  it('does not flag different calories', () => {
+    expect(isDailyDuplicate(existing, 'Chicken Breast', 200)).toBe(false);
+  });
+
+  it('does not flag different name', () => {
+    expect(isDailyDuplicate(existing, 'Salmon', 165)).toBe(false);
+  });
+
+  it('rounds calories for comparison', () => {
+    expect(isDailyDuplicate(existing, 'Chicken Breast', 165.4)).toBe(true);
+    expect(isDailyDuplicate(existing, 'Chicken Breast', 164.6)).toBe(true);
+    expect(isDailyDuplicate(existing, 'Chicken Breast', 163.4)).toBe(false);
+  });
+
+  it('returns false for empty log', () => {
+    expect(isDailyDuplicate([], 'Chicken Breast', 165)).toBe(false);
+  });
+
+  it('handles blank names', () => {
+    const withBlank = [{ name: '', calories: 100, quantity: 1 }];
+    expect(isDailyDuplicate(withBlank, '', 100)).toBe(true);
+    expect(isDailyDuplicate(withBlank, '(Staged Entry)', 100)).toBe(false);
+  });
+});
+
 describe('add and subtract are symmetric at same qty', () => {
   it('add and subtract of same nutrients at same qty cancel to zero effective total', () => {
     const staged = { calories: 250, protein: 30, carbs: 40, fat: 8 };

@@ -109,20 +109,26 @@ export function getStagedValues() {
 }
 
 /**
- * Adds the staged nutrient values to the current day's log.
+ * Checks whether a food item with the same name and calorie value already
+ * exists in today's log.  Returns the duplicate if found, otherwise null.
  */
-export async function addStagedNutrientsToDailyLog() {
-  const staged = getStagedValues();
-  const dateStr = state.dom.dateInput.value;
-  // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
-  const todayEntry = getCurrentDailyEntry();
-  const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
+function findDailyDuplicate(name, calories) {
+  const lowerName = name.toLowerCase();
+  return state.dailyFoodItems.find(
+    item => (item.name || '').toLowerCase() === lowerName
+         && Math.round(parseFloat(item.calories) || 0) === Math.round(parseFloat(calories) || 0)
+  ) || null;
+}
 
-  // Add staged values to the existing daily totals with quantity.
+/**
+ * Core add-to-log logic, extracted so the duplicate confirmation can call it.
+ */
+async function commitStagedToLog(staged, qty, foodName) {
+  const dateStr = state.dom.dateInput.value;
+  const todayEntry = getCurrentDailyEntry();
+
   allNutrients.forEach(n => todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + (qty * (staged[n] || 0)));
 
-  // Create a food item record for this addition.
-  const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Entry)';
   const foodItem = { id: crypto.randomUUID(), name: foodName, quantity: qty, timestamp: new Date().toISOString(), ...staged };
   state.dailyFoodItems.push(foodItem);
 
@@ -130,10 +136,32 @@ export async function addStagedNutrientsToDailyLog() {
   showMessage("Staged nutrients added to today's log!");
   clearStagingArea();
 
-  // Refresh UI.
   updateDashboard();
   updateChart();
   updateFoodItemsList();
+}
+
+/**
+ * Adds the staged nutrient values to the current day's log.
+ * Prompts for confirmation when a duplicate name+calories entry already exists.
+ */
+export async function addStagedNutrientsToDailyLog() {
+  const staged = getStagedValues();
+  const qty = parseFloat(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
+  const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Entry)';
+
+  const dup = findDailyDuplicate(foodName, staged.calories);
+  if (dup) {
+    const dupQty = parseFloat(dup.quantity ?? 0) || 0;
+    const dupCals = Math.round(dupQty * (parseFloat(dup.calories) || 0));
+    showConfirmationModal(
+      `"${foodName}" (${dupCals} cal) is already in today's log. Add it again?`,
+      () => commitStagedToLog(staged, qty, foodName)
+    );
+    return;
+  }
+
+  await commitStagedToLog(staged, qty, foodName);
 }
 
 /**

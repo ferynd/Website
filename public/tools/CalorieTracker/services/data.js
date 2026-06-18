@@ -4,7 +4,7 @@
  */
 import { state, cacheDom, coerceQuantity } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
-import { handleError, debugLog, escapeHtml } from '../utils/ui.js';
+import { handleError, debugLog, escapeHtml, showUndoToast, showMessage } from '../utils/ui.js';
 import {
   fetchTargets,
   fetchRecentEntries,
@@ -75,6 +75,30 @@ async function retryWithBackoff(fn, { attempts = 3, baseMs = 1000 } = {}) {
       if (i === attempts - 1) throw e;
       await new Promise(r => setTimeout(r, baseMs * 2 ** i));
     }
+  }
+}
+
+const SYNC_NOTICE_KEY = 'ct-sync-notice-dismissed';
+
+function showSyncNotice() {
+  if (localStorage.getItem(SYNC_NOTICE_KEY)) return;
+  let notice = document.getElementById('sync-notice');
+  if (notice) return;
+
+  notice = document.createElement('div');
+  notice.id = 'sync-notice';
+  notice.className = 'sync-notice';
+  notice.innerHTML =
+    '<span>Data saves to the cloud but does not sync in real-time between devices. Refresh to see edits made elsewhere.</span>' +
+    '<button class="sync-notice-dismiss" aria-label="Dismiss">&times;</button>';
+  notice.querySelector('button').addEventListener('click', () => {
+    notice.remove();
+    localStorage.setItem(SYNC_NOTICE_KEY, '1');
+  });
+
+  const container = document.getElementById('food-items-list');
+  if (container?.parentElement) {
+    container.parentElement.insertBefore(notice, container);
   }
 }
 
@@ -181,6 +205,8 @@ export async function loadUserData() {
     else if (window.__populateProfileForm) window.__populateProfileForm();
     updateDashboard();
     updateChart();
+
+    showSyncNotice();
 
     debugLog('data-load', 'User data loading complete');
 
@@ -566,33 +592,47 @@ export async function persistExerciseSession(session) {
 }
 
 /**
- * Remove an exercise session by id for the current date.
+ * Remove an exercise session by id for the current date with a 5-second undo window.
  * Exposed as window.removeExerciseSession.
- *
- * Rolls back the in-memory state and re-renders if the cloud save fails so the
- * UI never shows removal as successful when the data was not actually deleted.
  */
-async function removeExerciseSessionById(sessionId) {
+function removeExerciseSessionById(sessionId) {
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
   const entry   = getCurrentDailyEntry();
 
   if (!Array.isArray(entry.exerciseSessions)) return;
 
   const original = [...entry.exerciseSessions];
+  const removed = entry.exerciseSessions.find(s => s.id === sessionId);
+  if (!removed) return;
+
   entry.exerciseSessions = entry.exerciseSessions.filter(s => s.id !== sessionId);
   state.dailyEntries.set(dateStr, entry);
+  updateExerciseSessionsList();
+  updateDashboard();
 
-  try {
-    await saveDailyEntry(dateStr, entry);
-    updateExerciseSessionsList();
-    updateDashboard();
-  } catch (err) {
-    // Restore state and re-render to show the session is still present
-    entry.exerciseSessions = original;
-    state.dailyEntries.set(dateStr, entry);
-    handleError('remove-exercise-session', err, 'Failed to remove exercise session from the cloud.');
-    updateExerciseSessionsList();
-  }
+  const label = removed.activityType || 'session';
+
+  showUndoToast(
+    `Removed exercise ${label}`,
+    () => {
+      entry.exerciseSessions = original;
+      state.dailyEntries.set(dateStr, entry);
+      updateExerciseSessionsList();
+      updateDashboard();
+      showMessage('Deletion undone.');
+    },
+    async () => {
+      try {
+        await saveDailyEntry(dateStr, entry);
+      } catch (err) {
+        entry.exerciseSessions = original;
+        state.dailyEntries.set(dateStr, entry);
+        handleError('remove-exercise-session', err, 'Failed to remove exercise session from the cloud.');
+        updateExerciseSessionsList();
+        updateDashboard();
+      }
+    }
+  );
 }
 
 // Expose session remove to inline onclick handlers (edit is handled in wire.js)
