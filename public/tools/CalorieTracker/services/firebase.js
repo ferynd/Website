@@ -15,6 +15,8 @@ import {
   prepareEntryForSave,
   prepareProfileForSave,
   prepareGoalSettingsForSave,
+  normalizeWeightEntry,
+  denormalizeWeightEntry,
 } from '../state/schema.js';
 
 import { firebaseConfig as importedConfig } from '../firebaseConfig.js';
@@ -462,7 +464,7 @@ export async function saveGoalSettings(incoming, opts = {}) {
 /**
  * Saves a batch of weight entries to Firestore using deterministic document IDs.
  * Re-uploading the same CSV just overwrites existing docs = automatic dedup.
- * @param {Array<{date: string, weight_lb: number, time_min: number, timestamp: string}>} entries
+ * @param {Array<{date: string, weightLb: number, timeMin: number, timestamp: string}>} entries
  * @returns {Promise<{saved: number, skipped: number}>}
  */
 export async function saveWeightEntries(entries) {
@@ -483,8 +485,8 @@ export async function saveWeightEntries(entries) {
  * @param {Array<{
  *   docId: string,
  *   date: string,
- *   weight_lb: number,
- *   time_min: number,
+ *   weightLb: number,
+ *   timeMin: number,
  *   timestamp: string,
  *   originalUnit: string,
  *   parserVersion: string,
@@ -514,9 +516,9 @@ export async function saveWeightEntriesBatch(entries, opts = {}) {
       const batch = writeBatch(db);
 
       for (const entry of chunk) {
-        const { docId, ...docData } = entry;
+        const { docId, ...firestoreData } = denormalizeWeightEntry(entry);
         const ref = doc(db, `artifacts/${appId}/users/${state.userId}/weightEntries`, docId);
-        batch.set(ref, docData);
+        batch.set(ref, firestoreData);
       }
 
       await batch.commit();
@@ -525,7 +527,7 @@ export async function saveWeightEntriesBatch(entries, opts = {}) {
       // Update local state immediately so the UI reflects progress without a refetch
       for (const entry of chunk) {
         const { docId, ...docData } = entry;
-        state.weightEntries.set(docId, docData);
+        state.weightEntries.set(docId, normalizeWeightEntry(docData));
       }
 
       // Rebuild weightEntriesMulti so same-session analysis uses all weigh-ins per day
@@ -560,7 +562,7 @@ export async function fetchWeightEntries() {
       orderBy('date', 'asc')
     );
     const qs = await getDocs(qy);
-    qs.forEach(d => map.set(d.id, d.data()));
+    qs.forEach(d => map.set(d.id, normalizeWeightEntry(d.data())));
     debugLog('firebase-weight', `Fetched ${map.size} weight entries`);
     return map;
   } catch (e) {

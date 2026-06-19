@@ -1044,23 +1044,23 @@ describe('latestWeightLbFromEntries', () => {
   });
 
   it('returns the single entry weight', () => {
-    const m = new Map([['a', { date: '2025-01-05', weight_lb: 180 }]]);
+    const m = new Map([['a', { date: '2025-01-05', weightLb: 180 }]]);
     expect(latestWeightLbFromEntries(m)).toBe(180);
   });
 
   it('returns the most recent weight when multiple entries exist', () => {
     const m = new Map([
-      ['a', { date: '2025-01-01', weight_lb: 195 }],
-      ['b', { date: '2025-01-10', weight_lb: 190 }],
-      ['c', { date: '2025-01-05', weight_lb: 192 }],
+      ['a', { date: '2025-01-01', weightLb: 195 }],
+      ['b', { date: '2025-01-10', weightLb: 190 }],
+      ['c', { date: '2025-01-05', weightLb: 192 }],
     ]);
     expect(latestWeightLbFromEntries(m)).toBe(190);
   });
 
-  it('ignores entries with weight_lb <= 0', () => {
+  it('ignores entries with weightLb <= 0', () => {
     const m = new Map([
-      ['a', { date: '2025-01-15', weight_lb: 0 }],
-      ['b', { date: '2025-01-10', weight_lb: 185 }],
+      ['a', { date: '2025-01-15', weightLb: 0 }],
+      ['b', { date: '2025-01-10', weightLb: 185 }],
     ]);
     expect(latestWeightLbFromEntries(m)).toBe(185);
   });
@@ -1122,7 +1122,7 @@ describe('resolveDailyBaseTargets', () => {
 
   it('autoGoal resolves from raw uploaded weight when analysisResults is null', () => {
     const weightEntries = new Map([
-      ['docA', { date: '2025-01-01', weight_lb: 185, time_min: null, source: 'upload' }],
+      ['docA', { date: '2025-01-01', weightLb: 185, timeMin: null, source: 'upload' }],
     ]);
     const s = makeState({
       userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: true }),
@@ -1160,8 +1160,8 @@ describe('resolveDailyBaseTargets', () => {
 
   it('autoGoal picks the most recent weight from weightEntries with multiple entries', () => {
     const weightEntries = new Map([
-      ['docA', { date: '2025-01-01', weight_lb: 195, time_min: null, source: 'upload' }],
-      ['docB', { date: '2025-01-10', weight_lb: 190, time_min: null, source: 'upload' }],
+      ['docA', { date: '2025-01-01', weightLb: 195, timeMin: null, source: 'upload' }],
+      ['docB', { date: '2025-01-10', weightLb: 190, timeMin: null, source: 'upload' }],
     ]);
     const s = makeState({
       userProfile: makeProfile({ manualWeightOverrideLb: null, useUploadedWeightForCurrentWeight: true }),
@@ -1171,7 +1171,7 @@ describe('resolveDailyBaseTargets', () => {
     });
     // 190 lb profile (more recent) should produce a lower calorie target than 195 lb
     const { targets: t190 } = resolveDailyBaseTargets('2025-01-01', s);
-    const sHeavy = { ...s, weightEntries: new Map([['docA', { date: '2025-01-01', weight_lb: 195, time_min: null, source: 'upload' }]]) };
+    const sHeavy = { ...s, weightEntries: new Map([['docA', { date: '2025-01-01', weightLb: 195, timeMin: null, source: 'upload' }]]) };
     const { targets: t195 } = resolveDailyBaseTargets('2025-01-01', sHeavy);
     expect(t190.calories).toBeLessThan(t195.calories);
   });

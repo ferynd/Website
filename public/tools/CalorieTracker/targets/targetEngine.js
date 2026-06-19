@@ -94,7 +94,7 @@ export function resolveAge(profile) {
  *
  * @param {object}      profile            - state.userProfile
  * @param {object|null} analysisResults    - state.analysisResults or null
- * @param {number|null} rawLatestWeightLb  - latest raw weight_lb from state.weightEntries, or null
+ * @param {number|null} rawLatestWeightLb  - latest raw weightLb from state.weightEntries, or null
  * @returns {{ weightLb: number|null, source: string|null, sourceLabel: string,
  *            stale: boolean, daysSinceLastWeighIn: number|null }}
  */
@@ -829,8 +829,8 @@ export function applyManualOverrides(generated, manualOverrides = {}) {
 }
 
 /**
- * Pure helper: returns the latest weight_lb from a weightEntries Map, or null.
- * Accepts the same Map<docId, {date, weight_lb, ...}> shape as state.weightEntries.
+ * Pure helper: returns the latest weightLb from a weightEntries Map, or null.
+ * Accepts the same Map<docId, {date, weightLb, ...}> shape as state.weightEntries.
  * Used by resolveDailyBaseTargets so auto-goal works before the Energy tab is visited.
  */
 export function latestWeightLbFromEntries(weightEntries) {
@@ -838,9 +838,9 @@ export function latestWeightLbFromEntries(weightEntries) {
   let latestDate = '';
   let latestWeight = null;
   for (const entry of weightEntries.values()) {
-    if (entry.date > latestDate && parseFloat(entry.weight_lb) > 0) {
+    if (entry.date > latestDate && parseFloat(entry.weightLb) > 0) {
       latestDate = entry.date;
-      latestWeight = parseFloat(entry.weight_lb);
+      latestWeight = parseFloat(entry.weightLb);
     }
   }
   return latestWeight;

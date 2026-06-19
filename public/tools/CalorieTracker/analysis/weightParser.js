@@ -283,9 +283,9 @@ function rowHash(str) {
  * - Rows with a precise time → local timestamp ("2017-07-13T07-20-13")
  * - Date-only rows           → "date_weight_hash" (stable across re-uploads)
  */
-function computeDocId(d, weight_lb, rawRow, hasTime, timezone) {
+function computeDocId(d, weightLb, rawRow, hasTime, timezone) {
   if (hasTime) return localTimestamp(d, timezone);
-  return `${localDateStr(d, timezone)}_${weight_lb}_${rowHash(rawRow)}`;
+  return `${localDateStr(d, timezone)}_${weightLb}_${rowHash(rawRow)}`;
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -299,8 +299,8 @@ function computeDocId(d, weight_lb, rawRow, hasTime, timezone) {
  *   entries: Array<{
  *     docId: string,
  *     date: string,
- *     weight_lb: number,
- *     time_min: number,
+ *     weightLb: number,
+ *     timeMin: number,
  *     timestamp: string,
  *     originalUnit: string,
  *     parserVersion: string,
@@ -425,10 +425,10 @@ export function parseWeightCSV(raw, opts = {}) {
     let weightStr = parts[weightIdx].replace(/%/g, '').trim();
     // For semicolon-delimited files commas are decimal separators
     if (delim === ';') weightStr = weightStr.replace(',', '.');
-    let weight_lb = parseFloat(weightStr);
-    if (isNaN(weight_lb)) { skip('invalid_weight', i + 1); continue; }
-    if (weightUnit === 'kg') weight_lb = parseFloat((weight_lb * 2.20462).toFixed(1));
-    if (weight_lb < 50 || weight_lb > 700) { skip('weight_out_of_range', i + 1); continue; }
+    let weightLb = parseFloat(weightStr);
+    if (isNaN(weightLb)) { skip('invalid_weight', i + 1); continue; }
+    if (weightUnit === 'kg') weightLb = parseFloat((weightLb * 2.20462).toFixed(1));
+    if (weightLb < 50 || weightLb > 700) { skip('weight_out_of_range', i + 1); continue; }
 
     // ── Date string ──────────────────────────────────────────────────────────
     let dateStr;
@@ -446,10 +446,10 @@ export function parseWeightCSV(raw, opts = {}) {
     const hasTime   = sourceHasTime(dateStr);
     const date      = localDateStr(parsed, timezone);
     const { h: hh, mi: mmi } = localHourMin(parsed, timezone);
-    const time_min  = hh * 60 + mmi;
+    const timeMin   = hh * 60 + mmi;
     const timestamp = localTimestamp(parsed, timezone);
     const sourceHash = rowHash(rawRow);
-    const docId     = computeDocId(parsed, weight_lb, rawRow, hasTime, timezone);
+    const docId     = computeDocId(parsed, weightLb, rawRow, hasTime, timezone);
 
     if (seenDocIds.has(docId)) {
       diag.duplicateRows++;
@@ -461,8 +461,8 @@ export function parseWeightCSV(raw, opts = {}) {
     entries.push({
       docId,
       date,
-      weight_lb,
-      time_min,
+      weightLb,
+      timeMin,
       timestamp,
       originalUnit: weightUnit,
       parserVersion: PARSER_VERSION,

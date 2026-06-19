@@ -244,3 +244,23 @@ export function prepareGoalSettingsForSave(incoming, current = {}, opts = {}) {
   };
   return result;
 }
+
+// ---------------------------------------------------------------------------
+// Weight entry normalization (Firestore snake_case ↔ internal camelCase)
+// ---------------------------------------------------------------------------
+
+export function normalizeWeightEntry(raw) {
+  if (!raw || typeof raw !== 'object') return raw;
+  const out = { ...raw };
+  if ('weight_lb' in out) { out.weightLb = out.weight_lb; delete out.weight_lb; }
+  if ('time_min' in out)  { out.timeMin  = out.time_min;  delete out.time_min;  }
+  return out;
+}
+
+export function denormalizeWeightEntry(entry) {
+  if (!entry || typeof entry !== 'object') return entry;
+  const out = { ...entry };
+  if ('weightLb' in out) { out.weight_lb = out.weightLb; delete out.weightLb; }
+  if ('timeMin' in out)  { out.time_min  = out.timeMin;  delete out.timeMin;  }
+  return out;
+}

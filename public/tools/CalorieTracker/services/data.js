@@ -2,7 +2,7 @@
  * @file src/services/data.js
  * @description Data service — Firebase reads/writes for daily entries, food items, weight, profile, and goals.
  */
-import { state, cacheDom, coerceQuantity } from '../state/store.js';
+import { state, cacheDom, coerceQuantity, parseQty } from '../state/store.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import { handleError, debugLog, escapeHtml, showUndoToast, showMessage, flushPendingUndo } from '../utils/ui.js';
 import {
@@ -307,7 +307,7 @@ function renderFoodItemsContent(container) {
 
   // Calculate totals for summary
   const totals = state.dailyFoodItems.reduce((acc, item) => {
-    const q = parseFloat(item.quantity ?? 0) || 0;
+    const q = parseQty(item.quantity);
     const cals = parseFloat(item.calories) || 0;
     const p = parseFloat(item.protein) || 0;
     const c = parseFloat(item.carbs) || 0;
@@ -324,7 +324,7 @@ function renderFoodItemsContent(container) {
     // Food names are user-controlled; escape before interpolating into innerHTML (XSS).
     const name = escapeHtml(item.name || '(blank)');
     const isSubtraction = (item.calories || 0) < 0;
-    const qty = parseFloat(item.quantity ?? 0) || 0;
+    const qty = parseQty(item.quantity);
     const nameDisplay = qty > 0 ? `${name} × ${qty}` : name;
     // Display nutrient totals multiplied by quantity
     const totalCals = qty * (parseFloat(item.calories) || 0);
@@ -681,7 +681,7 @@ window.updateItemQuantity = (id, value) => {
   entry.foodItems = state.dailyFoodItems;
   allNutrients.forEach(n => {
     entry[n] = state.dailyFoodItems.reduce((sum, fi) => {
-      const qty = parseFloat(fi.quantity ?? 0) || 0;
+      const qty = parseQty(fi.quantity);
       const val = parseFloat(fi[n]) || 0;
       return sum + qty * val;
     }, 0);
