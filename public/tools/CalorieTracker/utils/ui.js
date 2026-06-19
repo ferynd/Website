@@ -75,6 +75,23 @@ export const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+/**
+ * Show an inline error linked to an input via aria-describedby.
+ */
+export function setFormError(errorId, message) {
+  const el = document.getElementById(errorId);
+  if (!el) return;
+  el.textContent = message;
+  el.classList.remove('hidden');
+}
+
+export function clearFormError(errorId) {
+  const el = document.getElementById(errorId);
+  if (!el) return;
+  el.textContent = '';
+  el.classList.add('hidden');
+}
+
 import { NUTRIENT_MAX_BOUNDS } from '../constants.js';
 
 let _undoTimer = null;

@@ -425,14 +425,36 @@ function showFallbackUI(message) {
   }
 }
 
+// ===== Inline form error helpers =====
+function setInlineError(id, msg) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+
+function clearAuthErrors() {
+  for (const id of ['email-error', 'password-error']) {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = ''; el.classList.add('hidden'); }
+  }
+}
+
 // ===== AUTH BUTTON HANDLERS (for wire.js) =====
 export async function handleLogin() {
   debugLog('AUTH-HANDLER', 'Handling login button click');
 
   const email = document.getElementById('email-input')?.value.trim();
   const password = document.getElementById('password-input')?.value;
+  clearAuthErrors();
 
-  if (!email || !password) {
+  if (!email) {
+    setInlineError('email-error', 'Email is required.');
+    showMessageFunction?.('Please enter both email and password.', true);
+    return;
+  }
+  if (!password) {
+    setInlineError('password-error', 'Password is required.');
     showMessageFunction?.('Please enter both email and password.', true);
     return;
   }
@@ -445,6 +467,7 @@ export async function handleLogin() {
     const message = ['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(e.code)
       ? 'Incorrect email or password.'
       : e.message;
+    setInlineError('email-error', message);
     showMessageFunction?.(message, true);
   }
 }
@@ -454,13 +477,21 @@ export async function handleSignUp() {
 
   const email = document.getElementById('email-input')?.value.trim();
   const password = document.getElementById('password-input')?.value;
+  clearAuthErrors();
 
-  if (!email || !password) {
+  if (!email) {
+    setInlineError('email-error', 'Email is required.');
+    showMessageFunction?.('Please enter both email and password.', true);
+    return;
+  }
+  if (!password) {
+    setInlineError('password-error', 'Password is required.');
     showMessageFunction?.('Please enter both email and password.', true);
     return;
   }
 
   if (password.length < 6) {
+    setInlineError('password-error', 'Password must be at least 6 characters.');
     showMessageFunction?.('Password should be at least 6 characters long.', true);
     return;
   }
@@ -473,6 +504,7 @@ export async function handleSignUp() {
     const message = e.code === 'auth/email-already-in-use'
       ? 'Email already in use.'
       : e.message;
+    setInlineError('email-error', message);
     showMessageFunction?.(message, true);
   }
 }
