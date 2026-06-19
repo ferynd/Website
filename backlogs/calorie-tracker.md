@@ -268,19 +268,19 @@ Use targeted testing judgment:
 
 - [p] **#22 — Tab keyboard navigation missing arrow-key support**
   `index.html:52-58` — ARIA roles are present but no Left/Right key handler exists. WAI-ARIA Authoring Practices requires arrow-key navigation within a tablist. Add a `keydown` listener on the tab bar.
-  > pushed — arrow-key handler already existed; added tabindex roving (active=0, inactive=-1) per WAI-ARIA APG; tests: 575 pass; commit: _pending_
+  > pushed — arrow-key handler already existed; added tabindex roving (active=0, inactive=-1) per WAI-ARIA APG; tests: 575 pass; commit: ea11d84
 
 - [p] **#23 — Muted text contrast borderline in dark theme**
   `shared-styles.css:42-43` — `--text-3: 220 9% 46%` on `--bg: 220 43% 8%` computes to roughly 5.2:1 (passes AA large text, fails WCAG AA for body text). Increase lightness by ~6 points.
-  > pushed — --text-3 lightness increased from 46% to 52% in dark theme; tests: 575 pass; commit: _pending_
+  > pushed — --text-3 lightness increased from 46% to 52% in dark theme; tests: 575 pass; commit: ea11d84
 
 - [p] **#24 — Nutrient status conveyed by color only**
   Red/amber/green tags have no text label or icon fallback for colorblind users. Add a short text indicator (e.g., "low", "ok", "over") or a distinct icon per state.
-  > pushed — added text status badges (low/near/ok) to each nutrient row via nt-status-bad/warn/good classes; tests: 575 pass; commit: _pending_
+  > pushed — added text status badges (low/near/ok) to each nutrient row via nt-status-bad/warn/good classes; tests: 575 pass; commit: ea11d84
 
 - [p] **#25 — No `aria-describedby` linking form errors to inputs**
   Error messages render in modals or adjacent divs with no programmatic link to the field that caused them, so screen readers don't associate the two.
-  > pushed — aria-describedby on login (email/password), exercise (duration), body-fat inputs; inline .form-error elements with role=alert; tests: 575 pass; commit: _pending_
+  > pushed — aria-describedby on login (email/password), exercise (duration), body-fat inputs; inline .form-error elements with role=alert; tests: 575 pass; commit: ea11d84
 
 ---
 
