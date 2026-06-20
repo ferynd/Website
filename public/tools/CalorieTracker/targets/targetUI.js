@@ -570,6 +570,7 @@ async function handleApplyTargets() {
     showMessage('Targets applied and saved to baseline!');
     if (btn) {
       btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check mr-2"></i>Apply to Baseline Targets';
       flashSaveConfirmation(btn);
     }
   } catch (err) {
