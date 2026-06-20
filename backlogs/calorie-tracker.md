@@ -324,19 +324,19 @@ Use targeted testing judgment:
 
 - [p] **#34 — Auto-target → Apply is a two-step flow with long scroll on mobile**
   "Auto-Calculate" and "Apply to Baseline Targets" are far apart vertically on mobile. Combine into a single confirm-and-apply action with a collapsible diff view showing what changed.
-  > pushed — Apply button moved above explanation; explanation and manual overrides in collapsible details; scroll targets preview section; tests: 575 pass; commit: pending
+  > pushed — Apply button moved above explanation; explanation and manual overrides in collapsible details; scroll targets preview section; tests: 575 pass; commit: 13bc5d5
 
 - [p] **#35 — Exercise modal has too many visible fields for quick logging**
   `index.html:691-790` — RPE, distance, steps, wearable calories, and manual calories are all visible at once. Default to duration + intensity only; progressively disclose the rest.
-  > pushed — RPE, wearable cal, manual cal, and notes wrapped in collapsible details "More options"; duration+intensity+activity stay visible; tests: 575 pass; commit: pending
+  > pushed — RPE, wearable cal, manual cal, and notes wrapped in collapsible details "More options"; duration+intensity+activity stay visible; tests: 575 pass; commit: 13bc5d5
 
-- [ ] **#36 — Food search has no inline quantity input**
+- [p] **#36 — Food search has no inline quantity input**
   Users must select from the dropdown and then click +Add. Add a quantity field inline with the search row so the action collapses to one step.
-  > Resolved in: _pending_
+  > pushed — food-inline-qty input between search and +Add; syncs with actual-quantity via bidirectional input listeners; tests: 575 pass; commit: pending
 
 - [p] **#37 — No skeleton loaders during initial data fetch**
   Five Firestore reads run in parallel on load behind a full-screen spinner with no incremental feedback. Replace or supplement with per-section skeleton cards.
-  > pushed — spinner replaced with skeleton-loader: header, tabs, macro bar, and card placeholders with pulse animation; tests: 575 pass; commit: pending
+  > pushed — spinner replaced with skeleton-loader: header, tabs, macro bar, and card placeholders with pulse animation; tests: 575 pass; commit: 13bc5d5
 
 - [p] **#38 — Native number-input spinners are visually noisy**
   Hide with `::-webkit-outer-spin-button { -webkit-appearance: none; }` across all `input[type="number"]` fields in `styles.css`, or provide custom ± buttons on mobile.

@@ -258,6 +258,13 @@ function wireStagingEvents() {
     if (replaceDayBtn) replaceDayBtn.addEventListener('click', () => handleStagingAction('replace'));
     if (stageToTargetsBtn) stageToTargetsBtn.addEventListener('click', () => handleStagingAction('updateTargets'));
 
+    const inlineQty = document.getElementById('food-inline-qty');
+    const actualQty = document.getElementById('actual-quantity');
+    if (inlineQty && actualQty) {
+      inlineQty.addEventListener('input', () => { actualQty.value = inlineQty.value; });
+      actualQty.addEventListener('input', () => { inlineQty.value = actualQty.value; });
+    }
+
     debugLog('wire', 'Staging events wired');
   } catch (error) {
     handleError('wire-staging', error, 'Failed to wire staging events');
