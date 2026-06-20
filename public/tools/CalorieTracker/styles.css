@@ -234,6 +234,10 @@ select,
   font-size: .875rem;
 }
 
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+
 input::placeholder, textarea::placeholder { color: hsl(var(--text-3)); }
 
 input:focus, textarea:focus, select:focus {
@@ -241,6 +245,9 @@ input:focus, textarea:focus, select:focus {
   border-color: hsl(var(--accent));
   box-shadow: 0 0 0 3px hsl(var(--accent) / .1);
 }
+
+/* ── Activity level icons ───────────────────────────────────── */
+.activity-icon { color: hsl(var(--text-3)); margin-top: 2px; }
 
 /* ============================================================
    BUTTON EXTRAS

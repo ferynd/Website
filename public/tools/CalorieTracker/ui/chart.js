@@ -24,12 +24,8 @@ const CHART_CONFIG = {
     offsetY: 1
   },
   
-  // Tooltip styling
-  TOOLTIP_CONFIG: {
-    backgroundColor: 'rgba(0,0,0,0.9)',
-    titleColor: 'white',
-    bodyColor: 'white',
-    borderColor: 'rgba(255,255,255,0.3)',
+  // Tooltip styling (structural defaults; colors resolved at render time via getTooltipConfig)
+  TOOLTIP_STRUCTURAL: {
     borderWidth: 1,
     cornerRadius: 8,
     displayColors: true,
@@ -46,6 +42,17 @@ const CHART_CONFIG = {
 // Pull border color token for target line
 const css = getComputedStyle(document.documentElement);
 const borderColor = `hsl(${css.getPropertyValue('--border').trim()})`;
+
+export function getTooltipConfig() {
+  const cs = getComputedStyle(document.documentElement);
+  return {
+    ...CHART_CONFIG.TOOLTIP_STRUCTURAL,
+    backgroundColor: `hsl(${cs.getPropertyValue('--surface-1').trim()})`,
+    titleColor: `hsl(${cs.getPropertyValue('--text').trim()})`,
+    bodyColor: `hsl(${cs.getPropertyValue('--text').trim()})`,
+    borderColor: `hsl(${cs.getPropertyValue('--border').trim()})`,
+  };
+}
 
 // Chart colors are provided by CONFIG.CHART_COLORS
 
@@ -514,7 +521,7 @@ export function updateChart() {
         },
         plugins: {
           tooltip: {
-            ...CHART_CONFIG.TOOLTIP_CONFIG,
+            ...getTooltipConfig(),
             filter: function(tooltipItem) {
               return !tooltipItem.dataset._isTargetLine && !tooltipItem.dataset._isAverage;
             },
