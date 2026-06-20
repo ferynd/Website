@@ -615,6 +615,15 @@ export function calculateMicronutrientMetrics(dateStr) {
 
 const VALID_TABS = ['today', 'nutrients', 'energy', 'profile', 'settings'];
 
+function applyTabButtonState(activeTab) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const isActive = btn.dataset.tab === activeTab;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', String(isActive));
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+}
+
 /**
  * Initialize tabs from URL hash or localStorage without triggering data renders.
  * Call this once after wire() but before data loads.
@@ -629,11 +638,7 @@ export function initializeTabs() {
 
     state.activeTab = initial;
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      const isActive = btn.dataset.tab === initial;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-selected', String(isActive));
-    });
+    applyTabButtonState(initial);
 
     document.querySelectorAll('.tab-panel').forEach(panel => {
       panel.classList.toggle('hidden', panel.id !== `tab-${initial}`);
@@ -673,11 +678,7 @@ export function activateTab(name) {
       history.replaceState(null, '', `#tab-${name}`);
     }
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      const isActive = btn.dataset.tab === name;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-selected', String(isActive));
-    });
+    applyTabButtonState(name);
 
     document.querySelectorAll('.tab-panel').forEach(panel => {
       panel.classList.toggle('hidden', panel.id !== `tab-${name}`);
@@ -1701,6 +1702,11 @@ function renderMicronutrientSections(metrics, filter = 'all') {
       ? `<span class="nt-badge nt-badge-ul" title="${ulLabel}">⚠️</span>`
       : '';
 
+    // Status text label (accessible alternative to color-only bar)
+    const statusTextMap = { red: ['low', 'nt-status-bad'], amber: ['near', 'nt-status-warn'], green: ['ok', 'nt-status-good'] };
+    const [statusText, statusCls] = statusTextMap[data.status] || statusTextMap.green;
+    const statusBadge = `<span class="nt-badge ${statusCls}">${statusText}</span>`;
+
     // Source label in target span
     const srcLabel = targetSource === 'manual_override'    ? ' (pinned)'
                    : targetSource === 'auto_goal'           ? ' (auto goal)'
@@ -1716,7 +1722,7 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     return `
       <div class="kpi-row">
         <div class="meta">
-          <span class="label">${formatNutrientName(nutrient)}${sourceBadge}${scaleBadge}${trendBadge}${ulBadge}</span>
+          <span class="label">${formatNutrientName(nutrient)}${statusBadge}${sourceBadge}${scaleBadge}${trendBadge}${ulBadge}</span>
           <span class="current">${displayValue.toFixed(1)}${isAveraged ? '<span class="nt-avg-label">avg</span>' : ''}</span>
           <span class="target">target ${targetValue.toFixed(1)}${srcLabel}</span>
           <span class="remain ${remainClass(remaining)}">${remaining > 0 ? `${remaining.toFixed(1)} left` : remaining < 0 ? `${Math.abs(remaining).toFixed(1)} over` : '0 left'}</span>

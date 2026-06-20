@@ -767,6 +767,10 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
 .nt-badge-scale    { background: hsl(var(--warning) / .15); color: hsl(var(--warning)); }
 .nt-badge-ul       { background: hsl(var(--error)   / .12); color: hsl(var(--warning)); }
 
+.nt-status-good { background: hsl(var(--success) / .15); color: hsl(var(--success)); text-transform: uppercase; letter-spacing: .03em; }
+.nt-status-warn { background: hsl(var(--warning) / .15); color: hsl(var(--warning)); text-transform: uppercase; letter-spacing: .03em; }
+.nt-status-bad  { background: hsl(var(--error)   / .15); color: hsl(var(--error));   text-transform: uppercase; letter-spacing: .03em; }
+
 .nt-trend {
   font-size: .8em;
   margin-left: .2rem;
@@ -811,6 +815,15 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
   background: hsl(var(--warning) / .12);
   color: hsl(var(--warning));
   border: 1px solid hsl(var(--warning) / .3);
+}
+
+/* ============================================================
+   FORM ERROR (inline validation linked via aria-describedby)
+   ============================================================ */
+.form-error {
+  font-size: .75rem;
+  color: hsl(var(--error));
+  margin-top: .25rem;
 }
 
 /* ============================================================

@@ -481,8 +481,11 @@ async function saveExerciseSession() {
     const actType  = document.getElementById('es-activity-type')?.value;
     const duration = parseFloat(document.getElementById('es-duration')?.value);
 
+    const durErr = document.getElementById('es-duration-error');
+    if (durErr) { durErr.textContent = ''; durErr.classList.add('hidden'); }
+
     if (!actType || isNaN(duration) || duration <= 0) {
-      alert('Please enter an activity type and a duration greater than 0.');
+      if (durErr) { durErr.textContent = 'Duration must be greater than 0.'; durErr.classList.remove('hidden'); }
       return;
     }
 

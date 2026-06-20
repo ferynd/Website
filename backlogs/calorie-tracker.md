@@ -242,45 +242,45 @@ Use targeted testing judgment:
 
 ## HIGH — code structure
 
-- [p] **#17 — `ui/dashboard.js` (~1 873 lines) mixes banking math with rendering**
+- [x] **#17 — `ui/dashboard.js` (~1 873 lines) mixes banking math with rendering**
   Extract pure banking calculation logic into `ui/bankingEngine.js`. `ui/banking.test.js:33-68` already re-implements the same math to enable testing — the duplication disappears once the module is separated. Dashboard imports and renders; engine calculates.
-  > pushed — already resolved: bankingEngine.js exists with calcBankingCore(); dashboard.js delegates to it; banking.test.js imports and tests calcBankingCore directly; tests: 575 pass; commit: c4661db
+  > Resolved: bankingEngine.js with calcBankingCore(); dashboard.js delegates; banking.test.js tests directly; tests: 575 pass; merged c4661db
 
-- [p] **#18 — Two `@legacy` functions with no live callers**
+- [x] **#18 — Two `@legacy` functions with no live callers**
   `analysis/engine.js:1105` `estimateEWMAFromSinglePoint` and `engine.js:1538` `classifyWaterNoiseLevel` — grep confirms zero references outside the file itself. Delete them or move to `analysis/legacy.js` with a note that they are kept for backward compatibility only.
-  > pushed — already resolved: estimateEWMAFromSinglePoint and classifyWaterNoiseLevel were removed in prior work; remaining @legacy functions (getBlankDaysForPopulation, getPartialDaysForAdjustment) preserved per invariants; commit: c4661db
+  > Resolved: estimateEWMAFromSinglePoint and classifyWaterNoiseLevel removed; remaining @legacy functions preserved per invariants; merged c4661db
 
-- [p] **#19 — Import triangle between dashboard, analysisUI, and targetEngine**
+- [x] **#19 — Import triangle between dashboard, analysisUI, and targetEngine**
   `ui/dashboard.js:30` ↔ `ui/analysisUI.js:31` ↔ `targets/targetEngine.js` — shared leaf helpers should be extracted to a neutral module to break the cycle.
-  > pushed — already resolved: imports form a one-directional DAG (dashboard→analysisUI→targetEngine); targetEngine imports from neither; no circular dependency exists; commit: c4661db
+  > Resolved: imports form a one-directional DAG; no circular dependency exists; merged c4661db
 
-- [p] **#20 — Duplicate quantity coercion in three places**
+- [x] **#20 — Duplicate quantity coercion in three places**
   `state/store.js:115-120` (`coerceQuantity`), `food/manager.js:69`, `services/data.js:206` — consolidate to a single import from `store.js`.
-  > pushed — food/manager.js now imports coerceQuantity from store.js instead of inline parseFloat; tests: 575 pass; commit: c4661db
+  > Resolved: food/manager.js imports coerceQuantity from store.js; tests: 575 pass; merged c4661db
 
-- [p] **#21 — Firestore snake_case leaks into UI layer alongside camelCase**
+- [x] **#21 — Firestore snake_case leaks into UI layer alongside camelCase**
   `weight_lb`, `time_min` (Firestore shape) appear alongside `dailyEntries`, `trainingBump` (camelCase) throughout UI code. `state/schema.js` already normalizes some fields — make it the single boundary; no raw Firestore key names should appear outside `services/`.
-  > pushed — normalizeWeightEntry/denormalizeWeightEntry in schema.js; firebase.js normalizes on fetch + denormalizes on save; weightParser outputs camelCase; engine, analysisUI, targetEngine, targetUI all use weightLb/timeMin; tests: 575 pass; commit: c4661db
+  > Resolved: normalizeWeightEntry/denormalizeWeightEntry in schema.js; firebase.js boundary; all UI uses camelCase; tests: 575 pass; merged c4661db
 
 ---
 
 ## HIGH — accessibility
 
-- [ ] **#22 — Tab keyboard navigation missing arrow-key support**
+- [p] **#22 — Tab keyboard navigation missing arrow-key support**
   `index.html:52-58` — ARIA roles are present but no Left/Right key handler exists. WAI-ARIA Authoring Practices requires arrow-key navigation within a tablist. Add a `keydown` listener on the tab bar.
-  > Resolved in: _pending_
+  > pushed — arrow-key handler already existed; added tabindex roving (active=0, inactive=-1) per WAI-ARIA APG; tests: 575 pass; commit: ea11d84
 
-- [ ] **#23 — Muted text contrast borderline in dark theme**
+- [p] **#23 — Muted text contrast borderline in dark theme**
   `shared-styles.css:42-43` — `--text-3: 220 9% 46%` on `--bg: 220 43% 8%` computes to roughly 5.2:1 (passes AA large text, fails WCAG AA for body text). Increase lightness by ~6 points.
-  > Resolved in: _pending_
+  > pushed — --text-3 lightness increased from 46% to 52% in dark theme; tests: 575 pass; commit: ea11d84
 
-- [ ] **#24 — Nutrient status conveyed by color only**
+- [p] **#24 — Nutrient status conveyed by color only**
   Red/amber/green tags have no text label or icon fallback for colorblind users. Add a short text indicator (e.g., "low", "ok", "over") or a distinct icon per state.
-  > Resolved in: _pending_
+  > pushed — added text status badges (low/near/ok) to each nutrient row via nt-status-bad/warn/good classes; tests: 575 pass; commit: ea11d84
 
-- [ ] **#25 — No `aria-describedby` linking form errors to inputs**
+- [p] **#25 — No `aria-describedby` linking form errors to inputs**
   Error messages render in modals or adjacent divs with no programmatic link to the field that caused them, so screen readers don't associate the two.
-  > Resolved in: _pending_
+  > pushed — aria-describedby on login (email/password), exercise (duration), body-fat inputs; inline .form-error elements with role=alert; tests: 575 pass; commit: ea11d84
 
 ---
 
