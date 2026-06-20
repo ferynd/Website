@@ -53,7 +53,8 @@ Several tools use Firebase Auth + Firestore. See `SECURITY.md` for auth flows an
 - [ ] `npm run lint` clean
 - [ ] `npm run build` succeeds
 - [ ] UI changes include screenshots
-- [ ] Updated docs if fundamentals changed (README, AGENTS, ARCHITECTURE, SECURITY)
+- [ ] Updated docs if fundamentals changed (README, AGENTS, ARCHITECTURE, SECURITY, BACKLOG)
+- [ ] Doc update confirmed: any structural, routing, auth, data model, or backlog change has matching doc updates in the same PR
 - [ ] Manual test: home page and affected pages work
 
 ## Definition of Done

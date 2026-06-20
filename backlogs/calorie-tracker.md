@@ -332,7 +332,7 @@ Use targeted testing judgment:
 
 - [p] **#36 — Food search has no inline quantity input**
   Users must select from the dropdown and then click +Add. Add a quantity field inline with the search row so the action collapses to one step.
-  > pushed — food-inline-qty input between search and +Add; syncs with actual-quantity via bidirectional input listeners; tests: 575 pass; commit: pending
+  > pushed — food-inline-qty input between search and +Add; syncs with actual-quantity via bidirectional input listeners; tests: 575 pass; commit: c979880
 
 - [p] **#37 — No skeleton loaders during initial data fetch**
   Five Firestore reads run in parallel on load behind a full-screen spinner with no incremental feedback. Replace or supplement with per-section skeleton cards.
@@ -354,9 +354,9 @@ Use targeted testing judgment:
 
 ## LOW / NICE-TO-HAVE
 
-- [ ] **#41 — Fluid typography is half-applied**
+- [p] **#41 — Fluid typography is half-applied**
   Only the app title uses `clamp()` (`styles.css:308`). Extend to body, label, and value text for smoother cross-device scaling.
-  > Resolved in: _pending_
+  > pushed — body font-size uses clamp(); all .text-xs through .text-3xl utilities use clamp() for fluid scaling; tests: 575 pass; commit: pending
 
 - [ ] **#42 — No PWA / Add to Home Screen support**
   A daily-use nutrition app benefits enormously from a web app manifest + service worker. Install prompt and offline-first loading would meaningfully improve the mobile experience.
@@ -366,13 +366,13 @@ Use targeted testing judgment:
   Export exists; import does not. Mirror the Date Night Roulette batch-upload pattern to allow users to seed or migrate their food database from a spreadsheet.
   > Resolved in: _pending_
 
-- [ ] **#44 — `<details>` expand arrow is a pseudo-content character**
+- [p] **#44 — `<details>` expand arrow is a pseudo-content character**
   `styles.css:460` uses `content: '▶'` on `summary::before`. Replace with an SVG icon or Font Awesome caret for better scaling on hidpi displays.
-  > Resolved in: _pending_
+  > pushed — replaced unicode ▶ with CSS border chevron; scales cleanly on hidpi; rotates 45deg on open; tests: 575 pass; commit: pending
 
-- [ ] **#45 — Documentation update checklist not enforced**
+- [p] **#45 — Documentation update checklist not enforced**
   The project rules in `AGENTS.md` require docs updates in the same PR as fundamental changes, but there is no checklist item in `CONTRIBUTING.md` (or this README's smoke-test list) to verify it. Add a doc-update line to the PR checklist in `CONTRIBUTING.md`.
-  > Resolved in: _pending_
+  > pushed — added doc-update confirmation line to PR checklist in CONTRIBUTING.md; BACKLOG added to docs list; commit: pending
 
 ---
 
