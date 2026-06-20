@@ -22,9 +22,34 @@
     </a>
   </nav>
 
-  <!-- Loading spinner -->
-  <div id="loader" class="flex justify-center items-center h-screen">
-    <i class="fas fa-spinner fa-spin fa-3x text-accent"></i>
+  <!-- Loading skeleton -->
+  <div id="loader" class="skeleton-loader">
+    <div class="skeleton-header">
+      <div class="skeleton-line" style="width:10rem;height:1.5rem"></div>
+      <div class="skeleton-line" style="width:5rem;height:2rem;border-radius:.375rem"></div>
+    </div>
+    <div class="skeleton-tabs">
+      <div class="skeleton-line" style="width:3rem;height:1.5rem"></div>
+      <div class="skeleton-line" style="width:4rem;height:1.5rem"></div>
+      <div class="skeleton-line" style="width:3.5rem;height:1.5rem"></div>
+      <div class="skeleton-line" style="width:5rem;height:1.5rem"></div>
+    </div>
+    <div class="skeleton-macros">
+      <div class="skeleton-line" style="flex:1;height:2.5rem;border-radius:.5rem"></div>
+      <div class="skeleton-line" style="flex:1;height:2.5rem;border-radius:.5rem"></div>
+      <div class="skeleton-line" style="flex:1;height:2.5rem;border-radius:.5rem"></div>
+      <div class="skeleton-line" style="flex:1;height:2.5rem;border-radius:.5rem"></div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton-line" style="width:8rem;height:1.25rem;margin-bottom:.75rem"></div>
+      <div class="skeleton-line" style="width:100%;height:2.5rem;border-radius:.5rem;margin-bottom:.5rem"></div>
+      <div class="skeleton-line" style="width:100%;height:2.5rem;border-radius:.5rem;margin-bottom:.5rem"></div>
+      <div class="skeleton-line" style="width:100%;height:2.5rem;border-radius:.5rem"></div>
+    </div>
+    <div class="skeleton-card">
+      <div class="skeleton-line" style="width:6rem;height:1.25rem;margin-bottom:.75rem"></div>
+      <div class="skeleton-line" style="width:100%;height:3rem;border-radius:.5rem"></div>
+    </div>
   </div>
 
   <!-- ====================================================
@@ -449,13 +474,7 @@
           </p>
         </div>
 
-        <!-- ── Explanation (shown after calculation) ─────────────────── -->
-        <div id="target-explanation" class="settings-section hidden">
-          <h3 class="text-lg font-semibold text-secondary mb-4">How Targets Were Calculated</h3>
-          <div id="target-explanation-content" class="space-y-0 text-sm"></div>
-        </div>
-
-        <!-- ── Target Preview + Overrides (shown after calculation) ───── -->
+        <!-- ── Target Preview (shown after calculation) ─────────────── -->
         <div id="target-preview" class="settings-section hidden">
           <h3 class="text-lg font-semibold text-secondary mb-4">Generated Targets</h3>
           <div id="target-preview-content"></div>
@@ -470,22 +489,30 @@
               style="color:hsl(var(--warning))"></ul>
           </div>
 
-          <!-- Manual Overrides -->
-          <div class="mt-6">
-            <h4 class="text-sm font-semibold text-secondary mb-1">Manual Overrides</h4>
-            <p class="text-xs text-muted mb-3">
-              Check a nutrient to pin it to a custom value. Unchecked nutrients use the auto-calculated value.
-              Overrides are saved with your goals and applied whenever you re-run the engine.
-            </p>
-            <div id="target-override-grid" class="grid grid-cols-1 gap-1"></div>
-          </div>
-
-          <!-- Apply + Save Profile buttons -->
-          <div class="mt-6 flex gap-3 flex-wrap">
+          <!-- Apply button — immediately visible after calculation -->
+          <div class="mt-4 flex gap-3 flex-wrap">
             <button type="button" id="apply-targets-btn" class="btn btn-primary flex-1">
               <i class="fas fa-check mr-2"></i>Apply to Baseline Targets
             </button>
           </div>
+
+          <!-- Explanation — collapsible -->
+          <details id="target-explanation" class="mt-4">
+            <summary class="text-sm text-accent cursor-pointer py-1">How targets were calculated</summary>
+            <div id="target-explanation-content" class="space-y-0 text-sm pt-2"></div>
+          </details>
+
+          <!-- Manual Overrides — collapsible -->
+          <details class="mt-4">
+            <summary class="text-sm text-accent cursor-pointer py-1">Manual overrides</summary>
+            <div class="pt-2">
+              <p class="text-xs text-muted mb-3">
+                Check a nutrient to pin it to a custom value. Unchecked nutrients use the auto-calculated value.
+                Overrides are saved with your goals and applied whenever you re-run the engine.
+              </p>
+              <div id="target-override-grid" class="grid grid-cols-1 gap-1"></div>
+            </div>
+          </details>
         </div>
 
         <!-- ── Target Mode ────────────────────────────────────────────────── -->
@@ -740,13 +767,6 @@
           </div>
         </div>
 
-        <div>
-          <label for="es-rpe" class="block text-sm font-medium text-primary mb-1">
-            RPE <span class="text-muted font-normal">(1–10, optional)</span>
-          </label>
-          <input type="number" id="es-rpe" min="1" max="10" step="0.5" placeholder="e.g. 7">
-        </div>
-
         <!-- Distance row — shown for relevant activities -->
         <div id="es-distance-row" class="hidden grid grid-cols-2 gap-3">
           <div>
@@ -770,24 +790,36 @@
           <input type="number" id="es-steps" min="0" step="100" placeholder="e.g. 8000">
         </div>
 
-        <div>
-          <label for="es-wearable-cal" class="block text-sm font-medium text-primary mb-1">
-            Wearable calories <span class="text-muted font-normal">(optional — overrides MET estimate)</span>
-          </label>
-          <input type="number" id="es-wearable-cal" min="0" placeholder="e.g. 320" oninput="updateExerciseLiveEstimate()">
-        </div>
+        <details class="exercise-advanced-fields">
+          <summary class="text-sm text-accent cursor-pointer py-1">More options</summary>
+          <div class="space-y-3 pt-2">
+            <div>
+              <label for="es-rpe" class="block text-sm font-medium text-primary mb-1">
+                RPE <span class="text-muted font-normal">(1–10, optional)</span>
+              </label>
+              <input type="number" id="es-rpe" min="1" max="10" step="0.5" placeholder="e.g. 7">
+            </div>
 
-        <div>
-          <label for="es-manual-cal" class="block text-sm font-medium text-primary mb-1">
-            Manual calorie override <span class="text-muted font-normal">(optional — highest priority)</span>
-          </label>
-          <input type="number" id="es-manual-cal" min="0" placeholder="e.g. 400" oninput="updateExerciseLiveEstimate()">
-        </div>
+            <div>
+              <label for="es-wearable-cal" class="block text-sm font-medium text-primary mb-1">
+                Wearable calories <span class="text-muted font-normal">(optional — overrides MET estimate)</span>
+              </label>
+              <input type="number" id="es-wearable-cal" min="0" placeholder="e.g. 320" oninput="updateExerciseLiveEstimate()">
+            </div>
 
-        <div>
-          <label for="es-notes" class="block text-sm font-medium text-primary mb-1">Notes <span class="text-muted font-normal">(optional)</span></label>
-          <textarea id="es-notes" rows="2" placeholder="e.g. felt strong, outdoor trail"></textarea>
-        </div>
+            <div>
+              <label for="es-manual-cal" class="block text-sm font-medium text-primary mb-1">
+                Manual calorie override <span class="text-muted font-normal">(optional — highest priority)</span>
+              </label>
+              <input type="number" id="es-manual-cal" min="0" placeholder="e.g. 400" oninput="updateExerciseLiveEstimate()">
+            </div>
+
+            <div>
+              <label for="es-notes" class="block text-sm font-medium text-primary mb-1">Notes <span class="text-muted font-normal">(optional)</span></label>
+              <textarea id="es-notes" rows="2" placeholder="e.g. felt strong, outdoor trail"></textarea>
+            </div>
+          </div>
+        </details>
 
         <!-- Live calorie estimate -->
         <div id="es-estimate-display" class="p-3 rounded-lg surface-2 border text-center text-sm font-medium text-accent">
