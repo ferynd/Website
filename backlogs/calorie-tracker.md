@@ -356,7 +356,7 @@ Use targeted testing judgment:
 
 - [p] **#41 — Fluid typography is half-applied**
   Only the app title uses `clamp()` (`styles.css:308`). Extend to body, label, and value text for smoother cross-device scaling.
-  > pushed — body font-size uses clamp(); all .text-xs through .text-3xl utilities use clamp() for fluid scaling; tests: 575 pass; commit: pending
+  > pushed — body font-size uses clamp(); all .text-xs through .text-3xl utilities use clamp() for fluid scaling; tests: 575 pass; commit: d2aeb0a
 
 - [ ] **#42 — No PWA / Add to Home Screen support**
   A daily-use nutrition app benefits enormously from a web app manifest + service worker. Install prompt and offline-first loading would meaningfully improve the mobile experience.
@@ -368,11 +368,11 @@ Use targeted testing judgment:
 
 - [p] **#44 — `<details>` expand arrow is a pseudo-content character**
   `styles.css:460` uses `content: '▶'` on `summary::before`. Replace with an SVG icon or Font Awesome caret for better scaling on hidpi displays.
-  > pushed — replaced unicode ▶ with CSS border chevron; scales cleanly on hidpi; rotates 45deg on open; tests: 575 pass; commit: pending
+  > pushed — replaced unicode ▶ with CSS border chevron; scales cleanly on hidpi; rotates 45deg on open; tests: 575 pass; commit: d2aeb0a
 
 - [p] **#45 — Documentation update checklist not enforced**
   The project rules in `AGENTS.md` require docs updates in the same PR as fundamental changes, but there is no checklist item in `CONTRIBUTING.md` (or this README's smoke-test list) to verify it. Add a doc-update line to the PR checklist in `CONTRIBUTING.md`.
-  > pushed — added doc-update confirmation line to PR checklist in CONTRIBUTING.md; BACKLOG added to docs list; commit: pending
+  > pushed — added doc-update confirmation line to PR checklist in CONTRIBUTING.md; BACKLOG added to docs list; commit: d2aeb0a
 
 ---
 
