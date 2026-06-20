@@ -31,8 +31,11 @@ export function populateStagingFromFood(foodData) {
     }
   });
 
+  const quantity = foodData.quantity ?? MANAGER_CONFIG.DEFAULT_QUANTITY;
   const qInput = document.getElementById('actual-quantity');
-  if (qInput) qInput.value = foodData.quantity ?? MANAGER_CONFIG.DEFAULT_QUANTITY;
+  if (qInput) qInput.value = quantity;
+  const inlineQty = document.getElementById('food-inline-qty');
+  if (inlineQty) inlineQty.value = quantity;
 }
 
 /**

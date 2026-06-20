@@ -20,6 +20,7 @@ import { buildEatingPatternTargetSeries } from '../targets/targetEngine.js';
 import { handleWeightUpload } from './weightUpload.js';
 import { debugLog, showMessage, escapeHtml } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
+import { getTooltipConfig } from '../ui/chart.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import {
   saveEstimatedEntry,
@@ -954,9 +955,7 @@ function drawEatingPatternChart(rows) {
       plugins: {
         legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 12 } },
         tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.9)',
-          titleColor: 'white',
-          bodyColor: 'white',
+          ...getTooltipConfig(),
           callbacks: {
             title(items) {
               if (!items.length) return '';
@@ -1726,12 +1725,7 @@ function drawWeightChart(rows) {
       },
       plugins: {
         tooltip: {
-          backgroundColor: 'rgba(0,0,0,0.9)',
-          titleColor: 'white',
-          bodyColor: 'white',
-          borderColor: 'rgba(255,255,255,0.3)',
-          borderWidth: 1,
-          cornerRadius: 8,
+          ...getTooltipConfig(),
           callbacks: {
             title(items) {
               if (!items.length) return '';

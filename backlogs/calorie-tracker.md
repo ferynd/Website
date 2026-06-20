@@ -286,29 +286,29 @@ Use targeted testing judgment:
 
 ## HIGH — mobile / visual
 
-- [p] **#26 — Today's calorie KPI is buried below the input column on mobile**
+- [x] **#26 — Today's calorie KPI is buried below the input column on mobile**
   The macro summary bar (`index.html:61`) has 0.75 rem values (`styles.css:385`), is easy to miss, and doesn't show "remaining" prominently. Bump value font to 0.875–0.95 rem and make the remaining-calories figure the largest item in the bar — it's the question users open the app to answer.
-  > pushed — macro values bumped to .875rem; calories cell shows prominent "X left" remaining figure with .macro-remaining class at 1rem; tests: 575 pass; commit: 5f8d8a0
+  > Resolved: macro values bumped to .875rem; calories cell shows prominent "X left" remaining figure with .macro-remaining class at 1rem; tests: 575 pass; merged 5f8d8a0
 
-- [p] **#27 — Fixed pixel chart height (400 px desktop / 280 px mobile)**
+- [x] **#27 — Fixed pixel chart height (400 px desktop / 280 px mobile)**
   `styles.css:535` — use `clamp(220px, 50vw, 420px)` and ensure Chart.js is initialized with `responsive: true, maintainAspectRatio: false` so the chart fills its container fluidly.
-  > pushed — chart-container uses clamp(220px, 50vw, 420px); mobile override removed; Chart.js already had responsive:true, maintainAspectRatio:false; tests: 575 pass; commit: 5f8d8a0
+  > Resolved: chart-container uses clamp(220px, 50vw, 420px); mobile override removed; Chart.js already had responsive:true, maintainAspectRatio:false; tests: 575 pass; merged 5f8d8a0
 
-- [p] **#28 — Modals not safe at 320 px**
+- [x] **#28 — Modals not safe at 320 px**
   Food Manager (`index.html:650`) and Exercise (`index.html:692`) modals use `max-w-4xl` and `p-4` outer padding. Add `min-width: 280px` and test at 320–360 px viewports.
-  > pushed — modal-content min-width:280px; ≤360px media query reduces padding to 1rem and drops min-width; tests: 575 pass; commit: 5f8d8a0
+  > Resolved: modal-content min-width:280px; ≤360px media query reduces padding to 1rem and drops min-width; tests: 575 pass; merged 5f8d8a0
 
-- [p] **#29 — Nutrient form `max-h-[45vh]` clips on small phones**
+- [x] **#29 — Nutrient form `max-h-[45vh]` clips on small phones**
   The collapsible nutrient input section uses a fixed viewport-height cap that leaves bottom inputs behind a tiny scroll area on 360 px phones. Remove or raise the cap conditionally on narrow viewports.
-  > pushed — max-h-[45vh] raised to 65vh at ≤480px viewport; tests: 575 pass; commit: 5f8d8a0
+  > Resolved: max-h-[45vh] raised to 65vh at ≤480px viewport; tests: 575 pass; merged 5f8d8a0
 
-- [p] **#30 — No empty states**
+- [x] **#30 — No empty states**
   Food items list, Nutrients tab, and Exercise session list all render as blank divs when empty. Add a one-line placeholder with an icon and a CTA (e.g., "No foods logged yet — add your first item above").
-  > pushed — exercise empty state enhanced with icon and CTA; food list and nutrients tab already had empty states; tests: 575 pass; commit: 5f8d8a0
+  > Resolved: exercise empty state enhanced with icon and CTA; food list and nutrients tab already had empty states; tests: 575 pass; merged 5f8d8a0
 
-- [p] **#31 — No save confirmation feedback**
+- [x] **#31 — No save confirmation feedback**
   Save buttons show no "Saved ✓" state. Users tap repeatedly because there is no signal that the write succeeded. Add a 1.5-second transient checkmark or toast per save action.
-  > pushed — flashSaveConfirmation() in utils/ui.js; applied to add-to-log, save-food, save-profile, apply-targets buttons; .btn-saved CSS class; tests: 575 pass; commit: 5f8d8a0
+  > Resolved: flashSaveConfirmation() in utils/ui.js; applied to add-to-log, save-food, save-profile, apply-targets buttons; .btn-saved CSS class; tests: 575 pass; merged 5f8d8a0
 
 ---
 
@@ -318,45 +318,45 @@ Use targeted testing judgment:
   `index.html:11` loads Chart.js 3.9.1 from CDN; current stable is v4.x with better mobile defaults and a smaller bundle. Pin a regression baseline with the existing smoke-test checklist before upgrading.
   > Resolved in: _pending_
 
-- [ ] **#33 — Chart tooltip colors hardcoded, ignoring theme tokens**
+- [p] **#33 — Chart tooltip colors hardcoded, ignoring theme tokens**
   `ui/chart.js:27-38` — tooltip background and text colors are hardcoded dark values. Read `--surface-2` and `--text` CSS variables so tooltips adapt if the theme ever changes.
-  > Resolved in: _pending_
+  > pushed — getTooltipConfig() reads --surface-1/--text/--border at render time; applied to chart.js and both analysisUI.js charts; tests: 575 pass; commit: 635a289; PR #130
 
-- [ ] **#34 — Auto-target → Apply is a two-step flow with long scroll on mobile**
+- [p] **#34 — Auto-target → Apply is a two-step flow with long scroll on mobile**
   "Auto-Calculate" and "Apply to Baseline Targets" are far apart vertically on mobile. Combine into a single confirm-and-apply action with a collapsible diff view showing what changed.
-  > Resolved in: _pending_
+  > pushed — Apply button moved above explanation; explanation and manual overrides in collapsible details; scroll targets preview section; tests: 575 pass; commit: 13bc5d5; PR #130
 
-- [ ] **#35 — Exercise modal has too many visible fields for quick logging**
+- [p] **#35 — Exercise modal has too many visible fields for quick logging**
   `index.html:691-790` — RPE, distance, steps, wearable calories, and manual calories are all visible at once. Default to duration + intensity only; progressively disclose the rest.
-  > Resolved in: _pending_
+  > pushed — RPE, wearable cal, manual cal, and notes wrapped in collapsible details "More options"; auto-opens on edit when advanced fields populated; duration+intensity+activity stay visible; tests: 575 pass; commit: 13bc5d5; PR #130
 
-- [ ] **#36 — Food search has no inline quantity input**
+- [p] **#36 — Food search has no inline quantity input**
   Users must select from the dropdown and then click +Add. Add a quantity field inline with the search row so the action collapses to one step.
-  > Resolved in: _pending_
+  > pushed — food-inline-qty input between search and +Add; syncs with actual-quantity via bidirectional input listeners + programmatic sync on saved-food select; tests: 575 pass; commit: c979880 3dc9b23; PR #130
 
-- [ ] **#37 — No skeleton loaders during initial data fetch**
+- [p] **#37 — No skeleton loaders during initial data fetch**
   Five Firestore reads run in parallel on load behind a full-screen spinner with no incremental feedback. Replace or supplement with per-section skeleton cards.
-  > Resolved in: _pending_
+  > pushed — spinner replaced with skeleton-loader: header, tabs, macro bar, and card placeholders with pulse animation; tests: 575 pass; commit: 13bc5d5; PR #130
 
-- [ ] **#38 — Native number-input spinners are visually noisy**
+- [p] **#38 — Native number-input spinners are visually noisy**
   Hide with `::-webkit-outer-spin-button { -webkit-appearance: none; }` across all `input[type="number"]` fields in `styles.css`, or provide custom ± buttons on mobile.
-  > Resolved in: _pending_
+  > pushed — webkit inner/outer spin-button hidden + moz-appearance:textfield in styles.css; tests: 575 pass; commit: 635a289; PR #130
 
-- [ ] **#39 — Activity level radio buttons are text-heavy**
+- [p] **#39 — Activity level radio buttons are text-heavy**
   `index.html:341-376` — no visual differentiation between levels. Add a small icon (e.g., walking, jogging, lifting) at the left of each row.
-  > Resolved in: _pending_
+  > pushed — inline SVG icons per activity level (monitor, walking, jogging, running, flame); .activity-icon styled with theme color; tests: 575 pass; commit: 635a289; PR #130
 
-- [ ] **#40 — Null UL entries lack explanatory comments**
+- [p] **#40 — Null UL entries lack explanatory comments**
   `targets/nutritionReferences.js:199-206` — potassium, dietary magnesium, vitamin B12, and vitamin K have no UL because NASEM found no toxicity threshold, not because the values are missing or unknown. Add a short comment so future maintainers don't "fix" them.
-  > Resolved in: _pending_
+  > pushed — already resolved by #11; all null UL entries have NASEM-citing inline comments; no code change needed; commit: 635a289; PR #130
 
 ---
 
 ## LOW / NICE-TO-HAVE
 
-- [ ] **#41 — Fluid typography is half-applied**
+- [p] **#41 — Fluid typography is half-applied**
   Only the app title uses `clamp()` (`styles.css:308`). Extend to body, label, and value text for smoother cross-device scaling.
-  > Resolved in: _pending_
+  > pushed — body font-size uses clamp(); all .text-xs through .text-3xl utilities use clamp() for fluid scaling; tests: 575 pass; commit: d2aeb0a; PR #130
 
 - [ ] **#42 — No PWA / Add to Home Screen support**
   A daily-use nutrition app benefits enormously from a web app manifest + service worker. Install prompt and offline-first loading would meaningfully improve the mobile experience.
@@ -366,13 +366,13 @@ Use targeted testing judgment:
   Export exists; import does not. Mirror the Date Night Roulette batch-upload pattern to allow users to seed or migrate their food database from a spreadsheet.
   > Resolved in: _pending_
 
-- [ ] **#44 — `<details>` expand arrow is a pseudo-content character**
+- [p] **#44 — `<details>` expand arrow is a pseudo-content character**
   `styles.css:460` uses `content: '▶'` on `summary::before`. Replace with an SVG icon or Font Awesome caret for better scaling on hidpi displays.
-  > Resolved in: _pending_
+  > pushed — replaced unicode ▶ with CSS border chevron; scales cleanly on hidpi; rotates 45deg on open; literal ▸ removed from micronutrient summary; tests: 575 pass; commit: d2aeb0a; PR #130
 
-- [ ] **#45 — Documentation update checklist not enforced**
+- [p] **#45 — Documentation update checklist not enforced**
   The project rules in `AGENTS.md` require docs updates in the same PR as fundamental changes, but there is no checklist item in `CONTRIBUTING.md` (or this README's smoke-test list) to verify it. Add a doc-update line to the PR checklist in `CONTRIBUTING.md`.
-  > Resolved in: _pending_
+  > pushed — added doc-update confirmation line to PR checklist in CONTRIBUTING.md; BACKLOG added to docs list; commit: d2aeb0a; PR #130
 
 ---
 

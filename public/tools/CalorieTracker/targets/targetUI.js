@@ -326,7 +326,7 @@ async function calculateAndRenderTargets({ scroll = false } = {}) {
 
     // Only scroll when triggered by the explicit button click
     if (scroll) {
-      document.getElementById('target-explanation')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.getElementById('target-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   } catch (err) {
     handleError('auto-calculate', err, 'Failed to calculate targets.');
@@ -389,7 +389,7 @@ async function _doAutosave() {
 function renderExplanation(result) {
   const section = document.getElementById('target-explanation');
   const content = document.getElementById('target-explanation-content');
-  if (!section || !content || !result.explanation) { section?.classList.add('hidden'); return; }
+  if (!section || !content || !result.explanation) { if (section) section.style.display = 'none'; return; }
 
   const exp = result.explanation;
   const rows = [
@@ -411,7 +411,7 @@ function renderExplanation(result) {
       <span class="text-primary">${value ?? '—'}</span>
     </div>`).join('');
 
-  section.classList.remove('hidden');
+  section.style.display = '';
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +447,7 @@ function renderTargetPreview(result, currentOverrides) {
         </div>`).join('')}
     </div>
     <details class="text-sm">
-      <summary class="cursor-pointer text-secondary font-medium mb-2">All micronutrient targets ▸</summary>
+      <summary class="cursor-pointer text-secondary font-medium mb-2">All micronutrient targets</summary>
       <div class="grid grid-cols-2 gap-x-4 gap-1 mt-2">
         ${MICRO_KEYS.map(({ key, label }) => `
           <div class="flex justify-between text-xs py-0.5 border-b border-border/20">

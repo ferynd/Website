@@ -258,6 +258,13 @@ function wireStagingEvents() {
     if (replaceDayBtn) replaceDayBtn.addEventListener('click', () => handleStagingAction('replace'));
     if (stageToTargetsBtn) stageToTargetsBtn.addEventListener('click', () => handleStagingAction('updateTargets'));
 
+    const inlineQty = document.getElementById('food-inline-qty');
+    const actualQty = document.getElementById('actual-quantity');
+    if (inlineQty && actualQty) {
+      inlineQty.addEventListener('input', () => { actualQty.value = inlineQty.value; });
+      actualQty.addEventListener('input', () => { inlineQty.value = actualQty.value; });
+    }
+
     debugLog('wire', 'Staging events wired');
   } catch (error) {
     handleError('wire-staging', error, 'Failed to wire staging events');
@@ -393,6 +400,8 @@ function openExerciseModal(sessionId) {
   const title = document.getElementById('exercise-modal-title');
   if (title) title.textContent = sessionId ? 'Edit Exercise Session' : 'Add Exercise Session';
 
+  const advancedDetails = document.querySelector('.exercise-advanced-fields');
+
   if (sessionId) {
     // Populate fields with existing session data
     const dateStr  = state.dom.dateInput?.value || getTodayInTimezone();
@@ -410,6 +419,10 @@ function openExerciseModal(sessionId) {
       document.getElementById('es-wearable-cal').value    = s.wearableCalories || '';
       document.getElementById('es-manual-cal').value      = s.manualCalories   || '';
       document.getElementById('es-notes').value           = s.notes           || '';
+
+      if (advancedDetails) {
+        advancedDetails.open = Boolean(s.rpe || s.wearableCalories || s.manualCalories || s.notes);
+      }
     }
   } else {
     // Reset to defaults
@@ -423,6 +436,8 @@ function openExerciseModal(sessionId) {
     document.getElementById('es-wearable-cal').value    = '';
     document.getElementById('es-manual-cal').value      = '';
     document.getElementById('es-notes').value           = '';
+
+    if (advancedDetails) advancedDetails.open = false;
   }
 
   updateExerciseModalFields();
