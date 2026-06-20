@@ -166,3 +166,21 @@ export function clampNutrient(nutrient, raw) {
   }
   return Math.max(0, raw);
 }
+
+/**
+ * Briefly shows a checkmark confirmation on a button after a save action.
+ * Stores the original content and restores it after duration.
+ */
+export function flashSaveConfirmation(btn, duration = 1500) {
+  if (!btn) return;
+  const original = btn.innerHTML;
+  const wasDisabled = btn.disabled;
+  btn.innerHTML = '<i class="fas fa-check mr-1"></i>Saved';
+  btn.disabled = true;
+  btn.classList.add('btn-saved');
+  setTimeout(() => {
+    btn.innerHTML = original;
+    btn.disabled = wasDisabled;
+    btn.classList.remove('btn-saved');
+  }, duration);
+}

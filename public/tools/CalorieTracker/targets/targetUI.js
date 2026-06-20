@@ -10,7 +10,7 @@
  */
 
 import { state } from '../state/store.js';
-import { showMessage, handleError, clampNutrient } from '../utils/ui.js';
+import { showMessage, handleError, clampNutrient, flashSaveConfirmation } from '../utils/ui.js';
 import { saveUserProfile, saveGoalSettings, saveTargets } from '../services/firebase.js';
 import { generateTargets, applyManualOverrides } from './targetEngine.js';
 import { runAnalysis } from '../analysis/engine.js';
@@ -511,6 +511,7 @@ async function handleSaveProfile() {
     _setAutosaveStatus('saved');
     setTimeout(() => _setAutosaveStatus(''), 3000);
     showMessage('Profile and goals saved!');
+    flashSaveConfirmation(document.getElementById('save-profile-btn'));
     try {
       const { updateDashboard } = await import('../ui/dashboard.js');
       const { updateChart } = await import('../ui/chart.js');
@@ -567,10 +568,15 @@ async function handleApplyTargets() {
     updateChart();
 
     showMessage('Targets applied and saved to baseline!');
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-check mr-2"></i>Apply to Baseline Targets';
+      flashSaveConfirmation(btn);
+    }
   } catch (err) {
     handleError('apply-targets', err, 'Failed to apply targets.');
   } finally {
-    if (btn) {
+    if (btn && !btn.classList.contains('btn-saved')) {
       btn.disabled = false;
       btn.innerHTML = '<i class="fas fa-check mr-2"></i>Apply to Baseline Targets';
     }

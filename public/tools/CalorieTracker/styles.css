@@ -413,11 +413,15 @@ input:focus, textarea:focus, select:focus {
 }
 
 .macro-cell-value {
-  font-size: .75rem;
+  font-size: .875rem;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.macro-cell-value.macro-remaining {
+  font-size: 1rem;
+  font-weight: 800;
 }
 
 .macro-cell .hbar {
@@ -565,7 +569,7 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
    ============================================================ */
 .chart-container {
   position: relative;
-  height: 400px;
+  height: clamp(220px, 50vw, 420px);
   margin: 20px 0;
 }
 
@@ -604,6 +608,16 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
 }
 
 /* ============================================================
+   SAVE CONFIRMATION
+   ============================================================ */
+.btn-saved {
+  background: hsl(var(--success, 142 71% 45%)) !important;
+  color: #fff !important;
+  pointer-events: none;
+  transition: background .2s;
+}
+
+/* ============================================================
    MODALS
    ============================================================ */
 .modal-backdrop {
@@ -614,6 +628,10 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
   background: hsl(var(--surface-1));
   border: 1px solid hsl(var(--border));
   box-shadow: var(--shadow-2);
+  min-width: 280px;
+}
+@media (max-width: 360px) {
+  .modal-content { padding: 1rem !important; min-width: 0; }
 }
 
 /* ============================================================
@@ -939,11 +957,12 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
     padding: .4rem .75rem;
     grid-template-columns: repeat(2, 1fr);
   }
-  .macro-cell-value  { font-size: .7rem; }
+  .macro-cell-value  { font-size: .8rem; }
+  .macro-cell-value.macro-remaining { font-size: .9rem; }
 
   .settings-panel    { padding: 1rem .75rem; }
   .settings-section  { padding: 1rem .75rem; border-radius: .75rem; }
-  .chart-container   { height: 280px; }
+  /* chart-container uses clamp() — no fixed override needed */
   /* Collapse status grid to 2 cols on small phones */
   .nutrient-status-grid { grid-template-columns: repeat(2, 1fr); }
   /* Slightly larger chips for touch targets */
@@ -951,6 +970,9 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
   .nutrient-filter-chip { min-height: 40px; }
   /* Hide sub-detail on very small screens to save space */
   .nt-sub-detail     { padding-left: 0; }
+
+  /* Raise nutrient input scroll cap on small phones */
+  .max-h-\[45vh\] { max-height: 65vh; }
 
   /* Food item qty input: full width below the macros line */
   .food-item-bottom  { flex-direction: column; align-items: stretch; }

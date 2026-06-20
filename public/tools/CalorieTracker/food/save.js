@@ -6,7 +6,7 @@
 
 import { state, parseQty } from '../state/store.js';
 import { allNutrients } from '../constants.js';
-import { showMessage, handleError, formatNutrientName, escapeHtml } from '../utils/ui.js';
+import { showMessage, handleError, formatNutrientName, escapeHtml, flashSaveConfirmation } from '../utils/ui.js';
 import { showConfirmationModal, closeDuplicateDialog } from '../ui/modals.js';
 import { db } from '../services/firebase.js';
 import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
@@ -74,6 +74,7 @@ async function processSaveFoodItem(foodName, stagedValues) {
     }
 
     showMessage(`✅ "${foodName}" saved to database! Ready to add to today's log.`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
+    flashSaveConfirmation(document.getElementById('save-food-item-btn'));
     
   } catch (e) {
     handleError('save-food-item', e, 'Failed to save food item');
