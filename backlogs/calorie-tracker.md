@@ -288,27 +288,27 @@ Use targeted testing judgment:
 
 - [p] **#26 — Today's calorie KPI is buried below the input column on mobile**
   The macro summary bar (`index.html:61`) has 0.75 rem values (`styles.css:385`), is easy to miss, and doesn't show "remaining" prominently. Bump value font to 0.875–0.95 rem and make the remaining-calories figure the largest item in the bar — it's the question users open the app to answer.
-  > pushed — macro values bumped to .875rem; calories cell shows prominent "X left" remaining figure with .macro-remaining class at 1rem; tests: 575 pass; commit: PENDING
+  > pushed — macro values bumped to .875rem; calories cell shows prominent "X left" remaining figure with .macro-remaining class at 1rem; tests: 575 pass; commit: 5f8d8a0
 
 - [p] **#27 — Fixed pixel chart height (400 px desktop / 280 px mobile)**
   `styles.css:535` — use `clamp(220px, 50vw, 420px)` and ensure Chart.js is initialized with `responsive: true, maintainAspectRatio: false` so the chart fills its container fluidly.
-  > pushed — chart-container uses clamp(220px, 50vw, 420px); mobile override removed; Chart.js already had responsive:true, maintainAspectRatio:false; tests: 575 pass; commit: PENDING
+  > pushed — chart-container uses clamp(220px, 50vw, 420px); mobile override removed; Chart.js already had responsive:true, maintainAspectRatio:false; tests: 575 pass; commit: 5f8d8a0
 
 - [p] **#28 — Modals not safe at 320 px**
   Food Manager (`index.html:650`) and Exercise (`index.html:692`) modals use `max-w-4xl` and `p-4` outer padding. Add `min-width: 280px` and test at 320–360 px viewports.
-  > pushed — modal-content min-width:280px; ≤360px media query reduces padding to 1rem and drops min-width; tests: 575 pass; commit: PENDING
+  > pushed — modal-content min-width:280px; ≤360px media query reduces padding to 1rem and drops min-width; tests: 575 pass; commit: 5f8d8a0
 
 - [p] **#29 — Nutrient form `max-h-[45vh]` clips on small phones**
   The collapsible nutrient input section uses a fixed viewport-height cap that leaves bottom inputs behind a tiny scroll area on 360 px phones. Remove or raise the cap conditionally on narrow viewports.
-  > pushed — max-h-[45vh] raised to 65vh at ≤480px viewport; tests: 575 pass; commit: PENDING
+  > pushed — max-h-[45vh] raised to 65vh at ≤480px viewport; tests: 575 pass; commit: 5f8d8a0
 
 - [p] **#30 — No empty states**
   Food items list, Nutrients tab, and Exercise session list all render as blank divs when empty. Add a one-line placeholder with an icon and a CTA (e.g., "No foods logged yet — add your first item above").
-  > pushed — exercise empty state enhanced with icon and CTA; food list and nutrients tab already had empty states; tests: 575 pass; commit: PENDING
+  > pushed — exercise empty state enhanced with icon and CTA; food list and nutrients tab already had empty states; tests: 575 pass; commit: 5f8d8a0
 
 - [p] **#31 — No save confirmation feedback**
   Save buttons show no "Saved ✓" state. Users tap repeatedly because there is no signal that the write succeeded. Add a 1.5-second transient checkmark or toast per save action.
-  > pushed — flashSaveConfirmation() in utils/ui.js; applied to add-to-log, save-food, save-profile, apply-targets buttons; .btn-saved CSS class; tests: 575 pass; commit: PENDING
+  > pushed — flashSaveConfirmation() in utils/ui.js; applied to add-to-log, save-food, save-profile, apply-targets buttons; .btn-saved CSS class; tests: 575 pass; commit: 5f8d8a0
 
 ---
 
