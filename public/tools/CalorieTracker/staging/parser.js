@@ -4,7 +4,7 @@
  */
 
 import { nutrientMap, allNutrients, SCHEMA_VERSIONS } from '../constants.js';
-import { showMessage, formatNutrientName, clampNutrient, flushPendingUndo } from '../utils/ui.js';
+import { showMessage, formatNutrientName, clampNutrient, flushPendingUndo, flashSaveConfirmation } from '../utils/ui.js';
 import { state, parseQty } from '../state/store.js';
 import { saveDailyEntry, saveTargets } from '../services/firebase.js';
 import { clearStagingArea, updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
@@ -140,6 +140,7 @@ async function commitStagedToLog(staged, qty, foodName) {
 
   await saveDailyEntry(dateStr, todayEntry);
   showMessage("Staged nutrients added to today's log!");
+  flashSaveConfirmation(document.getElementById('add-day-btn'));
   clearStagingArea();
 
   updateDashboard();

@@ -537,7 +537,12 @@ export function updateExerciseSessionsList() {
   const sessions = Array.isArray(entry.exerciseSessions) ? entry.exerciseSessions : [];
 
   if (sessions.length === 0) {
-    container.innerHTML = `<p class="text-xs text-muted py-1">No sessions logged — use a Day Activity Level above or add a session.</p>`;
+    container.innerHTML = `
+      <div class="text-center py-4 text-muted">
+        <i class="fas fa-running text-lg mb-1 opacity-50"></i>
+        <p class="text-xs">No exercise sessions logged today.</p>
+        <p class="text-xs mt-1">Tap "Add Session" to log your workout.</p>
+      </div>`;
     return;
   }
 

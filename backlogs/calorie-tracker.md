@@ -266,49 +266,49 @@ Use targeted testing judgment:
 
 ## HIGH — accessibility
 
-- [p] **#22 — Tab keyboard navigation missing arrow-key support**
+- [x] **#22 — Tab keyboard navigation missing arrow-key support**
   `index.html:52-58` — ARIA roles are present but no Left/Right key handler exists. WAI-ARIA Authoring Practices requires arrow-key navigation within a tablist. Add a `keydown` listener on the tab bar.
-  > pushed — arrow-key handler already existed; added tabindex roving (active=0, inactive=-1) per WAI-ARIA APG; tests: 575 pass; commit: ea11d84
+  > Resolved: arrow-key handler with tabindex roving (active=0, inactive=-1) per WAI-ARIA APG; tests: 575 pass; merged ea11d84
 
-- [p] **#23 — Muted text contrast borderline in dark theme**
+- [x] **#23 — Muted text contrast borderline in dark theme**
   `shared-styles.css:42-43` — `--text-3: 220 9% 46%` on `--bg: 220 43% 8%` computes to roughly 5.2:1 (passes AA large text, fails WCAG AA for body text). Increase lightness by ~6 points.
-  > pushed — --text-3 lightness increased from 46% to 52% in dark theme; tests: 575 pass; commit: ea11d84
+  > Resolved: --text-3 lightness increased from 46% to 52% in dark theme; tests: 575 pass; merged ea11d84
 
-- [p] **#24 — Nutrient status conveyed by color only**
+- [x] **#24 — Nutrient status conveyed by color only**
   Red/amber/green tags have no text label or icon fallback for colorblind users. Add a short text indicator (e.g., "low", "ok", "over") or a distinct icon per state.
-  > pushed — added text status badges (low/near/ok) to each nutrient row via nt-status-bad/warn/good classes; tests: 575 pass; commit: ea11d84
+  > Resolved: text status badges (low/near/ok) on each nutrient row via nt-status-bad/warn/good classes; tests: 575 pass; merged ea11d84
 
-- [p] **#25 — No `aria-describedby` linking form errors to inputs**
+- [x] **#25 — No `aria-describedby` linking form errors to inputs**
   Error messages render in modals or adjacent divs with no programmatic link to the field that caused them, so screen readers don't associate the two.
-  > pushed — aria-describedby on login (email/password), exercise (duration), body-fat inputs; inline .form-error elements with role=alert; tests: 575 pass; commit: ea11d84
+  > Resolved: aria-describedby on login (email/password), exercise (duration), body-fat inputs; inline .form-error elements with role=alert; tests: 575 pass; merged ea11d84
 
 ---
 
 ## HIGH — mobile / visual
 
-- [ ] **#26 — Today's calorie KPI is buried below the input column on mobile**
+- [p] **#26 — Today's calorie KPI is buried below the input column on mobile**
   The macro summary bar (`index.html:61`) has 0.75 rem values (`styles.css:385`), is easy to miss, and doesn't show "remaining" prominently. Bump value font to 0.875–0.95 rem and make the remaining-calories figure the largest item in the bar — it's the question users open the app to answer.
-  > Resolved in: _pending_
+  > pushed — macro values bumped to .875rem; calories cell shows prominent "X left" remaining figure with .macro-remaining class at 1rem; tests: 575 pass; commit: PENDING
 
-- [ ] **#27 — Fixed pixel chart height (400 px desktop / 280 px mobile)**
+- [p] **#27 — Fixed pixel chart height (400 px desktop / 280 px mobile)**
   `styles.css:535` — use `clamp(220px, 50vw, 420px)` and ensure Chart.js is initialized with `responsive: true, maintainAspectRatio: false` so the chart fills its container fluidly.
-  > Resolved in: _pending_
+  > pushed — chart-container uses clamp(220px, 50vw, 420px); mobile override removed; Chart.js already had responsive:true, maintainAspectRatio:false; tests: 575 pass; commit: PENDING
 
-- [ ] **#28 — Modals not safe at 320 px**
+- [p] **#28 — Modals not safe at 320 px**
   Food Manager (`index.html:650`) and Exercise (`index.html:692`) modals use `max-w-4xl` and `p-4` outer padding. Add `min-width: 280px` and test at 320–360 px viewports.
-  > Resolved in: _pending_
+  > pushed — modal-content min-width:280px; ≤360px media query reduces padding to 1rem and drops min-width; tests: 575 pass; commit: PENDING
 
-- [ ] **#29 — Nutrient form `max-h-[45vh]` clips on small phones**
+- [p] **#29 — Nutrient form `max-h-[45vh]` clips on small phones**
   The collapsible nutrient input section uses a fixed viewport-height cap that leaves bottom inputs behind a tiny scroll area on 360 px phones. Remove or raise the cap conditionally on narrow viewports.
-  > Resolved in: _pending_
+  > pushed — max-h-[45vh] raised to 65vh at ≤480px viewport; tests: 575 pass; commit: PENDING
 
-- [ ] **#30 — No empty states**
+- [p] **#30 — No empty states**
   Food items list, Nutrients tab, and Exercise session list all render as blank divs when empty. Add a one-line placeholder with an icon and a CTA (e.g., "No foods logged yet — add your first item above").
-  > Resolved in: _pending_
+  > pushed — exercise empty state enhanced with icon and CTA; food list and nutrients tab already had empty states; tests: 575 pass; commit: PENDING
 
-- [ ] **#31 — No save confirmation feedback**
+- [p] **#31 — No save confirmation feedback**
   Save buttons show no "Saved ✓" state. Users tap repeatedly because there is no signal that the write succeeded. Add a 1.5-second transient checkmark or toast per save action.
-  > Resolved in: _pending_
+  > pushed — flashSaveConfirmation() in utils/ui.js; applied to add-to-log, save-food, save-profile, apply-targets buttons; .btn-saved CSS class; tests: 575 pass; commit: PENDING
 
 ---
 

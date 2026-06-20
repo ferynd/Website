@@ -727,22 +727,27 @@ function renderTodayMacroHeader(bankingData) {
     return acc;
   }, { cal: 0, pro: 0, fat: 0, carb: 0 });
 
-  const cell = (label, actual, target) => {
+  const cell = (label, actual, target, isCalorie) => {
     const pct = Math.max(0, Math.min(150, target > 0 ? (actual / target) * 100 : 0));
     const cls = pct >= 100 ? 'good' : pct >= 66 ? 'warn' : 'bad';
+    const remaining = Math.round(target - actual);
+    const remainingText = isCalorie
+      ? `<span class="macro-cell-value macro-remaining ${remaining < 0 ? 'text-negative' : ''}">${remaining} left</span>`
+      : '';
     return `
       <div class="macro-cell">
         <span class="macro-cell-label">${label}</span>
+        ${remainingText}
         <span class="macro-cell-value ${pct > 110 ? 'text-negative' : ''}">${Math.round(actual)}/${Math.round(target)}</span>
         <div class="hbar"><div class="hbar-fill ${cls}" style="width:${pct.toFixed(1)}%"></div></div>
       </div>`;
   };
 
   el.innerHTML =
-    cell('Cal',     totals.cal,  todayKcalTarget) +
-    cell('Protein', totals.pro,  finalProteinG)   +
-    cell('Fat',     totals.fat,  finalFatG)        +
-    cell('Carbs',   totals.carb, finalCarbsG);
+    cell('Cal',     totals.cal,  todayKcalTarget, true)  +
+    cell('Protein', totals.pro,  finalProteinG,   false) +
+    cell('Fat',     totals.fat,  finalFatG,        false) +
+    cell('Carbs',   totals.carb, finalCarbsG,      false);
 }
 
 /**
