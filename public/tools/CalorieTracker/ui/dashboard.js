@@ -615,6 +615,15 @@ export function calculateMicronutrientMetrics(dateStr) {
 
 const VALID_TABS = ['today', 'nutrients', 'energy', 'profile', 'settings'];
 
+function applyTabButtonState(activeTab) {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    const isActive = btn.dataset.tab === activeTab;
+    btn.classList.toggle('active', isActive);
+    btn.setAttribute('aria-selected', String(isActive));
+    btn.setAttribute('tabindex', isActive ? '0' : '-1');
+  });
+}
+
 /**
  * Initialize tabs from URL hash or localStorage without triggering data renders.
  * Call this once after wire() but before data loads.
@@ -629,11 +638,7 @@ export function initializeTabs() {
 
     state.activeTab = initial;
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      const isActive = btn.dataset.tab === initial;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-selected', String(isActive));
-    });
+    applyTabButtonState(initial);
 
     document.querySelectorAll('.tab-panel').forEach(panel => {
       panel.classList.toggle('hidden', panel.id !== `tab-${initial}`);
@@ -673,12 +678,7 @@ export function activateTab(name) {
       history.replaceState(null, '', `#tab-${name}`);
     }
 
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      const isActive = btn.dataset.tab === name;
-      btn.classList.toggle('active', isActive);
-      btn.setAttribute('aria-selected', String(isActive));
-      btn.setAttribute('tabindex', isActive ? '0' : '-1');
-    });
+    applyTabButtonState(name);
 
     document.querySelectorAll('.tab-panel').forEach(panel => {
       panel.classList.toggle('hidden', panel.id !== `tab-${name}`);
