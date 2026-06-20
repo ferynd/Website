@@ -447,7 +447,7 @@ function renderTargetPreview(result, currentOverrides) {
         </div>`).join('')}
     </div>
     <details class="text-sm">
-      <summary class="cursor-pointer text-secondary font-medium mb-2">All micronutrient targets ▸</summary>
+      <summary class="cursor-pointer text-secondary font-medium mb-2">All micronutrient targets</summary>
       <div class="grid grid-cols-2 gap-x-4 gap-1 mt-2">
         ${MICRO_KEYS.map(({ key, label }) => `
           <div class="flex justify-between text-xs py-0.5 border-b border-border/20">
