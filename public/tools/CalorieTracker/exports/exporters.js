@@ -44,7 +44,7 @@ export async function exportSavedFoodsCsv() {
     if (!foods.length) return showMessage('No saved food items to export.', true);
 
     // Define headers, including all possible nutrients.
-    const headers = ['name', 'lastUpdated', ...allNutrients];
+    const headers = ['name', 'quantity', 'lastUpdated', ...allNutrients];
     let csv = headers.map(h => `"${h}"`).join(',') + '\n';
 
     // Create a row for each food item.
