@@ -1,10 +1,14 @@
 # Backlog Index
 
-This file points to active working backlogs.
+This file points to active and completed backlogs.
 
 ## Active backlogs
 
-- `backlogs/calorie-tracker.md`: CalorieTracker improvement backlog, resume protocol, branch and PR workflow, item statuses, and test requirements.
+- `backlogs/calorie-tracker.md`: CalorieTracker backlog — protocol, invariants, branch/PR workflow, test requirements, and any active items.
+
+## Completed backlogs
+
+- `backlogs/calorie-tracker-completed.md`: Archive of all 46 completed CalorieTracker items with resolution summaries and merge SHAs.
 
 ## Agent instructions
 

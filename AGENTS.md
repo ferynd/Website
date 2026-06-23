@@ -8,7 +8,7 @@ Canonical instruction entry point for Claude Code, Codex, and other coding agent
 2. Read `ARCHITECTURE.md` only when changing structure, routing, data flow, major state management, shared UI patterns, or tool architecture.
 3. Read `SECURITY.md` only when changing auth, Firestore, Storage, secrets, PII, external scripts, data retention, model/API routes, or other sensitive data surfaces.
 4. Read root `BACKLOG.md` when the user asks about backlog work.
-5. Read `backlogs/calorie-tracker.md` only when the user asks to work on the CalorieTracker backlog or a CalorieTracker issue.
+5. Read `backlogs/calorie-tracker.md` only when the user asks to work on the CalorieTracker backlog or a CalorieTracker issue. Completed items are archived in `backlogs/calorie-tracker-completed.md`; read that only when reviewing past work.
 6. Read tool-specific files only when editing that tool.
 
 ## Repo map
@@ -78,7 +78,8 @@ Any fundamental change must update affected docs in the same PR:
 - `SECURITY.md` — auth, Firestore, Storage, secrets, PII, external scripts, data retention, and sensitive data surfaces.
 - `AGENTS.md` — agent workflow, test expectations, and repo conventions.
 - `BACKLOG.md` — backlog index only.
-- `backlogs/calorie-tracker.md` — CalorieTracker backlog protocol and item statuses.
+- `backlogs/calorie-tracker.md` — CalorieTracker backlog protocol and active items.
+- `backlogs/calorie-tracker-completed.md` — archive of completed CalorieTracker items.
 
 ## Backlog workflow
 
