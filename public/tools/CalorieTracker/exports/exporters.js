@@ -7,8 +7,9 @@ import { state } from '../state/store.js';
 import { formatDate } from '../utils/time.js';
 import { showMessage, handleError } from '../utils/ui.js';
 import { fetchTargets, fetchAllEntries, db } from '../services/firebase.js';
-import { allNutrients } from '../constants.js';
+import { allNutrients, NUTRIENT_MAX_BOUNDS } from '../constants.js';
 import { appId } from '../config.js';
+import { parseQty } from '../state/store.js';
 import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 /**
@@ -180,21 +181,47 @@ function parseCsvRow(line) {
   return cells;
 }
 
+function clampNutrientSilent(nutrient, raw) {
+  if (Number.isNaN(raw) || raw < 0) return 0;
+  const max = NUTRIENT_MAX_BOUNDS[nutrient];
+  return (max != null && raw > max) ? max : raw;
+}
+
+function normalizeHeader(h) {
+  return h.replace(/^﻿/, '').trim().replace(/\s+/g, '').toLowerCase();
+}
+
 export async function importSavedFoodsCsv(file) {
   if (!state.userId) return showMessage('Cannot import foods. Not authenticated.', true);
   if (!file) return;
 
-  const text = await file.text();
+  let text = await file.text();
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+
   const lines = text.split(/\r?\n/).filter(l => l.trim());
   if (lines.length < 2) return showMessage('CSV file is empty or has no data rows.', true);
 
-  const headers = parseCsvRow(lines[0]).map(h => h.trim());
-  const nameIdx = headers.indexOf('name');
-  if (nameIdx < 0) return showMessage('CSV must have a "name" column.', true);
+  const rawHeaders = parseCsvRow(lines[0]);
+  const normalizedHeaders = rawHeaders.map(normalizeHeader);
 
   const nutrientSet = new Set(allNutrients);
+  const canonicalMap = new Map();
+  allNutrients.forEach(n => canonicalMap.set(n.toLowerCase(), n));
+  canonicalMap.set('quantity', 'quantity');
+
+  const nameIdx = normalizedHeaders.indexOf('name');
+  if (nameIdx < 0) return showMessage('CSV must have a "name" column.', true);
+
+  const columnMap = normalizedHeaders.map((nh) => {
+    if (nh === 'name' || nh === 'lastupdated') return nh;
+    return canonicalMap.get(nh) || null;
+  });
+
+  const qtyColIdx = columnMap.indexOf('quantity');
+
   let imported = 0;
   let skipped = 0;
+  let clamped = 0;
 
   for (let i = 1; i < lines.length; i++) {
     const cells = parseCsvRow(lines[i]);
@@ -202,12 +229,21 @@ export async function importSavedFoodsCsv(file) {
     if (!name) { skipped++; continue; }
 
     const foodData = { name, lastUpdated: new Date().toISOString() };
-    headers.forEach((h, idx) => {
-      if (h === 'name' || h === 'lastUpdated') return;
-      if (nutrientSet.has(h)) {
-        const v = parseFloat(cells[idx]);
-        if (!isNaN(v)) foodData[h] = v;
-      }
+
+    if (qtyColIdx >= 0) {
+      foodData.quantity = parseQty(cells[qtyColIdx]);
+    } else {
+      foodData.quantity = 0;
+    }
+
+    columnMap.forEach((canonical, idx) => {
+      if (!canonical || canonical === 'name' || canonical === 'lastupdated' || canonical === 'quantity') return;
+      if (!nutrientSet.has(canonical)) return;
+      const raw = parseFloat(cells[idx]);
+      if (isNaN(raw)) return;
+      const val = clampNutrientSilent(canonical, raw);
+      if (val !== raw) clamped++;
+      foodData[canonical] = val;
     });
 
     const foodId = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -221,5 +257,7 @@ export async function importSavedFoodsCsv(file) {
     }
   }
 
-  showMessage(`Import complete: ${imported} food(s) imported, ${skipped} skipped.`);
+  let msg = `Import complete: ${imported} food(s) imported, ${skipped} skipped.`;
+  if (clamped > 0) msg += ` ${clamped} value(s) clamped to bounds.`;
+  showMessage(msg);
 }

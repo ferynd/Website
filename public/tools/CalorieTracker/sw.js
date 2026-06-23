@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nutritrack-v1';
+const CACHE_NAME = 'nutritrack-v2';
 
 const APP_SHELL = [
   './',
@@ -40,6 +40,13 @@ const APP_SHELL = [
   './utils/ui.js',
 ];
 
+const EXTERNAL_RUNTIME = [
+  'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js',
+  'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
+  'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
+  'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
+];
+
 const NETWORK_ONLY_PATTERNS = [
   /firestore\.googleapis\.com/,
   /identitytoolkit\.googleapis\.com/,
@@ -52,7 +59,12 @@ const NETWORK_ONLY_PATTERNS = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_SHELL))
+      .then((cache) => Promise.all([
+        cache.addAll(APP_SHELL),
+        ...EXTERNAL_RUNTIME.map((url) =>
+          cache.add(new Request(url, { mode: 'cors' })).catch(() => {})
+        ),
+      ]))
       .then(() => self.skipWaiting())
   );
 });
@@ -90,15 +102,14 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (response.ok) {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(event.request, clone));
-        }
-        return response;
-      });
-    })
+    caches.open(CACHE_NAME).then((cache) =>
+      cache.match(event.request).then((cached) => {
+        const networkFetch = fetch(event.request).then((response) => {
+          if (response.ok) cache.put(event.request, response.clone());
+          return response;
+        });
+        return cached || networkFetch;
+      })
+    )
   );
 });
