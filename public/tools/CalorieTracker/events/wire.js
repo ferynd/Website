@@ -10,7 +10,7 @@ import {
 } from '../services/data.js';
 import { setupFoodDropdown } from '../food/dropdown.js';
 import { parseAndStage, addStagedNutrientsToDailyLog, subtractStagedNutrientsFromDailyLog, handleStagingAction } from '../staging/parser.js';
-import { exportTargetsJson, exportSavedFoodsCsv, exportDailyLogCsv } from '../exports/exporters.js';
+import { exportTargetsJson, exportSavedFoodsCsv, exportDailyLogCsv, importSavedFoodsCsv } from '../exports/exporters.js';
 import { openFoodManager, closeFoodManager, selectFoodItem, editFoodItem, deleteFoodItemFromManager, removeFoodItem } from '../food/manager.js';
 import { closeBlankFoodNameModal, closeDuplicateDialog } from '../ui/modals.js';
 import { saveFoodItemToDatabase } from '../food/save.js';
@@ -315,6 +315,16 @@ function wireExportEvents() {
     if (exportAllBtn) exportAllBtn.addEventListener('click', exportDailyLogCsv);
     if (exportTargetsBtn) exportTargetsBtn.addEventListener('click', exportTargetsJson);
     if (exportFoodsBtn) exportFoodsBtn.addEventListener('click', exportSavedFoodsCsv);
+
+    const importFoodsBtn = document.getElementById('import-saved-foods-csv-btn');
+    const importFoodsFile = document.getElementById('import-saved-foods-file');
+    if (importFoodsBtn && importFoodsFile) {
+      importFoodsBtn.addEventListener('click', () => importFoodsFile.click());
+      importFoodsFile.addEventListener('change', (e) => {
+        if (e.target.files[0]) importSavedFoodsCsv(e.target.files[0]);
+        e.target.value = '';
+      });
+    }
 
     debugLog('wire', 'Export events wired');
   } catch (error) {

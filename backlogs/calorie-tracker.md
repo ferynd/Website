@@ -314,65 +314,65 @@ Use targeted testing judgment:
 
 ## MEDIUM — polish & hygiene
 
-- [ ] **#32 — Chart.js 3.9.1 is two majors behind**
+- [p] **#32 — Chart.js 3.9.1 is two majors behind**
   `index.html:11` loads Chart.js 3.9.1 from CDN; current stable is v4.x with better mobile defaults and a smaller bundle. Pin a regression baseline with the existing smoke-test checklist before upgrading.
-  > Resolved in: _pending_
+  > pushed — upgraded CDN from 3.9.1 to 4.5.0 (chart.umd.min.js); added explicit type:'linear' to y2 scale per v4 migration; tests: 575 pass; commit: 970448c; PR #131
 
-- [p] **#33 — Chart tooltip colors hardcoded, ignoring theme tokens**
+- [x] **#33 — Chart tooltip colors hardcoded, ignoring theme tokens**
   `ui/chart.js:27-38` — tooltip background and text colors are hardcoded dark values. Read `--surface-2` and `--text` CSS variables so tooltips adapt if the theme ever changes.
-  > pushed — getTooltipConfig() reads --surface-1/--text/--border at render time; applied to chart.js and both analysisUI.js charts; tests: 575 pass; commit: 635a289; PR #130
+  > Resolved: getTooltipConfig() reads --surface-1/--text/--border at render time; applied to chart.js and both analysisUI.js charts; tests: 575 pass; merged 635a289
 
-- [p] **#34 — Auto-target → Apply is a two-step flow with long scroll on mobile**
+- [x] **#34 — Auto-target → Apply is a two-step flow with long scroll on mobile**
   "Auto-Calculate" and "Apply to Baseline Targets" are far apart vertically on mobile. Combine into a single confirm-and-apply action with a collapsible diff view showing what changed.
-  > pushed — Apply button moved above explanation; explanation and manual overrides in collapsible details; scroll targets preview section; tests: 575 pass; commit: 13bc5d5; PR #130
+  > Resolved: Apply button moved above explanation; explanation and manual overrides in collapsible details; scroll targets preview section; tests: 575 pass; merged 13bc5d5
 
-- [p] **#35 — Exercise modal has too many visible fields for quick logging**
+- [x] **#35 — Exercise modal has too many visible fields for quick logging**
   `index.html:691-790` — RPE, distance, steps, wearable calories, and manual calories are all visible at once. Default to duration + intensity only; progressively disclose the rest.
-  > pushed — RPE, wearable cal, manual cal, and notes wrapped in collapsible details "More options"; auto-opens on edit when advanced fields populated; duration+intensity+activity stay visible; tests: 575 pass; commit: 13bc5d5; PR #130
+  > Resolved: RPE, wearable cal, manual cal, and notes wrapped in collapsible details "More options"; auto-opens on edit when advanced fields populated; duration+intensity+activity stay visible; tests: 575 pass; merged 13bc5d5
 
-- [p] **#36 — Food search has no inline quantity input**
+- [x] **#36 — Food search has no inline quantity input**
   Users must select from the dropdown and then click +Add. Add a quantity field inline with the search row so the action collapses to one step.
-  > pushed — food-inline-qty input between search and +Add; syncs with actual-quantity via bidirectional input listeners + programmatic sync on saved-food select; tests: 575 pass; commit: c979880 3dc9b23; PR #130
+  > Resolved: food-inline-qty input between search and +Add; syncs with actual-quantity via bidirectional input listeners + programmatic sync on saved-food select; tests: 575 pass; merged c979880
 
-- [p] **#37 — No skeleton loaders during initial data fetch**
+- [x] **#37 — No skeleton loaders during initial data fetch**
   Five Firestore reads run in parallel on load behind a full-screen spinner with no incremental feedback. Replace or supplement with per-section skeleton cards.
-  > pushed — spinner replaced with skeleton-loader: header, tabs, macro bar, and card placeholders with pulse animation; tests: 575 pass; commit: 13bc5d5; PR #130
+  > Resolved: spinner replaced with skeleton-loader: header, tabs, macro bar, and card placeholders with pulse animation; tests: 575 pass; merged 13bc5d5
 
-- [p] **#38 — Native number-input spinners are visually noisy**
+- [x] **#38 — Native number-input spinners are visually noisy**
   Hide with `::-webkit-outer-spin-button { -webkit-appearance: none; }` across all `input[type="number"]` fields in `styles.css`, or provide custom ± buttons on mobile.
-  > pushed — webkit inner/outer spin-button hidden + moz-appearance:textfield in styles.css; tests: 575 pass; commit: 635a289; PR #130
+  > Resolved: webkit inner/outer spin-button hidden + moz-appearance:textfield in styles.css; tests: 575 pass; merged 635a289
 
-- [p] **#39 — Activity level radio buttons are text-heavy**
+- [x] **#39 — Activity level radio buttons are text-heavy**
   `index.html:341-376` — no visual differentiation between levels. Add a small icon (e.g., walking, jogging, lifting) at the left of each row.
-  > pushed — inline SVG icons per activity level (monitor, walking, jogging, running, flame); .activity-icon styled with theme color; tests: 575 pass; commit: 635a289; PR #130
+  > Resolved: inline SVG icons per activity level (monitor, walking, jogging, running, flame); .activity-icon styled with theme color; tests: 575 pass; merged 635a289
 
-- [p] **#40 — Null UL entries lack explanatory comments**
+- [x] **#40 — Null UL entries lack explanatory comments**
   `targets/nutritionReferences.js:199-206` — potassium, dietary magnesium, vitamin B12, and vitamin K have no UL because NASEM found no toxicity threshold, not because the values are missing or unknown. Add a short comment so future maintainers don't "fix" them.
-  > pushed — already resolved by #11; all null UL entries have NASEM-citing inline comments; no code change needed; commit: 635a289; PR #130
+  > Resolved: already resolved by #11; all null UL entries have NASEM-citing inline comments; no code change needed; merged 635a289
 
 ---
 
 ## LOW / NICE-TO-HAVE
 
-- [p] **#41 — Fluid typography is half-applied**
+- [x] **#41 — Fluid typography is half-applied**
   Only the app title uses `clamp()` (`styles.css:308`). Extend to body, label, and value text for smoother cross-device scaling.
-  > pushed — body font-size uses clamp(); all .text-xs through .text-3xl utilities use clamp() for fluid scaling; tests: 575 pass; commit: d2aeb0a; PR #130
+  > Resolved: body font-size uses clamp(); all .text-xs through .text-3xl utilities use clamp() for fluid scaling; tests: 575 pass; merged d2aeb0a
 
-- [ ] **#42 — No PWA / Add to Home Screen support**
+- [p] **#42 — No PWA / Add to Home Screen support**
   A daily-use nutrition app benefits enormously from a web app manifest + service worker. Install prompt and offline-first loading would meaningfully improve the mobile experience.
-  > Resolved in: _pending_
+  > pushed — manifest.json + sw.js with app shell precache; SVG+PNG icons (192/512); cache-first for local assets, stale-while-revalidate for CDN, network-only for Firebase; tests: 575 pass; commit: 970448c; PR #131
 
-- [ ] **#43 — No CSV bulk-import for saved foods**
+- [p] **#43 — No CSV bulk-import for saved foods**
   Export exists; import does not. Mirror the Date Night Roulette batch-upload pattern to allow users to seed or migrate their food database from a spreadsheet.
-  > Resolved in: _pending_
+  > pushed — importSavedFoodsCsv in exporters.js; parses RFC 4180 CSV with header mapping; validates name column; writes each food to Firestore; wired via hidden file input + button in Settings; tests: 575 pass; commit: 970448c; PR #131
 
-- [p] **#44 — `<details>` expand arrow is a pseudo-content character**
+- [x] **#44 — `<details>` expand arrow is a pseudo-content character**
   `styles.css:460` uses `content: '▶'` on `summary::before`. Replace with an SVG icon or Font Awesome caret for better scaling on hidpi displays.
-  > pushed — replaced unicode ▶ with CSS border chevron; scales cleanly on hidpi; rotates 45deg on open; literal ▸ removed from micronutrient summary; tests: 575 pass; commit: d2aeb0a; PR #130
+  > Resolved: replaced unicode ▶ with CSS border chevron; scales cleanly on hidpi; rotates 45deg on open; literal ▸ removed from micronutrient summary; tests: 575 pass; merged d2aeb0a
 
-- [p] **#45 — Documentation update checklist not enforced**
+- [x] **#45 — Documentation update checklist not enforced**
   The project rules in `AGENTS.md` require docs updates in the same PR as fundamental changes, but there is no checklist item in `CONTRIBUTING.md` (or this README's smoke-test list) to verify it. Add a doc-update line to the PR checklist in `CONTRIBUTING.md`.
-  > pushed — added doc-update confirmation line to PR checklist in CONTRIBUTING.md; BACKLOG added to docs list; commit: d2aeb0a; PR #130
+  > Resolved: added doc-update confirmation line to PR checklist in CONTRIBUTING.md; BACKLOG added to docs list; merged d2aeb0a
 
 ---
 
