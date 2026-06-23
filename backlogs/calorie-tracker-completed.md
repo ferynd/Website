@@ -131,7 +131,7 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 ## MEDIUM — polish & hygiene
 
 - [x] **#32 — Chart.js 3.9.1 is two majors behind**
-  > Resolved: upgraded CDN from 3.9.1 to 4.5.0 (chart.umd.min.js); added explicit type:'linear' to y2 scale per v4 migration; merged 970448c
+  > Resolved: upgraded CDN from 3.9.1 to 4.5.0 (chart.umd.min.js); added explicit type:'linear' to y2 scale per v4 migration; merged via PR #131 (29c2c2f)
 
 - [x] **#33 — Chart tooltip colors hardcoded, ignoring theme tokens**
   > Resolved: getTooltipConfig() reads --surface-1/--text/--border at render time; applied to chart.js and both analysisUI.js charts; merged 635a289
@@ -165,10 +165,10 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
   > Resolved: body font-size uses clamp(); all .text-xs through .text-3xl utilities use clamp() for fluid scaling; merged d2aeb0a
 
 - [x] **#42 — No PWA / Add to Home Screen support**
-  > Resolved: manifest.json + sw.js with app shell precache; SVG+PNG icons (192/512); cache-first for local assets, stale-while-revalidate for CDN, network-only for Firebase; merged 970448c
+  > Resolved: manifest.json + SVG/PNG icons (192/512); service worker with stale-while-revalidate for same-origin shell assets; external runtime deps (Chart.js 4.5.0, Firebase ESM) precached at install for offline first launch; Firebase/Google APIs network-only; merged via PR #131 (29c2c2f)
 
 - [x] **#43 — No CSV bulk-import for saved foods**
-  > Resolved: importSavedFoodsCsv in exporters.js; parses RFC 4180 CSV with header mapping; validates name column; writes each food to Firestore; wired via hidden file input + button in Settings; merged 970448c
+  > Resolved: importSavedFoodsCsv in exporters.js; RFC 4180 CSV parsing with BOM stripping and header normalization; quantity column preserved on export and import round-trip; nutrient values clamped to NUTRIENT_MAX_BOUNDS with clamped-count summary; wired via hidden file input + button in Settings; merged via PR #131 (29c2c2f)
 
 - [x] **#44 — `<details>` expand arrow is a pseudo-content character**
   > Resolved: replaced unicode triangle with CSS border chevron; scales cleanly on hidpi; rotates 45deg on open; literal marker removed from micronutrient summary; merged d2aeb0a
