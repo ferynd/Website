@@ -5,10 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Nutrition Tracker</title>
 
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#00a3ad">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+
   <!-- UI libs -->
   <link rel="stylesheet" href="/shared-styles.css">
   <link rel="stylesheet" href="./styles.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
 
   <!-- Use Poppins to match main site -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -638,6 +643,8 @@
           <div class="flex justify-between items-center flex-wrap gap-3">
             <button type="button" id="export-targets-json-btn"    class="btn btn-secondary btn-sm">Export Targets (JSON)</button>
             <button type="button" id="export-saved-foods-csv-btn" class="btn btn-secondary btn-sm">Export Saved Foods (CSV)</button>
+            <button type="button" id="import-saved-foods-csv-btn" class="btn btn-secondary btn-sm">Import Saved Foods (CSV)</button>
+            <input type="file" id="import-saved-foods-file" accept=".csv" class="hidden">
             <button type="button" id="export-all-data-btn"        class="btn btn-secondary btn-sm">Export Daily Log (CSV)</button>
             <button type="submit" class="btn btn-primary">Save Targets</button>
           </div>
@@ -866,5 +873,10 @@
 
   <!-- Entry script -->
   <script type="module" src="./main.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    }
+  </script>
 </body>
 </html>

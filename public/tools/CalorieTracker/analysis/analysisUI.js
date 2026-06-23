@@ -937,6 +937,7 @@ function drawEatingPatternChart(rows) {
           grid: { color: 'rgba(255,255,255,0.05)' },
         },
         y2: {
+          type: 'linear',
           position: 'right',
           title: { display: true, text: 'Weight (lb)' },
           grid: { drawOnChartArea: false },

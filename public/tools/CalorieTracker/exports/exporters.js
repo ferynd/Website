@@ -6,8 +6,10 @@
 import { state } from '../state/store.js';
 import { formatDate } from '../utils/time.js';
 import { showMessage, handleError } from '../utils/ui.js';
-import { fetchTargets, fetchAllEntries } from '../services/firebase.js';
+import { fetchTargets, fetchAllEntries, db } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
+import { appId } from '../config.js';
+import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 
 /**
  * Exports the user's baseline targets as a JSON file.
@@ -156,4 +158,68 @@ export async function exportDailyLogCsv() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showMessage('Daily log export complete!', false);
+}
+
+function parseCsvRow(line) {
+  const cells = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { cur += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === ',') { cells.push(cur); cur = ''; }
+      else { cur += ch; }
+    }
+  }
+  cells.push(cur);
+  return cells;
+}
+
+export async function importSavedFoodsCsv(file) {
+  if (!state.userId) return showMessage('Cannot import foods. Not authenticated.', true);
+  if (!file) return;
+
+  const text = await file.text();
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return showMessage('CSV file is empty or has no data rows.', true);
+
+  const headers = parseCsvRow(lines[0]).map(h => h.trim());
+  const nameIdx = headers.indexOf('name');
+  if (nameIdx < 0) return showMessage('CSV must have a "name" column.', true);
+
+  const nutrientSet = new Set(allNutrients);
+  let imported = 0;
+  let skipped = 0;
+
+  for (let i = 1; i < lines.length; i++) {
+    const cells = parseCsvRow(lines[i]);
+    const name = (cells[nameIdx] || '').trim();
+    if (!name) { skipped++; continue; }
+
+    const foodData = { name, lastUpdated: new Date().toISOString() };
+    headers.forEach((h, idx) => {
+      if (h === 'name' || h === 'lastUpdated') return;
+      if (nutrientSet.has(h)) {
+        const v = parseFloat(cells[idx]);
+        if (!isNaN(v)) foodData[h] = v;
+      }
+    });
+
+    const foodId = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    try {
+      await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
+      state.savedFoodItems.set(foodId, foodData);
+      imported++;
+    } catch (e) {
+      handleError('import-food-row', e, `Failed to import "${name}"`);
+      skipped++;
+    }
+  }
+
+  showMessage(`Import complete: ${imported} food(s) imported, ${skipped} skipped.`);
 }
