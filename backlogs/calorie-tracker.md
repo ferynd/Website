@@ -316,7 +316,7 @@ Use targeted testing judgment:
 
 - [p] **#32 — Chart.js 3.9.1 is two majors behind**
   `index.html:11` loads Chart.js 3.9.1 from CDN; current stable is v4.x with better mobile defaults and a smaller bundle. Pin a regression baseline with the existing smoke-test checklist before upgrading.
-  > pushed — upgraded CDN from 3.9.1 to 4.5.0 (chart.umd.min.js); added explicit type:'linear' to y2 scale per v4 migration; tests: 575 pass; commit: 970448c
+  > pushed — upgraded CDN from 3.9.1 to 4.5.0 (chart.umd.min.js); added explicit type:'linear' to y2 scale per v4 migration; tests: 575 pass; commit: 970448c; PR #131
 
 - [x] **#33 — Chart tooltip colors hardcoded, ignoring theme tokens**
   `ui/chart.js:27-38` — tooltip background and text colors are hardcoded dark values. Read `--surface-2` and `--text` CSS variables so tooltips adapt if the theme ever changes.
@@ -360,11 +360,11 @@ Use targeted testing judgment:
 
 - [p] **#42 — No PWA / Add to Home Screen support**
   A daily-use nutrition app benefits enormously from a web app manifest + service worker. Install prompt and offline-first loading would meaningfully improve the mobile experience.
-  > pushed — manifest.json + sw.js with app shell precache; SVG+PNG icons (192/512); cache-first for local assets, stale-while-revalidate for CDN, network-only for Firebase; tests: 575 pass; commit: 970448c
+  > pushed — manifest.json + sw.js with app shell precache; SVG+PNG icons (192/512); cache-first for local assets, stale-while-revalidate for CDN, network-only for Firebase; tests: 575 pass; commit: 970448c; PR #131
 
 - [p] **#43 — No CSV bulk-import for saved foods**
   Export exists; import does not. Mirror the Date Night Roulette batch-upload pattern to allow users to seed or migrate their food database from a spreadsheet.
-  > pushed — importSavedFoodsCsv in exporters.js; parses RFC 4180 CSV with header mapping; validates name column; writes each food to Firestore; wired via hidden file input + button in Settings; tests: 575 pass; commit: 970448c
+  > pushed — importSavedFoodsCsv in exporters.js; parses RFC 4180 CSV with header mapping; validates name column; writes each food to Firestore; wired via hidden file input + button in Settings; tests: 575 pass; commit: 970448c; PR #131
 
 - [x] **#44 — `<details>` expand arrow is a pseudo-content character**
   `styles.css:460` uses `content: '▶'` on `summary::before`. Replace with an SVG icon or Font Awesome caret for better scaling on hidpi displays.
