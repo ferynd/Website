@@ -321,7 +321,7 @@ Weekday calorie averages use a **trimmed mean** (10% trim) instead of arithmetic
 
 #### Technology
 
-- Plain JavaScript ES modules, Chart.js 3, Font Awesome icons.
+- Plain JavaScript ES modules, Chart.js 4, Font Awesome icons.
 - Tailwind-style utility classes are hand-rolled in `styles.css` and shared design tokens come from `public/shared-styles.css` (`--chart-*-hex` for chart colors).
 - Firebase SDK loaded via ESM CDN (`gstatic.com/firebasejs/11.x`). Config at `firebaseConfig.js`.
 - Vitest test suite (`npm test` from the tracker directory) covers the analysis engine, schema normalization, target engine, MET calculator, weight parser, and nutrient helpers.
@@ -519,7 +519,7 @@ Before committing changes, it’s good to run the dev server and the linter to c
 
 After making changes (especially via automation), verify that: - The site builds without errors (npm run build). - The development server runs and the key pages load without runtime errors. - The new content is accessible via the intended path and looks/behaves as expected. - No existing functionality is broken (e.g., check the homepage, navigation links, and an existing game/tool page).
 
-If the project has or will have automated tests, run them. Currently, this project doesn’t have a test suite, so manual testing is important.
+Run available automated tests. CalorieTracker has a Vitest suite (`cd public/tools/CalorieTracker && npm test`); Date Night Roulette has Vitest coverage under `app/tools/date-night/__tests__/`. For Next.js app changes, run `npm run lint` and `npm run build`.
 
 In essence, any AI agent should mimic the patterns already present in the repository. For example, if tasked to "add a new calculator tool," the bot should either create it as a static tool under public/tools/ with an entry in app/tools/page.tsx, or if more complex, scaffold a new React-based tool under app/tools/new-tool/ similar to how **Trip Cost** is structured. When uncertain, it helps to search within the repository for examples (such as how "CalorieTracker" or "trip-cost" are implemented) and mirror those approaches.
 
