@@ -168,7 +168,7 @@ _(#51 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   original-log source) so previously corrected days do not collapse recorded and corrected lines.
   Uses the #50 date-range control. Files:
   new `ui/correctionsChart.js` (or `analysis/analysisUI.js`).
-  > pushed — corrections chart with recorded/corrected/trend lines using date-range control; tests: 575 pass; commit: pending
+  > pushed — corrections chart with recorded/corrected/trend lines using date-range control; tests: 575 pass; commit: 04f625f
 - [ ] **#53 Dynamic micronutrient upper+lower bounds** — *[larger refactor]* Show both the
   lower bound (DRI/RDA) and the upper bound (`UL_TABLE`) where evidence exists, with a
   position indicator (**Low / Within range / Near upper / Over**). Extend `renderNutrientRow`
