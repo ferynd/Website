@@ -200,6 +200,12 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 - [x] **#50 — Shared chart date-range control**
   > Resolved: new ui/dateRange.js with chip presets (7d/30d/90d/YTD/1yr/All) + custom From/To; applied to nutrient, weight, and eating charts; analysis charts anchor to today; rolling avg computed from full history; merged via PR #136 (df2b0af)
 
+- [x] **#51 — New "Corrections & Gaps" tab (split from Energy)**
+  > Resolved: added corrections tab with all 4 correction sections moved from Energy; updateDashboard renders on data load; candidate cache invalidated on save; merged via PR #137 (ffe15a9)
+
+- [x] **#54 — Collapse long-form explanations**
+  > Resolved: eating pattern notes, energy detail, TDEE horizons, PAL table, vacation/imputation explanations, info boxes all wrapped in collapsible details elements; merged via PR #137 (ffe15a9)
+
 ---
 
 ## What was already verified as correct (do not regress)

@@ -14,6 +14,7 @@ import {
   classifyDay,
   estimateVacationCalories,
   computeWeekdayAverages,
+  isSyntheticItem,
   VACATION_TYPE_CONFIG,
 } from './engine.js';
 import { buildEatingPatternTargetSeries } from '../targets/targetEngine.js';
@@ -95,6 +96,7 @@ export function renderCorrectionsSection() {
       ${results.error
         ? `<p class="text-muted text-center py-8">Upload weight data on the Energy tab to enable corrections.</p>`
         : `
+          ${renderCorrectionsChart()}
           ${renderImputationTable(results.rows)}
           ${renderMissingCaloriesSection(state._trueUpCandidates)}
           ${renderVacationEditorSection()}
@@ -205,6 +207,13 @@ export function initAnalysisEvents() {
 }
 
 export function initCorrectionsEvents() {
+  // ── Corrections chart ────────────────────────────────────────────────────────
+  const analysisRows = state.analysisResults?.rows;
+  if (analysisRows) {
+    drawCorrectionsChart(analysisRows);
+    initDateRangeEvents('corrections-chart', () => drawCorrectionsChart(analysisRows));
+  }
+
   // ── Missing Calories section (unified candidates only) ────────────────────
   const allCandidates = state._trueUpCandidates || [];
   const candidateMap  = new Map(allCandidates.map(d => [d.date, d]));
@@ -738,6 +747,182 @@ function renderConfidenceCard(confidence, results) {
       ${uncertaintyNote}
     </div>
   `;
+}
+
+// ==========================================
+// CORRECTIONS CHART — Recorded vs Corrected/Imputed
+// ==========================================
+
+function renderCorrectionsChart() {
+  return `
+    <div class="mb-6 card p-6 shadow-lg">
+      <h3 class="text-responsive-xl font-bold text-secondary mb-1">📈 Recorded vs Corrected Calories</h3>
+      ${renderDateRangeControl('corrections-chart', { defaultPreset: '90' })}
+      <div style="position:relative; height:300px;" class="mb-4">
+        <canvas id="corrections-chart-canvas"></canvas>
+      </div>
+      <details class="collapsible">
+        <summary>How this is calculated</summary>
+        <div class="p-3 surface-2 rounded-lg border text-sm text-muted space-y-2 mt-2">
+          <p><strong>Recorded</strong> (blue): calories from real food items you logged — synthetic estimates and adjustments are excluded so corrected days still show your original log.</p>
+          <p><strong>Corrected</strong> (amber markers): the model's recommended total for days it flagged as blank or under-logged, based on centered-window weight-change analysis.</p>
+          <p><strong>Trend</strong> (green): 7-day rolling average of recorded calories to show your baseline intake pattern.</p>
+          <p class="text-xs">Days with no recorded food show as gaps in the blue line. Corrected points appear only for days the model identified as candidates for adjustment.</p>
+        </div>
+      </details>
+    </div>
+  `;
+}
+
+function _getRecordedCalories(dateStr) {
+  const entry = state.dailyEntries.get(dateStr);
+  if (!entry) return null;
+  const items = Array.isArray(entry.foodItems) ? entry.foodItems : [];
+  if (items.length === 0) {
+    if (entry.entryType === 'estimate') return null;
+    const cals = parseFloat(entry.calories);
+    return cals > 0 ? cals : null;
+  }
+  const realItems = items.filter(fi => !isSyntheticItem(fi));
+  if (realItems.length === 0) return null;
+  return Math.round(realItems.reduce((sum, fi) => {
+    const qty = parseFloat(fi.quantity ?? 1) || 0;
+    const cals = parseFloat(fi.calories) || 0;
+    return sum + qty * cals;
+  }, 0));
+}
+
+function drawCorrectionsChart(rows) {
+  const canvas = document.getElementById('corrections-chart-canvas');
+  if (!canvas || !rows || rows.length === 0) return;
+
+  const range = resolveRange('corrections-chart');
+  const visibleRows = rows.filter(r => r.date >= range.startDate && r.date <= range.endDate);
+  if (visibleRows.length === 0) {
+    if (window._correctionsChart) { window._correctionsChart.destroy(); window._correctionsChart = null; }
+    return;
+  }
+
+  const chartColors = CONFIG.CHART_COLORS || [];
+  const recordedColor  = chartColors[2] || '#3b82f6';
+  const correctedColor = chartColors[1] || '#f59e0b';
+  const trendColor     = chartColors[3] || '#22c55e';
+
+  const candidates = state._trueUpCandidates || [];
+  const candidateMap = new Map(candidates.map(c => [c.date, c]));
+
+  const WINDOW = 7;
+  const fullRolling = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
+    const calVals = slice
+      .map(r => _getRecordedCalories(r.date))
+      .filter(v => v != null);
+    fullRolling.set(rows[i].date, calVals.length >= 3
+      ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length)
+      : null);
+  }
+
+  const labels    = [];
+  const recorded  = [];
+  const corrected = [];
+  const trend     = [];
+
+  for (const row of visibleRows) {
+    labels.push(row.date);
+    recorded.push(_getRecordedCalories(row.date));
+    const cand = candidateMap.get(row.date);
+    corrected.push(cand ? cand.expectedCalories : null);
+    trend.push(fullRolling.get(row.date) ?? null);
+  }
+
+  if (window._correctionsChart) { window._correctionsChart.destroy(); window._correctionsChart = null; }
+
+  window._correctionsChart = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Recorded calories',
+          data: recorded,
+          borderColor: recordedColor,
+          backgroundColor: recordedColor + '30',
+          borderWidth: 2,
+          pointRadius: 0,
+          fill: false,
+          spanGaps: false,
+          tension: 0.3,
+          order: 2,
+        },
+        {
+          label: 'Model-corrected',
+          data: corrected,
+          borderColor: correctedColor,
+          backgroundColor: correctedColor,
+          borderWidth: 0,
+          pointRadius: 5,
+          pointStyle: 'triangle',
+          showLine: false,
+          order: 1,
+        },
+        {
+          label: 'Trend (7d avg)',
+          data: trend,
+          borderColor: trendColor,
+          backgroundColor: trendColor + '20',
+          borderWidth: 1.5,
+          borderDash: [4, 2],
+          pointRadius: 0,
+          fill: false,
+          spanGaps: true,
+          tension: 0.3,
+          order: 3,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { intersect: false, mode: 'index' },
+      scales: {
+        y: {
+          position: 'left',
+          title: { display: true, text: 'Calories (kcal)' },
+          grid: { color: 'rgba(255,255,255,0.05)' },
+        },
+        x: {
+          grid: { display: false },
+          ticks: {
+            maxTicksLimit: 12,
+            callback(value) {
+              const d = new Date(this.getLabelForValue(value) + 'T00:00:00');
+              return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            },
+          },
+        },
+      },
+      plugins: {
+        legend: { display: true, position: 'top', labels: { usePointStyle: true, padding: 12 } },
+        tooltip: {
+          ...getTooltipConfig(),
+          callbacks: {
+            title(items) {
+              if (!items.length) return '';
+              const d = new Date(items[0].label + 'T00:00:00');
+              return d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            },
+            label(ctx) {
+              if (ctx.raw == null) return null;
+              const suffix = ctx.dataset.label === 'Model-corrected' ? ' kcal (model estimate)' : ' kcal';
+              return `${ctx.dataset.label}: ${ctx.raw}${suffix}`;
+            },
+          },
+        },
+      },
+    },
+  });
 }
 
 // ==========================================
