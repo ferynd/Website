@@ -83,11 +83,9 @@ export function renderCorrectionsSection() {
   );
   if (!state.analysisResults) state.analysisResults = results;
 
-  if (!state._trueUpCandidates) {
-    state._trueUpCandidates = results.error
-      ? []
-      : getTrueUpCandidates(results.rows, state.dailyEntries, results.bmrModel, state.baselineTargets);
-  }
+  state._trueUpCandidates = results.error
+    ? []
+    : getTrueUpCandidates(results.rows, state.dailyEntries, results.bmrModel, state.baselineTargets);
 
   return `
     <div class="mb-8">

@@ -1450,6 +1450,7 @@ export function updateDashboard() {
     const activeTab = state.activeTab || 'today';
     if (activeTab === 'nutrients') renderNutrientsOutput();
     else if (activeTab === 'energy') renderEnergyOutput();
+    else if (activeTab === 'corrections') renderCorrectionsOutput();
 
     debugLog('update-complete', 'Dashboard update completed successfully');
 
