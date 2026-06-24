@@ -203,6 +203,12 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 - [x] **#51 — New "Corrections & Gaps" tab (split from Energy)**
   > Resolved: added corrections tab with all 4 correction sections moved from Energy; updateDashboard renders on data load; candidate cache invalidated on save; merged via PR #137 (ffe15a9)
 
+- [x] **#52 — Recorded vs. corrected/imputed chart + trend**
+  > Resolved: corrections chart with recorded/corrected/trend lines using date-range control; codex review fixes for chart range anchoring and saved corrections visibility; merged via PR #138 (9520e8d)
+
+- [x] **#53 — Dynamic micronutrient upper+lower bounds**
+  > Resolved: position indicator (Low/OK/Near UL/Over UL), UL shown in target span and as bar marker, ULs static per NASEM; codex review fixes for sodium CDRR, DRI threshold, UL marker positioning, and filter alignment; merged via PR #138 (9520e8d)
+
 - [x] **#54 — Collapse long-form explanations**
   > Resolved: eating pattern notes, energy detail, TDEE horizons, PAL table, vacation/imputation explanations, info boxes all wrapped in collapsible details elements; merged via PR #137 (ffe15a9)
 
