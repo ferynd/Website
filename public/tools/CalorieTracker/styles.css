@@ -546,6 +546,73 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* ============================================================
+   TARGET BREAKDOWN (expandable financial-statement, #48)
+   ============================================================ */
+.target-breakdown-details {
+  position: relative;
+}
+.target-breakdown-details > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.target-breakdown-details > summary::-webkit-details-marker { display: none; }
+.target-breakdown-details[open] > summary .today-hero-stat-label {
+  opacity: .7;
+}
+
+.target-breakdown-panel {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 20;
+  min-width: 16rem;
+  padding: .75rem;
+  background: hsl(var(--surface-1));
+  border: 1px solid hsl(var(--border));
+  border-radius: .5rem;
+  box-shadow: var(--shadow-2);
+  text-align: left;
+}
+
+.target-breakdown-section {
+  display: flex;
+  flex-direction: column;
+  gap: .25rem;
+  padding-bottom: .5rem;
+  margin-bottom: .5rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.target-breakdown-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.target-breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: .75rem;
+  font-size: .75rem;
+  line-height: 1.5;
+}
+.target-breakdown-final {
+  padding-top: .375rem;
+  margin-top: .125rem;
+  border-top: 2px solid hsl(var(--text-3));
+  font-weight: 700;
+  font-size: .8125rem;
+}
+
+.target-breakdown-note {
+  font-size: .6875rem;
+  color: hsl(var(--text-3));
+  margin-top: .375rem;
+  font-style: italic;
+}
+
+/* ============================================================
    TAB PANELS
    ============================================================ */
 .tab-panel { outline: none; }

@@ -1039,9 +1039,13 @@ function renderCalcDetailsPanel(bankingData) {
 function renderTodayCompact(bankingData) {
   const {
     todayKcalTarget, finalProteinG, finalFatG, finalCarbsG,
+    todayBaseCalories, todaysTrainingBump, todaysTrainingBumpRaw,
     bankIncomplete, unknownDays, targetMode,
     bankMode, targetFloorApplied, effectiveFloor, floorSource, scheduleCapped,
     scheduleAdjustment, macroFloorExceedsCalories,
+    bankAdjustmentApplied, manualBankCapped, bankBalance, rawBankBalance,
+    exerciseAddMode, planningTdee, tdeeSourceLabel,
+    displayProteinG, displayFatG, displayCarbsG,
   } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
@@ -1100,6 +1104,59 @@ function renderTodayCompact(bankingData) {
     ? `<div class="today-warnings">${warnings.map(w => `<div class="today-warning-line">⚠ ${w}</div>`).join('')}</div>`
     : '';
 
+  // #48 — expandable target breakdown (financial-statement style)
+  const breakdownRows = [];
+  if (planningTdee) {
+    breakdownRows.push({ label: `Planning TDEE (${tdeeSourceLabel ?? 'estimate'})`, value: `${planningTdee} kcal`, cls: 'text-muted', bold: false });
+  }
+  breakdownRows.push({
+    label: `Base target (${targetMode === 'autoGoal' ? 'Auto Goal' : 'Manual'})`,
+    value: `${todayBaseCalories} kcal`, cls: '', bold: false,
+  });
+  if (exerciseAddMode === 'skip' && todaysTrainingBumpRaw > 0) {
+    breakdownRows.push({ label: 'Exercise (in TDEE)', value: `+${todaysTrainingBumpRaw} kcal — not added`, cls: 'text-muted', bold: false });
+  } else if (todaysTrainingBump > 0) {
+    breakdownRows.push({ label: 'Exercise', value: `+${todaysTrainingBump} kcal`, cls: 'text-accent', bold: false });
+  }
+  if (bankMode === 'autoGoalSchedule') {
+    if (scheduleAdjustment !== 0) {
+      breakdownRows.push({
+        label: scheduleAdjustment > 0 ? 'Schedule credit' : 'Schedule correction',
+        value: `${scheduleAdjustment > 0 ? '+' : ''}${scheduleAdjustment} kcal`,
+        cls: scheduleAdjustment > 0 ? 'text-positive' : 'text-negative', bold: false,
+      });
+    }
+  } else if (bankMode === 'manualRolling' && bankAdjustmentApplied !== 0) {
+    let bankLabel = `Rolling bank: ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal`;
+    if (manualBankCapped) bankLabel += ` (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance})`;
+    breakdownRows.push({
+      label: 'Rolling bank', value: `${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal`,
+      cls: bankAdjustmentApplied > 0 ? 'text-positive' : 'text-negative', bold: false,
+    });
+  }
+  if (targetFloorApplied) {
+    breakdownRows.push({ label: `Floor applied (${floorSource === 'bmr_floor' ? 'BMR' : 'minimum'})`, value: `${effectiveFloor} kcal`, cls: 'text-warning', bold: false });
+  }
+  breakdownRows.push({ label: 'Final Target', value: `${todayKcalTarget} kcal`, cls: '', bold: true });
+
+  const breakdownHtml = breakdownRows.map(r =>
+    `<div class="target-breakdown-row${r.bold ? ' target-breakdown-final' : ''}">
+      <span>${r.label}</span>
+      <span class="${r.cls} ${r.bold ? 'font-bold' : ''}">${r.value}</span>
+    </div>`
+  ).join('');
+
+  const macroBreakdownHtml = `
+    <div class="target-breakdown-section">
+      <div class="target-breakdown-row"><span>Protein</span><span>${displayProteinG}g</span></div>
+      <div class="target-breakdown-row"><span>Fat (min)</span><span>${displayFatG}g</span></div>
+      <div class="target-breakdown-row"><span>Carbs</span><span>${displayCarbsG}g (${finalCarbsG}g after adjustments)</span></div>
+    </div>`;
+
+  const rawBankInfo = bankMode === 'autoGoalSchedule' && rawBankBalance !== 0
+    ? `<div class="target-breakdown-note">7-day raw ${rawBankBalance < 0 ? 'overage' : 'credit'}: ${Math.abs(rawBankBalance)} kcal</div>`
+    : '';
+
   return `
     <div class="today-hero">
       <div class="today-hero-top">
@@ -1109,7 +1166,17 @@ function renderTodayCompact(bankingData) {
         </div>
         <div class="today-hero-stats">
           <div class="today-hero-stat"><span class="today-hero-stat-val">${Math.round(totals.calories)}</span><span class="today-hero-stat-label">eaten</span></div>
-          <div class="today-hero-stat"><span class="today-hero-stat-val">${todayKcalTarget}</span><span class="today-hero-stat-label">target ${modeBadge}</span></div>
+          <details class="target-breakdown-details">
+            <summary class="today-hero-stat">
+              <span class="today-hero-stat-val">${todayKcalTarget}</span>
+              <span class="today-hero-stat-label">target ${modeBadge} ▾</span>
+            </summary>
+            <div class="target-breakdown-panel">
+              <div class="target-breakdown-section">${breakdownHtml}</div>
+              ${macroBreakdownHtml}
+              ${rawBankInfo}
+            </div>
+          </details>
         </div>
       </div>
       <div class="hbar mt-2">
