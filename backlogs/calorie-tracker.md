@@ -171,16 +171,25 @@ _(empty)_
   No calc change — `todayKcalTarget` already drives `remaining`. Files: `ui/dashboard.js`,
   `targets/dailyTargetResolver.js` (expose bridge fields if needed), `styles.css`.
 - [ ] **#49 Zero-log vacation / low-log quick button** — *[quick win]* Render only when the
-  current day has 0 food items; place directly above the food-entry area. Quick-choice of 4
-  presets with parenthetical step guidance (Rest ~0–2k steps / Light ~5k / Moderate ~8–10k /
-  Active ~12k+) plus a Custom/manual option. Each selection creates an estimate day via the
-  existing `buildVacationDayEntry` / `estimateVacationCalories` engine
-  (`analysis/engine.js:1445/1373`) and `DAY_ACTIVITY_LEVELS` (`constants.js:9`), saved through
-  `saveEstimatedEntry`. Later weight-based correction is handled by #56. Files: `index.html`,
-  `events/wire.js`, `ui/dashboard.js`, `analysis/engine.js` (reuse).
+  current day has no food items **and** no existing daily document data that would be overwritten
+  (exercise sessions, day-activity selection, legacy top-level calories, notes, or other
+  non-food fields), unless the implementation explicitly merges and preserves those fields.
+  Place directly above the food-entry area. Quick-choice of 4 presets with parenthetical step
+  guidance (Rest ~0–2k steps / Light ~5k / Moderate ~8–10k / Active ~12k+) plus a Custom/manual
+  option. Map the quick choices to existing engine keys before calling the estimator: Rest →
+  `light` with resting/low-step day-activity metadata (or extend `VACATION_TYPE_CONFIG` with a
+  real `rest` key), Light → `light`, Moderate → `medium`, Active → `heavy`, Custom → `custom`.
+  Each selection creates an estimate day via the existing `buildVacationDayEntry` /
+  `estimateVacationCalories` engine (`analysis/engine.js:1445/1373`) and `DAY_ACTIVITY_LEVELS`
+  (`constants.js:9`), saved through `saveEstimatedEntry` without clobbering preserved fields.
+  Later weight-based correction is handled by #56. Files: `index.html`, `events/wire.js`,
+  `ui/dashboard.js`, `analysis/engine.js` (reuse).
 - [ ] **#50 Shared chart date-range control** — *[quick win]* One reusable control applied to
-  every chart: presets **Last 7 / 30 / 90 days / YTD / 1 Year**, **Since goal start** (from
-  `goalSettings`), and **custom From/To** date pickers. Per-chart state (not synchronized).
+  every chart: presets **Last 7 / 30 / 90 days / YTD / 1 Year**, **Since goal start**, and
+  **custom From/To** date pickers. Because normalized `goalSettings` currently has `targetDate`
+  but no persisted start-date field, either add a goal-start field with schema/UI migration and
+  fallback handling, or define the preset as "since first logged day" until such a field exists.
+  Per-chart state (not synchronized).
   Generalize the existing `_chartState.timeframe` pattern (`ui/chart.js:128/195`). Apply to
   the nutrient chart, weight-trend chart, eating-pattern chart, and the new corrections chart
   (#52). Files: new `ui/dateRange.js` (small helper), `ui/chart.js`,
@@ -199,16 +208,21 @@ _(empty)_
 - [ ] **#52 Recorded vs. corrected/imputed chart + trend** — *[quick win; depends on #50,
   #51]* Single Chart.js line chart on the Corrections tab showing, for the selected range:
   recorded/logged calories, model-corrected/imputed calories, and a trend line — so the user
-  can visually evaluate whether the model's recommendation makes sense. Data already exists
-  from `runAnalysis` rows + `getTrueUpCandidates`. Uses the #50 date-range control. Files:
+  can visually evaluate whether the model's recommendation makes sense. Use `runAnalysis` rows
+  + `getTrueUpCandidates` for corrected/imputed values, but reconstruct recorded calories from
+  `dailyEntries.foodItems` excluding synthetic `est-` / `adj-` items (or another persisted
+  original-log source) so previously corrected days do not collapse recorded and corrected lines.
+  Uses the #50 date-range control. Files:
   new `ui/correctionsChart.js` (or `analysis/analysisUI.js`).
 - [ ] **#53 Dynamic micronutrient upper+lower bounds** — *[larger refactor]* Show both the
   lower bound (DRI/RDA) and the upper bound (`UL_TABLE`) where evidence exists, with a
   position indicator (**Low / Within range / Near upper / Over**). Extend `renderNutrientRow`
   (`ui/dashboard.js:1668`) and `calculateMicronutrientMetrics` (`ui/dashboard.js:485`).
-  Bound selection is already profile-driven via age/sex bands (`getDRI`); preserve
-  evidence-based scaling (protein g/kg, electrolyte sweat scaling) and confirm recompute is
-  reactive on profile change (debounced path in `targets/targetUI.js`). Note: DRI/UL
+  Lower-bound selection is already profile-driven via age/sex bands (`getDRI`), but upper
+  bounds currently come from a nutrient-wide `UL_TABLE`; add profile-specific UL lookup data
+  where evidence exists, or narrow the UI/copy so only lower bounds are described as dynamic.
+  Preserve evidence-based scaling (protein g/kg, electrolyte sweat scaling) and confirm recompute
+  is reactive on profile change (debounced path in `targets/targetUI.js`). Note: DRI/UL
   magnitudes are fixed scientific constants — "dynamic" means profile-driven selection and
   scaling, not invented values. Files: `ui/dashboard.js`, `targets/nutritionReferences.js`,
   `targets/targetEngine.js`, `styles.css`.
@@ -221,14 +235,19 @@ _(empty)_
   `[-7,+6]/[-14,+13]/[-21,+20]` with ≥50% coverage + minimum future weights. Parameterize and
   document the minimum pre/post day counts and weight-point counts so wider gaps impute only
   when **both** sides are well-supported, and surface the chosen interval + confidence drivers.
-  Preserve the invariants: centered windows; TDEE reference from blocks **outside** the
-  candidate interval. Add tests. Files: `analysis/engine.js`, `analysis/engine.test.js`.
+  Preserve centered windows. Strengthen the TDEE-reference invariant by requiring outside-
+  interval blocks for correction by default; remove or explicitly gate the current
+  `inside_interval` fallback for sparse histories so circular evidence cannot silently drive
+  wider-gap corrections. Add tests. Files: `analysis/engine.js`, `analysis/engine.test.js`.
 - [ ] **#56 Vacation days eligible for later weight-based correction** — *[larger refactor]*
   The one genuine model change: treat vacation/low-log quick-estimates (#49) as
   low-confidence priors that the centered-window true-up may later refine (respecting
-  `manualLock` / `estimateMeta.locked`), while **still excluding** estimated/vacation days
-  from the TDEE regression to avoid circularity (existing invariant). Add tests for the
-  no-circularity guarantee. Files: `analysis/engine.js`, `analysis/engine.test.js`.
+  `manualLock` / `estimateMeta.locked`). Add the no-circularity exclusion in the TDEE/block
+  pipeline itself: saved estimate/vacation days (for example entries with estimate/vacation
+  metadata or synthetic estimate items) must be excluded from `estimateTDEE` regression blocks
+  even if they have top-level `calories`, so low-confidence priors cannot train the model they
+  are later corrected against. Add tests for the no-circularity guarantee. Files:
+  `analysis/engine.js`, `analysis/engine.test.js`.
 
 ### LOW / NICE-TO-HAVE
 
