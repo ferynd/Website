@@ -218,6 +218,14 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 - [x] **#56 — Vacation days eligible for later weight-based correction**
   > Resolved: estimate entries eligible as 'estimate' type candidates with checkedByDefault=false, isEstimate flag in mergeDailyData excludes estimates from TDEE blocks, locked estimates excluded; codex review fixes for true-up-produced estimate skip, all-estimate intake exclusion; merged e3eed75, fix 11a2a37
 
+## LOW / NICE-TO-HAVE
+
+- [x] **#57 — Mobile narrow-viewport pass**
+  > Resolved: ≤390px breakpoint with tighter padding, compact tabs/macro bar, viewport-constrained target breakdown, date-range custom row wrapping, settings button wrapping, 32px min-height date-range chips; merged 649bf26, fix 3c8c3d2
+
+- [x] **#58 — Large-import performance check**
+  > Resolved: O(n²) indexOf replaced with Map lookup in chart averages, rolling avg loops avoid slice allocations, data table capped at 60 columns, weight chart point radius reduced for >365 days, x-axis maxTicksLimit added; merged 649bf26
+
 ---
 
 ## What was already verified as correct (do not regress)
