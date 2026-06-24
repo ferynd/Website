@@ -84,6 +84,7 @@
           <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today"     tabindex="0">Today</button>
           <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients" tabindex="-1">Nutrients</button>
           <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy"    tabindex="-1">Energy</button>
+          <button id="tab-btn-corrections" class="tab-btn"      data-tab="corrections" role="tab" aria-selected="false" aria-controls="tab-corrections" tabindex="-1">Corrections</button>
           <button id="tab-btn-profile"   class="tab-btn"        data-tab="profile"   role="tab" aria-selected="false" aria-controls="tab-profile"   tabindex="-1">Profile &amp; Goals</button>
           <button id="tab-btn-settings"  class="tab-btn"        data-tab="settings"  role="tab" aria-selected="false" aria-controls="tab-settings"  tabindex="-1">Settings</button>
         </nav>
@@ -265,6 +266,16 @@
     <div id="tab-energy" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-energy">
       <div class="tab-content-inner">
         <div id="energy-content" class="text-primary"></div>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════════════════
+         CORRECTIONS & GAPS TAB
+         ══════════════════════════════════════════════════ -->
+    <div id="tab-corrections" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-corrections">
+      <div class="tab-content-inner">
+        <div id="corrections-content" class="text-primary"></div>
       </div>
     </div>
 

@@ -67,6 +67,36 @@ export function renderAnalysisSection() {
           </details>
           ${renderPlateauStatus(results.plateau)}
           ${renderEnergyDetail(results)}
+        `
+      }
+    </div>
+  `;
+}
+
+export function renderCorrectionsSection() {
+  const results = state.analysisResults || runAnalysis(
+    state.weightEntries,
+    state.dailyEntries,
+    state.userProfile || null,
+    state.weightEntriesMulti || null,
+    getTodayInTimezone(),
+  );
+  if (!state.analysisResults) state.analysisResults = results;
+
+  if (!state._trueUpCandidates) {
+    state._trueUpCandidates = results.error
+      ? []
+      : getTrueUpCandidates(results.rows, state.dailyEntries, results.bmrModel, state.baselineTargets);
+  }
+
+  return `
+    <div class="mb-8">
+      <h2 class="text-responsive-2xl font-bold text-secondary mb-4">🔧 Corrections & Gaps</h2>
+      <p class="text-sm text-muted mb-6">Fill missing days, manage vacation estimates, and review imputed entries. Corrections here improve the accuracy of your energy model.</p>
+
+      ${results.error
+        ? `<p class="text-muted text-center py-8">Upload weight data on the Energy tab to enable corrections.</p>`
+        : `
           ${renderImputationTable(results.rows)}
           ${renderMissingCaloriesSection(state._trueUpCandidates)}
           ${renderVacationEditorSection()}
@@ -174,7 +204,9 @@ export function initAnalysisEvents() {
       drawWeightChart(state.analysisResults.rows);
     }
   });
+}
 
+export function initCorrectionsEvents() {
   // ── Missing Calories section (unified candidates only) ────────────────────
   const allCandidates = state._trueUpCandidates || [];
   const candidateMap  = new Map(allCandidates.map(d => [d.date, d]));
@@ -765,16 +797,18 @@ function renderEatingPatternChart(results) {
       <div style="position:relative; height:300px;" class="mb-4">
         <canvas id="eating-pattern-chart"></canvas>
       </div>
-      <div class="p-3 surface-2 rounded-lg border text-sm text-muted space-y-2">
-        <p class="font-semibold text-primary">How the model thinks about this:</p>
-        ${tdee ? `<p>Estimated total daily energy expenditure: <strong>${tdee} kcal/day</strong> (${tdeeSource}). ${restDayTdee !== tdee ? `Rest-day TDEE: <strong>${restDayTdee} kcal/day</strong> (fitted BMR × rest-day PAL).` : ''}</p>` : ''}
-        ${targetNote}
-        ${uncertaintyNote ? `<p>${uncertaintyNote} This is a physical lower bound on single-day precision — scale fluctuations can mask real trends.</p>` : ''}
-        ${residualNote ? `<p>${residualNote} ${Math.abs(residual?.medianKcalPerDay ?? 0) > 100 ? 'This gap likely reflects underlogged meals, not metabolic differences.' : 'Small gap — logging appears consistent.'}</p>` : ''}
-        ${firstDateNote ? `<p>${firstDateNote} Weight data before this date affects the trend chart only.</p>` : ''}
-        <p>${targetModeNote}</p>
-        <p class="text-xs">The chart shows your 7-day rolling calorie average (blue, real logged days only) vs your ${targetLineDesc} and the TDEE estimate (orange). The smoothed weight trend is overlaid on the right axis. Unsaved imputed values are never included in the reported calorie series.</p>
-      </div>
+      <details class="collapsible">
+        <summary>How this is calculated</summary>
+        <div class="p-3 surface-2 rounded-lg border text-sm text-muted space-y-2 mt-2">
+          ${tdee ? `<p>Estimated total daily energy expenditure: <strong>${tdee} kcal/day</strong> (${tdeeSource}). ${restDayTdee !== tdee ? `Rest-day TDEE: <strong>${restDayTdee} kcal/day</strong> (fitted BMR × rest-day PAL).` : ''}</p>` : ''}
+          ${targetNote}
+          ${uncertaintyNote ? `<p>${uncertaintyNote} This is a physical lower bound on single-day precision — scale fluctuations can mask real trends.</p>` : ''}
+          ${residualNote ? `<p>${residualNote} ${Math.abs(residual?.medianKcalPerDay ?? 0) > 100 ? 'This gap likely reflects underlogged meals, not metabolic differences.' : 'Small gap — logging appears consistent.'}</p>` : ''}
+          ${firstDateNote ? `<p>${firstDateNote} Weight data before this date affects the trend chart only.</p>` : ''}
+          <p>${targetModeNote}</p>
+          <p class="text-xs">The chart shows your 7-day rolling calorie average (blue, real logged days only) vs your ${targetLineDesc} and the TDEE estimate (orange). The smoothed weight trend is overlaid on the right axis. Unsaved imputed values are never included in the reported calorie series.</p>
+        </div>
+      </details>
     </div>
   `;
 }
@@ -1048,7 +1082,6 @@ function renderEnergyDetail(results) {
   const horizonSection = Object.keys(tdeeByHorizon || {}).length > 0 ? `
     <div class="mb-6">
       <h4 class="font-semibold text-secondary mb-2 text-sm uppercase tracking-wide">Observed TDEE at Different Horizons</h4>
-      <p class="text-xs text-muted mb-2">Each number is a trimmed average of 14-day rolling block estimates in that window. Longer windows are more stable; short windows react faster to recent changes. Do not act on differences smaller than ~100 kcal — that is within normal noise.</p>
       <div class="overflow-x-auto">
         <table class="w-full border rounded-lg">
           <thead class="surface-2">
@@ -1061,6 +1094,10 @@ function renderEnergyDetail(results) {
           <tbody class="divide-y">${horizonRows}</tbody>
         </table>
       </div>
+      <details class="collapsible mb-2">
+        <summary>More detail</summary>
+        <p class="text-xs text-muted mt-2 p-3 surface-2 rounded-lg border">Each number is a trimmed average of 14-day rolling block estimates in that window. Longer windows are more stable; short windows react faster to recent changes. Do not act on differences smaller than ~100 kcal — that is within normal noise.</p>
+      </details>
     </div>` : '';
 
   // ── Section: BMR / RMR cards ─────────────────────────────────────────────
@@ -1176,12 +1213,6 @@ function renderEnergyDetail(results) {
 
     palSection = `
       <h4 class="font-semibold text-secondary mb-2 text-sm uppercase tracking-wide">Retrospective TDEE by Activity Level</h4>
-      <div class="mb-3 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
-        <p><strong>What this table is:</strong> A retrospective data-fitted model. The PAL multiplier for each activity bucket was chosen by minimising BMR volatility across your history. It reflects what your total expenditure appears to have been on days of each type.</p>
-        <p><strong>Activity categories are a temporary compatibility layer.</strong> The four buckets (Rest / Light +100 / Hard +280 / HIIT +400 kcal) map to the legacy training-bump field. Once structured exercise sessions are fully implemented, these will be replaced by continuous per-session calorie estimates.</p>
-        <p><strong>Prospective budgets are separate:</strong> Your daily calorie target uses fixed flat bumps, not these PAL multipliers. That is intentional — the PALs are retrospective; the bumps are forward-looking planning values.</p>
-        ${palInverted ? `<p class="text-warning"><strong>Why does Light show higher than Hard?</strong> Hard-training days often have higher sodium and carbs, which causes temporary water retention. That inflates the apparent scale weight on hard days, making the implied TDEE look smaller — so the grid search assigns a lower PAL. This is a water/glycogen signal, not a model bug. Use the flat bumps in your daily plan.</p>` : ''}
-      </div>
       <div class="overflow-x-auto mb-4">
         <table class="w-full border rounded-lg">
           <thead class="surface-2">
@@ -1193,18 +1224,29 @@ function renderEnergyDetail(results) {
           </thead>
           <tbody class="divide-y">${palRows}</tbody>
         </table>
-      </div>`;
+      </div>
+      <details class="collapsible mb-2">
+        <summary>More detail</summary>
+        <div class="p-3 surface-2 rounded-lg border text-xs text-muted space-y-1 mt-2">
+          <p><strong>What this table is:</strong> A retrospective data-fitted model. The PAL multiplier for each activity bucket was chosen by minimising BMR volatility across your history. It reflects what your total expenditure appears to have been on days of each type.</p>
+          <p><strong>Activity categories are a temporary compatibility layer.</strong> The four buckets (Rest / Light +100 / Hard +280 / HIIT +400 kcal) map to the legacy training-bump field. Once structured exercise sessions are fully implemented, these will be replaced by continuous per-session calorie estimates.</p>
+          <p><strong>Prospective budgets are separate:</strong> Your daily calorie target uses fixed flat bumps, not these PAL multipliers. That is intentional — the PALs are retrospective; the bumps are forward-looking planning values.</p>
+          ${palInverted ? `<p class="text-warning"><strong>Why does Light show higher than Hard?</strong> Hard-training days often have higher sodium and carbs, which causes temporary water retention. That inflates the apparent scale weight on hard days, making the implied TDEE look smaller — so the grid search assigns a lower PAL. This is a water/glycogen signal, not a model bug. Use the flat bumps in your daily plan.</p>` : ''}
+        </div>
+      </details>`;
   }
 
   return `
-    <div class="mb-6 card p-6 shadow-lg">
-      <h3 class="text-responsive-xl font-bold text-secondary mb-4">Energy Model Detail</h3>
-      ${horizonSection}
-      ${expenditureRow}
-      ${bmrSection}
-      ${residualSection}
-      ${palSection}
-    </div>
+    <details class="mb-6 card p-6 shadow-lg collapsible">
+      <summary class="text-responsive-xl font-bold text-secondary">Energy Model Detail</summary>
+      <div class="mt-4">
+        ${horizonSection}
+        ${expenditureRow}
+        ${bmrSection}
+        ${residualSection}
+        ${palSection}
+      </div>
+    </details>
   `;
 }
 
@@ -1236,8 +1278,11 @@ function renderImputationTable(rows) {
 
   return `
     <div class="mb-6 card p-6 shadow-lg">
-      <h3 class="text-responsive-xl font-bold text-secondary mb-4">Missing Day Estimates</h3>
-      <p class="text-sm text-muted mb-4">Days without logged calories are estimated using your TDEE model and weight change. Estimates only appear after 14+ days have passed and enough weight data exists.</p>
+      <h3 class="text-responsive-xl font-bold text-secondary mb-2">Missing Day Estimates</h3>
+      <details class="collapsible mb-4">
+        <summary>How this works</summary>
+        <p class="text-sm text-muted mt-2 p-3 surface-2 rounded-lg border">Days without logged calories are estimated using your TDEE model and weight change. Estimates only appear after 14+ days have passed and enough weight data exists.</p>
+      </details>
       <div class="overflow-x-auto">
         <table class="w-full border rounded-lg">
           <thead class="surface-2">
@@ -1494,11 +1539,14 @@ function renderVacationEditorSection() {
     <div class="mb-6 card p-6 shadow-lg">
       <h3 class="text-responsive-xl font-bold text-secondary mb-2">🏖️ Vacation / Missed Days</h3>
 
-      <div class="mb-4 p-3 surface-2 rounded-lg border text-xs text-muted space-y-1">
-        <p>Select a date range and assign an intake type. The model estimates calories from your TDEE history, weekday patterns, and the activity level implied by the day type, then fills in a complete synthetic day log.</p>
-        <p><strong>Light</strong> — ~85% of your usual intake. <strong>Medium</strong> — ~100%. <strong>Heavy</strong> — ~110% + 200 kcal. <strong>Custom</strong> — you specify the number directly.</p>
-        <p>You can override the type per day before filling. After filling, use the Estimate Management panel below to lock or remove individual estimates.</p>
-      </div>
+      <details class="collapsible mb-4">
+        <summary>How this works</summary>
+        <div class="p-3 surface-2 rounded-lg border text-xs text-muted space-y-1 mt-2">
+          <p>Select a date range and assign an intake type. The model estimates calories from your TDEE history, weekday patterns, and the activity level implied by the day type, then fills in a complete synthetic day log.</p>
+          <p><strong>Light</strong> — ~85% of your usual intake. <strong>Medium</strong> — ~100%. <strong>Heavy</strong> — ~110% + 200 kcal. <strong>Custom</strong> — you specify the number directly.</p>
+          <p>You can override the type per day before filling. After filling, use the Estimate Management panel below to lock or remove individual estimates.</p>
+        </div>
+      </details>
 
       <!-- Step 1: range + default type -->
       <div class="flex flex-wrap gap-2 mb-4 items-end">

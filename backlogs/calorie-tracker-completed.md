@@ -186,6 +186,20 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 - [x] **#45 — Documentation update checklist not enforced**
   > Resolved: added doc-update confirmation line to PR checklist in CONTRIBUTING.md; BACKLOG added to docs list; merged d2aeb0a
 
+## UI/UX & information-architecture review (#47+)
+
+- [x] **#47 — Today macro summary bar redesign**
+  > Resolved: redesigned sticky macro header and dashboard hero card with prominent remaining-calorie readout, compact P/F/C grid, condensed warnings; merged via PR #135 (2de2407)
+
+- [x] **#48 — Clickable target → expandable financial-statement breakdown**
+  > Resolved: target number expands to financial-statement breakdown (TDEE → Base → Exercise → Banking → Floor → Final); includes goal deficit row and capped bank context; merged via PR #135 (bcb139b)
+
+- [x] **#49 — Zero-log vacation / low-log quick button**
+  > Resolved: vacation quick-estimate panel with 4 presets (Rest/Light/Moderate/Active) + custom; rest key added to VACATION_TYPE_CONFIG; isDayEmpty guards non-null dayActivityLevel; merged via PR #136 (200a37b)
+
+- [x] **#50 — Shared chart date-range control**
+  > Resolved: new ui/dateRange.js with chip presets (7d/30d/90d/YTD/1yr/All) + custom From/To; applied to nutrient, weight, and eating charts; analysis charts anchor to today; rolling avg computed from full history; merged via PR #136 (df2b0af)
+
 ---
 
 ## What was already verified as correct (do not regress)

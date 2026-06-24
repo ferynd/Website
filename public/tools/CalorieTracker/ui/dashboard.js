@@ -28,7 +28,7 @@ import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
 import { renderDateRangeControl, initDateRangeEvents, resolveRange } from './dateRange.js';
 import { CONFIG } from '../config.js';
-import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
+import { renderAnalysisSection, initAnalysisEvents, renderCorrectionsSection, initCorrectionsEvents } from '../analysis/analysisUI.js';
 import { UL_TABLE } from '../targets/nutritionReferences.js';
 import { resolveDailyBaseTargets, resolveDailyPlanningTargets } from '../targets/dailyTargetResolver.js';
 import { runAnalysis, buildVacationDayEntry, VACATION_TYPE_CONFIG } from '../analysis/engine.js';
@@ -615,7 +615,7 @@ export function calculateMicronutrientMetrics(dateStr) {
 // TAB MANAGEMENT
 // =========================
 
-const VALID_TABS = ['today', 'nutrients', 'energy', 'profile', 'settings'];
+const VALID_TABS = ['today', 'nutrients', 'energy', 'corrections', 'profile', 'settings'];
 
 function applyTabButtonState(activeTab) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -698,6 +698,7 @@ export function activateTab(name) {
 
     if (name === 'nutrients') renderNutrientsOutput();
     else if (name === 'energy') renderEnergyOutput();
+    else if (name === 'corrections') renderCorrectionsOutput();
     else if (name === 'settings') populateSettingsForm();
     else if (name === 'today') updateDashboard();
 
@@ -895,6 +896,19 @@ function renderEnergyOutput() {
   container.innerHTML = bankingHtml + renderAnalysisSection();
   setupCollapsibleHandlers();
   initAnalysisEvents();
+}
+
+function renderCorrectionsOutput() {
+  const container = document.getElementById('corrections-content');
+  if (!container) return;
+
+  if (!state.userId || Object.keys(state.baselineTargets).length === 0) {
+    container.innerHTML = '<p class="text-muted text-center py-8">Log in and set targets to see corrections and gap-filling tools.</p>';
+    return;
+  }
+
+  container.innerHTML = renderCorrectionsSection();
+  initCorrectionsEvents();
 }
 
 /**
@@ -1506,40 +1520,40 @@ function renderInfoBox() {
     const softCap = BANKING_CONFIG.MAX_SCHEDULE_ADJ_SOFT ?? 150;
     const hardCap = BANKING_CONFIG.MAX_SCHEDULE_ADJ_HARD ?? 250;
     return `
-      <div class="mb-6 p-4 surface-2 rounded-lg border">
-        <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How Auto Goal Works</h3>
-        <div class="text-sm text-muted space-y-1">
+      <details class="collapsible mb-6 p-4 surface-2 rounded-lg border">
+        <summary class="font-semibold text-secondary"><i class="fas fa-info-circle mr-2"></i>How Auto Goal Works</summary>
+        <div class="text-sm text-muted space-y-1 mt-2">
           <p><strong>Daily Target:</strong> Recalculated from your current weight, goal, and target date — adapts as your weight changes. The base calorie target never comes from a fixed 7-day window.</p>
           <p><strong>Schedule Correction:</strong> Weekly overages and credits are spread symmetrically across remaining goal days. Overage correction: up to ${softCap} kcal/day normally, up to ${hardCap} kcal/day in extreme cases. Credit bonus: up to ${softCap} kcal/day — never concentrated into a single day.</p>
           <p><strong>Training Days:</strong> Exercise calories are added when the planning TDEE is a rest-day estimate. If your TDEE was derived from observed data (which already includes your activity), exercise bumps are skipped to avoid double-counting.</p>
           <p><strong>7-Day Raw Balance:</strong> Shown as informational context only. In Auto Goal mode it feeds the schedule correction but does not directly set today's target.</p>
         </div>
-      </div>
+      </details>
     `;
   }
 
   if (state.goalSettings?.useRollingBanking === false) {
     return `
-      <div class="mb-6 p-4 surface-2 rounded-lg border">
-        <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
-        <div class="text-sm text-muted space-y-1">
+      <details class="collapsible mb-6 p-4 surface-2 rounded-lg border">
+        <summary class="font-semibold text-secondary"><i class="fas fa-info-circle mr-2"></i>How This Works</summary>
+        <div class="text-sm text-muted space-y-1 mt-2">
           <p><strong>Fixed Daily Target:</strong> Banking is off. Your target each day is your manual baseline plus any exercise calories — past intake has no effect on today's number.</p>
           <p><strong>Past 6 Days:</strong> Shown as context only and do not roll into the current target.</p>
           <p><strong>Training Days:</strong> Select your workout type above — this adds calories and scales electrolytes appropriately.</p>
         </div>
-      </div>
+      </details>
     `;
   }
 
   return `
-    <div class="mb-6 p-4 surface-2 rounded-lg border">
-      <h3 class="font-semibold text-secondary mb-2"><i class="fas fa-info-circle mr-2"></i>How This Works</h3>
-      <div class="text-sm text-muted space-y-1">
+    <details class="collapsible mb-6 p-4 surface-2 rounded-lg border">
+      <summary class="font-semibold text-secondary"><i class="fas fa-info-circle mr-2"></i>How This Works</summary>
+      <div class="text-sm text-muted space-y-1 mt-2">
         <p><strong>Rolling 7-Day Balance:</strong> Your calorie budget is tracked over a 7-day window. Under-eat one day? You get extra the next. Over-eat? Tomorrow's target drops.</p>
         <p><strong>Auto-Correct:</strong> Today's target is set so that hitting it exactly makes tomorrow's target your base goal. The system trues up naturally.</p>
         <p><strong>Training Days:</strong> Select your workout type above — this adds calories and scales electrolytes appropriately.</p>
       </div>
-    </div>
+    </details>
   `;
 }
 
