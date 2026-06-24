@@ -154,13 +154,14 @@ _(empty)_
 
 ### HIGH
 
-- [ ] **#47 Today macro summary bar redesign** — *[quick win]* Clean, prominent bar at the
+- [p] **#47 Today macro summary bar redesign** — *[quick win]* Clean, prominent bar at the
   top of the Today view: Calories with **remaining clearly highlighted**, Protein/Fat/Carbs,
   and the current daily target number. Refine `renderTodayMacroHeader` / `renderTodayCompact`
   (`ui/dashboard.js`); strip the inline `Base + Exercise + Bank = Target` text formula (it
   moves into #48). Keep the main view focused on food entry. Files: `ui/dashboard.js`,
   `styles.css`, `index.html`.
-- [ ] **#48 Clickable target → expandable financial-statement breakdown** — *[quick win]*
+  > pushed — redesigned sticky macro header and dashboard hero card; tests: 575 pass; commit: 2de2407
+- [p] **#48 Clickable target → expandable financial-statement breakdown** — *[quick win]*
   Make the target number a clickable `<summary>` that expands to clean vertical rows: Base
   target → Exercise impact → **bridge to best-guess TDEE (bold final TDEE line)** → Banking
   adjustment → Goal-based reduction → **Final Target** (the number that drives Remaining).
@@ -170,6 +171,7 @@ _(empty)_
   `computeTDEE` metadata (`targets/dailyTargetResolver.js`, `targets/targetEngine.js:232`).
   No calc change — `todayKcalTarget` already drives `remaining`. Files: `ui/dashboard.js`,
   `targets/dailyTargetResolver.js` (expose bridge fields if needed), `styles.css`.
+  > pushed — clickable <details> target with financial-statement breakdown panel; tests: 575 pass; commit: bcb139b
 - [ ] **#49 Zero-log vacation / low-log quick button** — *[quick win]* Render only when the
   current day has no food items **and** no existing daily document data that would be overwritten
   (exercise sessions, day-activity selection, legacy top-level calories, notes, or other
