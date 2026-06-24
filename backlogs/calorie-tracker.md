@@ -154,33 +154,7 @@ _(empty)_
 
 ### HIGH
 
-_(#47 and #48 completed — moved to `backlogs/calorie-tracker-completed.md`)_
-- [p] **#49 Zero-log vacation / low-log quick button** — *[quick win]* Render only when the
-  current day has no food items **and** no existing daily document data that would be overwritten
-  (exercise sessions, day-activity selection, legacy top-level calories, notes, or other
-  non-food fields), unless the implementation explicitly merges and preserves those fields.
-  Place directly above the food-entry area. Quick-choice of 4 presets with parenthetical step
-  guidance (Rest ~0–2k steps / Light ~5k / Moderate ~8–10k / Active ~12k+) plus a Custom/manual
-  option. Map the quick choices to existing engine keys before calling the estimator: Rest →
-  `light` with resting/low-step day-activity metadata (or extend `VACATION_TYPE_CONFIG` with a
-  real `rest` key), Light → `light`, Moderate → `medium`, Active → `heavy`, Custom → `custom`.
-  Each selection creates an estimate day via the existing `buildVacationDayEntry` /
-  `estimateVacationCalories` engine (`analysis/engine.js:1445/1373`) and `DAY_ACTIVITY_LEVELS`
-  (`constants.js:9`), saved through `saveEstimatedEntry` without clobbering preserved fields.
-  Later weight-based correction is handled by #56. Files: `index.html`, `events/wire.js`,
-  `ui/dashboard.js`, `analysis/engine.js` (reuse).
-  > pushed — vacation quick-estimate panel with 4 presets + custom; rest key added to VACATION_TYPE_CONFIG; tests: 575 pass; commit: 200a37b
-- [p] **#50 Shared chart date-range control** — *[quick win]* One reusable control applied to
-  every chart: presets **Last 7 / 30 / 90 days / YTD / 1 Year**, **Since goal start**, and
-  **custom From/To** date pickers. Because normalized `goalSettings` currently has `targetDate`
-  but no persisted start-date field, either add a goal-start field with schema/UI migration and
-  fallback handling, or define the preset as "since first logged day" until such a field exists.
-  Per-chart state (not synchronized).
-  Generalize the existing `_chartState.timeframe` pattern (`ui/chart.js:128/195`). Apply to
-  the nutrient chart, weight-trend chart, eating-pattern chart, and the new corrections chart
-  (#52). Files: new `ui/dateRange.js` (small helper), `ui/chart.js`,
-  `analysis/analysisUI.js`, `index.html`, `styles.css`.
-  > pushed — new ui/dateRange.js with chip presets + custom From/To; applied to all 3 charts; tests: 575 pass; commit: df2b0af
+_(#47–#50 completed — moved to `backlogs/calorie-tracker-completed.md`)_
 
 ### MEDIUM
 

@@ -136,6 +136,12 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 - [x] **#48 — Clickable target → expandable financial-statement breakdown**
   > Resolved: clickable details target with financial-statement breakdown panel (TDEE → Base → Exercise → Banking → Goal deficit → Final Target plus macro targets); merged bcb139b, fix dbd2509
 
+- [x] **#49 — Zero-log vacation / low-log quick button**
+  > Resolved: vacation quick-estimate panel with 4 presets + custom; rest key added to VACATION_TYPE_CONFIG; review fixes for isDayEmpty rest-activity guard; merged 200a37b
+
+- [x] **#50 — Shared chart date-range control**
+  > Resolved: new ui/dateRange.js with chip presets + custom From/To; applied to all 3 charts; review fixes for weight-entry dates, custom seeding, analysis chart anchoring, rolling avg from full history, empty-range cleanup; merged df2b0af
+
 ---
 
 ## MEDIUM — polish & hygiene
