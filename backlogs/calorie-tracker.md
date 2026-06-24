@@ -181,7 +181,7 @@ _(#51 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   magnitudes are fixed scientific constants — "dynamic" means profile-driven selection and
   scaling, not invented values. Files: `ui/dashboard.js`, `targets/nutritionReferences.js`,
   `targets/targetEngine.js`, `styles.css`.
-  > pushed — position indicator (Low/OK/Near UL/Over UL), UL shown in target span and as bar marker, ULs static per NASEM; tests: 575 pass; commit: pending
+  > pushed — position indicator (Low/OK/Near UL/Over UL), UL shown in target span and as bar marker, ULs static per NASEM; tests: 575 pass; commit: 86e7335
 _(#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
 - [ ] **#55 Larger-gap imputation with min-data-on-each-side rigor** — *[larger refactor]*
   `getTrueUpCandidates` (`analysis/engine.js:1644`) already uses centered windows
