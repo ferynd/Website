@@ -1061,6 +1061,16 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
 .nt-status-good { background: hsl(var(--success) / .15); color: hsl(var(--success)); text-transform: uppercase; letter-spacing: .03em; }
 .nt-status-warn { background: hsl(var(--warning) / .15); color: hsl(var(--warning)); text-transform: uppercase; letter-spacing: .03em; }
 .nt-status-bad  { background: hsl(var(--error)   / .15); color: hsl(var(--error));   text-transform: uppercase; letter-spacing: .03em; }
+.nt-status-over { background: hsl(var(--error)   / .20); color: hsl(var(--error));   text-transform: uppercase; letter-spacing: .03em; font-weight: 600; }
+
+.hbar-ul-marker {
+  position: absolute;
+  top: -2px; bottom: -2px;
+  width: 2px;
+  background: hsl(var(--error));
+  opacity: .7;
+  border-radius: 1px;
+}
 
 .nt-trend {
   font-size: .8em;
