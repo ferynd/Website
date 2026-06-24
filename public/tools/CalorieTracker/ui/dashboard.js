@@ -1217,7 +1217,7 @@ function isDayEmpty(entry) {
   const hasFoodItems = Array.isArray(entry.foodItems) && entry.foodItems.length > 0;
   const hasExercise = Array.isArray(entry.exerciseSessions) && entry.exerciseSessions.length > 0;
   const hasLegacyCals = (entry.entryType !== 'estimate') && (parseFloat(entry.calories) || 0) > 0 && (!Array.isArray(entry.foodItems) || entry.foodItems.length === 0);
-  const hasActivity = entry.dayActivityLevel && entry.dayActivityLevel !== 'rest';
+  const hasActivity = !!entry.dayActivityLevel;
   const hasNotes = entry.notes?.trim();
   const isEstimate = entry.entryType === 'estimate';
   return !hasFoodItems && !hasExercise && !hasLegacyCals && !hasActivity && !hasNotes && !isEstimate;

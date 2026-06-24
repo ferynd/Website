@@ -24,10 +24,9 @@ function getFirstLoggedDate() {
   for (const dateStr of state.dailyEntries.keys()) {
     if (!earliest || dateStr < earliest) earliest = dateStr;
   }
-  if (!earliest) {
-    for (const dateStr of state.weightEntries.keys()) {
-      if (!earliest || dateStr < earliest) earliest = dateStr;
-    }
+  for (const [, entry] of state.weightEntries) {
+    const d = entry?.date;
+    if (d && (!earliest || d < earliest)) earliest = d;
   }
   return earliest;
 }
@@ -38,9 +37,13 @@ function addDays(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
+const _analysisCharts = new Set(['weight-chart', 'eating-chart']);
+
 export function resolveRange(chartId) {
   const s = _rangeStates.get(chartId) || { preset: '30' };
-  const endDate = state.dom.dateInput?.value || getTodayInTimezone();
+  const endDate = _analysisCharts.has(chartId)
+    ? getTodayInTimezone()
+    : (state.dom.dateInput?.value || getTodayInTimezone());
 
   if (s.preset === 'custom') {
     return {
@@ -104,11 +107,13 @@ export function initDateRangeEvents(chartId, onChange) {
     if (customRow) customRow.classList.toggle('hidden', s.preset !== 'custom');
 
     if (s.preset === 'custom') {
+      const prevRange = resolveRange(chartId);
+      s.customFrom = prevRange.startDate;
+      s.customTo = prevRange.endDate;
       const fromEl = document.getElementById(`date-range-from-${chartId}`);
       const toEl = document.getElementById(`date-range-to-${chartId}`);
-      const range = resolveRange(chartId);
-      if (fromEl && !fromEl.value) fromEl.value = range.startDate;
-      if (toEl && !toEl.value) toEl.value = range.endDate;
+      if (fromEl) fromEl.value = s.customFrom;
+      if (toEl) toEl.value = s.customTo;
     }
 
     onChange(resolveRange(chartId));

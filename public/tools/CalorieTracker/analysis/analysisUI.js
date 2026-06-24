@@ -821,7 +821,10 @@ function drawEatingPatternChart(rows) {
 
   const range = resolveRange('eating-chart');
   const visibleRows = rows.filter(r => r.date >= range.startDate && r.date <= range.endDate);
-  if (visibleRows.length === 0) return;
+  if (visibleRows.length === 0) {
+    if (window._eatingPatternChart) { window._eatingPatternChart.destroy(); window._eatingPatternChart = null; }
+    return;
+  }
 
   const WINDOW = 7;
   const chartColors = CONFIG.CHART_COLORS || [];
@@ -836,6 +839,20 @@ function drawEatingPatternChart(rows) {
 
   const firstNutritionDate = findFirstManualNutritionDate();
 
+  // Build rolling averages from full history so the window isn't truncated at range boundaries
+  const fullRolling = new Map();
+  for (let i = 0; i < rows.length; i++) {
+    if (!firstNutritionDate || rows[i].date < firstNutritionDate) continue;
+    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
+    const calVals = slice
+      .filter(r => firstNutritionDate && r.date >= firstNutritionDate)
+      .map(r => _realCaloriesForDate(r.date, includeEstimates))
+      .filter(v => v != null);
+    fullRolling.set(rows[i].date, calVals.length >= 3
+      ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length)
+      : null);
+  }
+
   const labels        = [];
   const rollingCals   = [];
   const smoothWeights = [];
@@ -843,22 +860,7 @@ function drawEatingPatternChart(rows) {
   for (let i = 0; i < visibleRows.length; i++) {
     labels.push(visibleRows[i].date);
     smoothWeights.push(visibleRows[i].wt_smooth_lb);
-
-    // Before tracking started: no calorie data point
-    if (!firstNutritionDate || visibleRows[i].date < firstNutritionDate) {
-      rollingCals.push(null);
-      continue;
-    }
-
-    const slice = visibleRows.slice(Math.max(0, i - WINDOW + 1), i + 1);
-    const calVals = slice
-      .filter(r => firstNutritionDate && r.date >= firstNutritionDate)
-      .map(r => _realCaloriesForDate(r.date, includeEstimates))
-      .filter(v => v != null);
-
-    rollingCals.push(calVals.length >= 3
-      ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length)
-      : null);
+    rollingCals.push(fullRolling.get(visibleRows[i].date) ?? null);
   }
 
   if (window._eatingPatternChart) { window._eatingPatternChart.destroy(); window._eatingPatternChart = null; }
