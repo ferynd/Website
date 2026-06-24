@@ -1712,6 +1712,8 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
     let realItemCount = 0;
 
     if (isEstimateEntry) {
+      const method = entry.estimateMeta?.method;
+      if (method === 'blank_day_trueup' || method === 'partial_day_adjustment') continue;
       type = 'estimate';
       loggedCalories = 0;
     } else if (!entry || (parseFloat(entry.calories) || 0) === 0) {
@@ -1763,9 +1765,9 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
       const intervalRows = rows.filter(r => r.date >= start && r.date <= end);
       if (intervalRows.length < Math.max(7, Math.floor(days * 0.5))) continue;
 
-      // Require minimum weight readings BEFORE the candidate
+      // Require minimum actual weight observations BEFORE the candidate
       const preWeightRows = intervalRows.filter(
-        r => r.date < candidateDate && r.wt_smooth_lb != null
+        r => r.date < candidateDate && r.weight_corr != null
       );
       if (preWeightRows.length < minPreWeights) continue;
 
@@ -1824,9 +1826,13 @@ export function getTrueUpCandidates(rows, dailyEntries, bmrModel, baselineTarget
           reportedIntake += cand.loggedCalories;
         } else {
           const e = dailyEntries.get(r.date);
-          reportedIntake += e
-            ? parseFloat(e.calories) || 0
-            : (r.calories_imputed ? (r.calories || 0) : 0);
+          if (e?.entryType === 'estimate') {
+            reportedIntake += 0;
+          } else {
+            reportedIntake += e
+              ? parseFloat(e.calories) || 0
+              : (r.calories_imputed ? (r.calories || 0) : 0);
+          }
         }
       }
       reportedIntake = Math.round(reportedIntake);
@@ -2084,7 +2090,7 @@ export function buildBlankDayEstimateEntry(dateStr, candidate, analysisResults, 
     date: dateStr,
     schemaVersion: 2,
     entryType: 'estimate',
-    vacationDayType: null,
+    vacationDayType: prevEntry?.vacationDayType ?? null,
     calories: Math.round(estCals),
     protein: adjProtein,
     fat: adjFat,
