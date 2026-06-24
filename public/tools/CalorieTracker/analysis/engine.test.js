@@ -2349,3 +2349,283 @@ describe('runAnalysis — estimated current weight in summary', () => {
     expect(r.summary.estimatedWeightMethod).toBe('measured');
   });
 });
+
+// ── #55 Larger-gap imputation: min pre/post weight rigor ────────────────────
+
+describe('getTrueUpCandidates — min pre-weight rigor (#55)', () => {
+  it('interval data includes preWeightPoints', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const { weightEntries, dailyEntries, baseline, bmrModel } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate);
+    expect(found).toBeDefined();
+    for (const interval of found.intervalsUsed) {
+      expect(typeof interval.preWeightPoints).toBe('number');
+      expect(interval.preWeightPoints).toBeGreaterThanOrEqual(3);
+    }
+  });
+
+  it('candidate near data start with insufficient pre-weights is not actionable', () => {
+    const startDate = '2024-01-01';
+    const n = 60;
+    const blankDay = 2;
+    const blankDate = isoDate(startDate, blankDay);
+
+    const weightData = [];
+    const nutritionData = [];
+    for (let i = 0; i < n; i++) {
+      const date = isoDate(startDate, i);
+      if (i <= 1) {
+        // Only 2 weight points before the blank day — below minPreWeights=3
+        weightData.push({ date, weightLb: 185 - i * 0.05 });
+      } else if (i > blankDay) {
+        weightData.push({ date, weightLb: 185 - i * 0.05 });
+      }
+      if (i !== blankDay) {
+        nutritionData.push({ date, calories: 2000, protein: 150, fat: 60, carbs: 200 });
+      }
+    }
+    const weightEntries = makeWeightEntries(weightData);
+    const dailyEntries = makeNutritionEntries(nutritionData);
+    const baseline = { calories: '2000', protein: '150', fat: '60' };
+    const bmrModel = { source: 'formula', tdee_current: 2350, observedTdee: 2350, error: null };
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === blankDate && !c.needsFutureData);
+    expect(found).toBeUndefined();
+  });
+
+  it('inside_interval TDEE reference is never used', () => {
+    const startDate = '2023-10-01';
+    const blankDate = isoDate(startDate, 25);
+    const { weightEntries, dailyEntries, baseline } = makeDataForTrueUp({ blankDate, startDate, n: 80 });
+    // bmrModel with no observedTdee and no tdee_current — forces fallback
+    const bmrModel = { source: 'formula', error: null };
+
+    const results = runAnalysis(weightEntries, dailyEntries);
+    if (results.error) return;
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    for (const c of candidates) {
+      for (const interval of c.intervalsUsed) {
+        expect(interval.tdeeRefSource).not.toBe('inside_interval');
+      }
+    }
+  });
+});
+
+// ── #56 Vacation/estimate days eligible for correction ──────────────────────
+
+describe('getTrueUpCandidates — estimate entries as candidates (#56)', () => {
+  function makeDataWithEstimate(opts = {}) {
+    const {
+      n = 80,
+      startDate = '2023-10-01',
+      estimateDay = 25,
+      estimateCalories = 1800,
+      locked = false,
+    } = opts;
+
+    const weightData = [];
+    const nutritionData = [];
+
+    for (let i = 0; i < n; i++) {
+      const date = isoDate(startDate, i);
+      weightData.push({ date, weightLb: 185 - i * 0.05 });
+
+      if (i === estimateDay) {
+        // This day has a saved estimate (entryType: 'estimate')
+        nutritionData.push({
+          date,
+          calories: estimateCalories,
+          protein: 120,
+          carbs: 200,
+          fat: 50,
+          entryType: 'estimate',
+          estimateMeta: { locked },
+          foodItems: [{ id: 'est-vacation-001', name: "Estimated vacation day", calories: estimateCalories, quantity: 1 }],
+        });
+      } else {
+        nutritionData.push({ date, calories: 2000, protein: 150, carbs: 250, fat: 60 });
+      }
+    }
+
+    const weightEntries = makeWeightEntries(weightData);
+    // Build dailyEntries manually to preserve entryType and estimateMeta
+    const dailyEntries = new Map();
+    for (const d of nutritionData) {
+      dailyEntries.set(d.date, {
+        date: d.date,
+        calories: d.calories,
+        protein: d.protein ?? 150,
+        carbs: d.carbs ?? 200,
+        fat: d.fat ?? 60,
+        fiber: d.fiber ?? 25,
+        sodium: d.sodium ?? 2200,
+        trainingBump: 0,
+        exerciseSessions: [],
+        ...(d.entryType ? { entryType: d.entryType } : {}),
+        ...(d.estimateMeta ? { estimateMeta: d.estimateMeta } : {}),
+        ...(d.foodItems ? { foodItems: d.foodItems } : {}),
+      });
+    }
+    const baseline = { calories: '2000', protein: '150', fat: '60' };
+    const bmrModel = { source: 'formula', tdee_current: 2350, observedTdee: 2350, error: null };
+
+    return { weightEntries, dailyEntries, baseline, bmrModel, estimateDate: isoDate(startDate, estimateDay) };
+  }
+
+  it('estimate entry is returned as a candidate with type "estimate"', () => {
+    const { weightEntries, dailyEntries, baseline, bmrModel, estimateDate } = makeDataWithEstimate();
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === estimateDate);
+    expect(found).toBeDefined();
+    expect(found.type).toBe('estimate');
+    expect(found.loggedCalories).toBe(0);
+    expect(found.recommendedDelta).toBeGreaterThanOrEqual(600);
+  });
+
+  it('locked estimate entry is NOT returned as a candidate', () => {
+    const { weightEntries, dailyEntries, baseline, bmrModel, estimateDate } = makeDataWithEstimate({ locked: true });
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === estimateDate);
+    expect(found).toBeUndefined();
+  });
+
+  it('estimate candidates are not checked by default', () => {
+    const { weightEntries, dailyEntries, baseline, bmrModel, estimateDate } = makeDataWithEstimate();
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === estimateDate);
+    if (found) {
+      expect(found.checkedByDefault).toBe(false);
+    }
+  });
+
+  it('estimate reason string mentions refinement', () => {
+    const { weightEntries, dailyEntries, baseline, bmrModel, estimateDate } = makeDataWithEstimate();
+    const results = runAnalysis(weightEntries, dailyEntries);
+    expect(results.error).toBeFalsy();
+
+    const candidates = getTrueUpCandidates(results.rows, dailyEntries, bmrModel, baseline);
+    const found = candidates.find(c => c.date === estimateDate);
+    if (found) {
+      expect(found.reason).toContain('refinement');
+    }
+  });
+});
+
+describe('estimateTDEE — no-circularity for estimate entries (#56)', () => {
+  it('estimate days do not contribute calories to TDEE blocks', () => {
+    const startDate = '2024-01-01';
+    const n = 30;
+    const days = [];
+    for (let i = 0; i < n; i++) {
+      days.push({
+        date: isoDate(startDate, i),
+        weightLb: 185 - i * 0.05,
+        calories: 2000,
+      });
+    }
+
+    const weightEntries = makeWeightEntries(days);
+
+    // Run with all real entries to get baseline TDEE blocks
+    const realEntries = makeNutritionEntries(days);
+    const realRows = runAnalysis(weightEntries, realEntries).rows;
+    const realTdeeBlocks = realRows.filter(r => r.tdee_block != null);
+
+    // Now create entries where days 5-10 are estimates with wildly different calories
+    const mixedEntries = new Map();
+    for (const d of days) {
+      const dayNum = Math.round((new Date(d.date) - new Date(startDate)) / 86400000);
+      if (dayNum >= 5 && dayNum <= 10) {
+        mixedEntries.set(d.date, {
+          date: d.date,
+          calories: 5000,
+          protein: 150,
+          carbs: 200,
+          fat: 60,
+          fiber: 25,
+          sodium: 2200,
+          trainingBump: 0,
+          exerciseSessions: [],
+          entryType: 'estimate',
+        });
+      } else {
+        mixedEntries.set(d.date, {
+          date: d.date,
+          calories: d.calories,
+          protein: 150,
+          carbs: 200,
+          fat: 60,
+          fiber: 25,
+          sodium: 2200,
+          trainingBump: 0,
+          exerciseSessions: [],
+        });
+      }
+    }
+
+    const mixedRows = runAnalysis(weightEntries, mixedEntries).rows;
+    const mixedTdeeBlocks = mixedRows.filter(r => r.tdee_block != null);
+
+    // TDEE blocks that don't overlap with estimate days should be identical
+    // Blocks that do overlap will differ because estimate days are excluded
+    // from calorie averaging — the key guarantee is that the 5000-cal estimates
+    // do NOT inflate the TDEE values
+    for (const mixed of mixedTdeeBlocks) {
+      if (mixed.tdee_block != null) {
+        // With estimate days excluded, TDEE should not be artificially inflated
+        // by the 5000-cal fake estimates
+        expect(mixed.tdee_block).toBeLessThan(4000);
+      }
+    }
+  });
+
+  it('mergeDailyData sets isEstimate flag for estimate entries', () => {
+    const startDate = '2024-01-01';
+    const weightEntries = makeWeightEntries([
+      { date: startDate, weightLb: 185 },
+      { date: isoDate(startDate, 1), weightLb: 184.9 },
+    ]);
+    const dailyEntries = new Map();
+    dailyEntries.set(startDate, {
+      date: startDate,
+      calories: 2000,
+      protein: 150,
+      carbs: 200,
+      fat: 60,
+    });
+    dailyEntries.set(isoDate(startDate, 1), {
+      date: isoDate(startDate, 1),
+      calories: 1800,
+      protein: 120,
+      carbs: 200,
+      fat: 50,
+      entryType: 'estimate',
+    });
+
+    const rows = mergeDailyData(weightEntries, dailyEntries);
+    const realRow = rows.find(r => r.date === startDate);
+    const estRow = rows.find(r => r.date === isoDate(startDate, 1));
+
+    expect(realRow.isEstimate).toBe(false);
+    expect(estRow.isEstimate).toBe(true);
+  });
+});

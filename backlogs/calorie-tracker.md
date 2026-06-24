@@ -159,31 +159,8 @@ _(#47–#50 completed — moved to `backlogs/calorie-tracker-completed.md`)_
 ### MEDIUM
 
 _(#51 completed — moved to `backlogs/calorie-tracker-completed.md`)_
-- [p] **#52 Recorded vs. corrected/imputed chart + trend** — *[quick win; depends on #50,
-  #51]* Single Chart.js line chart on the Corrections tab showing, for the selected range:
-  recorded/logged calories, model-corrected/imputed calories, and a trend line — so the user
-  can visually evaluate whether the model's recommendation makes sense. Use `runAnalysis` rows
-  + `getTrueUpCandidates` for corrected/imputed values, but reconstruct recorded calories from
-  `dailyEntries.foodItems` excluding synthetic `est-` / `adj-` items (or another persisted
-  original-log source) so previously corrected days do not collapse recorded and corrected lines.
-  Uses the #50 date-range control. Files:
-  new `ui/correctionsChart.js` (or `analysis/analysisUI.js`).
-  > pushed — corrections chart with recorded/corrected/trend lines using date-range control; tests: 575 pass; commit: 04f625f
-- [p] **#53 Dynamic micronutrient upper+lower bounds** — *[larger refactor]* Show both the
-  lower bound (DRI/RDA) and the upper bound (`UL_TABLE`) where evidence exists, with a
-  position indicator (**Low / Within range / Near upper / Over**). Extend `renderNutrientRow`
-  (`ui/dashboard.js:1668`) and `calculateMicronutrientMetrics` (`ui/dashboard.js:485`).
-  Lower-bound selection is already profile-driven via age/sex bands (`getDRI`), but upper
-  bounds currently come from a nutrient-wide `UL_TABLE`; add profile-specific UL lookup data
-  where evidence exists, or narrow the UI/copy so only lower bounds are described as dynamic.
-  Preserve evidence-based scaling (protein g/kg, electrolyte sweat scaling) and confirm recompute
-  is reactive on profile change (debounced path in `targets/targetUI.js`). Note: DRI/UL
-  magnitudes are fixed scientific constants — "dynamic" means profile-driven selection and
-  scaling, not invented values. Files: `ui/dashboard.js`, `targets/nutritionReferences.js`,
-  `targets/targetEngine.js`, `styles.css`.
-  > pushed — position indicator (Low/OK/Near UL/Over UL), UL shown in target span and as bar marker, ULs static per NASEM; tests: 575 pass; commit: 86e7335
-_(#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
-- [ ] **#55 Larger-gap imputation with min-data-on-each-side rigor** — *[larger refactor]*
+_(#52–#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
+- [p] **#55 Larger-gap imputation with min-data-on-each-side rigor** — *[larger refactor]*
   `getTrueUpCandidates` (`analysis/engine.js:1644`) already uses centered windows
   `[-7,+6]/[-14,+13]/[-21,+20]` with ≥50% coverage + minimum future weights. Parameterize and
   document the minimum pre/post day counts and weight-point counts so wider gaps impute only
@@ -192,7 +169,8 @@ _(#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   interval blocks for correction by default; remove or explicitly gate the current
   `inside_interval` fallback for sparse histories so circular evidence cannot silently drive
   wider-gap corrections. Add tests. Files: `analysis/engine.js`, `analysis/engine.test.js`.
-- [ ] **#56 Vacation days eligible for later weight-based correction** — *[larger refactor]*
+  > pushed — minPreWeights added to INTERVALS config, pre-candidate weight check enforced, inside_interval TDEE fallback removed, preWeightPoints surfaced in interval data; tests: 584 pass; commit: e3eed75
+- [p] **#56 Vacation days eligible for later weight-based correction** — *[larger refactor]*
   The one genuine model change: treat vacation/low-log quick-estimates (#49) as
   low-confidence priors that the centered-window true-up may later refine (respecting
   `manualLock` / `estimateMeta.locked`). Add the no-circularity exclusion in the TDEE/block
@@ -201,6 +179,7 @@ _(#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   even if they have top-level `calories`, so low-confidence priors cannot train the model they
   are later corrected against. Add tests for the no-circularity guarantee. Files:
   `analysis/engine.js`, `analysis/engine.test.js`.
+  > pushed — estimate entries eligible as 'estimate' type candidates, isEstimate flag in mergeDailyData excludes estimates from TDEE blocks, checkedByDefault=false for estimates; tests: 584 pass; commit: e3eed75
 
 ### LOW / NICE-TO-HAVE
 
