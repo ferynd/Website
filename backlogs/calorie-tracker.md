@@ -166,6 +166,7 @@ _(#47–#50 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   render path. Energy retains KPIs, weight chart, confidence card, and the TDEE/BMR/PAL
   detail (`renderEnergyDetail`). No engine logic moves — render wiring only. Files:
   `index.html`, `ui/dashboard.js`, `events/wire.js`, `analysis/analysisUI.js`.
+  > pushed — new Corrections tab with all 4 correction sections moved from Energy; tests: 575 pass; commit: ffe15a9
 - [ ] **#52 Recorded vs. corrected/imputed chart + trend** — *[quick win; depends on #50,
   #51]* Single Chart.js line chart on the Corrections tab showing, for the selected range:
   recorded/logged calories, model-corrected/imputed calories, and a trend line — so the user
@@ -191,6 +192,7 @@ _(#47–#50 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   statistical notes across the Energy, Nutrients, and Corrections tabs in
   `<details class="collapsible">` "How this is calculated" / "More detail" sections to reduce
   cognitive load. Files: `analysis/analysisUI.js`, `ui/dashboard.js`, `styles.css`.
+  > pushed — eating pattern notes, energy detail, TDEE horizons, PAL table, vacation/imputation explanations, info boxes all collapsible; tests: 575 pass; commit: ffe15a9
 - [ ] **#55 Larger-gap imputation with min-data-on-each-side rigor** — *[larger refactor]*
   `getTrueUpCandidates` (`analysis/engine.js:1644`) already uses centered windows
   `[-7,+6]/[-14,+13]/[-21,+20]` with ≥50% coverage + minimum future weights. Parameterize and
