@@ -169,7 +169,7 @@ _(#52–#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   interval blocks for correction by default; remove or explicitly gate the current
   `inside_interval` fallback for sparse histories so circular evidence cannot silently drive
   wider-gap corrections. Add tests. Files: `analysis/engine.js`, `analysis/engine.test.js`.
-  > pushed — minPreWeights added to INTERVALS config, pre-candidate weight check enforced, inside_interval TDEE fallback removed, preWeightPoints surfaced in interval data; tests: 584 pass; commit: PENDING
+  > pushed — minPreWeights added to INTERVALS config, pre-candidate weight check enforced, inside_interval TDEE fallback removed, preWeightPoints surfaced in interval data; tests: 584 pass; commit: e3eed75
 - [p] **#56 Vacation days eligible for later weight-based correction** — *[larger refactor]*
   The one genuine model change: treat vacation/low-log quick-estimates (#49) as
   low-confidence priors that the centered-window true-up may later refine (respecting
@@ -179,7 +179,7 @@ _(#52–#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   even if they have top-level `calories`, so low-confidence priors cannot train the model they
   are later corrected against. Add tests for the no-circularity guarantee. Files:
   `analysis/engine.js`, `analysis/engine.test.js`.
-  > pushed — estimate entries eligible as 'estimate' type candidates, isEstimate flag in mergeDailyData excludes estimates from TDEE blocks, checkedByDefault=false for estimates; tests: 584 pass; commit: PENDING
+  > pushed — estimate entries eligible as 'estimate' type candidates, isEstimate flag in mergeDailyData excludes estimates from TDEE blocks, checkedByDefault=false for estimates; tests: 584 pass; commit: e3eed75
 
 ### LOW / NICE-TO-HAVE
 
