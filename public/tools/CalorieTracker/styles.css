@@ -929,6 +929,55 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
 }
 
 /* ============================================================
+   SHARED DATE-RANGE CONTROL (#50)
+   ============================================================ */
+.date-range-control {
+  margin-bottom: .5rem;
+}
+.date-range-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .25rem;
+}
+.date-range-chip {
+  padding: .2rem .5rem;
+  font-size: .6875rem;
+  line-height: 1.2;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--surface-2));
+  color: hsl(var(--text-3));
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: inherit;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.date-range-chip:hover {
+  border-color: hsl(var(--accent) / .5);
+  color: hsl(var(--text));
+}
+.date-range-chip.active {
+  background: hsl(var(--accent) / .15);
+  border-color: hsl(var(--accent));
+  color: hsl(var(--accent));
+  font-weight: 600;
+}
+.date-range-custom {
+  display: flex;
+  align-items: center;
+  gap: .375rem;
+  margin-top: .375rem;
+}
+.date-range-custom input[type="date"] {
+  font-size: .75rem;
+  padding: .2rem .375rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: .25rem;
+  background: hsl(var(--surface-1));
+  color: hsl(var(--text));
+}
+
+/* ============================================================
    NUTRIENT FILTER BAR
    ============================================================ */
 .nutrient-filter-bar {

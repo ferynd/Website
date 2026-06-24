@@ -26,6 +26,7 @@ import { computeTrendDirection, classifyTargetSource, resolveWeightKg } from './
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
+import { renderDateRangeControl, initDateRangeEvents, resolveRange } from './dateRange.js';
 import { CONFIG } from '../config.js';
 import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
 import { UL_TABLE } from '../targets/nutritionReferences.js';
@@ -1730,16 +1731,9 @@ function renderChartSection() {
         <div id="chart-nutrient-chips" class="chart-chip-picker" role="group" aria-label="Select nutrients for chart"></div>
       </div>
 
-      <div class="mb-4 flex flex-wrap gap-4 items-end">
-        <div class="flex-1">
-          <label for="chart-timeframe" class="block text-sm font-medium text-primary mb-1">Time Frame</label>
-          <select id="chart-timeframe">
-            <option value="3days">Last 3 Days</option>
-            <option value="week">Last Week</option>
-            <option value="month">Last Month</option>
-          </select>
-        </div>
-        <div class="flex gap-4 items-center flex-wrap">
+      <div class="mb-4">
+        ${renderDateRangeControl('nutrient-chart', { defaultPreset: '7' })}
+        <div class="flex gap-4 items-center flex-wrap mt-2">
           <label class="flex items-center gap-2 cursor-pointer text-sm text-primary">
             <input type="checkbox" id="show-3day-avg" class="h-4 w-4">
             <span>3-day avg</span>

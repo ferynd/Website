@@ -22,6 +22,7 @@ import { debugLog, showMessage, escapeHtml } from '../utils/ui.js';
 import { CONFIG } from '../config.js';
 import { getTooltipConfig } from '../ui/chart.js';
 import { getTodayInTimezone } from '../utils/time.js';
+import { renderDateRangeControl, initDateRangeEvents, resolveRange, daysBetween } from '../ui/dateRange.js';
 import {
   saveEstimatedEntry,
   removeEstimateItem,
@@ -156,21 +157,23 @@ export function initAnalysisEvents() {
     drawEatingPatternChart(state.analysisResults.rows);
   }
 
-  // Redraw eating pattern chart when the "include estimates" toggle changes
   document.getElementById('eating-chart-include-estimates')?.addEventListener('change', () => {
     if (state.analysisResults && !state.analysisResults.error) {
       drawEatingPatternChart(state.analysisResults.rows);
     }
   });
 
-  const timeframeSelect = document.getElementById('weight-chart-timeframe');
-  if (timeframeSelect) {
-    timeframeSelect.addEventListener('change', () => {
-      if (state.analysisResults && !state.analysisResults.error) {
-        drawWeightChart(state.analysisResults.rows);
-      }
-    });
-  }
+  initDateRangeEvents('eating-chart', () => {
+    if (state.analysisResults && !state.analysisResults.error) {
+      drawEatingPatternChart(state.analysisResults.rows);
+    }
+  });
+
+  initDateRangeEvents('weight-chart', () => {
+    if (state.analysisResults && !state.analysisResults.error) {
+      drawWeightChart(state.analysisResults.rows);
+    }
+  });
 
   // ── Missing Calories section (unified candidates only) ────────────────────
   const allCandidates = state._trueUpCandidates || [];
@@ -752,6 +755,7 @@ function renderEatingPatternChart(results) {
   return `
     <div class="mb-6 card p-6 shadow-lg">
       <h3 class="text-responsive-xl font-bold text-secondary mb-1">📊 Eating Pattern vs Weight Change</h3>
+      ${renderDateRangeControl('eating-chart', { defaultPreset: '90' })}
       <div class="mb-3 flex flex-wrap gap-4 items-center text-sm">
         <label class="flex items-center gap-2 cursor-pointer">
           <input type="checkbox" id="eating-chart-include-estimates" class="h-4 w-4">
@@ -815,6 +819,10 @@ function drawEatingPatternChart(rows) {
   const canvas = document.getElementById('eating-pattern-chart');
   if (!canvas || !rows || rows.length === 0) return;
 
+  const range = resolveRange('eating-chart');
+  const visibleRows = rows.filter(r => r.date >= range.startDate && r.date <= range.endDate);
+  if (visibleRows.length === 0) return;
+
   const WINDOW = 7;
   const chartColors = CONFIG.CHART_COLORS || [];
   const calsColor   = chartColors[2] || '#3b82f6';
@@ -824,30 +832,25 @@ function drawEatingPatternChart(rows) {
 
   const tdeeVal  = state.analysisResults?.bmrModel?.tdee_current || null;
 
-  // Respect the "include estimates" toggle if it exists in the DOM
   const includeEstimates = document.getElementById('eating-chart-include-estimates')?.checked ?? false;
 
-  // Only draw reported calorie series from the first day the user manually logged food.
-  // This prevents weight data before tracking started from appearing as calorie points.
   const firstNutritionDate = findFirstManualNutritionDate();
 
-  // Build 7d rolling average from REAL logged calories only.
-  // Engine-imputed values (r.calories_imputed) are never included as reported intake.
   const labels        = [];
   const rollingCals   = [];
   const smoothWeights = [];
 
-  for (let i = 0; i < rows.length; i++) {
-    labels.push(rows[i].date);
-    smoothWeights.push(rows[i].wt_smooth_lb);
+  for (let i = 0; i < visibleRows.length; i++) {
+    labels.push(visibleRows[i].date);
+    smoothWeights.push(visibleRows[i].wt_smooth_lb);
 
     // Before tracking started: no calorie data point
-    if (!firstNutritionDate || rows[i].date < firstNutritionDate) {
+    if (!firstNutritionDate || visibleRows[i].date < firstNutritionDate) {
       rollingCals.push(null);
       continue;
     }
 
-    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
+    const slice = visibleRows.slice(Math.max(0, i - WINDOW + 1), i + 1);
     const calVals = slice
       .filter(r => firstNutritionDate && r.date >= firstNutritionDate)
       .map(r => _realCaloriesForDate(r.date, includeEstimates))
@@ -983,13 +986,8 @@ function renderWeightChart() {
     <div class="mb-6 card p-6 shadow-lg">
       <div class="flex justify-between items-center mb-4">
         <h3 class="text-responsive-xl font-bold text-secondary">Weight Trend</h3>
-        <select id="weight-chart-timeframe" class="p-2 border rounded-md" style="width:auto;">
-          <option value="90">Last 90 Days</option>
-          <option value="180">Last 180 Days</option>
-          <option value="365">Last Year</option>
-          <option value="all">All Time</option>
-        </select>
       </div>
+      ${renderDateRangeControl('weight-chart', { defaultPreset: '90' })}
       <div style="position:relative; height:350px;">
         <canvas id="weight-trend-chart"></canvas>
       </div>
@@ -1650,10 +1648,8 @@ function drawWeightChart(rows) {
   const canvas = document.getElementById('weight-trend-chart');
   if (!canvas) return;
 
-  const timeframeSelect = document.getElementById('weight-chart-timeframe');
-  const daysBack = timeframeSelect?.value === 'all' ? rows.length : parseInt(timeframeSelect?.value || '90');
-  const cutoffIdx = Math.max(0, rows.length - daysBack);
-  const visible = rows.slice(cutoffIdx);
+  const range = resolveRange('weight-chart');
+  const visible = rows.filter(r => r.date >= range.startDate && r.date <= range.endDate);
 
   const labels = [], rawData = [], smoothData = [];
   for (const r of visible) {

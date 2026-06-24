@@ -169,7 +169,7 @@ _(#47 and #48 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   (`constants.js:9`), saved through `saveEstimatedEntry` without clobbering preserved fields.
   Later weight-based correction is handled by #56. Files: `index.html`, `events/wire.js`,
   `ui/dashboard.js`, `analysis/engine.js` (reuse).
-- [ ] **#50 Shared chart date-range control** — *[quick win]* One reusable control applied to
+- [p] **#50 Shared chart date-range control** — *[quick win]* One reusable control applied to
   every chart: presets **Last 7 / 30 / 90 days / YTD / 1 Year**, **Since goal start**, and
   **custom From/To** date pickers. Because normalized `goalSettings` currently has `targetDate`
   but no persisted start-date field, either add a goal-start field with schema/UI migration and
