@@ -154,37 +154,11 @@ _(empty)_
 
 ### HIGH
 
-_(#47 and #48 completed — moved to `backlogs/calorie-tracker-completed.md`)_
-- [p] **#49 Zero-log vacation / low-log quick button** — *[quick win]* Render only when the
-  current day has no food items **and** no existing daily document data that would be overwritten
-  (exercise sessions, day-activity selection, legacy top-level calories, notes, or other
-  non-food fields), unless the implementation explicitly merges and preserves those fields.
-  Place directly above the food-entry area. Quick-choice of 4 presets with parenthetical step
-  guidance (Rest ~0–2k steps / Light ~5k / Moderate ~8–10k / Active ~12k+) plus a Custom/manual
-  option. Map the quick choices to existing engine keys before calling the estimator: Rest →
-  `light` with resting/low-step day-activity metadata (or extend `VACATION_TYPE_CONFIG` with a
-  real `rest` key), Light → `light`, Moderate → `medium`, Active → `heavy`, Custom → `custom`.
-  Each selection creates an estimate day via the existing `buildVacationDayEntry` /
-  `estimateVacationCalories` engine (`analysis/engine.js:1445/1373`) and `DAY_ACTIVITY_LEVELS`
-  (`constants.js:9`), saved through `saveEstimatedEntry` without clobbering preserved fields.
-  Later weight-based correction is handled by #56. Files: `index.html`, `events/wire.js`,
-  `ui/dashboard.js`, `analysis/engine.js` (reuse).
-  > pushed — vacation quick-estimate panel with 4 presets + custom; rest key added to VACATION_TYPE_CONFIG; tests: 575 pass; commit: 200a37b
-- [p] **#50 Shared chart date-range control** — *[quick win]* One reusable control applied to
-  every chart: presets **Last 7 / 30 / 90 days / YTD / 1 Year**, **Since goal start**, and
-  **custom From/To** date pickers. Because normalized `goalSettings` currently has `targetDate`
-  but no persisted start-date field, either add a goal-start field with schema/UI migration and
-  fallback handling, or define the preset as "since first logged day" until such a field exists.
-  Per-chart state (not synchronized).
-  Generalize the existing `_chartState.timeframe` pattern (`ui/chart.js:128/195`). Apply to
-  the nutrient chart, weight-trend chart, eating-pattern chart, and the new corrections chart
-  (#52). Files: new `ui/dateRange.js` (small helper), `ui/chart.js`,
-  `analysis/analysisUI.js`, `index.html`, `styles.css`.
-  > pushed — new ui/dateRange.js with chip presets + custom From/To; applied to all 3 charts; tests: 575 pass; commit: df2b0af
+_(#47–#50 completed — moved to `backlogs/calorie-tracker-completed.md`)_
 
 ### MEDIUM
 
-- [ ] **#51 New "Corrections & Gaps" tab (split from Energy)** — *[larger refactor]* Add
+- [p] **#51 New "Corrections & Gaps" tab (split from Energy)** — *[larger refactor]* Add
   `'corrections'` to `VALID_TABS` (`ui/dashboard.js:616`) plus a nav button/panel in
   `index.html`. Move the missing-day fill (`renderMissingCaloriesSection`), vacation editor
   (`renderVacationEditorSection`), estimate management (`renderEstimateManagementSection`),
@@ -192,6 +166,7 @@ _(#47 and #48 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   render path. Energy retains KPIs, weight chart, confidence card, and the TDEE/BMR/PAL
   detail (`renderEnergyDetail`). No engine logic moves — render wiring only. Files:
   `index.html`, `ui/dashboard.js`, `events/wire.js`, `analysis/analysisUI.js`.
+  > pushed — new Corrections tab with all 4 correction sections moved from Energy; tests: 575 pass; commit: ffe15a9
 - [ ] **#52 Recorded vs. corrected/imputed chart + trend** — *[quick win; depends on #50,
   #51]* Single Chart.js line chart on the Corrections tab showing, for the selected range:
   recorded/logged calories, model-corrected/imputed calories, and a trend line — so the user
@@ -213,10 +188,11 @@ _(#47 and #48 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   magnitudes are fixed scientific constants — "dynamic" means profile-driven selection and
   scaling, not invented values. Files: `ui/dashboard.js`, `targets/nutritionReferences.js`,
   `targets/targetEngine.js`, `styles.css`.
-- [ ] **#54 Collapse long-form explanations** — *[quick win]* Wrap methodology and
+- [p] **#54 Collapse long-form explanations** — *[quick win]* Wrap methodology and
   statistical notes across the Energy, Nutrients, and Corrections tabs in
   `<details class="collapsible">` "How this is calculated" / "More detail" sections to reduce
   cognitive load. Files: `analysis/analysisUI.js`, `ui/dashboard.js`, `styles.css`.
+  > pushed — eating pattern notes, energy detail, TDEE horizons, PAL table, vacation/imputation explanations, info boxes all collapsible; tests: 575 pass; commit: ffe15a9
 - [ ] **#55 Larger-gap imputation with min-data-on-each-side rigor** — *[larger refactor]*
   `getTrueUpCandidates` (`analysis/engine.js:1644`) already uses centered windows
   `[-7,+6]/[-14,+13]/[-21,+20]` with ≥50% coverage + minimum future weights. Parameterize and
