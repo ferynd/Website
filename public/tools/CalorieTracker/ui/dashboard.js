@@ -583,6 +583,17 @@ export function calculateMicronutrientMetrics(dateStr) {
       const checkValue = averagedNutrients.includes(nutrient) ? avgIntake : todaysIntake;
       const isUlExceeded = ul !== null && checkValue >= ul * 0.8;
 
+      // Position indicator relative to lower bound (target) and upper bound (UL)
+      let position;
+      if (ul !== null) {
+        if (checkValue >= ul) position = 'over';
+        else if (checkValue >= ul * 0.8) position = 'near_upper';
+        else if (checkValue >= scaledTarget * 0.9) position = 'within';
+        else position = 'low';
+      } else {
+        position = checkValue >= scaledTarget * 0.9 ? 'within' : 'low';
+      }
+
       metrics[nutrient] = {
         name: nutrient,
         baseTarget,
@@ -600,6 +611,7 @@ export function calculateMicronutrientMetrics(dateStr) {
         trendDirection,
         ul,
         isUlExceeded,
+        position,
       };
     });
 
@@ -1788,7 +1800,7 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     const {
       baseTarget, scaledTarget, todaysIntake, avgIntake, threeDayAvg,
       isDailyFloor, isAveraged, scaleSuggested, scaleReason,
-      targetSource, trendDirection, ul, isUlExceeded,
+      targetSource, trendDirection, ul, isUlExceeded, position,
     } = data;
 
     const displayValue = isAveraged ? avgIntake : todaysIntake;
@@ -1816,42 +1828,50 @@ function renderMicronutrientSections(metrics, filter = 'all') {
     const [trendIcon, trendCls] = trendMap[trendDirection] || trendMap.stable;
     const trendBadge = `<span class="${trendCls} nt-trend" title="Recent trend">${trendIcon}</span>`;
 
-    // UL warning
-    const ulLabel = nutrient === 'sodium'
-      ? `Near/above CDRR target (${ul})`
-      : `Near/above upper limit (UL: ${ul})`;
-    const ulBadge = isUlExceeded
-      ? `<span class="nt-badge nt-badge-ul" title="${ulLabel}">⚠️</span>`
-      : '';
-
-    // Status text label (accessible alternative to color-only bar)
-    const statusTextMap = { red: ['low', 'nt-status-bad'], amber: ['near', 'nt-status-warn'], green: ['ok', 'nt-status-good'] };
-    const [statusText, statusCls] = statusTextMap[data.status] || statusTextMap.green;
-    const statusBadge = `<span class="nt-badge ${statusCls}">${statusText}</span>`;
+    // Position indicator (replaces separate status + UL badges)
+    const posMap = {
+      low:        ['Low', 'nt-status-bad',  'Below recommended intake'],
+      within:     ['OK', 'nt-status-good', ul ? `Between lower bound and upper limit (${ul})` : 'Meeting recommended intake'],
+      near_upper: ['Near UL', 'nt-status-warn', nutrient === 'sodium' ? `Near CDRR (${ul})` : `Approaching upper limit (${ul})`],
+      over:       ['Over UL', 'nt-status-over', nutrient === 'sodium' ? `Above CDRR (${ul})` : `Above upper limit (${ul})`],
+    };
+    const [posText, posCls, posTitle] = posMap[position] || posMap.low;
+    const positionBadge = `<span class="nt-badge ${posCls}" title="${posTitle}">${posText}</span>`;
 
     // Source label in target span
     const srcLabel = targetSource === 'manual_override'    ? ' (pinned)'
                    : targetSource === 'auto_goal'           ? ' (auto goal)'
                    : targetSource === 'manual_baseline'     ? ' (custom)'
                    : targetSource === 'dri_profile_default' ? ' (profile DRI)'
-                   : ' (DRI)'; // 'dri' = matches generic DRI reference value
+                   : ' (DRI)';
+
+    // Target display: show both lower and upper bounds when UL exists
+    const ulSuffix = ul !== null
+      ? ` · UL ${ul}`
+      : '';
 
     // For averaged nutrients show today's value as sub-detail below the bar
     const subDetail = isAveraged
       ? `<div class="nt-sub-detail">Today: ${todaysIntake.toFixed(1)} · 3d avg: ${threeDayAvg.toFixed(1)}</div>`
       : '';
 
+    // UL marker position on the bar (relative to target scale)
+    const ulMarkerHtml = ul !== null && targetValue > 0
+      ? `<div class="hbar-ul-marker" style="left:${clampPct150(ul, targetValue * 1.5)}%" title="Upper limit: ${ul}"></div>`
+      : '';
+
     return `
       <div class="kpi-row">
         <div class="meta">
-          <span class="label">${formatNutrientName(nutrient)}${statusBadge}${sourceBadge}${scaleBadge}${trendBadge}${ulBadge}</span>
+          <span class="label">${formatNutrientName(nutrient)}${positionBadge}${sourceBadge}${scaleBadge}${trendBadge}</span>
           <span class="current">${displayValue.toFixed(1)}${isAveraged ? '<span class="nt-avg-label">avg</span>' : ''}</span>
-          <span class="target">target ${targetValue.toFixed(1)}${srcLabel}</span>
+          <span class="target">target ${targetValue.toFixed(1)}${ulSuffix}${srcLabel}</span>
           <span class="remain ${remainClass(remaining)}">${remaining > 0 ? `${remaining.toFixed(1)} left` : remaining < 0 ? `${Math.abs(remaining).toFixed(1)} over` : '0 left'}</span>
         </div>
         <div class="hbar">
           <div class="hbar-fill ${pctClass(displayValue, targetValue)}" style="width:${pctWidth(displayValue, targetValue)}"></div>
           <div class="hbar-marker" style="left:${markerLeft}"></div>
+          ${ulMarkerHtml}
         </div>
         ${subDetail}
       </div>`;
