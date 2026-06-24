@@ -1302,8 +1302,8 @@ details.collapsible > summary:hover { color: hsl(var(--text)); }
   /* Vacation quick presets: tighter */
   .vacation-quick-btn { padding: .375rem .125rem; font-size: .6875rem; }
 
-  /* Date-range chips: smaller touch targets still usable (36px) */
-  .date-range-chip { padding: .15rem .375rem; font-size: .625rem; }
+  /* Date-range chips: compact text but 32px min touch target */
+  .date-range-chip { padding: .15rem .375rem; font-size: .625rem; min-height: 32px; display: inline-flex; align-items: center; }
   .date-range-custom input[type="date"] { font-size: .6875rem; padding: .15rem .25rem; }
 
   /* Modal padding tighter */
