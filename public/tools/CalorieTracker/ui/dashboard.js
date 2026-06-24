@@ -710,7 +710,8 @@ export function activateTab(name) {
 // =========================
 
 /**
- * Render the compact 4-cell macro progress bar into #today-macro-header.
+ * Render the compact macro progress bar into #today-macro-header.
+ * Prominent remaining-calorie readout + compact P/F/C cells.
  */
 function renderTodayMacroHeader(bankingData) {
   const el = document.getElementById('today-macro-header');
@@ -727,27 +728,33 @@ function renderTodayMacroHeader(bankingData) {
     return acc;
   }, { cal: 0, pro: 0, fat: 0, carb: 0 });
 
-  const cell = (label, actual, target, isCalorie) => {
-    const pct = Math.max(0, Math.min(150, target > 0 ? (actual / target) * 100 : 0));
-    const cls = pct >= 100 ? 'good' : pct >= 66 ? 'warn' : 'bad';
-    const remaining = Math.round(target - actual);
-    const remainingText = isCalorie
-      ? `<span class="macro-cell-value macro-remaining ${remaining < 0 ? 'text-negative' : ''}">${remaining} left</span>`
-      : '';
+  const calRemaining = Math.round(todayKcalTarget - totals.cal);
+  const calPct = clampPct150(totals.cal, todayKcalTarget);
+  const calLabel = calRemaining >= 0 ? 'left' : 'over';
+
+  const macroCell = (label, actual, target) => {
+    const pct = clampPct150(actual, target);
+    const rem = Math.round(target - actual);
     return `
       <div class="macro-cell">
         <span class="macro-cell-label">${label}</span>
-        ${remainingText}
-        <span class="macro-cell-value ${pct > 110 ? 'text-negative' : ''}">${Math.round(actual)}/${Math.round(target)}</span>
-        <div class="hbar"><div class="hbar-fill ${cls}" style="width:${pct.toFixed(1)}%"></div></div>
+        <span class="macro-cell-value ${pct > 110 ? 'text-negative' : ''}">${Math.round(actual)}/${Math.round(target)}g</span>
+        <span class="macro-cell-remain ${remainClass(rem)}">${rem > 0 ? `${rem}g left` : rem < 0 ? `${Math.abs(rem)}g over` : 'on target'}</span>
+        <div class="hbar"><div class="hbar-fill ${pctClass(actual, target)}" style="width:${pct.toFixed(1)}%"></div></div>
       </div>`;
   };
 
-  el.innerHTML =
-    cell('Cal',     totals.cal,  todayKcalTarget, true)  +
-    cell('Protein', totals.pro,  finalProteinG,   false) +
-    cell('Fat',     totals.fat,  finalFatG,        false) +
-    cell('Carbs',   totals.carb, finalCarbsG,      false);
+  el.innerHTML = `
+    <div class="macro-cal-hero">
+      <span class="macro-cal-remaining ${calRemaining < 0 ? 'text-negative' : ''}">${Math.abs(calRemaining)}</span>
+      <span class="macro-cal-meta">kcal ${calLabel} · ${Math.round(totals.cal)} / ${todayKcalTarget}</span>
+      <div class="hbar macro-cal-bar"><div class="hbar-fill ${pctClass(totals.cal, todayKcalTarget)}" style="width:${calPct.toFixed(1)}%"></div></div>
+    </div>
+    <div class="macro-pfc-grid">
+      ${macroCell('Protein', totals.pro, finalProteinG)}
+      ${macroCell('Fat', totals.fat, finalFatG)}
+      ${macroCell('Carbs', totals.carb, finalCarbsG)}
+    </div>`;
 }
 
 /**
@@ -1032,9 +1039,9 @@ function renderCalcDetailsPanel(bankingData) {
 function renderTodayCompact(bankingData) {
   const {
     todayKcalTarget, finalProteinG, finalFatG, finalCarbsG,
-    todayBaseCalories, todaysTrainingBump, bankBalance, bankIncomplete, unknownDays, targetMode,
-    bankMode, scheduleAdjustment, rawBankBalance, targetFloorApplied, effectiveFloor, floorSource, scheduleCapped,
-    macroFloorExceedsCalories, bankAdjustmentApplied, manualBankCapped,
+    bankIncomplete, unknownDays, targetMode,
+    bankMode, targetFloorApplied, effectiveFloor, floorSource, scheduleCapped,
+    scheduleAdjustment, macroFloorExceedsCalories,
   } = bankingData;
 
   const totals = state.dailyFoodItems.reduce((acc, item) => {
@@ -1048,7 +1055,6 @@ function renderTodayCompact(bankingData) {
 
   const remaining   = todayKcalTarget - totals.calories;
   const remainColor = remaining >= 0 ? 'text-positive' : 'text-negative';
-  // Label changes when over target so the large number isn't mistaken for a negative calorie target
   const remainLabel = remaining >= 0 ? 'Calories Remaining' : 'Calories Over Target';
   const remainDisplay = Math.abs(Math.round(remaining));
 
@@ -1072,75 +1078,47 @@ function renderTodayCompact(bankingData) {
   };
 
   const modeBadge = targetMode === 'autoGoal'
-    ? `<span class="text-xs font-medium text-accent ml-1">Auto Goal</span>`
-    : `<span class="text-xs text-muted ml-1">Manual Baseline</span>`;
+    ? `<span class="today-mode-badge text-accent">Auto Goal</span>`
+    : `<span class="today-mode-badge text-muted">Manual</span>`;
 
-  // Build the adjustment segment of the formula line.
-  let adjSegment = '';
-  if (bankMode === 'autoGoalSchedule') {
-    if (scheduleAdjustment !== 0) {
-      adjSegment = ` + Schedule: ${scheduleAdjustment > 0 ? '+' : ''}${scheduleAdjustment}`;
-    }
-  } else {
-    // Manual mode — rolling bank (use applied/capped value in formula)
-    if (bankAdjustmentApplied !== 0) {
-      adjSegment = ` + Bank: ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied}`;
-      if (manualBankCapped) {
-        adjSegment += ` (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance}, capped)`;
-      }
-    }
+  // Warning notes — only actionable warnings, no formula text
+  const warnings = [];
+  if (targetFloorApplied) {
+    warnings.push(`Target floored at ${effectiveFloor} kcal${floorSource === 'bmr_floor' ? ' (BMR min)' : ''}.`);
   }
-  const exerciseSegment = todaysTrainingBump > 0 ? ` + Exercise: +${todaysTrainingBump}` : '';
+  if (macroFloorExceedsCalories) {
+    warnings.push('Protein + fat floors exceed calorie target — carbs set to 0.');
+  }
+  if (scheduleCapped) {
+    warnings.push(`Schedule correction capped at ${scheduleAdjustment} kcal/day.`);
+  }
+  if (bankIncomplete) {
+    warnings.push(`${bankMode === 'autoGoalSchedule' ? 'Schedule' : 'Bank'} incomplete — missing: ${unknownDays.join(', ')}.`);
+  }
 
-  // Informational raw-bank line for Auto Goal mode
-  const rawBankNote = bankMode === 'autoGoalSchedule' && rawBankBalance !== 0
-    ? `<div class="text-xs text-muted mt-0.5">
-        7-day raw ${rawBankBalance < 0 ? 'overage' : 'credit'}: ${Math.abs(rawBankBalance)} kcal
-        ${rawBankBalance < 0 && scheduleAdjustment !== 0 ? '— spread over goal window' : ''}
-        ${rawBankBalance > 0 && scheduleAdjustment > 0 ? '— spread forward as a small schedule increase' : ''}
-       </div>`
-    : '';
-
-  const bankNote = bankIncomplete
-    ? `<div class="text-xs text-warning mt-1">⚠ ${bankMode === 'autoGoalSchedule' ? 'Schedule context' : 'Rolling bank'} incomplete — missing data for: ${unknownDays.join(', ')}. Unknown days treated as on-target.</div>`
-    : '';
-
-  const floorNote = targetFloorApplied
-    ? `<div class="text-xs text-warning mt-1">⚠ Target was floored at ${effectiveFloor} kcal${floorSource === 'bmr_floor' ? ' (BMR-based minimum)' : ''}. Goal date may need adjustment or recent overage is being carried forward.</div>`
-    : '';
-
-  const capNote = scheduleCapped
-    ? `<div class="text-xs text-warning mt-0.5">Schedule correction capped at ${scheduleAdjustment} kcal/day (daily limit). Goal date may benefit from extension.</div>`
-    : '';
-
-  const profileNote = targetMode !== 'autoGoal'
-    ? `<div class="text-xs text-muted mt-0.5 italic" style="font-size:0.7rem">Profile &amp; Goals only changes Today after "Apply to Baseline Targets" or switching to Auto Goal mode.</div>`
-    : '';
-
-  const macroFeasibilityNote = macroFloorExceedsCalories
-    ? `<div class="text-xs text-warning mt-1">⚠ Protein + fat floors exceed today's calorie target — carbs set to 0. Consider relaxing the target or adjusting macro floors.</div>`
+  const warningHtml = warnings.length > 0
+    ? `<div class="today-warnings">${warnings.map(w => `<div class="today-warning-line">⚠ ${w}</div>`).join('')}</div>`
     : '';
 
   return `
-    <div class="mb-4 p-4 surface-2 rounded-lg border text-center">
-      <div class="text-xs text-muted uppercase tracking-wide mb-1">${remainLabel}</div>
-      <div class="text-4xl font-bold ${remainColor}">${remainDisplay}</div>
-      <div class="text-xs text-muted mt-1">${Math.round(totals.calories)} eaten · ${todayKcalTarget} target</div>
-      <div class="text-xs text-muted mt-1">
-        Target: ${modeBadge} · Base: ${todayBaseCalories}${exerciseSegment}${adjSegment} = ${todayKcalTarget} kcal
+    <div class="today-hero">
+      <div class="today-hero-top">
+        <div class="today-hero-remaining">
+          <div class="today-hero-label">${remainLabel}</div>
+          <div class="today-hero-number ${remainColor}">${remainDisplay}</div>
+        </div>
+        <div class="today-hero-stats">
+          <div class="today-hero-stat"><span class="today-hero-stat-val">${Math.round(totals.calories)}</span><span class="today-hero-stat-label">eaten</span></div>
+          <div class="today-hero-stat"><span class="today-hero-stat-val">${todayKcalTarget}</span><span class="today-hero-stat-label">target ${modeBadge}</span></div>
+        </div>
       </div>
-      ${rawBankNote}
-      ${floorNote}
-      ${macroFeasibilityNote}
-      ${capNote}
-      ${bankNote}
-      ${profileNote}
       <div class="hbar mt-2">
         <div class="hbar-fill ${pctClass(totals.calories, todayKcalTarget)}" style="width:${pctWidth(totals.calories, todayKcalTarget)}"></div>
         <div class="hbar-marker" style="left:${markerLeft}"></div>
       </div>
+      ${warningHtml}
     </div>
-    <div class="divide-y">
+    <div class="today-macros">
       ${macroRow('Protein', totals.protein, finalProteinG)}
       ${macroRow('Fat (min)', totals.fat, finalFatG)}
       ${macroRow('Carbs', totals.carbs, finalCarbsG)}
