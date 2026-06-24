@@ -37,7 +37,7 @@ function addDays(dateStr, n) {
   return d.toISOString().slice(0, 10);
 }
 
-const _analysisCharts = new Set(['weight-chart', 'eating-chart']);
+const _analysisCharts = new Set(['weight-chart', 'eating-chart', 'corrections-chart']);
 
 export function resolveRange(chartId) {
   const s = _rangeStates.get(chartId) || { preset: '30' };

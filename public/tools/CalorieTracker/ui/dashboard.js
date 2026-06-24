@@ -583,15 +583,18 @@ export function calculateMicronutrientMetrics(dateStr) {
       const checkValue = averagedNutrients.includes(nutrient) ? avgIntake : todaysIntake;
       const isUlExceeded = ul !== null && checkValue >= ul * 0.8;
 
-      // Position indicator relative to lower bound (target) and upper bound (UL)
+      // Position indicator relative to lower bound (target) and upper bound (UL).
+      // Sodium is special: its CDRR (2300) often equals the DRI target, so UL-based
+      // thresholds would make "within" unreachable. Skip UL checks when ul <= scaledTarget.
       let position;
-      if (ul !== null) {
+      const ulApplies = ul !== null && ul > scaledTarget;
+      if (ulApplies) {
         if (checkValue >= ul) position = 'over';
         else if (checkValue >= ul * 0.8) position = 'near_upper';
-        else if (checkValue >= scaledTarget * 0.9) position = 'within';
+        else if (checkValue >= scaledTarget) position = 'within';
         else position = 'low';
       } else {
-        position = checkValue >= scaledTarget * 0.9 ? 'within' : 'low';
+        position = checkValue >= scaledTarget ? 'within' : 'low';
       }
 
       metrics[nutrient] = {
@@ -854,8 +857,8 @@ function renderNutrientFilterBar(activeFilter) {
   const filters = [
     { id: 'all',      label: 'All' },
     { id: 'low',      label: '🔴 Low' },
-    { id: 'near',     label: '🟡 Near Target' },
-    { id: 'above',    label: '🟢 On Target' },
+    { id: 'above',    label: '🟢 OK' },
+    { id: 'near',     label: '🟡 Near/Over UL' },
     { id: 'override', label: '📌 Overridden' },
   ];
   return `
@@ -1786,9 +1789,9 @@ function renderChartSection() {
 function renderMicronutrientSections(metrics, filter = 'all') {
   const filterFn = (data) => {
     switch (filter) {
-      case 'low':      return data.status === 'red';
-      case 'near':     return data.status === 'amber';
-      case 'above':    return data.status === 'green';
+      case 'low':      return data.position === 'low';
+      case 'near':     return data.position === 'near_upper' || data.position === 'over';
+      case 'above':    return data.position === 'within';
       case 'override': return data.targetSource === 'manual_override';
       default:         return true;
     }
@@ -1855,9 +1858,13 @@ function renderMicronutrientSections(metrics, filter = 'all') {
       ? `<div class="nt-sub-detail">Today: ${todaysIntake.toFixed(1)} · 3d avg: ${threeDayAvg.toFixed(1)}</div>`
       : '';
 
-    // UL marker position on the bar (relative to target scale)
-    const ulMarkerHtml = ul !== null && targetValue > 0
-      ? `<div class="hbar-ul-marker" style="left:${clampPct150(ul, targetValue * 1.5)}%" title="Upper limit: ${ul}"></div>`
+    // UL marker on the bar. The bar maps 0–150% of target onto 0–100% width,
+    // so the UL position is (ul / target) * markerPct, clamped to 100%.
+    const ulMarkerPos = ul !== null && targetValue > 0
+      ? Math.min(100, (ul / targetValue) * markerPct)
+      : null;
+    const ulMarkerHtml = ulMarkerPos !== null
+      ? `<div class="hbar-ul-marker" style="left:${ulMarkerPos.toFixed(2)}%" title="Upper limit: ${ul}"></div>`
       : '';
 
     return `

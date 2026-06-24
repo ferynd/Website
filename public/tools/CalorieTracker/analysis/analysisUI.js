@@ -832,7 +832,17 @@ function drawCorrectionsChart(rows) {
     labels.push(row.date);
     recorded.push(_getRecordedCalories(row.date));
     const cand = candidateMap.get(row.date);
-    corrected.push(cand ? cand.expectedCalories : null);
+    if (cand) {
+      corrected.push(cand.expectedCalories);
+    } else {
+      // Show saved corrections: if the entry has synthetic items, its total
+      // calories represent a previously applied correction.
+      const entry = state.dailyEntries.get(row.date);
+      const items = Array.isArray(entry?.foodItems) ? entry.foodItems : [];
+      const hasSynthetic = items.some(fi => isSyntheticItem(fi));
+      const totalCals = parseFloat(entry?.calories);
+      corrected.push(hasSynthetic && totalCals > 0 ? Math.round(totalCals) : null);
+    }
     trend.push(fullRolling.get(row.date) ?? null);
   }
 
