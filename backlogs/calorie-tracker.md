@@ -169,6 +169,7 @@ _(#47 and #48 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   (`constants.js:9`), saved through `saveEstimatedEntry` without clobbering preserved fields.
   Later weight-based correction is handled by #56. Files: `index.html`, `events/wire.js`,
   `ui/dashboard.js`, `analysis/engine.js` (reuse).
+  > pushed — vacation quick-estimate panel with 4 presets + custom; rest key added to VACATION_TYPE_CONFIG; tests: 575 pass; commit: 200a37b
 - [p] **#50 Shared chart date-range control** — *[quick win]* One reusable control applied to
   every chart: presets **Last 7 / 30 / 90 days / YTD / 1 Year**, **Since goal start**, and
   **custom From/To** date pickers. Because normalized `goalSettings` currently has `targetDate`
@@ -179,6 +180,7 @@ _(#47 and #48 completed — moved to `backlogs/calorie-tracker-completed.md`)_
   the nutrient chart, weight-trend chart, eating-pattern chart, and the new corrections chart
   (#52). Files: new `ui/dateRange.js` (small helper), `ui/chart.js`,
   `analysis/analysisUI.js`, `index.html`, `styles.css`.
+  > pushed — new ui/dateRange.js with chip presets + custom From/To; applied to all 3 charts; tests: 575 pass; commit: df2b0af
 
 ### MEDIUM
 
