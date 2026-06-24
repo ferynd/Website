@@ -140,7 +140,7 @@ Use targeted testing judgment:
 
 ## Active items
 
-_No items in progress. Add new items below in the appropriate priority section._
+UI/UX and information-architecture review backlog added from the June 24, 2026 CalorieTracker review plan. The main objective is to keep Today light and scannable, move correction and gap logic into a dedicated tab, standardize chart date controls, and make nutrient targets profile-driven with clear lower and upper bounds.
 
 ### CRITICAL
 
@@ -148,12 +148,42 @@ _(empty)_
 
 ### HIGH
 
-_(empty)_
+- [ ] #47 Today macro summary bar redesign [quick win]
+  - Clean, prominent Today summary bar with Calories and remaining calories highlighted, Protein/Fat/Carbs, and the current daily target number. Refine `renderTodayMacroHeader` / `renderTodayCompact`; remove the inline target formula from the main view and move it into #48. Files: `public/tools/CalorieTracker/ui/dashboard.js`, `public/tools/CalorieTracker/styles.css`, `public/tools/CalorieTracker/index.html`.
+
+- [ ] #48 Clickable target expands into financial-statement breakdown [quick win]
+  - Make the target number clickable or tappable and expand it into vertical rows: base target, exercise impact, bridge to best-guess TDEE with the final best-guess TDEE line bolded, banking adjustments, goal-based reductions, and Final Target. Final Target must drive Remaining calories. Include protein, fat, and carb targets in the same row-based format. Reuse or adapt `renderCalcDetailsPanel`; expose bridge fields from `resolveDailyPlanningTargets` / `computeTDEE` if needed. Files: `public/tools/CalorieTracker/ui/dashboard.js`, `public/tools/CalorieTracker/targets/dailyTargetResolver.js`, `public/tools/CalorieTracker/styles.css`.
+
+- [ ] #49 Zero-log vacation / low-log quick button [quick win]
+  - Show a vacation / low-log button only when the current day has zero food items, directly above food entry. Present Rest (~0-2k steps), Light (~5k steps), Moderate (~8-10k steps), Active (~12k+ steps), plus Custom / manual entry. Selection creates an estimate day through the existing vacation estimate engine. Files: `public/tools/CalorieTracker/index.html`, `public/tools/CalorieTracker/events/wire.js`, `public/tools/CalorieTracker/ui/dashboard.js`, `public/tools/CalorieTracker/analysis/engine.js`.
+
+- [ ] #50 Shared chart date-range control [quick win]
+  - Add a reusable per-chart date-range control with Last 7 days, Last 30 days, Last 90 days, YTD, 1 Year, Since goal start, and custom From / To pickers. Generalize existing `_chartState.timeframe` wiring and apply it to all existing charts. Files: `public/tools/CalorieTracker/ui/chart.js`, `public/tools/CalorieTracker/analysis/analysisUI.js`, new helper such as `public/tools/CalorieTracker/ui/dateRange.js`, `public/tools/CalorieTracker/index.html`, `public/tools/CalorieTracker/styles.css`.
 
 ### MEDIUM
 
-_(empty)_
+- [ ] #51 New Corrections & Gaps tab split from Energy [larger refactor]
+  - Add a dedicated Corrections & Gaps tab for missing-day fill, vacation editor, estimate management, imputation table, prior-day corrections, and gap handling. Energy should retain weight chart, TDEE/BMR/PAL model detail, KPI cards, and confidence detail without duplicating correction tools. Files: `public/tools/CalorieTracker/index.html`, `public/tools/CalorieTracker/ui/dashboard.js`, `public/tools/CalorieTracker/events/wire.js`, `public/tools/CalorieTracker/analysis/analysisUI.js`.
+
+- [ ] #52 Recorded vs corrected/imputed calories chart with trend [quick win; depends on #50 and #51]
+  - Add one clear Chart.js line chart to Corrections & Gaps showing recorded/logged calories, corrected or imputed calories recommended by the model, and a trend line across the selected date range. The chart should make model recommendations visually auditable. Files: `public/tools/CalorieTracker/analysis/analysisUI.js` or a new `public/tools/CalorieTracker/ui/correctionsChart.js`.
+
+- [ ] #53 Dynamic micronutrient upper and lower bounds [larger refactor]
+  - Upgrade nutrient rows to show lower bounds and upper bounds where evidence-based values exist, plus a position label such as Low, Within range, Near upper, or Over. Bounds and targets must be selected and scaled from profile data, including age, sex, weight, activity, and goal where applicable, and update immediately when the profile changes. Avoid hard-coded static display values beyond the underlying scientific reference tables. Files: `public/tools/CalorieTracker/ui/dashboard.js`, `public/tools/CalorieTracker/targets/nutritionReferences.js`, `public/tools/CalorieTracker/targets/targetEngine.js`, `public/tools/CalorieTracker/styles.css`.
+
+- [ ] #54 Collapse long-form explanations and methodology notes [quick win]
+  - Move long-form descriptions, methodology explanations, and statistical notes behind collapsible `details.collapsible` sections labelled More detail or How this is calculated across Energy, Nutrients, and Corrections. Main daily logging should remain focused on entry and current status. Files: `public/tools/CalorieTracker/analysis/analysisUI.js`, `public/tools/CalorieTracker/ui/dashboard.js`, `public/tools/CalorieTracker/styles.css`.
+
+- [ ] #55 Larger-gap imputation with minimum data on each side [larger refactor]
+  - Parameterize and document minimum pre-gap and post-gap day counts plus weight-point counts in `getTrueUpCandidates` so larger gaps are imputed only when both sides are well-supported. Surface chosen interval and confidence drivers in collapsible methodology blocks. Preserve centered-window behavior and outside-interval TDEE reference invariants. Add tests. Files: `public/tools/CalorieTracker/analysis/engine.js`, `public/tools/CalorieTracker/analysis/engine.test.js`.
+
+- [ ] #56 Vacation days eligible for later weight-based correction [larger refactor]
+  - Treat vacation quick-estimates as low-confidence priors that the centered-window true-up can refine later, while respecting `manualLock` / `estimateMeta.locked` and keeping estimated/vacation days excluded from TDEE regression to avoid circularity. Add tests for the no-circularity guarantee. Files: `public/tools/CalorieTracker/analysis/engine.js`, `public/tools/CalorieTracker/analysis/engine.test.js`.
 
 ### LOW / NICE-TO-HAVE
 
-_(empty)_
+- [ ] #57 Mobile narrow-viewport pass [quick win]
+  - Review the expanded six-tab navigation, macro bar wrapping, expandable target rows, vacation quick-choice interface, date-range controls, and Corrections & Gaps tab at approximately 390px width. Avoid horizontal page scroll and keep expansions usable. Files: `public/tools/CalorieTracker/styles.css`, `public/tools/CalorieTracker/index.html`.
+
+- [ ] #58 Large historical import performance check [quick win]
+  - Verify chart slicing, render budget, and corrections-tab performance with multi-year weight and food-log imports. Cap or decimate chart series if needed while preserving statistical calculations. Files: `public/tools/CalorieTracker/ui/chart.js`, `public/tools/CalorieTracker/analysis/analysisUI.js`.
