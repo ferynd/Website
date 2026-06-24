@@ -213,8 +213,11 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
     const datasets = [];
     const tableData = {};
 
+    const allLabelIndex = new Map();
     for (let i = totalDaysNeeded - 1; i >= 0; i--) {
-      allLabels.push(formatDate(getPastDate(endDate, i)));
+      const d = formatDate(getPastDate(endDate, i));
+      allLabelIndex.set(d, allLabels.length);
+      allLabels.push(d);
     }
     for (let i = days - 1; i >= 0; i--) {
       const dateStr = formatDate(getPastDate(endDate, i));
@@ -298,9 +301,9 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
       if (show3Day) {
         const avg3Data = [];
         const avg3Values = [];
-        
+
         displayLabels.forEach((dateStr, displayIdx) => {
-          const allIdx = allLabels.indexOf(dateStr);
+          const allIdx = allLabelIndex.get(dateStr) ?? -1;
           if (allIdx < 2) {
             avg3Data.push(null);
             avg3Values.push(null);
@@ -344,9 +347,9 @@ function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = fals
       if (show7Day) {
         const avg7Data = [];
         const avg7Values = [];
-        
+
         displayLabels.forEach((dateStr, displayIdx) => {
-          const allIdx = allLabels.indexOf(dateStr);
+          const allIdx = allLabelIndex.get(dateStr) ?? -1;
           if (allIdx < 6) {
             avg7Data.push(null);
             avg7Values.push(null);
@@ -503,9 +506,9 @@ export function updateChart() {
               color: 'rgba(0,0,0,0.1)'
             }
           },
-          x: { 
-            title: { 
-              display: true, 
+          x: {
+            title: {
+              display: true,
               text: 'Date',
               font: { weight: 'bold' }
             },
@@ -513,6 +516,7 @@ export function updateChart() {
               display: false
             },
             ticks: {
+              maxTicksLimit: 14,
               callback: function(value, index, values) {
                 const date = new Date(`${this.getLabelForValue(value)}T00:00:00`);
                 return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
@@ -619,7 +623,7 @@ export function updateChart() {
 
     debugLog('update-chart-success', 'Chart updated successfully');
 
-    updateChartTable(tableData, selectedNutrients, labels);
+    updateChartTable(tableData, selectedNutrients, labels, days);
 
   } catch (error) {
     handleChartError('update-chart', error);
@@ -630,13 +634,16 @@ export function updateChart() {
 // TABLE UPDATE FUNCTION
 // =========================
 
+const TABLE_MAX_COLUMNS = 60;
+
 /**
  * Update the data table below the chart
  * @param {Object} tableData - Data for the table
  * @param {string[]} nutrientKeys - Selected nutrients
  * @param {string[]} labels - Date labels
+ * @param {number} [totalDays] - Total days in range (for truncation message)
  */
-function updateChartTable(tableData, nutrientKeys, labels) {
+function updateChartTable(tableData, nutrientKeys, labels, totalDays) {
   try {
     const tableContainer = document.getElementById('chart-table');
     if (!tableContainer) {
@@ -649,14 +656,21 @@ function updateChartTable(tableData, nutrientKeys, labels) {
       return;
     }
 
-    let html = `
+    const truncated = labels.length > TABLE_MAX_COLUMNS;
+    const visibleLabels = truncated ? labels.slice(-TABLE_MAX_COLUMNS) : labels;
+
+    let html = truncated
+      ? `<p class="text-muted text-xs mb-2">Showing most recent ${TABLE_MAX_COLUMNS} of ${labels.length} days. Use a shorter date range for full detail.</p>`
+      : '';
+
+    html += `
       <div class="overflow-x-auto surface-1 rounded-lg border">
         <table class="min-w-full">
           <thead class="surface-2">
             <tr>
               <th class="px-4 py-3 text-left text-sm font-semibold text-secondary">Nutrient</th>`;
     
-    labels.forEach(dateStr => {
+    visibleLabels.forEach(dateStr => {
       const date = new Date(`${dateStr}T00:00:00`);
       const shortDate = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
       html += `<th class="px-3 py-3 text-center text-sm font-semibold text-secondary">${shortDate}</th>`;
@@ -667,8 +681,8 @@ function updateChartTable(tableData, nutrientKeys, labels) {
     nutrientKeys.forEach(nutrient => {
       html += `<tr class="hover-surface-2">
         <td class="px-4 py-3 text-sm font-medium text-primary">${formatNutrientName(nutrient)}</td>`;
-      
-      labels.forEach(dateStr => {
+
+      visibleLabels.forEach(dateStr => {
         const data = tableData[dateStr][nutrient];
         if (data) {
           const colorClass = data.percentage >= 90 && data.percentage <= 110 ? 'text-positive' :

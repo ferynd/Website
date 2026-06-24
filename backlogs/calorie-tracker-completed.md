@@ -212,6 +212,12 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 - [x] **#54 — Collapse long-form explanations**
   > Resolved: eating pattern notes, energy detail, TDEE horizons, PAL table, vacation/imputation explanations, info boxes all wrapped in collapsible details elements; merged via PR #137 (ffe15a9)
 
+- [x] **#55 — Larger-gap imputation with min-data-on-each-side rigor**
+  > Resolved: minPreWeights in INTERVALS config, pre-candidate weight check uses weight_corr, inside_interval TDEE fallback removed, preWeightPoints surfaced; codex review fixes for actual weight readings, estimate re-eligibility, non-candidate estimate intake, vacation metadata preservation; merged e3eed75, fix 11a2a37
+
+- [x] **#56 — Vacation days eligible for later weight-based correction**
+  > Resolved: estimate entries eligible as 'estimate' type candidates with checkedByDefault=false, isEstimate flag in mergeDailyData excludes estimates from TDEE blocks, locked estimates excluded; codex review fixes for true-up-produced estimate skip, all-estimate intake exclusion; merged e3eed75, fix 11a2a37
+
 ---
 
 ## What was already verified as correct (do not regress)

@@ -159,33 +159,15 @@ _(#47–#50 completed — moved to `backlogs/calorie-tracker-completed.md`)_
 ### MEDIUM
 
 _(#51 completed — moved to `backlogs/calorie-tracker-completed.md`)_
-_(#52–#54 completed — moved to `backlogs/calorie-tracker-completed.md`)_
-- [p] **#55 Larger-gap imputation with min-data-on-each-side rigor** — *[larger refactor]*
-  `getTrueUpCandidates` (`analysis/engine.js:1644`) already uses centered windows
-  `[-7,+6]/[-14,+13]/[-21,+20]` with ≥50% coverage + minimum future weights. Parameterize and
-  document the minimum pre/post day counts and weight-point counts so wider gaps impute only
-  when **both** sides are well-supported, and surface the chosen interval + confidence drivers.
-  Preserve centered windows. Strengthen the TDEE-reference invariant by requiring outside-
-  interval blocks for correction by default; remove or explicitly gate the current
-  `inside_interval` fallback for sparse histories so circular evidence cannot silently drive
-  wider-gap corrections. Add tests. Files: `analysis/engine.js`, `analysis/engine.test.js`.
-  > pushed — minPreWeights added to INTERVALS config, pre-candidate weight check enforced, inside_interval TDEE fallback removed, preWeightPoints surfaced in interval data; tests: 584 pass; commit: e3eed75
-- [p] **#56 Vacation days eligible for later weight-based correction** — *[larger refactor]*
-  The one genuine model change: treat vacation/low-log quick-estimates (#49) as
-  low-confidence priors that the centered-window true-up may later refine (respecting
-  `manualLock` / `estimateMeta.locked`). Add the no-circularity exclusion in the TDEE/block
-  pipeline itself: saved estimate/vacation days (for example entries with estimate/vacation
-  metadata or synthetic estimate items) must be excluded from `estimateTDEE` regression blocks
-  even if they have top-level `calories`, so low-confidence priors cannot train the model they
-  are later corrected against. Add tests for the no-circularity guarantee. Files:
-  `analysis/engine.js`, `analysis/engine.test.js`.
-  > pushed — estimate entries eligible as 'estimate' type candidates, isEstimate flag in mergeDailyData excludes estimates from TDEE blocks, checkedByDefault=false for estimates; tests: 584 pass; commit: e3eed75
+_(#52–#56 completed — moved to `backlogs/calorie-tracker-completed.md`)_
 
 ### LOW / NICE-TO-HAVE
 
-- [ ] **#57 Mobile narrow-viewport pass** — *[quick win]* Validate the 6-tab bar scroll
+- [p] **#57 Mobile narrow-viewport pass** — *[quick win]* Validate the 6-tab bar scroll
   affordance, macro-bar wrapping, expandable target rows, and the date-range control at
   ~390px (no horizontal scroll, usable touch targets). Files: `styles.css`, `index.html`.
-- [ ] **#58 Large-import performance check** — *[quick win]* Verify chart slicing and render
+  > pushed — ≤390px breakpoint with tighter padding, compact tabs/macro bar, viewport-constrained target breakdown, date-range custom row wrapping, settings button wrapping; tests: 584 pass; commit: pending
+- [p] **#58 Large-import performance check** — *[quick win]* Verify chart slicing and render
   budget with multi-year weight/log imports; cap series length / decimate if needed. Files:
   `ui/chart.js`, `analysis/analysisUI.js`.
+  > pushed — O(n²) indexOf replaced with Map lookup in chart averages, rolling avg loops avoid slice allocations, data table capped at 60 columns, weight chart point radius reduced for >365 days, x-axis maxTicksLimit added; tests: 584 pass; commit: pending
