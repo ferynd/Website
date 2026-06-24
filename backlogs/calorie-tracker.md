@@ -140,7 +140,13 @@ Use targeted testing judgment:
 
 ## Active items
 
-_No items in progress. Add new items below in the appropriate priority section._
+UI/UX & information-architecture review (#47–#58). Goal: make the Today view light and
+scannable with a progressively-disclosed target breakdown, move correction/gap logic into
+its own **Corrections & Gaps** tab, give every chart a uniform date-range control, and
+upgrade the micronutrient section to dynamic upper+lower bounds. Each item is tagged
+**[quick win]** or **[larger refactor]**. Full rationale and current-vs-desired assessment
+live in the approved review plan; the per-item summaries below are the source of truth for
+execution. Reuse existing code wherever noted — most of the infrastructure already exists.
 
 ### CRITICAL
 
@@ -148,12 +154,87 @@ _(empty)_
 
 ### HIGH
 
-_(empty)_
+- [ ] **#47 Today macro summary bar redesign** — *[quick win]* Clean, prominent bar at the
+  top of the Today view: Calories with **remaining clearly highlighted**, Protein/Fat/Carbs,
+  and the current daily target number. Refine `renderTodayMacroHeader` / `renderTodayCompact`
+  (`ui/dashboard.js`); strip the inline `Base + Exercise + Bank = Target` text formula (it
+  moves into #48). Keep the main view focused on food entry. Files: `ui/dashboard.js`,
+  `styles.css`, `index.html`.
+- [ ] **#48 Clickable target → expandable financial-statement breakdown** — *[quick win]*
+  Make the target number a clickable `<summary>` that expands to clean vertical rows: Base
+  target → Exercise impact → **bridge to best-guess TDEE (bold final TDEE line)** → Banking
+  adjustment → Goal-based reduction → **Final Target** (the number that drives Remaining).
+  Surface protein/fat/carb targets in the same row format. Reuse/adapt the existing
+  `renderCalcDetailsPanel` (`ui/dashboard.js:894`, currently on the Energy tab) into a
+  collapsible on Today; add the TDEE-bridge rows from `resolveDailyPlanningTargets` /
+  `computeTDEE` metadata (`targets/dailyTargetResolver.js`, `targets/targetEngine.js:232`).
+  No calc change — `todayKcalTarget` already drives `remaining`. Files: `ui/dashboard.js`,
+  `targets/dailyTargetResolver.js` (expose bridge fields if needed), `styles.css`.
+- [ ] **#49 Zero-log vacation / low-log quick button** — *[quick win]* Render only when the
+  current day has 0 food items; place directly above the food-entry area. Quick-choice of 4
+  presets with parenthetical step guidance (Rest ~0–2k steps / Light ~5k / Moderate ~8–10k /
+  Active ~12k+) plus a Custom/manual option. Each selection creates an estimate day via the
+  existing `buildVacationDayEntry` / `estimateVacationCalories` engine
+  (`analysis/engine.js:1445/1373`) and `DAY_ACTIVITY_LEVELS` (`constants.js:9`), saved through
+  `saveEstimatedEntry`. Later weight-based correction is handled by #56. Files: `index.html`,
+  `events/wire.js`, `ui/dashboard.js`, `analysis/engine.js` (reuse).
+- [ ] **#50 Shared chart date-range control** — *[quick win]* One reusable control applied to
+  every chart: presets **Last 7 / 30 / 90 days / YTD / 1 Year**, **Since goal start** (from
+  `goalSettings`), and **custom From/To** date pickers. Per-chart state (not synchronized).
+  Generalize the existing `_chartState.timeframe` pattern (`ui/chart.js:128/195`). Apply to
+  the nutrient chart, weight-trend chart, eating-pattern chart, and the new corrections chart
+  (#52). Files: new `ui/dateRange.js` (small helper), `ui/chart.js`,
+  `analysis/analysisUI.js`, `index.html`, `styles.css`.
 
 ### MEDIUM
 
-_(empty)_
+- [ ] **#51 New "Corrections & Gaps" tab (split from Energy)** — *[larger refactor]* Add
+  `'corrections'` to `VALID_TABS` (`ui/dashboard.js:616`) plus a nav button/panel in
+  `index.html`. Move the missing-day fill (`renderMissingCaloriesSection`), vacation editor
+  (`renderVacationEditorSection`), estimate management (`renderEstimateManagementSection`),
+  and imputation table (`renderImputationTable`) out of the Energy tab into the new tab's
+  render path. Energy retains KPIs, weight chart, confidence card, and the TDEE/BMR/PAL
+  detail (`renderEnergyDetail`). No engine logic moves — render wiring only. Files:
+  `index.html`, `ui/dashboard.js`, `events/wire.js`, `analysis/analysisUI.js`.
+- [ ] **#52 Recorded vs. corrected/imputed chart + trend** — *[quick win; depends on #50,
+  #51]* Single Chart.js line chart on the Corrections tab showing, for the selected range:
+  recorded/logged calories, model-corrected/imputed calories, and a trend line — so the user
+  can visually evaluate whether the model's recommendation makes sense. Data already exists
+  from `runAnalysis` rows + `getTrueUpCandidates`. Uses the #50 date-range control. Files:
+  new `ui/correctionsChart.js` (or `analysis/analysisUI.js`).
+- [ ] **#53 Dynamic micronutrient upper+lower bounds** — *[larger refactor]* Show both the
+  lower bound (DRI/RDA) and the upper bound (`UL_TABLE`) where evidence exists, with a
+  position indicator (**Low / Within range / Near upper / Over**). Extend `renderNutrientRow`
+  (`ui/dashboard.js:1668`) and `calculateMicronutrientMetrics` (`ui/dashboard.js:485`).
+  Bound selection is already profile-driven via age/sex bands (`getDRI`); preserve
+  evidence-based scaling (protein g/kg, electrolyte sweat scaling) and confirm recompute is
+  reactive on profile change (debounced path in `targets/targetUI.js`). Note: DRI/UL
+  magnitudes are fixed scientific constants — "dynamic" means profile-driven selection and
+  scaling, not invented values. Files: `ui/dashboard.js`, `targets/nutritionReferences.js`,
+  `targets/targetEngine.js`, `styles.css`.
+- [ ] **#54 Collapse long-form explanations** — *[quick win]* Wrap methodology and
+  statistical notes across the Energy, Nutrients, and Corrections tabs in
+  `<details class="collapsible">` "How this is calculated" / "More detail" sections to reduce
+  cognitive load. Files: `analysis/analysisUI.js`, `ui/dashboard.js`, `styles.css`.
+- [ ] **#55 Larger-gap imputation with min-data-on-each-side rigor** — *[larger refactor]*
+  `getTrueUpCandidates` (`analysis/engine.js:1644`) already uses centered windows
+  `[-7,+6]/[-14,+13]/[-21,+20]` with ≥50% coverage + minimum future weights. Parameterize and
+  document the minimum pre/post day counts and weight-point counts so wider gaps impute only
+  when **both** sides are well-supported, and surface the chosen interval + confidence drivers.
+  Preserve the invariants: centered windows; TDEE reference from blocks **outside** the
+  candidate interval. Add tests. Files: `analysis/engine.js`, `analysis/engine.test.js`.
+- [ ] **#56 Vacation days eligible for later weight-based correction** — *[larger refactor]*
+  The one genuine model change: treat vacation/low-log quick-estimates (#49) as
+  low-confidence priors that the centered-window true-up may later refine (respecting
+  `manualLock` / `estimateMeta.locked`), while **still excluding** estimated/vacation days
+  from the TDEE regression to avoid circularity (existing invariant). Add tests for the
+  no-circularity guarantee. Files: `analysis/engine.js`, `analysis/engine.test.js`.
 
 ### LOW / NICE-TO-HAVE
 
-_(empty)_
+- [ ] **#57 Mobile narrow-viewport pass** — *[quick win]* Validate the 6-tab bar scroll
+  affordance, macro-bar wrapping, expandable target rows, and the date-range control at
+  ~390px (no horizontal scroll, usable touch targets). Files: `styles.css`, `index.html`.
+- [ ] **#58 Large-import performance check** — *[quick win]* Verify chart slicing and render
+  budget with multi-year weight/log imports; cap series length / decimate if needed. Files:
+  `ui/chart.js`, `analysis/analysisUI.js`.
