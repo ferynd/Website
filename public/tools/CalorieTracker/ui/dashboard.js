@@ -375,6 +375,7 @@ export function calculateBankingData(targetDateStr) {
       tdeeSource:      todayResolvedFull.planningTdeeSource      ?? null,
       tdeeSourceLabel: todayResolvedFull.planningTdeeSourceLabel ?? null,
       planningTdee:    todayResolvedFull.planningTdee            ?? null,
+      goalDeficit:     todayResolvedFull.goalDeficit             ?? null,
 
       // Aliases for structured consumers (Today/Energy/Nutrients)
       finalCalories:    todayKcalTarget,
@@ -1044,7 +1045,7 @@ function renderTodayCompact(bankingData) {
     bankMode, targetFloorApplied, effectiveFloor, floorSource, scheduleCapped,
     scheduleAdjustment, macroFloorExceedsCalories,
     bankAdjustmentApplied, manualBankCapped, bankBalance, rawBankBalance,
-    exerciseAddMode, planningTdee, tdeeSourceLabel,
+    exerciseAddMode, planningTdee, tdeeSourceLabel, goalDeficit,
     displayProteinG, displayFatG, displayCarbsG,
   } = bankingData;
 
@@ -1109,6 +1110,11 @@ function renderTodayCompact(bankingData) {
   if (planningTdee) {
     breakdownRows.push({ label: `Planning TDEE (${tdeeSourceLabel ?? 'estimate'})`, value: `${planningTdee} kcal`, cls: 'text-muted', bold: false });
   }
+  if (planningTdee && goalDeficit != null && goalDeficit !== 0) {
+    const sign = goalDeficit > 0 ? '+' : '';
+    const defLabel = goalDeficit < 0 ? 'Goal deficit' : 'Goal surplus';
+    breakdownRows.push({ label: defLabel, value: `${sign}${goalDeficit} kcal/day`, cls: goalDeficit < 0 ? 'text-negative' : 'text-positive', bold: false });
+  }
   breakdownRows.push({
     label: `Base target (${targetMode === 'autoGoal' ? 'Auto Goal' : 'Manual'})`,
     value: `${todayBaseCalories} kcal`, cls: '', bold: false,
@@ -1127,10 +1133,11 @@ function renderTodayCompact(bankingData) {
       });
     }
   } else if (bankMode === 'manualRolling' && bankAdjustmentApplied !== 0) {
-    let bankLabel = `Rolling bank: ${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal`;
-    if (manualBankCapped) bankLabel += ` (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance})`;
+    const bankValue = manualBankCapped
+      ? `${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal (raw: ${bankBalance > 0 ? '+' : ''}${bankBalance}, capped)`
+      : `${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal`;
     breakdownRows.push({
-      label: 'Rolling bank', value: `${bankAdjustmentApplied > 0 ? '+' : ''}${bankAdjustmentApplied} kcal`,
+      label: 'Rolling bank', value: bankValue,
       cls: bankAdjustmentApplied > 0 ? 'text-positive' : 'text-negative', bold: false,
     });
   }
