@@ -166,8 +166,8 @@ _(#52–#56 completed — moved to `backlogs/calorie-tracker-completed.md`)_
 - [p] **#57 Mobile narrow-viewport pass** — *[quick win]* Validate the 6-tab bar scroll
   affordance, macro-bar wrapping, expandable target rows, and the date-range control at
   ~390px (no horizontal scroll, usable touch targets). Files: `styles.css`, `index.html`.
-  > pushed — ≤390px breakpoint with tighter padding, compact tabs/macro bar, viewport-constrained target breakdown, date-range custom row wrapping, settings button wrapping; tests: 584 pass; commit: pending
+  > pushed — ≤390px breakpoint with tighter padding, compact tabs/macro bar, viewport-constrained target breakdown, date-range custom row wrapping, settings button wrapping; tests: 584 pass; commit: 649bf26
 - [p] **#58 Large-import performance check** — *[quick win]* Verify chart slicing and render
   budget with multi-year weight/log imports; cap series length / decimate if needed. Files:
   `ui/chart.js`, `analysis/analysisUI.js`.
-  > pushed — O(n²) indexOf replaced with Map lookup in chart averages, rolling avg loops avoid slice allocations, data table capped at 60 columns, weight chart point radius reduced for >365 days, x-axis maxTicksLimit added; tests: 584 pass; commit: pending
+  > pushed — O(n²) indexOf replaced with Map lookup in chart averages, rolling avg loops avoid slice allocations, data table capped at 60 columns, weight chart point radius reduced for >365 days, x-axis maxTicksLimit added; tests: 584 pass; commit: 649bf26
