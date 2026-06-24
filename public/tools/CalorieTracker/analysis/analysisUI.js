@@ -814,13 +814,12 @@ function drawCorrectionsChart(rows) {
   const WINDOW = 7;
   const fullRolling = new Map();
   for (let i = 0; i < rows.length; i++) {
-    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
-    const calVals = slice
-      .map(r => _getRecordedCalories(r.date))
-      .filter(v => v != null);
-    fullRolling.set(rows[i].date, calVals.length >= 3
-      ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length)
-      : null);
+    let sum = 0, count = 0;
+    for (let j = Math.max(0, i - WINDOW + 1); j <= i; j++) {
+      const v = _getRecordedCalories(rows[j].date);
+      if (v != null) { sum += v; count++; }
+    }
+    fullRolling.set(rows[i].date, count >= 3 ? Math.round(sum / count) : null);
   }
 
   const labels    = [];
@@ -1070,14 +1069,13 @@ function drawEatingPatternChart(rows) {
   const fullRolling = new Map();
   for (let i = 0; i < rows.length; i++) {
     if (!firstNutritionDate || rows[i].date < firstNutritionDate) continue;
-    const slice = rows.slice(Math.max(0, i - WINDOW + 1), i + 1);
-    const calVals = slice
-      .filter(r => firstNutritionDate && r.date >= firstNutritionDate)
-      .map(r => _realCaloriesForDate(r.date, includeEstimates))
-      .filter(v => v != null);
-    fullRolling.set(rows[i].date, calVals.length >= 3
-      ? Math.round(calVals.reduce((a, b) => a + b, 0) / calVals.length)
-      : null);
+    let sum = 0, count = 0;
+    for (let j = Math.max(0, i - WINDOW + 1); j <= i; j++) {
+      if (firstNutritionDate && rows[j].date < firstNutritionDate) continue;
+      const v = _realCaloriesForDate(rows[j].date, includeEstimates);
+      if (v != null) { sum += v; count++; }
+    }
+    fullRolling.set(rows[i].date, count >= 3 ? Math.round(sum / count) : null);
   }
 
   const labels        = [];
@@ -1908,6 +1906,10 @@ function drawWeightChart(rows) {
   const smoothColor = chartColors[1] || '#f59e0b';
   const css = getComputedStyle(document.documentElement);
 
+  const largeDataset = labels.length > 365;
+  const rawPointRadius = largeDataset ? 0 : 1.5;
+  const rawHoverRadius = largeDataset ? 2 : 4;
+
   weightChartInstance = new Chart(canvas.getContext('2d'), {
     type: 'line',
     data: {
@@ -1919,8 +1921,8 @@ function drawWeightChart(rows) {
           borderColor: rawColor + '80',
           backgroundColor: rawColor + '20',
           borderWidth: 1,
-          pointRadius: 1.5,
-          pointHoverRadius: 4,
+          pointRadius: rawPointRadius,
+          pointHoverRadius: rawHoverRadius,
           fill: false,
           spanGaps: true,
           tension: 0,
