@@ -1294,6 +1294,12 @@ export function classifyAllDays(rows, dailyEntries, perDayResiduals = null) {
 
 /** Calorie-adjustment parameters keyed by vacation day type. */
 export const VACATION_TYPE_CONFIG = {
+  rest: {
+    label: 'Rest',
+    description: 'Resting day — minimal activity, 0–2k steps',
+    tdeeMultiplier: 0.80,
+    calorieOffset: -100,
+  },
   light: {
     label: 'Light',
     description: 'Relaxed day — lower activity, leisurely meals',

@@ -15,9 +15,9 @@ import { openFoodManager, closeFoodManager, selectFoodItem, editFoodItem, delete
 import { closeBlankFoodNameModal, closeDuplicateDialog } from '../ui/modals.js';
 import { saveFoodItemToDatabase } from '../food/save.js';
 import { handleLogin, handleSignUp, handleGuestLogin, handleLogout } from '../main.js';
-import { saveTargets, saveDailyEntry } from '../services/firebase.js';
+import { saveTargets, saveDailyEntry, saveEstimatedEntry } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
-import { updateDashboard, activateTab } from '../ui/dashboard.js';
+import { updateDashboard, activateTab, renderVacationQuickPanel } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { debugLog, handleError, clampNutrient, flushPendingUndo } from '../utils/ui.js';
 import {
@@ -26,6 +26,7 @@ import {
 } from '../exercise/met.js';
 import { getTodayInTimezone } from '../utils/time.js';
 import { resolveWeightKg } from '../ui/nutrientHelpers.js';
+import { buildVacationDayEntry } from '../analysis/engine.js';
 
 /**
  * Main event wiring function - called from main.js after DOM is ready
@@ -54,6 +55,7 @@ export function wire() {
     wireExportEvents();
     wireTabs();
     wireExerciseSessionModal();
+    wireVacationQuickButtons();
 
     // Expose global functions for inline HTML onclick handlers
     exposeGlobalFunctions();
@@ -395,6 +397,56 @@ function wireExerciseSessionModal() {
     debugLog('wire', 'Exercise session modal wired');
   } catch (error) {
     handleError('wire-exercise-modal', error, 'Failed to wire exercise session modal');
+  }
+}
+
+/**
+ * Wire vacation / low-log quick estimate buttons using event delegation.
+ */
+function wireVacationQuickButtons() {
+  try {
+    const container = document.getElementById('vacation-quick-container');
+    if (!container) return;
+
+    container.addEventListener('click', async (e) => {
+      const presetBtn = e.target.closest('.vacation-quick-btn');
+      const customBtn = e.target.closest('#vacation-custom-btn');
+      if (!presetBtn && !customBtn) return;
+
+      const dateStr = state.dom.dateInput?.value;
+      if (!dateStr) return;
+
+      let vacationType, customCalories = null;
+      if (presetBtn) {
+        vacationType = presetBtn.dataset.vacationType;
+      } else {
+        vacationType = 'custom';
+        const input = document.getElementById('vacation-custom-cal');
+        customCalories = parseFloat(input?.value);
+        if (!customCalories || customCalories <= 0) {
+          input?.focus();
+          return;
+        }
+      }
+
+      try {
+        const entry = buildVacationDayEntry(
+          dateStr, vacationType,
+          state.analysisResults, state.dailyEntries,
+          state.baselineTargets, customCalories
+        );
+        await saveEstimatedEntry(dateStr, entry);
+        await loadDailyFoodItems();
+        updateDashboard();
+        debugLog('wire-vacation', `Quick estimate saved for ${dateStr} (${vacationType})`);
+      } catch (err) {
+        handleError('wire-vacation-quick', err, 'Failed to save quick estimate');
+      }
+    });
+
+    debugLog('wire', 'Vacation quick buttons wired');
+  } catch (error) {
+    handleError('wire-vacation', error, 'Failed to wire vacation quick buttons');
   }
 }
 

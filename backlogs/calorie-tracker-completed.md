@@ -128,6 +128,16 @@ For the active backlog (new items, protocol, invariants), see `backlogs/calorie-
 
 ---
 
+## HIGH — UI/UX & information architecture
+
+- [x] **#47 — Today macro summary bar redesign**
+  > Resolved: redesigned sticky macro header and dashboard hero card with prominent remaining-calorie readout, compact P/F/C grid, stripped inline formula text; merged 2de2407
+
+- [x] **#48 — Clickable target → expandable financial-statement breakdown**
+  > Resolved: clickable details target with financial-statement breakdown panel (TDEE → Base → Exercise → Banking → Goal deficit → Final Target plus macro targets); merged bcb139b, fix dbd2509
+
+---
+
 ## MEDIUM — polish & hygiene
 
 - [x] **#32 — Chart.js 3.9.1 is two majors behind**

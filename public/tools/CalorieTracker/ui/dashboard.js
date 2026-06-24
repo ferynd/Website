@@ -26,11 +26,12 @@ import { computeTrendDirection, classifyTargetSource, resolveWeightKg } from './
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
+import { renderDateRangeControl, initDateRangeEvents, resolveRange } from './dateRange.js';
 import { CONFIG } from '../config.js';
 import { renderAnalysisSection, initAnalysisEvents } from '../analysis/analysisUI.js';
 import { UL_TABLE } from '../targets/nutritionReferences.js';
 import { resolveDailyBaseTargets, resolveDailyPlanningTargets } from '../targets/dailyTargetResolver.js';
-import { runAnalysis } from '../analysis/engine.js';
+import { runAnalysis, buildVacationDayEntry, VACATION_TYPE_CONFIG } from '../analysis/engine.js';
 import { computeBMR, resolveCurrentWeightLb, latestWeightLbFromEntries, computeMicronutrientTargets } from '../targets/targetEngine.js';
 import { calcBankingCore, hasTrustedCalories, prepareBankingInputs } from './bankingEngine.js';
 import { getTodayInTimezone } from '../utils/time.js';
@@ -1201,6 +1202,61 @@ function renderTodayCompact(bankingData) {
 }
 
 // =========================
+// VACATION / LOW-LOG QUICK ESTIMATE (#49)
+// =========================
+
+const VACATION_QUICK_PRESETS = [
+  { key: 'rest',   label: 'Rest',     hint: '~0–2k steps', vacationType: 'rest' },
+  { key: 'light',  label: 'Light',    hint: '~5k steps',   vacationType: 'light' },
+  { key: 'moderate', label: 'Moderate', hint: '~8–10k steps', vacationType: 'medium' },
+  { key: 'active', label: 'Active',   hint: '~12k+ steps', vacationType: 'heavy' },
+];
+
+function isDayEmpty(entry) {
+  if (!entry) return true;
+  const hasFoodItems = Array.isArray(entry.foodItems) && entry.foodItems.length > 0;
+  const hasExercise = Array.isArray(entry.exerciseSessions) && entry.exerciseSessions.length > 0;
+  const hasLegacyCals = (entry.entryType !== 'estimate') && (parseFloat(entry.calories) || 0) > 0 && (!Array.isArray(entry.foodItems) || entry.foodItems.length === 0);
+  const hasActivity = !!entry.dayActivityLevel;
+  const hasNotes = entry.notes?.trim();
+  const isEstimate = entry.entryType === 'estimate';
+  return !hasFoodItems && !hasExercise && !hasLegacyCals && !hasActivity && !hasNotes && !isEstimate;
+}
+
+export function renderVacationQuickPanel() {
+  const container = document.getElementById('vacation-quick-container');
+  if (!container) return;
+
+  const dateStr = state.dom.dateInput?.value;
+  if (!dateStr) { container.innerHTML = ''; return; }
+
+  const entry = state.dailyEntries.get(dateStr);
+  if (!isDayEmpty(entry) || !state.userId || Object.keys(state.baselineTargets).length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  const presetBtns = VACATION_QUICK_PRESETS.map(p =>
+    `<button type="button" class="btn btn-secondary vacation-quick-btn" data-vacation-type="${p.vacationType}" data-preset="${p.key}">
+      <span class="vacation-quick-label">${p.label}</span>
+      <span class="vacation-quick-hint">${p.hint}</span>
+    </button>`
+  ).join('');
+
+  container.innerHTML = `
+    <div class="vacation-quick-panel">
+      <div class="vacation-quick-header">
+        <span class="text-sm font-semibold text-secondary">No food logged — estimate this day?</span>
+      </div>
+      <div class="vacation-quick-presets">${presetBtns}</div>
+      <div class="vacation-quick-custom">
+        <input type="number" id="vacation-custom-cal" class="input-xs" min="0" step="50" placeholder="kcal" aria-label="Custom calorie estimate">
+        <button type="button" class="btn btn-secondary btn-sm" id="vacation-custom-btn">Custom</button>
+      </div>
+    </div>`;
+}
+
+// =========================
 // EXERCISE IMPACT PANEL (Today tab output + Energy tab)
 // =========================
 
@@ -1374,6 +1430,7 @@ export function updateDashboard() {
     `;
 
     renderTodayMacroHeader(bankingData);
+    renderVacationQuickPanel();
 
     // Re-render the active secondary tab so it stays fresh
     const activeTab = state.activeTab || 'today';
@@ -1674,16 +1731,9 @@ function renderChartSection() {
         <div id="chart-nutrient-chips" class="chart-chip-picker" role="group" aria-label="Select nutrients for chart"></div>
       </div>
 
-      <div class="mb-4 flex flex-wrap gap-4 items-end">
-        <div class="flex-1">
-          <label for="chart-timeframe" class="block text-sm font-medium text-primary mb-1">Time Frame</label>
-          <select id="chart-timeframe">
-            <option value="3days">Last 3 Days</option>
-            <option value="week">Last Week</option>
-            <option value="month">Last Month</option>
-          </select>
-        </div>
-        <div class="flex gap-4 items-center flex-wrap">
+      <div class="mb-4">
+        ${renderDateRangeControl('nutrient-chart', { defaultPreset: '7' })}
+        <div class="flex gap-4 items-center flex-wrap mt-2">
           <label class="flex items-center gap-2 cursor-pointer text-sm text-primary">
             <input type="checkbox" id="show-3day-avg" class="h-4 w-4">
             <span>3-day avg</span>

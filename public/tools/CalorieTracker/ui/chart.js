@@ -8,6 +8,7 @@ import { CONFIG } from '../config.js';
 import { allNutrients, averagedNutrients } from '../constants.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
+import { resolveRange, initDateRangeEvents, daysBetween } from './dateRange.js';
 import { getEntryExerciseKcal } from '../exercise/met.js';
 import { resolveWeightKg } from './nutrientHelpers.js';
 import { resolveDailyBaseTargets } from '../targets/dailyTargetResolver.js';
@@ -130,7 +131,6 @@ export function initializeChartControls() {
     debugLog('init-controls', 'Starting chart controls initialization');
 
     const chipContainer = document.getElementById('chart-nutrient-chips');
-    const chartTimeframe = document.getElementById('chart-timeframe');
     const show3DayAvg = document.getElementById('show-3day-avg');
     const show7DayAvg = document.getElementById('show-7day-avg');
 
@@ -139,7 +139,6 @@ export function initializeChartControls() {
       return;
     }
 
-    // Populate chip buttons (one per nutrient), restoring prior selection from _chartState
     chipContainer.innerHTML = '';
     allNutrients.forEach(nutrient => {
       const btn = document.createElement('button');
@@ -160,17 +159,16 @@ export function initializeChartControls() {
       chipContainer.appendChild(btn);
     });
 
-    // Restore timeframe and avg toggles from _chartState
-    if (chartTimeframe) chartTimeframe.value = _chartState.timeframe;
     if (show3DayAvg)   show3DayAvg.checked   = _chartState.show3Day;
     if (show7DayAvg)   show7DayAvg.checked   = _chartState.show7Day;
 
     const safe = (el, ev, fn) => {
       if (el) el.addEventListener(ev, e => { try { fn(e); } catch (err) { handleChartError('event-handler', err); } });
     };
-    safe(chartTimeframe, 'change', (e) => { _chartState.timeframe = e.target.value; updateChart(); });
     safe(show3DayAvg,   'change', (e) => { _chartState.show3Day  = e.target.checked; updateChart(); });
     safe(show7DayAvg,   'change', (e) => { _chartState.show7Day  = e.target.checked; updateChart(); });
+
+    initDateRangeEvents('nutrient-chart', () => { try { updateChart(); } catch (err) { handleChartError('date-range', err); } });
 
     debugLog('init-controls', 'Chart controls initialized successfully');
     updateChart();
@@ -195,12 +193,16 @@ export function initializeChartControls() {
 function getChartData(nutrientKeys, timeframe, show3Day = false, show7Day = false) {
   try {
     debugLog('get-data', { nutrientKeys, timeframe, show3Day, show7Day });
-    
-    const endDate = new Date(`${state.dom.dateInput.value}T00:00:00`);
-    
-    let days = 7;
-    if (timeframe === '3days') days = 3;
-    else if (timeframe === 'month') days = 30;
+
+    const range = resolveRange('nutrient-chart');
+    const endDate = new Date(`${range.endDate}T00:00:00`);
+
+    let days;
+    if (typeof timeframe === 'number') {
+      days = timeframe;
+    } else {
+      days = daysBetween(range.startDate, range.endDate);
+    }
 
     // Get extra days for moving averages
     const maxAvgDays = Math.max(show3Day ? 3 : 0, show7Day ? 7 : 0);
@@ -416,7 +418,6 @@ export function updateChart() {
       return;
     }
 
-    const chartTimeframe = document.getElementById('chart-timeframe');
     const show3DayAvg = document.getElementById('show-3day-avg');
     const show7DayAvg = document.getElementById('show-7day-avg');
 
@@ -428,7 +429,6 @@ export function updateChart() {
 
     const activeChips = chipContainer.querySelectorAll('.chart-chip.active');
     if (!activeChips.length) {
-      // Empty selection: clear stale chart and show a hint in the table area
       if (state.chartInstance) {
         state.chartInstance.destroy();
         state.chartInstance = null;
@@ -441,11 +441,12 @@ export function updateChart() {
     }
 
     const selectedNutrients = Array.from(activeChips).map(c => c.dataset.nutrient);
-    const timeframe = chartTimeframe?.value || CHART_CONFIG.DEFAULT_TIMEFRAME;
+    const range = resolveRange('nutrient-chart');
+    const days = daysBetween(range.startDate, range.endDate);
     const show3Day = show3DayAvg?.checked || false;
     const show7Day = show7DayAvg?.checked || false;
 
-    const { labels, datasets, tableData } = getChartData(selectedNutrients, timeframe, show3Day, show7Day);
+    const { labels, datasets, tableData } = getChartData(selectedNutrients, days, show3Day, show7Day);
     const isAutoGoalMode = (state.goalSettings?.targetMode === 'autoGoal');
     const canvas = document.getElementById('nutrition-chart');
     
