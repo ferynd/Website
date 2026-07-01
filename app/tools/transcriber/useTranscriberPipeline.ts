@@ -1,22 +1,13 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { readStoredGeminiModel } from '@/app/lib/aiModels';
-import { readStoredTranscribeModel } from '@/app/lib/transcribeModels';
 import { auth } from './lib/firebase';
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
-import {
-  CORRECTION_CHUNK_SECONDS,
-  CORRECTION_GEMINI_MODEL,
-  CORRECTION_OVERLAP_SECONDS,
-  MAX_OPENAI_UPLOAD_BYTES,
-  PRIMARY_TRANSCRIBE_MODEL,
-  TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
-  TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
-} from './lib/constants';
+import { CORRECTION_CHUNK_SECONDS, CORRECTION_OVERLAP_SECONDS, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
 import { buildCorrectionWarning } from './lib/correctionSummary';
 import { buildManualCleanupPrompt } from './lib/buildManualCleanupPrompt';
 import { buildTranscriptText, formatTimestamp, normalizeSegments } from './lib/formatTranscript';
+import { readTranscriberSettings } from './lib/settings';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
 import type {
   CorrectApiResponse,
@@ -151,15 +142,11 @@ export function useTranscriberPipeline() {
         const user = auth.currentUser;
         if (!user) throw new Error('You must be signed in.');
 
-        // Model choices come from the Settings pop-up (saved to this browser's localStorage).
-        const transcribeModelId = readStoredTranscribeModel(
-          TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
-          PRIMARY_TRANSCRIBE_MODEL,
-        );
-        const correctionModelId = readStoredGeminiModel(
-          TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
-          CORRECTION_GEMINI_MODEL,
-        );
+        // Model choices come from the Settings pop-up (saved to this browser's
+        // localStorage via the versioned settings store).
+        const settings = readTranscriberSettings();
+        const transcribeModelId = settings.openaiModel;
+        const correctionModelId = settings.cleanupModel;
 
         // --- Transcribe (upload + primary/fallback model) ---
         setState((s) => ({ ...s, status: 'uploading', uploadProgress: 0 }));

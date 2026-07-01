@@ -2,55 +2,42 @@
 
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
-import {
-  AVAILABLE_GEMINI_MODELS,
-  geminiModelOptionLabel,
-  readStoredGeminiModel,
-  resolveGeminiModelId,
-  saveStoredGeminiModel,
-  type GeminiModelId,
-} from '@/app/lib/aiModels';
-import {
-  AVAILABLE_TRANSCRIBE_MODELS,
-  readStoredTranscribeModel,
-  resolveTranscribeModelId,
-  saveStoredTranscribeModel,
-  type TranscribeModelId,
-} from '@/app/lib/transcribeModels';
+import { AVAILABLE_GEMINI_MODELS, geminiModelOptionLabel, resolveGeminiModelId } from '@/app/lib/aiModels';
+import { AVAILABLE_TRANSCRIBE_MODELS, resolveTranscribeModelId } from '@/app/lib/transcribeModels';
 import { ADMIN_EMAIL } from '../../trip-cost/firebaseConfig';
+import { CORRECTION_CHUNK_SECONDS, CORRECTION_OVERLAP_SECONDS, CORRECTION_TEMPERATURE } from '../lib/constants';
 import {
-  CORRECTION_CHUNK_SECONDS,
-  CORRECTION_GEMINI_MODEL,
-  CORRECTION_OVERLAP_SECONDS,
-  CORRECTION_TEMPERATURE,
-  PRIMARY_TRANSCRIBE_MODEL,
-  TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
-  TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
-} from '../lib/constants';
+  DEFAULT_TRANSCRIBER_SETTINGS,
+  readTranscriberSettings,
+  saveTranscriberSettings,
+  type TranscriberSettings,
+} from '../lib/settings';
 
 export default function SettingsModal({ onClose }: { onClose: () => void }) {
-  const [transcribeModelId, setTranscribeModelId] = useState<TranscribeModelId>(PRIMARY_TRANSCRIBE_MODEL);
-  const [correctionModelId, setCorrectionModelId] = useState<GeminiModelId>(CORRECTION_GEMINI_MODEL);
+  // Lazy init avoids a flash of the hard-coded defaults before the effect
+  // below runs, while still staying SSR-safe (readTranscriberSettings()
+  // returns defaults when window is undefined).
+  const [settings, setSettings] = useState<TranscriberSettings>(() => DEFAULT_TRANSCRIBER_SETTINGS);
 
   useEffect(() => {
-    setTranscribeModelId(
-      readStoredTranscribeModel(TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY, PRIMARY_TRANSCRIBE_MODEL),
-    );
-    setCorrectionModelId(
-      readStoredGeminiModel(TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY, CORRECTION_GEMINI_MODEL),
-    );
+    setSettings(readTranscriberSettings());
   }, []);
 
+  const transcribeModelId = settings.openaiModel;
+  const correctionModelId = settings.cleanupModel;
+
   function handleTranscribeChange(value: string) {
-    const modelId = resolveTranscribeModelId(value, PRIMARY_TRANSCRIBE_MODEL);
-    setTranscribeModelId(modelId);
-    saveStoredTranscribeModel(TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY, modelId);
+    const modelId = resolveTranscribeModelId(value, DEFAULT_TRANSCRIBER_SETTINGS.openaiModel);
+    const next = { ...settings, openaiModel: modelId };
+    setSettings(next);
+    saveTranscriberSettings(next);
   }
 
   function handleCorrectionChange(value: string) {
-    const modelId = resolveGeminiModelId(value, CORRECTION_GEMINI_MODEL);
-    setCorrectionModelId(modelId);
-    saveStoredGeminiModel(TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY, modelId);
+    const modelId = resolveGeminiModelId(value, DEFAULT_TRANSCRIBER_SETTINGS.cleanupModel);
+    const next = { ...settings, cleanupModel: modelId };
+    setSettings(next);
+    saveTranscriberSettings(next);
   }
 
   const activeTranscribeModel = AVAILABLE_TRANSCRIBE_MODELS.find((m) => m.id === transcribeModelId);

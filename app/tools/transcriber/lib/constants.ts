@@ -27,6 +27,12 @@ export const DEFAULT_CONTEXT_NOTES =
 
 export const ACCEPTED_FILE_EXTENSION = '.m4a';
 
-/** localStorage keys for the per-browser model choices exposed in the Settings pop-up. */
+/**
+ * @deprecated Superseded by the versioned settings store (`lib/settings.ts`,
+ * key `transcriber_settings_v1`). Kept only so `readTranscriberSettings()`
+ * can migrate a returning browser's saved model choices into the v1 object
+ * the first time it runs — do not read/write these directly in new code.
+ */
 export const TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY = 'transcriber_transcribe_model';
+/** @deprecated See TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY above. */
 export const TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY = 'transcriber_correction_model';
