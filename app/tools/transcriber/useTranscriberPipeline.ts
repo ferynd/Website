@@ -15,6 +15,7 @@ import {
   TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
 } from './lib/constants';
 import { buildCorrectionWarning } from './lib/correctionSummary';
+import { buildManualCleanupPrompt } from './lib/buildManualCleanupPrompt';
 import { buildTranscriptText, formatTimestamp, normalizeSegments } from './lib/formatTranscript';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
 import type {
@@ -31,6 +32,9 @@ export interface TranscriberRunOptions {
   contextNotes: string;
   /** When true, abort the whole run instead of falling back to an uncorrected chunk. */
   strictMode?: boolean;
+  /** When true, skip the Gemini cleanup pass entirely and return the raw transcript
+   * with a manual cleanup prompt prepended, for pasting into a browser AI chat. */
+  skipCleanup?: boolean;
 }
 
 export interface TranscriberState {
@@ -46,6 +50,8 @@ export interface TranscriberState {
   warning: string | null;
   correctionFailedChunks: number;
   correctionTotalChunks: number;
+  /** True when this run skipped the Gemini cleanup pass (see skipCleanup on TranscriberRunOptions). */
+  cleanupSkipped: boolean;
 }
 
 const initialState: TranscriberState = {
@@ -60,6 +66,7 @@ const initialState: TranscriberState = {
   warning: null,
   correctionFailedChunks: 0,
   correctionTotalChunks: 0,
+  cleanupSkipped: false,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -128,7 +135,7 @@ export function useTranscriberPipeline() {
   }, []);
 
   const run = useCallback(
-    async ({ file, speakerNames, contextNotes, strictMode = false }: TranscriberRunOptions) => {
+    async ({ file, speakerNames, contextNotes, strictMode = false, skipCleanup = false }: TranscriberRunOptions) => {
       setState({ ...initialState, status: 'validating' });
       startTimer();
 
@@ -187,6 +194,25 @@ export function useTranscriberPipeline() {
 
         if (rawSegments.length === 0) {
           throw new Error('Transcription returned no speech segments.');
+        }
+
+        if (skipCleanup) {
+          // --- Skip the Gemini cleanup pass: return the raw transcript with a
+          // manual cleanup prompt prepended, for pasting into a browser AI chat. ---
+          setState((s) => ({ ...s, status: 'building', cleanupSkipped: true }));
+          const promptHeader = buildManualCleanupPrompt({ speakerNames, contextNotes, mode });
+          const transcriptText = `${promptHeader}\n${buildTranscriptText(rawSegments)}`;
+
+          setState((s) => ({
+            ...s,
+            status: 'complete',
+            transcriptText,
+            warning: null,
+            correctionFailedChunks: 0,
+            correctionTotalChunks: 0,
+            cleanupSkipped: true,
+          }));
+          return;
         }
 
         // --- Correct (chunked, overlapping Gemini pass) ---

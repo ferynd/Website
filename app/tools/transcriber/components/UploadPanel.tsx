@@ -10,7 +10,13 @@ interface UploadPanelProps {
   disabled: boolean;
   defaultSpeakerNames: string[];
   defaultContextNotes: string;
-  onRun: (opts: { file: File; speakerNames: string[]; contextNotes: string; strictMode: boolean }) => void;
+  onRun: (opts: {
+    file: File;
+    speakerNames: string[];
+    contextNotes: string;
+    strictMode: boolean;
+    skipCleanup: boolean;
+  }) => void;
 }
 
 const MAX_MB = (MAX_OPENAI_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
@@ -25,6 +31,7 @@ export default function UploadPanel({
   const [speakerNames, setSpeakerNames] = useState<string[]>(defaultSpeakerNames);
   const [contextNotes, setContextNotes] = useState(defaultContextNotes);
   const [strictMode, setStrictMode] = useState(false);
+  const [skipCleanup, setSkipCleanup] = useState(false);
 
   const validation = useMemo(() => {
     if (!file) return null;
@@ -67,7 +74,14 @@ export default function UploadPanel({
       </div>
 
       <div className="space-y-3">
-        <label className="block text-sm font-medium text-text">Speakers</label>
+        <div>
+          <label className="block text-sm font-medium text-text">Speakers</label>
+          <p className="text-xs text-text-3 mt-0.5">
+            Fed to the cleanup pass so it knows which names to assign lines to. Example: with diarized transcription
+            (default), the first speaker detected in the audio is mapped to the first name here, the second detected
+            speaker to the second name, and so on — order matters more than exact spelling.
+          </p>
+        </div>
         <div className="space-y-2">
           {speakerNames.map((name, i) => (
             <div key={i} className="flex gap-2 items-center">
@@ -111,7 +125,16 @@ export default function UploadPanel({
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-text">Context notes (optional)</label>
+        <div>
+          <label className="block text-sm font-medium text-text">Context notes (optional)</label>
+          <p className="text-xs text-text-3 mt-0.5">
+            Free text passed directly into the cleanup prompt as extra background — the correction pass only sees
+            ~15 minutes of the recording at a time, so this is the way to hand it context it can&apos;t otherwise
+            infer (who&apos;s who, accents, in-jokes, names it might mishear). Example: &quot;Kait is female and
+            speaks more slowly. James is male and speaks more quickly. This is a couples&apos; therapy session — do
+            not soften or sanitize what either person says.&quot;
+          </p>
+        </div>
         <textarea
           value={contextNotes}
           disabled={disabled}
@@ -124,14 +147,31 @@ export default function UploadPanel({
       <label className="flex items-start gap-2 text-sm text-text-2">
         <input
           type="checkbox"
-          checked={strictMode}
+          checked={skipCleanup}
           disabled={disabled}
+          onChange={(e) => setSkipCleanup(e.target.checked)}
+          className="mt-0.5 rounded border-border"
+        />
+        <span>
+          Skip cleanup pass — return the raw transcript as-is from transcription instead of running it through
+          Gemini, with a ready-to-paste cleanup prompt (including your speakers and context notes above) at the top.
+          Use this to clean it up yourself in a browser AI chat (ChatGPT, Claude, Gemini, etc.) instead, or if
+          <code className="mx-1">GEMINI_API_KEY</code> isn&apos;t configured on the server.
+        </span>
+      </label>
+
+      <label className={`flex items-start gap-2 text-sm ${skipCleanup ? 'text-text-3 opacity-60' : 'text-text-2'}`}>
+        <input
+          type="checkbox"
+          checked={strictMode && !skipCleanup}
+          disabled={disabled || skipCleanup}
           onChange={(e) => setStrictMode(e.target.checked)}
           className="mt-0.5 rounded border-border"
         />
         <span>
           Strict correction mode — abort the whole run if any correction chunk fails, instead of falling back to
           uncorrected text for that chunk.
+          {skipCleanup && ' (Not applicable — there is no correction pass to fail when cleanup is skipped.)'}
         </span>
       </label>
 
@@ -145,7 +185,8 @@ export default function UploadPanel({
             file,
             speakerNames: speakerNames.map((s) => s.trim()).filter(Boolean),
             contextNotes,
-            strictMode,
+            strictMode: strictMode && !skipCleanup,
+            skipCleanup,
           })
         }
         className="w-full sm:w-auto"

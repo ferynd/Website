@@ -34,10 +34,25 @@ export default function TranscriptOutput({
     <div className="rounded-xl border border-border bg-surface-1 p-6 sm:p-8 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold">Transcript</h2>
-        <span className="text-xs rounded-full border border-border px-3 py-1 text-text-2 whitespace-nowrap">
-          {state.mode === 'diarized' ? 'OpenAI diarized' : 'Fallback (Whisper + inferred speakers)'}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {state.cleanupSkipped && (
+            <span className="text-xs rounded-full border border-accent/40 bg-accent/10 text-accent px-3 py-1 whitespace-nowrap">
+              Raw — cleanup pass skipped
+            </span>
+          )}
+          <span className="text-xs rounded-full border border-border px-3 py-1 text-text-2 whitespace-nowrap">
+            {state.mode === 'diarized' ? 'OpenAI diarized' : 'Fallback (Whisper + inferred speakers)'}
+          </span>
+        </div>
       </div>
+
+      {state.cleanupSkipped && (
+        <p className="text-sm text-text-2 bg-accent/10 border border-accent/20 rounded-lg px-4 py-3">
+          The Gemini cleanup pass was skipped for this run. A ready-to-paste prompt is included at the top of the
+          text below — copy the whole thing into a browser AI chat (ChatGPT, Claude, Gemini, etc.) if you want it
+          cleaned up manually.
+        </p>
+      )}
 
       {state.warning && (
         <p className="text-sm text-warning bg-warning/10 border border-warning/20 rounded-lg px-4 py-3">
