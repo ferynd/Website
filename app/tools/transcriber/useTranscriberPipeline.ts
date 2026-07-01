@@ -3,41 +3,76 @@
 import { useCallback, useRef, useState } from 'react';
 import { auth } from './lib/firebase';
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
-import { CORRECTION_CHUNK_SECONDS, CORRECTION_OVERLAP_SECONDS, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
+import type { ClassifiedError } from './lib/classifyError';
+import { classifyTranscriptionError } from './lib/classifyError';
+import { FALLBACK_TRANSCRIBE_MODEL, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
 import { buildCorrectionWarning } from './lib/correctionSummary';
 import { buildManualCleanupPrompt } from './lib/buildManualCleanupPrompt';
-import { buildTranscriptText, formatTimestamp, normalizeSegments } from './lib/formatTranscript';
+import { formatCleanTranscript } from './lib/formatCleanTranscript';
+import { buildTranscriptText, normalizeSegments } from './lib/formatTranscript';
+import { mergeTurns } from './lib/mergeTurns';
+import { transcribeWithOpenAi } from './lib/providers/openaiProvider';
+import type { TranscriptionAttempt, TranscriptionAttemptError, TranscriptionProviderId } from './lib/providers/types';
+import { appendDebugEvent, buildDebugJson, createDebugLog, type DebugLog } from './lib/runDebug';
+import { sanitizeUpstreamError } from './lib/sanitizeUpstreamError';
 import { readTranscriberSettings } from './lib/settings';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
+import { suppressArtifacts } from './lib/suppressArtifacts';
 import type {
   CorrectApiResponse,
   PipelineStatus,
-  TranscribeApiResponse,
+  SuppressionReport,
   TranscriptionMode,
   TranscriptSegment,
+  TurnBlock,
 } from './lib/types';
 
 export interface TranscriberRunOptions {
   file: File;
   speakerNames: string[];
   contextNotes: string;
-  /** When true, abort the whole run instead of falling back to an uncorrected chunk. */
+  /** When true, abort the whole cleanup pass (rather than falling back to uncorrected text) on the first chunk failure. */
   strictMode?: boolean;
   /** When true, skip the Gemini cleanup pass entirely and return the raw transcript
    * with a manual cleanup prompt prepended, for pasting into a browser AI chat. */
   skipCleanup?: boolean;
 }
 
+/** Classified error + enough file/provider diagnostics for the ErrorRecoveryPanel's table, without ever holding transcript text. */
+export interface RecoveryInfo {
+  classified: ClassifiedError;
+  fileName: string;
+  fileSizeBytes: number;
+  browserMime: string;
+  provider: TranscriptionProviderId | null;
+  model: string | null;
+  upstreamStatus: number | null;
+  /** Already sanitized + truncated — see lib/sanitizeUpstreamError.ts. */
+  upstreamBody: string;
+}
+
 export interface TranscriberState {
   status: PipelineStatus;
   error: string | null;
   mode: TranscriptionMode | null;
+  /** Set when the diarized model was unavailable and the run silently used Whisper instead. */
   primaryError: string | null;
-  transcriptText: string;
+  /** Captured immediately after the first successful provider response, before suppression — always the complete transcript. */
+  rawSegments: TranscriptSegment[];
+  rawText: string;
+  /** Segments after suppression + cleanup (pre-merge) — stays segment-granular for future export/tagging use. */
+  cleanedSegments: TranscriptSegment[];
+  /** Null when cleanup hasn't produced output yet (still running, skipped, or failed and completed raw-only). */
+  cleanedText: string | null;
+  turnBlocks: TurnBlock[];
+  suppressionReport: SuppressionReport | null;
+  recovery: RecoveryInfo | null;
+  /** Serialized only on failure, or always when settings.debugMode is 'always'. Never contains transcript text. */
+  debugJson: string | null;
   uploadProgress: number | null; // 0..1, only meaningful during 'uploading'
   chunkProgress: { current: number; total: number } | null; // only meaningful during 'correcting'
   elapsedMs: number;
-  /** Set when 1+ correction chunks failed and fell back to uncorrected segments. Null if the run completed clean. */
+  /** Set when 1+ cleanup chunks failed and fell back to uncorrected segments. Null if the run completed clean. */
   warning: string | null;
   correctionFailedChunks: number;
   correctionTotalChunks: number;
@@ -50,7 +85,14 @@ const initialState: TranscriberState = {
   error: null,
   mode: null,
   primaryError: null,
-  transcriptText: '',
+  rawSegments: [],
+  rawText: '',
+  cleanedSegments: [],
+  cleanedText: null,
+  turnBlocks: [],
+  suppressionReport: null,
+  recovery: null,
+  debugJson: null,
   uploadProgress: null,
   chunkProgress: null,
   elapsedMs: 0,
@@ -63,32 +105,6 @@ const initialState: TranscriberState = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsonRecord = Record<string, any>;
 
-/** POSTs a FormData body with real upload-progress events via XHR (fetch has no upload progress API). */
-function postFormWithProgress(
-  url: string,
-  form: FormData,
-  idToken: string,
-  onUploadProgress: (fraction: number) => void,
-): Promise<{ status: number; json: JsonRecord }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', url);
-    xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onUploadProgress(e.loaded / e.total);
-    };
-    xhr.onload = () => {
-      try {
-        resolve({ status: xhr.status, json: JSON.parse(xhr.responseText) });
-      } catch {
-        reject(new Error('Server returned an invalid response.'));
-      }
-    };
-    xhr.onerror = () => reject(new Error('Network error while uploading.'));
-    xhr.send(form);
-  });
-}
-
 async function postJson(url: string, body: unknown, idToken: string): Promise<{ status: number; json: JsonRecord }> {
   const res = await fetch(url, {
     method: 'POST',
@@ -97,8 +113,7 @@ async function postJson(url: string, body: unknown, idToken: string): Promise<{ 
   });
   // A platform-level failure (e.g. an edge/gateway 502 or 413) can return an
   // HTML body instead of JSON. Parse defensively so that case still reaches
-  // the caller's non-2xx handling (chunk failure + warning/strict-mode)
-  // instead of throwing and aborting the whole run.
+  // the caller's non-2xx handling instead of throwing and aborting the run.
   let json: JsonRecord;
   try {
     json = await res.json();
@@ -108,10 +123,33 @@ async function postJson(url: string, body: unknown, idToken: string): Promise<{ 
   return { status: res.status, json };
 }
 
+/** Recovery shown when a run (or an explicit retry) selects the Gemini provider — not implemented until Phase 3. */
+function buildGeminiUnavailableRecovery(file: File): RecoveryInfo {
+  return {
+    classified: {
+      category: 'unknown',
+      likelyCause: 'Gemini direct transcription arrives in the next update.',
+      recommendedAction: 'Use OpenAI diarized or Whisper for now.',
+      retryProviders: ['openai-diarized', 'openai-whisper'],
+      suggestsConversion: false,
+    },
+    fileName: file.name,
+    fileSizeBytes: file.size,
+    browserMime: file.type || 'unknown',
+    provider: 'gemini',
+    model: null,
+    upstreamStatus: null,
+    upstreamBody: '',
+  };
+}
+
 export function useTranscriberPipeline() {
   const [state, setState] = useState<TranscriberState>(initialState);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
+  /** The most recent run's options, so retryWith() can re-run the same file without re-prompting for it. */
+  const lastRunOptionsRef = useRef<TranscriberRunOptions | null>(null);
+  const debugLogRef = useRef<DebugLog | null>(null);
 
   const startTimer = useCallback(() => {
     startRef.current = Date.now();
@@ -125,10 +163,33 @@ export function useTranscriberPipeline() {
     timerRef.current = null;
   }, []);
 
-  const run = useCallback(
-    async ({ file, speakerNames, contextNotes, strictMode = false, skipCleanup = false }: TranscriberRunOptions) => {
+  const performRun = useCallback(
+    async function runPipeline(opts: TranscriberRunOptions, forcedProvider?: TranscriptionProviderId): Promise<void> {
+      lastRunOptionsRef.current = opts;
+      const { file, speakerNames, contextNotes, strictMode = false, skipCleanup = false } = opts;
+
       setState({ ...initialState, status: 'validating' });
       startTimer();
+
+      const debugLog = createDebugLog({
+        name: file.name,
+        sizeBytes: file.size,
+        mimeType: file.type || 'application/octet-stream',
+      });
+      debugLogRef.current = debugLog;
+      const settings = readTranscriberSettings();
+
+      const finalizeFailed = (recovery: RecoveryInfo, errorMessage: string) => {
+        appendDebugEvent(debugLog, {
+          kind: 'error',
+          category: recovery.classified.category,
+          stage: 'transcribe',
+          provider: recovery.provider,
+          upstreamStatus: recovery.upstreamStatus,
+          upstreamBody: recovery.upstreamBody,
+        });
+        setState((s) => ({ ...s, status: 'failed', error: errorMessage, recovery, debugJson: buildDebugJson(debugLog) }));
+      };
 
       try {
         if (!file.name.toLowerCase().endsWith('.m4a')) {
@@ -142,83 +203,205 @@ export function useTranscriberPipeline() {
         const user = auth.currentUser;
         if (!user) throw new Error('You must be signed in.');
 
-        // Model choices come from the Settings pop-up (saved to this browser's
-        // localStorage via the versioned settings store).
-        const settings = readTranscriberSettings();
-        const transcribeModelId = settings.openaiModel;
-        const correctionModelId = settings.cleanupModel;
+        // --- Provider attempt: the chosen provider, plus (when auto-fallback
+        // is on and this isn't already an explicit retry) at most one hop to a
+        // different OpenAI provider. TODO(Phase 3): once Gemini direct
+        // transcription exists, drop the `p !== 'gemini'` guard below so
+        // auto-fallback can hop to it too. ---
+        let providerId: TranscriptionProviderId = forcedProvider ?? settings.provider;
+        const isExplicitRetry = forcedProvider !== undefined;
+        const attemptedProviders: TranscriptionProviderId[] = [];
+        let attempt: TranscriptionAttempt | null = null;
 
-        // --- Transcribe (upload + primary/fallback model) ---
-        setState((s) => ({ ...s, status: 'uploading', uploadProgress: 0 }));
+        while (!attempt) {
+          if (providerId === 'gemini') {
+            finalizeFailed(buildGeminiUnavailableRecovery(file), 'Gemini direct transcription arrives in the next update.');
+            return;
+          }
 
-        const uploadForm = new FormData();
-        uploadForm.set('file', file, file.name);
-        uploadForm.set('speakerNames', JSON.stringify(speakerNames));
-        uploadForm.set('model', transcribeModelId);
+          attemptedProviders.push(providerId);
+          const model = providerId === 'openai-whisper' ? FALLBACK_TRANSCRIBE_MODEL : settings.openaiModel;
+          appendDebugEvent(debugLog, { kind: 'provider-attempt', provider: providerId, model });
+          setState((s) => ({ ...s, status: 'uploading', uploadProgress: 0 }));
 
-        const idTokenForUpload = await user.getIdToken();
-        const { status: transcribeStatus, json: transcribeData } = await postFormWithProgress(
-          '/api/transcriber/transcribe',
-          uploadForm,
-          idTokenForUpload,
-          (fraction) => {
-            setState((s) => ({
-              ...s,
-              uploadProgress: fraction,
-              status: fraction >= 1 ? 'transcribing' : 'uploading',
-            }));
-          },
-        );
+          const idToken = await user.getIdToken();
+          try {
+            attempt = await transcribeWithOpenAi({
+              file,
+              speakerNames,
+              model,
+              // The server-side silent whisper retry (backward-compat
+              // default) is only allowed for a fresh run when auto-fallback
+              // is on — this is the "default OFF -> failures surface in the
+              // recovery panel instead of silently degrading" behavior. An
+              // explicit provider retry never allows it either, since that's
+              // already a deliberate single-provider choice.
+              allowWhisperFallback: !isExplicitRetry && settings.autoFallback,
+              idToken,
+              onUploadProgress: (fraction) =>
+                setState((s) => ({ ...s, uploadProgress: fraction, status: fraction >= 1 ? 'transcribing' : 'uploading' })),
+            });
+          } catch (err) {
+            const attemptError = err as TranscriptionAttemptError;
+            appendDebugEvent(debugLog, {
+              kind: 'error',
+              category: attemptError.classified.category,
+              stage: 'transcribe',
+              provider: attemptError.provider,
+              upstreamStatus: attemptError.httpStatus,
+              upstreamBody: attemptError.upstreamBody,
+            });
 
-        const transcribeResult = transcribeData as TranscribeApiResponse;
-        if (transcribeStatus < 200 || transcribeStatus >= 300) {
-          throw new Error(transcribeResult.error || 'Transcription failed.');
+            const nextProvider =
+              !isExplicitRetry && settings.autoFallback && attemptedProviders.length < 2
+                ? settings.fallbackOrder.find(
+                    (p) =>
+                      p !== 'gemini' &&
+                      !attemptedProviders.includes(p) &&
+                      attemptError.classified.retryProviders.includes(p),
+                  )
+                : undefined;
+
+            if (nextProvider) {
+              providerId = nextProvider;
+              continue;
+            }
+
+            finalizeFailed(
+              {
+                classified: attemptError.classified,
+                fileName: file.name,
+                fileSizeBytes: file.size,
+                browserMime: file.type || 'unknown',
+                provider: attemptError.provider,
+                model: attemptError.model,
+                upstreamStatus: attemptError.httpStatus,
+                upstreamBody: attemptError.upstreamBody,
+              },
+              attemptError.classified.likelyCause,
+            );
+            return;
+          }
         }
+        if (!attempt) return; // unreachable — the loop only exits once attempt is set
 
-        const mode = transcribeResult.mode;
-        const rawSegments = normalizeSegments(transcribeResult.segments);
-        setState((s) => ({ ...s, mode, primaryError: transcribeResult.primaryError ?? null }));
-
+        // --- Capture raw (before suppression) — free, no model call. ---
+        const rawSegments = normalizeSegments(attempt.segments);
         if (rawSegments.length === 0) {
           throw new Error('Transcription returned no speech segments.');
         }
+        const rawText = buildTranscriptText(rawSegments);
+        appendDebugEvent(debugLog, { kind: 'raw-captured', segmentCount: rawSegments.length });
+
+        const fallbackNotice = attempt.warnings.find((w) => w.startsWith('Diarized model unavailable')) ?? null;
+        setState((s) => ({ ...s, mode: attempt!.mode, primaryError: fallbackNotice, rawSegments, rawText }));
 
         if (skipCleanup) {
           // --- Skip the Gemini cleanup pass: return the raw transcript with a
           // manual cleanup prompt prepended, for pasting into a browser AI chat. ---
           setState((s) => ({ ...s, status: 'building', cleanupSkipped: true }));
-          const promptHeader = buildManualCleanupPrompt({ speakerNames, contextNotes, mode });
-          const transcriptText = `${promptHeader}\n${buildTranscriptText(rawSegments)}`;
+          const promptHeader = buildManualCleanupPrompt({ speakerNames, contextNotes, mode: attempt.mode });
+          const rawTextWithPrompt = `${promptHeader}\n${rawText}`;
 
           setState((s) => ({
             ...s,
             status: 'complete',
-            transcriptText,
+            rawText: rawTextWithPrompt,
+            cleanedText: null,
             warning: null,
             correctionFailedChunks: 0,
             correctionTotalChunks: 0,
             cleanupSkipped: true,
+            debugJson: settings.debugMode === 'always' ? buildDebugJson(debugLog) : null,
           }));
           return;
         }
 
-        // --- Correct (chunked, overlapping Gemini pass) ---
+        // --- Suppress hallucinated filler (if enabled); raw above already captured everything. ---
         setState((s) => ({ ...s, status: 'correcting' }));
+        let segmentsForCleanup = rawSegments;
+        let boundaryTimes: number[] = [];
 
-        const totalDuration = Math.max(...rawSegments.map((s) => s.end));
+        if (settings.suppressionEnabled) {
+          const suppressed = suppressArtifacts(rawSegments, settings.suppressionSensitivity);
+          segmentsForCleanup = suppressed.segments;
+          boundaryTimes = suppressed.report.boundaryTimes;
+          if (suppressed.report.removed.length > 0) {
+            appendDebugEvent(debugLog, {
+              kind: 'suppression',
+              sensitivity: settings.suppressionSensitivity,
+              groupsRemoved: suppressed.report.removed.length,
+              segmentsRemoved: suppressed.report.removed.reduce((sum, r) => sum + r.count, 0),
+            });
+          }
+          setState((s) => ({ ...s, suppressionReport: suppressed.report }));
+        }
+
+        const finalizeComplete = (
+          cleanedSegments: TranscriptSegment[],
+          warning: string | null,
+          failedChunks: number,
+          totalChunks: number,
+        ) => {
+          setState((s) => ({ ...s, status: 'building' }));
+          let turnBlocks: TurnBlock[];
+          let cleanedText: string;
+          if (settings.mergeTurnsEnabled) {
+            turnBlocks = mergeTurns(cleanedSegments, { maxGapSeconds: settings.mergeGapSeconds, boundaryTimes });
+            cleanedText = formatCleanTranscript(turnBlocks);
+          } else {
+            // Merging is a display/export transform only — with it disabled,
+            // still shape a 1:1 TurnBlock per segment so the cleaned view stays uniform.
+            turnBlocks = cleanedSegments.map((seg) => ({
+              start: seg.start,
+              end: seg.end,
+              speaker: seg.speaker,
+              text: seg.text,
+              segmentCount: 1,
+            }));
+            cleanedText = buildTranscriptText(cleanedSegments);
+          }
+
+          setState((s) => ({
+            ...s,
+            status: 'complete',
+            cleanedSegments,
+            turnBlocks,
+            cleanedText,
+            warning,
+            correctionFailedChunks: failedChunks,
+            correctionTotalChunks: totalChunks,
+            debugJson: settings.debugMode === 'always' ? buildDebugJson(debugLog) : null,
+          }));
+        };
+
+        if (segmentsForCleanup.length === 0) {
+          // Suppression removed everything (pathological/tiny input) — nothing left to clean up.
+          finalizeComplete([], null, 0, 0);
+          return;
+        }
+
+        if (!settings.cleanupEnabled) {
+          finalizeComplete(segmentsForCleanup, null, 0, 0);
+          return;
+        }
+
+        // --- Cleanup (chunked, overlapping Gemini pass), parameterized by settings ---
+        const totalDuration = Math.max(...segmentsForCleanup.map((s) => s.end));
         const windows = createChunkWindows(totalDuration, {
-          chunkSeconds: CORRECTION_CHUNK_SECONDS,
-          overlapSeconds: CORRECTION_OVERLAP_SECONDS,
+          chunkSeconds: settings.cleanupChunkSeconds,
+          overlapSeconds: settings.cleanupOverlapSeconds,
         });
 
         const chunkResults: ChunkResult[] = [];
         let correctionFailedChunks = 0;
+        let lastChunkFailure: { status: number; json: JsonRecord } | null = null;
 
         for (let i = 0; i < windows.length; i++) {
           const window: ChunkWindowBounds = windows[i];
           setState((s) => ({ ...s, chunkProgress: { current: i + 1, total: windows.length } }));
 
-          const windowSegments = segmentsInWindow(rawSegments, window);
+          const windowSegments = segmentsInWindow(segmentsForCleanup, window);
           if (windowSegments.length === 0) {
             chunkResults.push({ window, segments: [] });
             continue;
@@ -227,21 +410,16 @@ export function useTranscriberPipeline() {
           const idToken = await user.getIdToken();
           const { status: correctStatus, json: correctData } = await postJson(
             '/api/transcriber/correct',
-            { segments: windowSegments, speakerNames, contextNotes, mode, model: correctionModelId },
+            { segments: windowSegments, speakerNames, contextNotes, mode: attempt.mode, model: settings.cleanupModel },
             idToken,
           );
           const correctResult = correctData as CorrectApiResponse;
 
           if (correctStatus < 200 || correctStatus >= 300) {
             correctionFailedChunks += 1;
+            lastChunkFailure = { status: correctStatus, json: correctData };
 
-            if (strictMode) {
-              const rangeLabel = `${formatTimestamp(window.coreStart)}–${formatTimestamp(window.coreEnd)}`;
-              const reason = correctResult.error || `HTTP ${correctStatus}`;
-              throw new Error(
-                `Correction failed for chunk ${i + 1} of ${windows.length} (${rangeLabel}): ${reason}. Strict mode is enabled, so the run was aborted instead of using an uncorrected chunk.`,
-              );
-            }
+            if (strictMode) break; // strict mode: the first chunk failure ends the cleanup pass entirely (see cleanupEntirelyFailed below)
 
             // Don't lose the chunk — keep the uncorrected segments and surface a warning at the end.
             chunkResults.push({ window, segments: windowSegments });
@@ -250,28 +428,87 @@ export function useTranscriberPipeline() {
           chunkResults.push({ window, segments: correctResult.segments as TranscriptSegment[] });
         }
 
-        // --- Build final transcript ---
-        setState((s) => ({ ...s, status: 'building' }));
-        const finalSegments = stitchChunkResults(chunkResults);
-        const transcriptText = buildTranscriptText(finalSegments);
-        const warning = buildCorrectionWarning({
-          failedChunks: correctionFailedChunks,
-          totalChunks: windows.length,
-        });
+        const cleanupEntirelyFailed =
+          windows.length > 0 && (correctionFailedChunks === windows.length || (strictMode && correctionFailedChunks > 0));
 
-        setState((s) => ({
-          ...s,
-          status: 'complete',
-          transcriptText,
-          warning,
-          correctionFailedChunks,
-          correctionTotalChunks: windows.length,
-        }));
+        if (cleanupEntirelyFailed) {
+          // Cleanup failed outright (or strict mode aborted on the first
+          // failure) — raw is already captured above and stays downloadable;
+          // the ErrorRecoveryPanel offers completeWithRawOnly() from here.
+          const bodyText = sanitizeUpstreamError(lastChunkFailure?.json?.error ?? 'Cleanup pass failed.');
+          const httpStatus = lastChunkFailure?.status ?? null;
+          const classified = classifyTranscriptionError({
+            httpStatus,
+            bodyText,
+            provider: null,
+            stage: 'cleanup',
+            fileName: file.name,
+            fileSizeBytes: file.size,
+            browserMime: file.type,
+          });
+          appendDebugEvent(debugLog, {
+            kind: 'error',
+            category: classified.category,
+            stage: 'cleanup',
+            provider: null,
+            upstreamStatus: httpStatus,
+            upstreamBody: bodyText,
+          });
+          setState((s) => ({
+            ...s,
+            status: 'failed',
+            error: 'The cleanup pass failed. Your raw transcript is still available below.',
+            recovery: {
+              classified,
+              fileName: file.name,
+              fileSizeBytes: file.size,
+              browserMime: file.type || 'unknown',
+              provider: null,
+              model: settings.cleanupModel,
+              upstreamStatus: httpStatus,
+              upstreamBody: bodyText,
+            },
+            debugJson: buildDebugJson(debugLog),
+          }));
+          return;
+        }
+
+        const cleanedSegments = stitchChunkResults(chunkResults);
+        const warning = buildCorrectionWarning({ failedChunks: correctionFailedChunks, totalChunks: windows.length });
+        if (warning) {
+          appendDebugEvent(debugLog, {
+            kind: 'cleanup-warning',
+            failedChunks: correctionFailedChunks,
+            totalChunks: windows.length,
+          });
+        }
+
+        finalizeComplete(cleanedSegments, warning, correctionFailedChunks, windows.length);
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'Something went wrong.';
         setState((s) => ({
           ...s,
           status: 'failed',
-          error: err instanceof Error ? err.message : 'Something went wrong.',
+          error: message,
+          recovery: {
+            classified: {
+              category: 'unknown',
+              likelyCause: message,
+              recommendedAction: 'Fix the issue above and try again.',
+              retryProviders: [],
+              suggestsConversion: false,
+            },
+            fileName: file.name,
+            fileSizeBytes: file.size,
+            browserMime: file.type || 'unknown',
+            provider: null,
+            model: null,
+            upstreamStatus: null,
+            upstreamBody: '',
+          },
+          // Every failure serializes the debug log — see runDebug.ts's file
+          // header; debugMode === 'always' only affects the SUCCESS paths above.
+          debugJson: buildDebugJson(debugLog),
         }));
       } finally {
         stopTimer();
@@ -280,10 +517,31 @@ export function useTranscriberPipeline() {
     [startTimer, stopTimer],
   );
 
+  const run = useCallback((opts: TranscriberRunOptions) => performRun(opts), [performRun]);
+
+  /** Re-runs the last submitted file with a specific provider — for now only
+   * the two OpenAI providers actually run; 'gemini' surfaces a "not yet"
+   * recovery message (see buildGeminiUnavailableRecovery) until Phase 3. */
+  const retryWith = useCallback(
+    (providerId: TranscriptionProviderId) => {
+      const lastOptions = lastRunOptionsRef.current;
+      if (!lastOptions) return;
+      void performRun(lastOptions, providerId);
+    },
+    [performRun],
+  );
+
+  /** Moves a run that has a raw transcript (but no cleaned output — cleanup failed or was never run) to 'complete'. */
+  const completeWithRawOnly = useCallback(() => {
+    setState((s) => (s.rawText ? { ...s, status: 'complete', cleanedText: null, recovery: null, error: null } : s));
+  }, []);
+
   const reset = useCallback(() => {
     stopTimer();
+    lastRunOptionsRef.current = null;
+    debugLogRef.current = null;
     setState(initialState);
   }, [stopTimer]);
 
-  return { state, run, reset };
+  return { state, run, retryWith, completeWithRawOnly, reset };
 }

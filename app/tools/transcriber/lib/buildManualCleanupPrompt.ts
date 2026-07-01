@@ -18,16 +18,16 @@ export function buildManualCleanupPrompt(input: ManualCleanupPromptInput): strin
   const speakerList = input.speakerNames.length ? input.speakerNames.join(', ') : '(not specified)';
 
   const lines = [
-    'Please clean up the following raw speech-to-text transcript. Follow these rules:',
-    '- Do NOT summarize, rewrite, paraphrase, or add analysis or commentary — return the full transcript, corrected.',
-    '- Preserve the original wording as closely as possible. Keep interruptions, fragments, repeated words, and emotionally important phrasing.',
-    '- Do not sanitize or soften the language.',
-    '- You may fix obvious transcription errors, punctuation, and formatting issues.',
-    '- You may correct obvious speaker misattributions using context, turn-taking, and speaking style.',
+    'Please clean up the following raw speech-to-text transcript. This is a preservation-first pass — your job is to fix transcription mistakes, not to improve how anyone sounds. Follow these rules:',
+    '- Do NOT summarize, rewrite, paraphrase, sanitize, therapize, or add analysis or commentary — return the full transcript, corrected.',
+    '- Do NOT infer or invent content that was not actually said — never complete a sentence or fill in a thought that trails off.',
+    '- Preserve the original wording as closely as possible: misspeaking, false starts, unfinished thoughts, interruptions, repeated words, filler, and emotionally important or upsetting phrasing all stay exactly as spoken.',
+    '- You may fix an obvious automatic-speech-recognition (ASR) error only when context strongly supports the correction, plus punctuation and formatting.',
+    '- You may correct an obvious speaker-label flip (e.g. two adjacent lines are clearly swapped) using context, turn-taking, and speaking style.',
     `- Known speakers in this conversation: ${speakerList}.`,
     input.mode === 'fallback'
       ? '- This transcript has NO existing speaker labels (every line is currently "Unknown"). Infer who is speaking for each line from context and turn-taking.'
-      : "- This transcript already has speaker labels, which may contain mistakes. Fix clear mistakes only — don't relabel lines you aren't confident about.",
+      : "- This transcript already has speaker labels, which may contain mistakes. Fix clear speaker-label flips only — don't relabel anything you aren't confident about.",
     '- If you are not confident who is speaking, leave the label as "Unknown" rather than guessing.',
   ];
 

@@ -8,7 +8,7 @@ const STEPS: { key: PipelineStatus; label: string }[] = [
   { key: 'validating', label: 'Validating file' },
   { key: 'uploading', label: 'Uploading' },
   { key: 'transcribing', label: 'Transcribing' },
-  { key: 'correcting', label: 'Correcting speaker labels' },
+  { key: 'correcting', label: 'Cleaning up transcript' },
   { key: 'building', label: 'Building final transcript' },
   { key: 'complete', label: 'Complete' },
 ];
@@ -34,7 +34,11 @@ export default function PipelineStatusView({ state }: { state: TranscriberState 
       </div>
 
       {state.status === 'failed' ? (
-        <p className="text-error text-sm">{state.error}</p>
+        // The ErrorRecoveryPanel (rendered by the page when state.recovery is
+        // set) replaces this bare line with a full diagnostics table and
+        // retry actions. Every failure path in useTranscriberPipeline.ts sets
+        // `recovery`, so this fallback line is only ever a last resort.
+        !state.recovery && <p className="text-error text-sm">{state.error}</p>
       ) : (
         <ul className="space-y-2">
           {steps.map((step, i) => {
@@ -73,9 +77,7 @@ export default function PipelineStatusView({ state }: { state: TranscriberState 
 
       {state.mode === 'fallback' && state.status !== 'failed' && (
         <p className="text-sm text-warning">
-          {state.primaryError
-            ? `Using fallback mode (Whisper + inferred speakers) — the diarized model wasn't available. (${state.primaryError})`
-            : 'Using Whisper (no speaker diarization) — selected in Settings.'}
+          {state.primaryError ?? 'Using Whisper (no speaker diarization) — selected in Settings.'}
         </p>
       )}
     </div>

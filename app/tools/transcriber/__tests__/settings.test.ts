@@ -115,7 +115,7 @@ describe('parseStoredSettings', () => {
 
     it('ignores unknown extra keys', () => {
       const raw = JSON.stringify({ ...DEFAULT_TRANSCRIBER_SETTINGS, someFutureField: 'surprise' });
-      const result = parseStoredSettings(raw) as Record<string, unknown>;
+      const result = parseStoredSettings(raw) as unknown as Record<string, unknown>;
       expect(result.someFutureField).toBeUndefined();
       expect(result).toEqual(DEFAULT_TRANSCRIBER_SETTINGS);
     });

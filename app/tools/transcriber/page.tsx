@@ -12,11 +12,12 @@ import { useTranscriberPipeline } from './useTranscriberPipeline';
 import UploadPanel from './components/UploadPanel';
 import PipelineStatusView from './components/PipelineStatusView';
 import TranscriptOutput from './components/TranscriptOutput';
+import ErrorRecoveryPanel from './components/ErrorRecoveryPanel';
 import SettingsModal from './components/SettingsModal';
 import RequirementsPanel from './components/RequirementsPanel';
 
 function TranscriberShell({ user }: { user: User }) {
-  const { state, run, reset } = useTranscriberPipeline();
+  const { state, run, retryWith, completeWithRawOnly, reset } = useTranscriberPipeline();
   const isRunning = !['idle', 'complete', 'failed'].includes(state.status);
   const [showSettings, setShowSettings] = useState(false);
 
@@ -59,6 +60,16 @@ function TranscriberShell({ user }: { user: User }) {
         />
 
         {state.status !== 'idle' && <PipelineStatusView state={state} />}
+
+        {state.status === 'failed' && state.recovery && (
+          <ErrorRecoveryPanel
+            recovery={state.recovery}
+            rawText={state.rawText}
+            onRetry={retryWith}
+            onOpenSettings={() => setShowSettings(true)}
+            onCompleteWithRawOnly={completeWithRawOnly}
+          />
+        )}
 
         {state.status === 'complete' && <TranscriptOutput state={state} onReset={reset} />}
       </section>

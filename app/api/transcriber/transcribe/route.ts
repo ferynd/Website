@@ -9,14 +9,11 @@ import {
   PRIMARY_TRANSCRIBE_MODEL,
 } from '@/app/tools/transcriber/lib/constants';
 import { mapDiarizedSegments, mapFallbackSegments } from '@/app/tools/transcriber/lib/mapSpeakerLabels';
-import type { TranscriptionMode } from '@/app/tools/transcriber/lib/types';
+import { sanitizeUpstreamError } from '@/app/tools/transcriber/lib/sanitizeUpstreamError';
+import type { TranscribeErrorInfo, TranscriptionMode } from '@/app/tools/transcriber/lib/types';
+import type { TranscriptionProviderId } from '@/app/tools/transcriber/lib/providers/types';
 
 const OPENAI_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
-
-// Never let API key fragments leak into error responses that reach the client.
-function sanitizeError(text: string): string {
-  return text.replace(/sk-[A-Za-z0-9]{10,}/g, 'sk-***').slice(0, 500);
-}
 
 export async function POST(req: NextRequest) {
   // SECURITY: this is the only gate on this route. Every request must carry
@@ -71,6 +68,14 @@ export async function POST(req: NextRequest) {
   // timestamps are ever accepted here — see app/lib/transcribeModels.ts for why.
   const transcribeModelId = resolveTranscribeModelId(form.get('model'), PRIMARY_TRANSCRIBE_MODEL);
   const diarizes = modelSupportsDiarization(transcribeModelId);
+  const providerId: TranscriptionProviderId = diarizes ? 'openai-diarized' : 'openai-whisper';
+
+  // Backward-compat default ('true'): the pre-Phase-2 behavior (silently
+  // retrying whisper-1 when the selected/diarized model call fails) is
+  // preserved unless the caller explicitly opts out — driven by the
+  // auto-fallback setting client-side.
+  const allowWhisperFallbackRaw = form.get('allowWhisperFallback');
+  const allowWhisperFallback = typeof allowWhisperFallbackRaw === 'string' ? allowWhisperFallbackRaw !== 'false' : true;
 
   const primaryForm = new FormData();
   primaryForm.set('file', file, file.name);
@@ -85,6 +90,7 @@ export async function POST(req: NextRequest) {
 
   let mode: TranscriptionMode = diarizes ? 'diarized' : 'fallback';
   let primaryError: string | null = null;
+  let primaryErrorInfo: TranscribeErrorInfo | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any = null;
 
@@ -97,15 +103,28 @@ export async function POST(req: NextRequest) {
   if (primaryRes.ok) {
     data = await primaryRes.json();
   } else {
-    // Selected model/endpoint unavailable for this account/audio — fall back to whisper-1.
+    // Selected model/endpoint unavailable for this account/audio.
     const errText = await primaryRes.text().catch(() => '');
-    primaryError = sanitizeError(errText) || `OpenAI transcription failed (${primaryRes.status}).`;
+    const sanitizedBody = sanitizeUpstreamError(errText);
+    primaryError = sanitizedBody || `OpenAI transcription failed (${primaryRes.status}).`;
     mode = 'fallback';
+    primaryErrorInfo = {
+      provider: providerId,
+      model: transcribeModelId,
+      stage: 'transcribe',
+      upstreamStatus: primaryRes.status,
+      upstreamBody: sanitizedBody,
+    };
   }
 
-  // Nothing left to retry with if the selected model already was the fallback model itself.
-  if (!data && transcribeModelId === FALLBACK_TRANSCRIBE_MODEL) {
-    return NextResponse.json({ error: `Transcription failed: ${primaryError}` }, { status: 502 });
+  // Nothing left to retry with if the selected model already was the fallback
+  // model itself, or the caller opted out of the silent whisper retry (auto-fallback
+  // setting off — the client's recovery panel handles retry choices instead).
+  if (!data && (transcribeModelId === FALLBACK_TRANSCRIBE_MODEL || !allowWhisperFallback)) {
+    return NextResponse.json(
+      { error: `Transcription failed: ${primaryError}`, errorInfo: primaryErrorInfo },
+      { status: primaryRes.status },
+    );
   }
 
   if (!data) {
@@ -123,9 +142,17 @@ export async function POST(req: NextRequest) {
 
     if (!fallbackRes.ok) {
       const fallbackErrText = await fallbackRes.text().catch(() => '');
+      const sanitizedFallbackBody = sanitizeUpstreamError(fallbackErrText);
       return NextResponse.json(
         {
-          error: `Transcription failed on both the selected and fallback models. Selected (${transcribeModelId}): ${primaryError} Fallback (${FALLBACK_TRANSCRIBE_MODEL}): ${sanitizeError(fallbackErrText)}`,
+          error: `Transcription failed on both the selected and fallback models. Selected (${transcribeModelId}): ${primaryError} Fallback (${FALLBACK_TRANSCRIBE_MODEL}): ${sanitizedFallbackBody}`,
+          errorInfo: {
+            provider: 'openai-whisper',
+            model: FALLBACK_TRANSCRIBE_MODEL,
+            stage: 'transcribe',
+            upstreamStatus: fallbackRes.status,
+            upstreamBody: sanitizedFallbackBody,
+          },
         },
         { status: 502 },
       );
@@ -142,5 +169,6 @@ export async function POST(req: NextRequest) {
     mode,
     segments,
     primaryError: mode === 'fallback' ? primaryError : null,
+    warnings: [],
   });
 }
