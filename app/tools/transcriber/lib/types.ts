@@ -39,6 +39,8 @@ export interface CorrectApiRequestBody {
   speakerNames: string[];
   contextNotes: string;
   mode: TranscriptionMode;
+  /** Gemini model id chosen in Settings; falls back to CORRECTION_GEMINI_MODEL server-side if missing/invalid. */
+  model?: string;
 }
 
 export interface CorrectApiResponse {

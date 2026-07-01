@@ -1,9 +1,19 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
+import { readStoredGeminiModel } from '@/app/lib/aiModels';
+import { readStoredTranscribeModel } from '@/app/lib/transcribeModels';
 import { auth } from './lib/firebase';
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
-import { CORRECTION_CHUNK_SECONDS, CORRECTION_OVERLAP_SECONDS, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
+import {
+  CORRECTION_CHUNK_SECONDS,
+  CORRECTION_GEMINI_MODEL,
+  CORRECTION_OVERLAP_SECONDS,
+  MAX_OPENAI_UPLOAD_BYTES,
+  PRIMARY_TRANSCRIBE_MODEL,
+  TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
+  TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
+} from './lib/constants';
 import { buildCorrectionWarning } from './lib/correctionSummary';
 import { buildTranscriptText, formatTimestamp, normalizeSegments } from './lib/formatTranscript';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
@@ -134,12 +144,23 @@ export function useTranscriberPipeline() {
         const user = auth.currentUser;
         if (!user) throw new Error('You must be signed in.');
 
+        // Model choices come from the Settings pop-up (saved to this browser's localStorage).
+        const transcribeModelId = readStoredTranscribeModel(
+          TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
+          PRIMARY_TRANSCRIBE_MODEL,
+        );
+        const correctionModelId = readStoredGeminiModel(
+          TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
+          CORRECTION_GEMINI_MODEL,
+        );
+
         // --- Transcribe (upload + primary/fallback model) ---
         setState((s) => ({ ...s, status: 'uploading', uploadProgress: 0 }));
 
         const uploadForm = new FormData();
         uploadForm.set('file', file, file.name);
         uploadForm.set('speakerNames', JSON.stringify(speakerNames));
+        uploadForm.set('model', transcribeModelId);
 
         const idTokenForUpload = await user.getIdToken();
         const { status: transcribeStatus, json: transcribeData } = await postFormWithProgress(
@@ -193,7 +214,7 @@ export function useTranscriberPipeline() {
           const idToken = await user.getIdToken();
           const { status: correctStatus, json: correctData } = await postJson(
             '/api/transcriber/correct',
-            { segments: windowSegments, speakerNames, contextNotes, mode },
+            { segments: windowSegments, speakerNames, contextNotes, mode, model: correctionModelId },
             idToken,
           );
           const correctResult = correctData as CorrectApiResponse;

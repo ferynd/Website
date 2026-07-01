@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
+import { Settings } from 'lucide-react';
 import Nav from '@/components/Nav';
 import Button from '@/components/Button';
 import AuthForm from '../trip-cost/components/AuthForm';
@@ -11,10 +12,12 @@ import { useTranscriberPipeline } from './useTranscriberPipeline';
 import UploadPanel from './components/UploadPanel';
 import PipelineStatusView from './components/PipelineStatusView';
 import TranscriptOutput from './components/TranscriptOutput';
+import SettingsModal from './components/SettingsModal';
 
 function TranscriberShell() {
   const { state, run, reset } = useTranscriberPipeline();
   const isRunning = !['idle', 'complete', 'failed'].includes(state.status);
+  const [showSettings, setShowSettings] = useState(false);
 
   return (
     <main className="bg-bg text-text min-h-dvh">
@@ -25,9 +28,20 @@ function TranscriberShell() {
             <h1 className="text-4xl sm:text-5xl font-semibold bg-gradient-to-r from-accent to-purple text-transparent bg-clip-text">
               Transcriber
             </h1>
-            <Button variant="ghost" size="sm" onClick={() => signOut(auth)} className="flex-shrink-0">
-              Sign out
-            </Button>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowSettings(true)}
+                className="inline-flex items-center gap-2"
+              >
+                <Settings size={16} />
+                Settings
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => signOut(auth)}>
+                Sign out
+              </Button>
+            </div>
           </div>
           <p className="max-w-2xl text-lg text-text-2">
             Upload a long recording and get a cleaned, speaker-labeled, timestamped transcript.
@@ -45,6 +59,8 @@ function TranscriberShell() {
 
         {state.status === 'complete' && <TranscriptOutput state={state} onReset={reset} />}
       </section>
+
+      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
     </main>
   );
 }

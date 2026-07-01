@@ -70,8 +70,9 @@ export default function PipelineStatusView({ state }: { state: TranscriberState 
 
       {state.mode === 'fallback' && state.status !== 'failed' && (
         <p className="text-sm text-warning">
-          Using fallback mode (Whisper + inferred speakers) — the diarized model wasn&apos;t available.
-          {state.primaryError ? ` (${state.primaryError})` : ''}
+          {state.primaryError
+            ? `Using fallback mode (Whisper + inferred speakers) — the diarized model wasn't available. (${state.primaryError})`
+            : 'Using Whisper (no speaker diarization) — selected in Settings.'}
         </p>
       )}
     </div>

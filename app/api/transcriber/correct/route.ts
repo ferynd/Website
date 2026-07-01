@@ -2,6 +2,7 @@ export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { callGemini } from '@/app/lib/aiConfig';
+import { resolveGeminiModelId } from '@/app/lib/aiModels';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
 import { buildCorrectionPrompt } from '@/app/tools/transcriber/lib/buildCorrectionPrompt';
 import { CORRECTION_GEMINI_MODEL, CORRECTION_TEMPERATURE } from '@/app/tools/transcriber/lib/constants';
@@ -45,11 +46,15 @@ export async function POST(req: NextRequest) {
     mode: body.mode === 'fallback' ? 'fallback' : 'diarized',
   });
 
+  // Model choice comes from the Settings pop-up (saved client-side); falls back to the
+  // site default if missing/unrecognized.
+  const modelId = resolveGeminiModelId(body.model, CORRECTION_GEMINI_MODEL);
+
   let raw: string;
   try {
     // NOTE: never log `prompt` or `raw` — both contain transcript contents.
     raw = await callGemini(prompt, key, {
-      modelId: CORRECTION_GEMINI_MODEL,
+      modelId,
       temperature: CORRECTION_TEMPERATURE,
     });
   } catch (err) {

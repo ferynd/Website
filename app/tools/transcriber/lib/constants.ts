@@ -26,3 +26,7 @@ export const DEFAULT_CONTEXT_NOTES =
   'There are two speakers. Kait is female and speaks more slowly. James is male and speaks more quickly. Kait is the first person speaking.';
 
 export const ACCEPTED_FILE_EXTENSION = '.m4a';
+
+/** localStorage keys for the per-browser model choices exposed in the Settings pop-up. */
+export const TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY = 'transcriber_transcribe_model';
+export const TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY = 'transcriber_correction_model';
