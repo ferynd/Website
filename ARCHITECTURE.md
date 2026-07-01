@@ -22,6 +22,9 @@ app/
     lib/decay.ts, lib/stacking.ts, lib/roller.ts # Pure roll math modules
     __tests__/ # Vitest coverage for decay/stacking/rarity behavior
   tools/shows/       # Movie/TV tracker (Auth + Firestore + Gemini classify/recommend routes)
+  tools/transcriber/ # Private audio transcriber (Auth-gated to admin only; OpenAI transcribe + Gemini correction routes; no persistence)
+    lib/ # Pure segment/chunk/stitch/prompt helpers; api/transcriber/** Edge routes call the same lib
+    __tests__/ # Vitest coverage for formatting, chunking, stitching, speaker mapping, correction parsing
 components/
   Button.tsx, Input.tsx, Select.tsx, Nav.tsx, ProjectCard.tsx
 public/
@@ -54,6 +57,8 @@ public/
   Path: `/tools/date-night`
 - **Movie/TV Show Tracker** — Firebase-backed shared watchlist with ratings, notes, Gemini title classification, local model settings, and mood recommendations that can include rewatchable completed shows.
   Path: `/tools/shows`
+- **Transcriber** — Private, admin-only tool that turns a long `.m4a` recording into a cleaned, speaker-labeled, timestamped `.txt` transcript via OpenAI transcription + a chunked Gemini correction pass.
+  Path: `/tools/transcriber`
 - **Calorie Tracker** — A simple tool to track daily calorie intake (Static HTML).
   Path: `/tools/CalorieTracker/index.html`
 - **Social Security (interactive guide)** — Learn how benefits and earnings interact through simulations.  
@@ -77,6 +82,16 @@ public/
 - **Selection + batch AI update:** `page.tsx` owns select-mode state; `ShowCard`/`ShowRow` render a checkbox when active. `SelectionToolbar` provides select-all-visible and "AI update". `BatchUpdateModal` reuses the single-show classify call (extracted into `lib/classifyShow.ts`, also used by `ShowForm`) sequentially per selected show, updating title/type/vibes/description and tracking per-show success/failure so partial failures don't block the batch.
 - **Review-missing workflow:** `lib/reviewCompleteness.ts` defines a review as complete when `story`/`characters`/`vibes`/`wouldRewatch` are all set (brain power is explicitly excluded — it's context-only per `compositeScore.ts`). `ReviewQueueModal` walks a per-user snapshot of incomplete ratable (completed/dropped/on_hold) shows one at a time with "Save & next".
 - **Check for new seasons:** Show docs optionally persist `metadataSource`/`metadataSourceId` (the provider + ID the classify pipeline resolved) once a show has been classified. `POST /api/seasons` compares each eligible show's recorded season count against TMDb's `number_of_seasons`, falling back to a live high-confidence TMDb title search when no stored ID exists. **Limitation:** only `tv`/`cartoon` shows are covered — AniList/Jikan (the anime metadata sources) model each cour/season as a separate title, so there's no reliable single "season count" to diff for anime.
+
+## Transcriber: Pipeline & Modules
+- **Access:** Firebase Auth gated to the single admin account (`ADMIN_EMAIL` in `app/tools/trip-cost/firebaseConfig.ts`, reused via `app/tools/transcriber/lib/firebase.ts`). No Firestore — this tool has no persisted state at all; everything lives in page-local React state for the duration of one run. The sign-in screen is login-only (`AuthForm`'s `allowSignUp={false}`) — account creation isn't exposed here, since anyone other than the admin would just be signed up and immediately blocked.
+- **Server-side auth:** `app/lib/verifyFirebaseAuth.ts` is a minimal, hand-rolled Firebase ID token verifier (RS256 signature check against Google's public JWKS via Web Crypto, plus iss/aud/exp claim checks) used because `firebase-admin` is Node-only and this app's API routes run on the Edge runtime. Every `/api/transcriber/*` route calls `requireAdminUser()` before doing any work — that call, not the client-side UI gating, is what actually protects the routes.
+- **Pipeline:** `useTranscriberPipeline.ts` orchestrates: validate file → upload (with real progress via XHR) → `POST /api/transcriber/transcribe` → chunk the resulting segments with overlap → `POST /api/transcriber/correct` once per chunk → stitch chunk results → build the final `.txt`.
+- **Transcribe route (`app/api/transcriber/transcribe/route.ts`):** Re-validates the 25 MB OpenAI upload limit server-side, calls `gpt-4o-transcribe-diarize` with `response_format: diarized_json` and `chunking_strategy: auto`. OpenAI labels distinct speakers sequentially ("A", "B", …) since no voice-sample references are collected in this UI; `lib/mapSpeakerLabels.ts` maps those onto the user-provided speaker names in first-appearance order (extra speakers beyond the provided names become `Unknown`). On any failure of the primary model/endpoint, falls back to `whisper-1` + `verbose_json` (segment-level timestamps, no speaker labels — all segments start `Unknown`).
+- **Correct route (`app/api/transcriber/correct/route.ts`):** Runs one Gemini (`gemini-2.5-flash`, low temperature) call per chunk with a strict-JSON-out prompt (`lib/buildCorrectionPrompt.ts`) that forbids summarizing/rewriting and asks only for `{index, speaker, text}` per segment — timestamps are never trusted from the model and are always taken from the original segment.
+- **Correction failures are tracked, not swallowed:** by default, a chunk whose correction call fails falls back to its uncorrected segments and the failure is counted; `lib/correctionSummary.ts` builds a "Completed with warnings: N of M correction chunks failed and were left uncorrected" message shown alongside the final transcript. An optional **strict mode** checkbox in the upload panel aborts the entire run on the first correction failure instead of silently falling back, surfacing which chunk (by index and time range) failed and why.
+- **Chunking & stitching:** `lib/chunkTranscript.ts` splits the recording into contiguous, non-overlapping "core" windows (default 15 min) padded with overlap (default 90s) on both sides for cross-boundary context. `lib/stitchTranscript.ts` keeps only each window's core-range segments when reassembling, which prevents duplicate lines from the overlap regions by construction (plus a belt-and-braces exact-match de-dup).
+- **Large files:** files over OpenAI's 25 MB limit are rejected client- and server-side with a message telling the user to compress or split the audio; there is no Gemini Files API fallback for oversized uploads (a documented known limitation, not silent failure).
 
 ## Trip Cost & Trip Planner: Data & Modules
 - **Config:** `app/tools/trip-cost/firebaseConfig.ts` (admin email `arkkahdarkkahd@gmail.com`).

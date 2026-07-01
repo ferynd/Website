@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Nav from '@/components/Nav';
-import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices, Tv, HeartHandshake, LineChart } from 'lucide-react';
+import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices, Tv, HeartHandshake, LineChart, Mic } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: icon size and list of available tools          */
@@ -15,6 +15,12 @@ const toolList = [
     description: 'Estimate CIFI research payout timing with logged rate history, local projections, and interactive SVG model charts.',
     href: '/tools/cifi-research-estimator',
     icon: <LineChart size={cardIconSize} className="text-accent" />,
+  },
+  {
+    name: 'Transcriber',
+    description: 'Private tool: upload a long recording and get a cleaned, speaker-labeled, timestamped transcript.',
+    href: '/tools/transcriber',
+    icon: <Mic size={cardIconSize} className="text-accent" />,
   },
   {
     name: 'Show Tracker',
