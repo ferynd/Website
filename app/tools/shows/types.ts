@@ -4,6 +4,8 @@ export type ShowType = 'anime' | 'tv' | 'movie' | 'animated_movie' | 'cartoon';
 export type ShowStatus = 'watching' | 'completed' | 'dropped' | 'on_hold' | 'planned';
 export type WouldRewatch = 'yes' | 'no' | 'maybe';
 export type MemberRole = 'admin' | 'member';
+/** Provider a show's AI classification was resolved against. Used to look up fresh metadata (e.g. season checks). */
+export type MetadataSource = 'tmdb' | 'anilist' | 'jikan' | 'tvmaze';
 
 export interface ListMember {
   uid: string;
@@ -56,6 +58,9 @@ export interface Show {
   /** 1–5: how much focus the show requires. 1 = braindead, 5 = dense. */
   brainPower?: number | null;
   ratings: Record<string, MemberRating>;
+  /** Provider + ID the classify pipeline last resolved this show against. Powers "check for new seasons". */
+  metadataSource?: MetadataSource | null;
+  metadataSourceId?: string | null;
   createdAt: Timestamp;
   updatedAt: Timestamp;
   createdBy: string;
@@ -76,6 +81,7 @@ export interface UserProfile {
   displayName: string;
 }
 
-export type SortOption = 'updated' | 'score' | 'alpha';
+export type SortOption = 'updated' | 'score' | 'alpha' | 'seasons' | 'incomplete';
 export type FilterStatus = ShowStatus | 'all';
 export type FilterType = ShowType | 'all';
+export type ViewMode = 'cards' | 'list';

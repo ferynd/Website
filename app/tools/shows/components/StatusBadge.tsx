@@ -1,12 +1,26 @@
 import type { ShowStatus } from '../types';
 
-const CONFIG: Record<ShowStatus, { label: string; className: string }> = {
-  watching:  { label: 'Watching',   className: 'bg-info/20 text-info border-info/30' },
-  completed: { label: 'Completed',  className: 'bg-success/20 text-success border-success/30' },
-  dropped:   { label: 'Dropped',    className: 'bg-error/20 text-error border-error/30' },
-  on_hold:   { label: 'On Hold',    className: 'bg-warning/20 text-warning border-warning/30' },
-  planned:   { label: 'Planned',    className: 'bg-surface-2 text-text-2 border-border' },
+const CONFIG: Record<ShowStatus, { label: string; className: string; dotClassName: string }> = {
+  watching:  { label: 'Watching',   className: 'bg-info/20 text-info border-info/30', dotClassName: 'bg-info' },
+  completed: { label: 'Completed',  className: 'bg-success/20 text-success border-success/30', dotClassName: 'bg-success' },
+  dropped:   { label: 'Dropped',    className: 'bg-error/20 text-error border-error/30', dotClassName: 'bg-error' },
+  on_hold:   { label: 'On Hold',    className: 'bg-warning/20 text-warning border-warning/30', dotClassName: 'bg-warning' },
+  planned:   { label: 'Planned',    className: 'bg-surface-2 text-text-2 border-border', dotClassName: 'bg-text-3' },
 };
+
+export function statusLabel(status: ShowStatus): string {
+  return CONFIG[status].label;
+}
+
+/** Small colored dot used in dense/list layouts where a full pill badge would take too much space. */
+export function StatusDot({ status }: { status: ShowStatus }) {
+  return (
+    <span
+      title={CONFIG[status].label}
+      className={`inline-block w-2 h-2 rounded-full flex-shrink-0 ${CONFIG[status].dotClassName}`}
+    />
+  );
+}
 
 export default function StatusBadge({ status }: { status: ShowStatus }) {
   const { label, className } = CONFIG[status];

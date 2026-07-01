@@ -7,9 +7,10 @@ import { useShows } from '../ShowsContext';
 import StatusBadge from '../components/StatusBadge';
 import TypeChip from '../components/TypeChip';
 import VibeTagChip from '../components/VibeTagChip';
+import Chip from '../components/Chip';
 import { buildViewerProfiles, candidateShows } from '../lib/recommendationContext';
 import { formatScore, groupComposite } from '../lib/compositeScore';
-import type { Show } from '../types';
+import type { Show, ShowType } from '../types';
 import {
   DEFAULT_RECOMMEND_GEMINI_MODEL,
   readStoredGeminiModel,
@@ -20,6 +21,10 @@ interface RecommendResult {
   show: Show;
   reason: string;
 }
+
+type AnimationFilter = 'all' | 'only' | 'exclude';
+
+const ANIMATED_TYPES = new Set<ShowType>(['anime', 'cartoon', 'animated_movie']);
 
 export default function MoodPage() {
   const { shows, activeList, updateShow, user } = useShows();
@@ -52,10 +57,24 @@ export default function MoodPage() {
   const presentMembers = members.filter((m) => presentUids.includes(m.uid));
   const absentMembers = members.filter((m) => !presentUids.includes(m.uid));
 
+  const [excludeRewatches, setExcludeRewatches] = useState(false);
+  const [animationFilter, setAnimationFilter] = useState<AnimationFilter>('all');
+  const [watchingOnly, setWatchingOnly] = useState(false);
+
   const candidates = useMemo(
     () => candidateShows(shows, presentUids),
     [shows, presentUids],
   );
+
+  const filteredCandidates = useMemo(() => {
+    return candidates.filter((s) => {
+      if (excludeRewatches && s.status === 'completed') return false;
+      if (watchingOnly && s.status !== 'watching') return false;
+      if (animationFilter === 'only' && !ANIMATED_TYPES.has(s.type)) return false;
+      if (animationFilter === 'exclude' && ANIMATED_TYPES.has(s.type)) return false;
+      return true;
+    });
+  }, [candidates, excludeRewatches, watchingOnly, animationFilter]);
 
   function togglePresent(uid: string) {
     setPresentUids((prev) =>
@@ -83,7 +102,7 @@ export default function MoodPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           moods: moodsPayload,
-          candidates,
+          candidates: filteredCandidates,
           profiles,
           sharedMood: sharedMood.trim() || undefined,
           excludeIds: exclude,
@@ -196,6 +215,26 @@ export default function MoodPage() {
         {candidates.length > 0 && (
           <form onSubmit={handleSubmit} className="space-y-5">
 
+            {/* Quick toggles — high-value filters only, keep this short */}
+            <div className="flex flex-wrap gap-2">
+              <Chip label="No rewatches" active={excludeRewatches} onClick={() => setExcludeRewatches((v) => !v)} />
+              <Chip label="Watching only" active={watchingOnly} onClick={() => setWatchingOnly((v) => !v)} />
+              <Chip
+                label="Animation only"
+                active={animationFilter === 'only'}
+                onClick={() => setAnimationFilter((f) => (f === 'only' ? 'all' : 'only'))}
+              />
+              <Chip
+                label="Exclude animation"
+                active={animationFilter === 'exclude'}
+                onClick={() => setAnimationFilter((f) => (f === 'exclude' ? 'all' : 'exclude'))}
+              />
+            </div>
+
+            {filteredCandidates.length === 0 && (
+              <p className="text-sm text-warning">No shows match those toggles right now.</p>
+            )}
+
             {/* Shared mood — primary, prominent */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-text">
@@ -275,7 +314,7 @@ export default function MoodPage() {
 
             <button
               type="submit"
-              disabled={loading || !canSubmit || presentMembers.length === 0}
+              disabled={loading || !canSubmit || presentMembers.length === 0 || filteredCandidates.length === 0}
               className="w-full rounded-xl bg-accent py-3.5 font-semibold text-bg disabled:opacity-50 transition-opacity min-h-[52px] flex items-center justify-center gap-2"
             >
               {loading ? (
