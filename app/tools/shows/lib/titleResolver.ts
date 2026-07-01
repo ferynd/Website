@@ -124,7 +124,7 @@ function levenshtein(a: string, b: string): number {
   return dp[m][n];
 }
 
-function titleSimilarity(query: string, candidate: string): number {
+export function titleSimilarity(query: string, candidate: string): number {
   const q = normalizedStr(query);
   const c = normalizedStr(candidate);
   if (q === c) return 1.0;

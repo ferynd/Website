@@ -1,15 +1,25 @@
 'use client';
 
-import { useState, useMemo } from 'react';
-import { Plus, LogOut } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { Plus, LogOut, LayoutGrid, List as ListIcon, ClipboardCheck, Tv2, CheckSquare } from 'lucide-react';
 import Nav from '@/components/Nav';
 import { useShows } from './ShowsContext';
 import ShowCard from './components/ShowCard';
+import ShowRow from './components/ShowRow';
 import ShowForm from './components/ShowForm';
 import FilterBar from './components/FilterBar';
 import ListSwitcher from './components/ListSwitcher';
+import Chip from './components/Chip';
+import SelectionToolbar from './components/SelectionToolbar';
+import BatchUpdateModal from './components/BatchUpdateModal';
+import ReviewQueueModal from './components/ReviewQueueModal';
+import NewSeasonsModal from './components/NewSeasonsModal';
 import { groupComposite } from './lib/compositeScore';
-import type { FilterStatus, FilterType, Show, SortOption } from './types';
+import { showsNeedingReview } from './lib/reviewCompleteness';
+import { recordedSeasonCount } from './lib/seasonCheck';
+import type { FilterStatus, FilterType, Show, SortOption, ViewMode } from './types';
+
+const VIEW_MODE_STORAGE_KEY = 'shows-view-mode';
 
 export default function WatchlistPage() {
   const { user, userProfile, logOut, shows, showsLoading, activeList } = useShows();
@@ -21,6 +31,27 @@ export default function WatchlistPage() {
   const [sort, setSort] = useState<SortOption>('updated');
   const [selectedShow, setSelectedShow] = useState<Show | null>(null);
   const [showingForm, setShowingForm] = useState(false);
+
+  const [viewMode, setViewModeRaw] = useState<ViewMode>('cards');
+  useEffect(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem(VIEW_MODE_STORAGE_KEY) : null;
+    if (stored === 'cards' || stored === 'list') setViewModeRaw(stored);
+  }, []);
+  function setViewMode(mode: ViewMode) {
+    setViewModeRaw(mode);
+    if (typeof window !== 'undefined') localStorage.setItem(VIEW_MODE_STORAGE_KEY, mode);
+  }
+
+  // Batch selection
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchModal, setShowBatchModal] = useState(false);
+
+  // Review-missing workflow
+  const [reviewQueue, setReviewQueue] = useState<Show[] | null>(null);
+
+  // New seasons workflow
+  const [showNewSeasons, setShowNewSeasons] = useState(false);
 
   const members = activeList?.members ?? [];
 
@@ -36,22 +67,60 @@ export default function WatchlistPage() {
   const sorted = useMemo(() => {
     const arr = [...filtered];
     if (sort === 'score') {
-      return arr.sort((a, b) => {
-        const sa = groupComposite(a) ?? -1;
-        const sb = groupComposite(b) ?? -1;
-        return sb - sa;
-      });
+      return arr.sort((a, b) => (groupComposite(b) ?? -1) - (groupComposite(a) ?? -1));
     }
     if (sort === 'alpha') {
       return arr.sort((a, b) => a.title.localeCompare(b.title));
     }
+    if (sort === 'seasons') {
+      return arr.sort((a, b) => (recordedSeasonCount(b) ?? -1) - (recordedSeasonCount(a) ?? -1));
+    }
+    if (sort === 'incomplete') {
+      if (!user) return arr;
+      const uid = user.uid;
+      const needsReviewIds = new Set(showsNeedingReview(arr, uid).map((s) => s.id));
+      return arr.sort((a, b) => Number(needsReviewIds.has(b.id)) - Number(needsReviewIds.has(a.id)));
+    }
     // 'updated' — already ordered by Firestore
     return arr;
-  }, [filtered, sort]);
+  }, [filtered, sort, user]);
+
+  const myReviewQueue = useMemo(
+    () => (user ? showsNeedingReview(shows, user.uid) : []),
+    [shows, user],
+  );
 
   function openAdd() { setSelectedShow(null); setShowingForm(true); }
   function openEdit(show: Show) { setSelectedShow(show); setShowingForm(true); }
   function closeForm() { setShowingForm(false); setSelectedShow(null); }
+
+  function handleCardClick(show: Show) {
+    if (selectMode) {
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(show.id)) next.delete(show.id); else next.add(show.id);
+        return next;
+      });
+      return;
+    }
+    openEdit(show);
+  }
+
+  function toggleSelectMode() {
+    setSelectMode((v) => !v);
+    setSelectedIds(new Set());
+  }
+
+  const allVisibleSelected = sorted.length > 0 && sorted.every((s) => selectedIds.has(s.id));
+  function selectAllVisible() {
+    if (allVisibleSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(sorted.map((s) => s.id)));
+    }
+  }
+
+  const selectedShows = shows.filter((s) => selectedIds.has(s.id));
 
   return (
     <main className="bg-bg text-text min-h-dvh">
@@ -77,6 +146,58 @@ export default function WatchlistPage() {
             Hey {userProfile?.displayName?.split(' ')[0] ?? userProfile?.email ?? user.email}
             {activeList && <> · <span className="text-text">{activeList.name}</span></>}
           </p>
+        )}
+
+        {/* Action row: select / review / new seasons / view toggle */}
+        {activeList && shows.length > 0 && (
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+              <Chip
+                label={selectMode ? 'Cancel select' : 'Select'}
+                active={selectMode}
+                onClick={toggleSelectMode}
+                icon={<CheckSquare size={13} />}
+              />
+              {!selectMode && myReviewQueue.length > 0 && (
+                <Chip
+                  label={`Review (${myReviewQueue.length})`}
+                  active={false}
+                  onClick={() => setReviewQueue(myReviewQueue)}
+                  icon={<ClipboardCheck size={13} />}
+                />
+              )}
+              {!selectMode && (
+                <Chip
+                  label="New seasons"
+                  active={false}
+                  onClick={() => setShowNewSeasons(true)}
+                  icon={<Tv2 size={13} />}
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5 flex-shrink-0">
+              <button
+                type="button"
+                aria-label="Card view"
+                onClick={() => setViewMode('cards')}
+                className={`rounded-md p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center transition-colors ${
+                  viewMode === 'cards' ? 'bg-accent/20 text-accent' : 'text-text-3 hover:text-text'
+                }`}
+              >
+                <LayoutGrid size={15} />
+              </button>
+              <button
+                type="button"
+                aria-label="List view"
+                onClick={() => setViewMode('list')}
+                className={`rounded-md p-1.5 min-h-[36px] min-w-[36px] flex items-center justify-center transition-colors ${
+                  viewMode === 'list' ? 'bg-accent/20 text-accent' : 'text-text-3 hover:text-text'
+                }`}
+              >
+                <ListIcon size={15} />
+              </button>
+            </div>
+          </div>
         )}
 
         {/* Filters */}
@@ -124,20 +245,51 @@ export default function WatchlistPage() {
         )}
 
         {/* Show list */}
-        <div className="space-y-3">
-          {sorted.map((show) => (
-            <ShowCard
-              key={show.id}
-              show={show}
-              members={members}
-              onClick={() => openEdit(show)}
-            />
-          ))}
-        </div>
+        {viewMode === 'cards' ? (
+          <div className="space-y-3 pb-16">
+            {sorted.map((show) => (
+              <ShowCard
+                key={show.id}
+                show={show}
+                members={members}
+                onClick={() => handleCardClick(show)}
+                selectMode={selectMode}
+                selected={selectedIds.has(show.id)}
+                currentUid={user?.uid}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-border overflow-hidden pb-16">
+            {sorted.map((show) => (
+              <ShowRow
+                key={show.id}
+                show={show}
+                members={members}
+                onClick={() => handleCardClick(show)}
+                selectMode={selectMode}
+                selected={selectedIds.has(show.id)}
+                currentUid={user?.uid}
+              />
+            ))}
+          </div>
+        )}
       </section>
 
+      {/* Selection toolbar */}
+      {selectMode && (
+        <SelectionToolbar
+          selectedCount={selectedIds.size}
+          visibleCount={sorted.length}
+          allVisibleSelected={allVisibleSelected}
+          onSelectAllVisible={selectAllVisible}
+          onCancel={toggleSelectMode}
+          onAiUpdate={() => setShowBatchModal(true)}
+        />
+      )}
+
       {/* FAB */}
-      {activeList && (
+      {activeList && !selectMode && (
         <button
           type="button"
           onClick={openAdd}
@@ -156,6 +308,29 @@ export default function WatchlistPage() {
           members={members}
           onClose={closeForm}
         />
+      )}
+
+      {/* Batch AI update modal */}
+      {showBatchModal && (
+        <BatchUpdateModal
+          shows={selectedShows}
+          onClose={() => { setShowBatchModal(false); toggleSelectMode(); }}
+        />
+      )}
+
+      {/* Review-missing queue */}
+      {reviewQueue && user && (
+        <ReviewQueueModal
+          shows={reviewQueue}
+          members={members}
+          currentUid={user.uid}
+          onClose={() => setReviewQueue(null)}
+        />
+      )}
+
+      {/* New seasons check */}
+      {showNewSeasons && (
+        <NewSeasonsModal shows={shows} onClose={() => setShowNewSeasons(false)} />
       )}
     </main>
   );

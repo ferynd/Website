@@ -143,6 +143,34 @@ export async function fetchTmdbDetails(
   }
 }
 
+export interface TmdbTvSeasonInfo {
+  numberOfSeasons: number;
+  /** TMDb's `status` field, e.g. "Returning Series", "Ended", "Canceled". */
+  status: string | null;
+  nextAirDate: string | null;
+  lastAirDate: string | null;
+}
+
+/** Fetch season-count and airing-status info for a TMDb TV series. Used by the "check for new seasons" feature. */
+export async function fetchTmdbTvSeasonInfo(id: string, config: TmdbConfig): Promise<TmdbTvSeasonInfo | null> {
+  if (!hasTmdbCredentials(config)) return null;
+  const { url, init } = buildTmdbRequest(`/tv/${id}`, config);
+  try {
+    const res = await fetchWithTimeout(url, init);
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (typeof d.number_of_seasons !== 'number') return null;
+    return {
+      numberOfSeasons: d.number_of_seasons,
+      status: typeof d.status === 'string' ? d.status : null,
+      nextAirDate: d.next_episode_to_air?.air_date ?? null,
+      lastAirDate: typeof d.last_air_date === 'string' ? d.last_air_date : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── AniList ──────────────────────────────────────────────────────────────────
 
 const ANILIST_URL = 'https://graphql.anilist.co';

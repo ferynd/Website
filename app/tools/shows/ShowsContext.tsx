@@ -73,6 +73,7 @@ interface ShowsContextValue {
   ) => Promise<void>;
   deleteShow: (showId: string) => Promise<void>;
   updateMyRating: (showId: string, rating: Partial<MemberRating>) => Promise<void>;
+  updateMyNote: (showId: string, note: string) => Promise<void>;
 }
 
 const ShowsContext = createContext<ShowsContextValue | null>(null);
@@ -332,6 +333,18 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
     });
   }, [user, shows]);
 
+  // Writes only the caller's own memberNotes key via Firestore dot-notation, instead of
+  // read-modify-writing the whole map — avoids clobbering another member's note that was
+  // saved concurrently (e.g. between opening a review queue snapshot and saving it).
+  const updateMyNote = useCallback(async (showId: string, note: string) => {
+    if (!user) return;
+    await updateDoc(showDoc(showId), {
+      [`memberNotes.${user.uid}`]: note,
+      lastEditedBy: user.uid,
+      updatedAt: serverTimestamp(),
+    });
+  }, [user]);
+
   const updateDisplayName = useCallback(async (displayName: string) => {
     if (!user) throw new Error('Not signed in');
     await updateProfile(user, { displayName });
@@ -358,7 +371,7 @@ export function ShowsProvider({ children }: { children: ReactNode }) {
         user, userProfile, authLoading, signIn, signUp, logOut, updateDisplayName,
         lists, activeList, setActiveListId, createList, renameList, deleteList,
         addMember, removeMember, promoteToAdmin, leaveList,
-        shows, showsLoading, addShow, updateShow, deleteShow, updateMyRating,
+        shows, showsLoading, addShow, updateShow, deleteShow, updateMyRating, updateMyNote,
       }}
     >
       {children}

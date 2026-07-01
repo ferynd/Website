@@ -8,6 +8,8 @@ import type { DisambiguationOption } from '../lib/classifyTypes';
 import VibeTagChip from './VibeTagChip';
 import ScoreBlock from './ScoreBlock';
 import { useShows } from '../ShowsContext';
+import { classifyShow } from '../lib/classifyShow';
+import type { MetadataSource } from '../types';
 import {
   DEFAULT_CLASSIFY_GEMINI_MODEL,
   readStoredGeminiModel,
@@ -111,6 +113,8 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
   });
 
   const [vibeTags, setVibeTags] = useState<string[]>(show?.vibeTags ?? []);
+  const [metaSource, setMetaSource] = useState<MetadataSource | null>(show?.metadataSource ?? null);
+  const [metaSourceId, setMetaSourceId] = useState<string | null>(show?.metadataSourceId ?? null);
   const [classifying, setClassifying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -161,29 +165,13 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
     setError('');
     clearDisambig();
     try {
-      const res = await fetch('/api/classify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: title.trim(),
-          typeHint: typeTouched ? type : null,
-          typeHintWasUserSelected: typeTouched,
-          modelId,
-        }),
+      const data = await classifyShow({
+        title: title.trim(),
+        typeHint: typeTouched ? type : null,
+        typeHintWasUserSelected: typeTouched,
+        modelId,
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error((data as { error?: string }).error ?? 'Classification failed');
-      }
-      const data = await res.json() as {
-        status: string;
-        canonicalTitle?: string;
-        type?: ShowType;
-        vibes?: string[];
-        description?: string;
-        options?: DisambiguationOption[];
-        message?: string;
-      };
+      const options = (data as { options?: DisambiguationOption[] }).options;
 
       if (data.status === 'resolved') {
         if (data.canonicalTitle) setTitle(data.canonicalTitle);
@@ -192,18 +180,13 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         if (data.type) setType(data.type);
         if (data.vibes?.length) setVibeTags(data.vibes);
         if (typeof data.description === 'string') setDescription(data.description);
+        if (data.source && data.sourceId) { setMetaSource(data.source); setMetaSourceId(data.sourceId); }
         clearDisambig();
       } else if (data.status === 'needs_selection') {
-        setDisambigOptions(data.options ?? []);
+        setDisambigOptions(options ?? []);
         setDisambigMessage(data.message ?? 'Which one did you mean?');
       } else if (data.status === 'not_found') {
         setError(data.message ?? "Couldn't find that title. Try adding a year or more words.");
-      } else {
-        // Legacy shape fallback (direct-resolved without status field)
-        if (data.canonicalTitle) setTitle(data.canonicalTitle);
-        if (data.type) setType(data.type);
-        if (data.vibes?.length) setVibeTags(data.vibes);
-        if (typeof data.description === 'string') setDescription(data.description);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not classify — try again.');
@@ -245,6 +228,8 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         if (data.type) setType(data.type);
         if (data.vibes?.length) setVibeTags(data.vibes);
         if (typeof data.description === 'string') setDescription(data.description);
+        setMetaSource(option.source);
+        setMetaSourceId(option.sourceId);
         clearDisambig();
       } else {
         throw new Error(data.message ?? 'Resolve returned unexpected shape');
@@ -310,6 +295,8 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
         memberNotes,
         vibeTags,
         ratings: show?.ratings ?? {},
+        metadataSource: metaSource,
+        metadataSourceId: metaSourceId,
       };
       if (isEdit && show) {
         await updateShow(show.id, payload);
@@ -366,7 +353,12 @@ export default function ShowForm({ show, listId, members, onClose }: Props) {
             <div className="flex gap-2">
               <input
                 value={title}
-                onChange={(e) => { setTitle(e.target.value); clearDisambig(); }}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  clearDisambig();
+                  setMetaSource(null);
+                  setMetaSourceId(null);
+                }}
                 placeholder="e.g. Frieren: Beyond Journey's End"
                 className="flex-1 rounded-lg bg-surface-2 border border-border px-3 py-2.5 text-sm text-text placeholder:text-text-3 focus:outline-none focus:border-accent min-h-[44px]"
                 required

@@ -1,10 +1,10 @@
-import type { ShowType } from '../types';
+import type { ShowType, MetadataSource } from '../types';
 import type { VibeCategory } from './vibeCategories';
 import type { GeminiModelId } from '@/app/lib/aiModels';
 
 // ─── provider / source types ────────────────────────────────────────────────
 
-export type MetadataSource = 'tmdb' | 'anilist' | 'jikan' | 'tvmaze';
+export type { MetadataSource };
 
 export type MediaKind = 'tv' | 'movie';
 
