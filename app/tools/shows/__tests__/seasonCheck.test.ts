@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isSeasonCheckEligible, recordedSeasonCount, evaluateSeasonResult } from '../lib/seasonCheck';
+import {
+  isSeasonCheckEligible,
+  recordedSeasonCount,
+  evaluateSeasonResult,
+  classifySeasonOutcome,
+} from '../lib/seasonCheck';
 import type { Show } from '../types';
 import { Timestamp } from 'firebase/firestore';
 
@@ -119,5 +124,32 @@ describe('evaluateSeasonResult', () => {
       tmdbStatus: null, nextAirDate: null, lastAirDate: null,
     });
     expect(result.airingStatus).toBe('unknown');
+  });
+});
+
+describe('classifySeasonOutcome', () => {
+  it('is new_season when matched, recorded is known, and hasNewSeason is true', () => {
+    expect(classifySeasonOutcome({ matched: true, recordedSeasons: 1, hasNewSeason: true })).toBe('new_season');
+  });
+
+  it('is up_to_date when matched, recorded is known, and hasNewSeason is false', () => {
+    expect(classifySeasonOutcome({ matched: true, recordedSeasons: 2, hasNewSeason: false })).toBe('up_to_date');
+  });
+
+  it('is indeterminate when not matched, even if hasNewSeason is somehow true', () => {
+    expect(classifySeasonOutcome({ matched: false, recordedSeasons: 1, hasNewSeason: true })).toBe('indeterminate');
+  });
+
+  it('is indeterminate when recordedSeasons is null, even if matched', () => {
+    expect(classifySeasonOutcome({ matched: true, recordedSeasons: null, hasNewSeason: false })).toBe('indeterminate');
+  });
+
+  it('is indeterminate when recordedSeasons is undefined', () => {
+    expect(classifySeasonOutcome({ matched: true, hasNewSeason: false })).toBe('indeterminate');
+  });
+
+  it('never reports a matched-but-unverifiable show as up_to_date (regression: false all-clear)', () => {
+    const outcome = classifySeasonOutcome({ matched: false, recordedSeasons: null });
+    expect(outcome).not.toBe('up_to_date');
   });
 });

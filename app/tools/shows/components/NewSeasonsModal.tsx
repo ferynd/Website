@@ -4,7 +4,19 @@ import { useEffect, useState } from 'react';
 import { X, Loader2, Tv, Radio, CheckCircle2, PlayCircle } from 'lucide-react';
 import type { Show } from '../types';
 import { useShows } from '../ShowsContext';
-import { isSeasonCheckEligible, recordedSeasonCount, type SeasonCheckResult } from '../lib/seasonCheck';
+import {
+  isSeasonCheckEligible,
+  recordedSeasonCount,
+  classifySeasonOutcome,
+  MAX_SEASON_CHECK_BATCH,
+  type SeasonCheckResult,
+} from '../lib/seasonCheck';
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
 
 interface Props {
   shows: Show[];
@@ -31,28 +43,31 @@ export default function NewSeasonsModal({ shows, onClose }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/seasons', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            shows: eligible.map((s) => ({
-              id: s.id,
-              title: s.title,
-              recordedSeasons: recordedSeasonCount(s),
-              metadataSource: s.metadataSource ?? null,
-              metadataSourceId: s.metadataSourceId ?? null,
-            })),
-          }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error((data as { error?: string }).error ?? 'Season check failed.');
-        }
-        const data = await res.json() as { results: ApiResult[] };
-        if (cancelled) return;
+        const batches = chunk(eligible, MAX_SEASON_CHECK_BATCH);
         const map: Record<string, ApiResult> = {};
-        data.results.forEach((r) => { map[r.showId] = r; });
-        setResults(map);
+        for (const batch of batches) {
+          if (cancelled) return;
+          const res = await fetch('/api/seasons', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              shows: batch.map((s) => ({
+                id: s.id,
+                title: s.title,
+                recordedSeasons: recordedSeasonCount(s),
+                metadataSource: s.metadataSource ?? null,
+                metadataSourceId: s.metadataSourceId ?? null,
+              })),
+            }),
+          });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error((data as { error?: string }).error ?? 'Season check failed.');
+          }
+          const data = await res.json() as { results: ApiResult[] };
+          data.results.forEach((r) => { map[r.showId] = r; });
+          if (!cancelled) setResults({ ...map });
+        }
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Season check failed.');
       } finally {
@@ -69,7 +84,17 @@ export default function NewSeasonsModal({ shows, onClose }: Props) {
   }
 
   const withNewSeason = eligible.filter((s) => results[s.id]?.hasNewSeason);
-  const unmatchedCount = eligible.filter((s) => results[s.id] && !results[s.id].matched).length;
+  // "Indeterminate" covers shows we couldn't actually verify — unmatched to TMDb, or with
+  // no recorded season count to compare against — so they must never be folded into "up to date".
+  const indeterminate = eligible.filter((s) => {
+    const r = results[s.id];
+    return r && classifySeasonOutcome(r) === 'indeterminate';
+  });
+  const verifiedUpToDateCount = eligible.filter((s) => {
+    const r = results[s.id];
+    return r && classifySeasonOutcome(r) === 'up_to_date';
+  }).length;
+  const allVerified = eligible.length > 0 && indeterminate.length === 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
@@ -114,8 +139,16 @@ export default function NewSeasonsModal({ shows, onClose }: Props) {
             <>
               {withNewSeason.length === 0 ? (
                 <div className="text-center py-6 space-y-2">
-                  <CheckCircle2 size={24} className="mx-auto text-success" />
-                  <p className="text-sm text-text-2">Everything&apos;s up to date.</p>
+                  {allVerified ? (
+                    <>
+                      <CheckCircle2 size={24} className="mx-auto text-success" />
+                      <p className="text-sm text-text-2">Everything&apos;s up to date.</p>
+                    </>
+                  ) : (
+                    <p className="text-sm text-text-2">
+                      No new seasons found among the {verifiedUpToDateCount} show{verifiedUpToDateCount === 1 ? '' : 's'} we could verify.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <ul className="space-y-2">
@@ -157,10 +190,12 @@ export default function NewSeasonsModal({ shows, onClose }: Props) {
                 </ul>
               )}
 
-              {unmatchedCount > 0 && (
-                <p className="text-xs text-text-3 pt-2 border-t border-border">
-                  Couldn&apos;t confidently match {unmatchedCount} show{unmatchedCount === 1 ? '' : 's'} to TMDb. Re-running
-                  AI classify (✨) on those improves match accuracy for next time.
+              {indeterminate.length > 0 && (
+                <p className="text-xs text-warning pt-2 border-t border-border">
+                  Couldn&apos;t verify {indeterminate.length} show{indeterminate.length === 1 ? '' : 's'} — either no
+                  confident TMDb match was found, or there&apos;s no recorded season count to compare against. These
+                  are not confirmed up to date. Re-running AI classify (✨) and filling in a season count improves
+                  accuracy for next time.
                 </p>
               )}
             </>

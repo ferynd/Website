@@ -1,5 +1,8 @@
 import type { Show } from '../types';
 
+/** Max shows accepted per /api/seasons call — keeps provider fan-out bounded. Shared by the route and the modal that calls it. */
+export const MAX_SEASON_CHECK_BATCH = 40;
+
 /**
  * "Check for new seasons" only supports TMDb-backed western TV (tv/cartoon), and only
  * for shows that have wound down (completed/on_hold) — those are the ones worth
@@ -27,6 +30,23 @@ export interface SeasonCheckResult {
   airingStatus: SeasonAiringStatus;
   nextAirDate: string | null;
   lastAirDate: string | null;
+}
+
+export type SeasonCheckOutcomeCategory = 'new_season' | 'up_to_date' | 'indeterminate';
+
+/**
+ * Classifies a /api/seasons result for display. A show only counts as verified
+ * "up to date" when it was actually matched to a provider AND has a known
+ * recorded season count to compare against — otherwise the check was inconclusive
+ * and must not be presented as confirmed current.
+ */
+export function classifySeasonOutcome(result: {
+  matched: boolean;
+  recordedSeasons?: number | null;
+  hasNewSeason?: boolean;
+}): SeasonCheckOutcomeCategory {
+  if (!result.matched || result.recordedSeasons == null) return 'indeterminate';
+  return result.hasNewSeason ? 'new_season' : 'up_to_date';
 }
 
 export function evaluateSeasonResult(opts: {

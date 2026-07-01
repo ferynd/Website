@@ -7,6 +7,7 @@ import { useShows } from '../ShowsContext';
 import ScoreBlock from './ScoreBlock';
 import StatusBadge from './StatusBadge';
 import TypeChip from './TypeChip';
+import { isReviewComplete } from '../lib/reviewCompleteness';
 
 interface Props {
   shows: Show[];
@@ -20,7 +21,7 @@ const EMPTY_RATING: MemberRating = {
 };
 
 export default function ReviewQueueModal({ shows, members, currentUid, onClose }: Props) {
-  const { updateMyRating, updateShow } = useShows();
+  const { updateMyRating, updateMyNote } = useShows();
   const [index, setIndex] = useState(0);
   const [saving, setSaving] = useState(false);
 
@@ -41,15 +42,16 @@ export default function ReviewQueueModal({ shows, members, currentUid, onClose }
 
   const isLast = index >= shows.length - 1;
   const done = !show;
+  const canSave = isReviewComplete(pendingRating);
 
   async function saveAndNext() {
-    if (!show) return;
+    if (!show || !canSave) return;
     setSaving(true);
     try {
       await updateMyRating(show.id, pendingRating);
       const existingNote = show.memberNotes?.[currentUid] ?? show.notes ?? '';
       if (note !== existingNote) {
-        await updateShow(show.id, { memberNotes: { ...(show.memberNotes ?? {}), [currentUid]: note } });
+        await updateMyNote(show.id, note);
       }
       setIndex((i) => i + 1);
     } finally {
@@ -131,13 +133,19 @@ export default function ReviewQueueModal({ shows, members, currentUid, onClose }
               <button
                 type="button"
                 onClick={saveAndNext}
-                disabled={saving}
+                disabled={saving || !canSave}
+                title={canSave ? undefined : 'Set story, characters, vibes, and would-rewatch to save'}
                 className="flex-1 rounded-xl bg-accent py-3 text-sm font-semibold text-bg disabled:opacity-50 transition-opacity min-h-[48px] flex items-center justify-center gap-2"
               >
                 {saving ? 'Saving…' : isLast ? 'Save & finish' : 'Save & next'}
                 {!saving && <ChevronRight size={16} />}
               </button>
             </div>
+            {!canSave && (
+              <p className="text-xs text-text-3 text-right -mt-2">
+                Set story, characters, vibes, and would-rewatch to save this review — or Skip for now.
+              </p>
+            )}
           </div>
         )}
       </div>
