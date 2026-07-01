@@ -39,6 +39,12 @@ export default function TranscriptOutput({
         </span>
       </div>
 
+      {state.warning && (
+        <p className="text-sm text-warning bg-warning/10 border border-warning/20 rounded-lg px-4 py-3">
+          {state.warning}
+        </p>
+      )}
+
       <textarea
         readOnly
         value={state.transcriptText}

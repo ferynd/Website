@@ -10,7 +10,7 @@ interface UploadPanelProps {
   disabled: boolean;
   defaultSpeakerNames: string[];
   defaultContextNotes: string;
-  onRun: (opts: { file: File; speakerNames: string[]; contextNotes: string }) => void;
+  onRun: (opts: { file: File; speakerNames: string[]; contextNotes: string; strictMode: boolean }) => void;
 }
 
 const MAX_MB = (MAX_OPENAI_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
@@ -24,6 +24,7 @@ export default function UploadPanel({
   const [file, setFile] = useState<File | null>(null);
   const [speakerNames, setSpeakerNames] = useState<string[]>(defaultSpeakerNames);
   const [contextNotes, setContextNotes] = useState(defaultContextNotes);
+  const [strictMode, setStrictMode] = useState(false);
 
   const validation = useMemo(() => {
     if (!file) return null;
@@ -120,6 +121,20 @@ export default function UploadPanel({
         />
       </div>
 
+      <label className="flex items-start gap-2 text-sm text-text-2">
+        <input
+          type="checkbox"
+          checked={strictMode}
+          disabled={disabled}
+          onChange={(e) => setStrictMode(e.target.checked)}
+          className="mt-0.5 rounded border-border"
+        />
+        <span>
+          Strict correction mode — abort the whole run if any correction chunk fails, instead of falling back to
+          uncorrected text for that chunk.
+        </span>
+      </label>
+
       <Button
         type="button"
         variant="primary"
@@ -130,6 +145,7 @@ export default function UploadPanel({
             file,
             speakerNames: speakerNames.map((s) => s.trim()).filter(Boolean),
             contextNotes,
+            strictMode,
           })
         }
         className="w-full sm:w-auto"

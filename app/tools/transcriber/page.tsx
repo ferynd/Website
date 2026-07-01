@@ -1,13 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  createUserWithEmailAndPassword,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signOut,
-  type User,
-} from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
 import Nav from '@/components/Nav';
 import Button from '@/components/Button';
 import AuthForm from '../trip-cost/components/AuthForm';
@@ -73,11 +67,8 @@ function RestrictedNotice() {
 export default function TranscriberPage() {
   const [user, setUser] = useState<User | null>(auth.currentUser);
   const [authLoading, setAuthLoading] = useState(!auth.currentUser);
-  const [isLogin, setIsLogin] = useState(true);
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastInitial, setLastInitial] = useState('');
   const [authError, setAuthError] = useState('');
 
   useEffect(() => {
@@ -88,15 +79,14 @@ export default function TranscriberPage() {
     return () => unsub();
   }, []);
 
+  // Login only — this is a private, single-user tool. Account creation is
+  // intentionally not exposed here so other Firebase users on this shared
+  // project aren't invited to sign up just to be blocked by isAllowedUser.
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
     try {
-      if (isLogin) {
-        await signInWithEmailAndPassword(auth, authEmail, authPassword);
-      } else {
-        await createUserWithEmailAndPassword(auth, authEmail, authPassword);
-      }
+      await signInWithEmailAndPassword(auth, authEmail, authPassword);
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : 'Authentication failed.');
     }
@@ -116,21 +106,16 @@ export default function TranscriberPage() {
   if (!user) {
     return (
       <AuthForm
-        isLogin={isLogin}
+        isLogin
+        allowSignUp={false}
+        title="Transcriber"
+        subtitle="Private tool — sign in with the site owner's account to continue."
         authEmail={authEmail}
         setAuthEmail={setAuthEmail}
         authPassword={authPassword}
         setAuthPassword={setAuthPassword}
-        firstName={firstName}
-        setFirstName={setFirstName}
-        lastInitial={lastInitial}
-        setLastInitial={setLastInitial}
         authError={authError}
         onSubmit={handleAuthSubmit}
-        toggleMode={() => {
-          setIsLogin((p) => !p);
-          setAuthError('');
-        }}
       />
     );
   }

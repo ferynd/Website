@@ -4,7 +4,8 @@ import { useCallback, useRef, useState } from 'react';
 import { auth } from './lib/firebase';
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
 import { CORRECTION_CHUNK_SECONDS, CORRECTION_OVERLAP_SECONDS, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
-import { buildTranscriptText, normalizeSegments } from './lib/formatTranscript';
+import { buildCorrectionWarning } from './lib/correctionSummary';
+import { buildTranscriptText, formatTimestamp, normalizeSegments } from './lib/formatTranscript';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
 import type {
   CorrectApiResponse,
@@ -18,6 +19,8 @@ export interface TranscriberRunOptions {
   file: File;
   speakerNames: string[];
   contextNotes: string;
+  /** When true, abort the whole run instead of falling back to an uncorrected chunk. */
+  strictMode?: boolean;
 }
 
 export interface TranscriberState {
@@ -29,6 +32,10 @@ export interface TranscriberState {
   uploadProgress: number | null; // 0..1, only meaningful during 'uploading'
   chunkProgress: { current: number; total: number } | null; // only meaningful during 'correcting'
   elapsedMs: number;
+  /** Set when 1+ correction chunks failed and fell back to uncorrected segments. Null if the run completed clean. */
+  warning: string | null;
+  correctionFailedChunks: number;
+  correctionTotalChunks: number;
 }
 
 const initialState: TranscriberState = {
@@ -40,6 +47,9 @@ const initialState: TranscriberState = {
   uploadProgress: null,
   chunkProgress: null,
   elapsedMs: 0,
+  warning: null,
+  correctionFailedChunks: 0,
+  correctionTotalChunks: 0,
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,7 +109,7 @@ export function useTranscriberPipeline() {
   }, []);
 
   const run = useCallback(
-    async ({ file, speakerNames, contextNotes }: TranscriberRunOptions) => {
+    async ({ file, speakerNames, contextNotes, strictMode = false }: TranscriberRunOptions) => {
       setState({ ...initialState, status: 'validating' });
       startTimer();
 
@@ -159,6 +169,7 @@ export function useTranscriberPipeline() {
         });
 
         const chunkResults: ChunkResult[] = [];
+        let correctionFailedChunks = 0;
 
         for (let i = 0; i < windows.length; i++) {
           const window: ChunkWindowBounds = windows[i];
@@ -179,7 +190,17 @@ export function useTranscriberPipeline() {
           const correctResult = correctData as CorrectApiResponse;
 
           if (correctStatus < 200 || correctStatus >= 300) {
-            // Don't lose the chunk if correction fails — keep the uncorrected segments.
+            correctionFailedChunks += 1;
+
+            if (strictMode) {
+              const rangeLabel = `${formatTimestamp(window.coreStart)}–${formatTimestamp(window.coreEnd)}`;
+              const reason = correctResult.error || `HTTP ${correctStatus}`;
+              throw new Error(
+                `Correction failed for chunk ${i + 1} of ${windows.length} (${rangeLabel}): ${reason}. Strict mode is enabled, so the run was aborted instead of using an uncorrected chunk.`,
+              );
+            }
+
+            // Don't lose the chunk — keep the uncorrected segments and surface a warning at the end.
             chunkResults.push({ window, segments: windowSegments });
             continue;
           }
@@ -190,8 +211,19 @@ export function useTranscriberPipeline() {
         setState((s) => ({ ...s, status: 'building' }));
         const finalSegments = stitchChunkResults(chunkResults);
         const transcriptText = buildTranscriptText(finalSegments);
+        const warning = buildCorrectionWarning({
+          failedChunks: correctionFailedChunks,
+          totalChunks: windows.length,
+        });
 
-        setState((s) => ({ ...s, status: 'complete', transcriptText }));
+        setState((s) => ({
+          ...s,
+          status: 'complete',
+          transcriptText,
+          warning,
+          correctionFailedChunks,
+          correctionTotalChunks: windows.length,
+        }));
       } catch (err) {
         setState((s) => ({
           ...s,
