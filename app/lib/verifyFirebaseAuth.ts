@@ -124,8 +124,12 @@ export async function verifyFirebaseIdToken(idToken: string): Promise<FirebaseTo
 
 /**
  * Extracts the bearer token from an Authorization header, verifies it, and
- * confirms the caller's email matches ADMIN_EMAIL exactly (case-insensitive).
- * Throws AuthError on any failure — callers must catch this and respond 401.
+ * confirms the caller's email matches ADMIN_EMAIL exactly (case-insensitive)
+ * AND is verified. Email/password sign-up on this shared Firebase project
+ * doesn't require proving ownership of the address up front, so without the
+ * email_verified check, anyone could sign up with ADMIN_EMAIL (if not
+ * already registered) and pass the email-match check alone. Throws
+ * AuthError on any failure — callers must catch this and respond 401.
  */
 export async function requireAdminUser(request: Request): Promise<FirebaseTokenPayload> {
   const authHeader = request.headers.get('authorization') ?? '';
@@ -138,6 +142,9 @@ export async function requireAdminUser(request: Request): Promise<FirebaseTokenP
   const email = payload.email?.toLowerCase();
   if (!email || email !== ADMIN_EMAIL.toLowerCase()) {
     throw new AuthError('This tool is restricted to the site owner.');
+  }
+  if (payload.email_verified !== true) {
+    throw new AuthError('This account has not verified its email address.');
   }
 
   return payload;

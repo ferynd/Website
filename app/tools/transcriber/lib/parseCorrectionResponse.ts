@@ -7,8 +7,10 @@ export interface CorrectionResultItem {
 /**
  * Parses and validates the correction model's JSON-array response. Items
  * missing required fields, with the wrong types, or referencing an index
- * outside the chunk that was sent are silently dropped — the caller falls
- * back to the original (uncorrected) segment for anything that's missing.
+ * outside the chunk that was sent are silently dropped. Callers should pair
+ * this with `findMissingIndices` and reject the whole chunk (rather than
+ * quietly filling gaps with uncorrected text) so a partial/malformed
+ * response is treated as a correction failure — see the correct API route.
  */
 export function parseCorrectionResponse(raw: string, expectedIndices: number[]): CorrectionResultItem[] {
   const cleaned = raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
@@ -42,4 +44,16 @@ export function parseCorrectionResponse(raw: string, expectedIndices: number[]):
   }
 
   return results;
+}
+
+/**
+ * Returns which of `expectedIndices` have no corresponding correction.
+ * A non-empty result means the correction response was incomplete (the
+ * model dropped a line, or `parseCorrectionResponse` rejected a malformed
+ * item) and the whole chunk should be treated as failed rather than
+ * silently patched with uncorrected text for just the missing lines.
+ */
+export function findMissingIndices(expectedIndices: number[], corrections: CorrectionResultItem[]): number[] {
+  const covered = new Set(corrections.map((c) => c.index));
+  return expectedIndices.filter((index) => !covered.has(index));
 }

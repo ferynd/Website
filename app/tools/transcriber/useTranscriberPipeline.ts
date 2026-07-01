@@ -87,7 +87,16 @@ async function postJson(url: string, body: unknown, idToken: string): Promise<{ 
     headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  const json = await res.json();
+  // A platform-level failure (e.g. an edge/gateway 502 or 413) can return an
+  // HTML body instead of JSON. Parse defensively so that case still reaches
+  // the caller's non-2xx handling (chunk failure + warning/strict-mode)
+  // instead of throwing and aborting the whole run.
+  let json: JsonRecord;
+  try {
+    json = await res.json();
+  } catch {
+    json = { error: `Server returned a non-JSON response (HTTP ${res.status}).` };
+  }
   return { status: res.status, json };
 }
 

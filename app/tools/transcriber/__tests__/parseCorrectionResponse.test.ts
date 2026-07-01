@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseCorrectionResponse } from '../lib/parseCorrectionResponse';
+import { findMissingIndices, parseCorrectionResponse } from '../lib/parseCorrectionResponse';
 
 describe('parseCorrectionResponse', () => {
   it('parses a valid JSON array of corrections', () => {
@@ -39,5 +39,24 @@ describe('parseCorrectionResponse', () => {
 
   it('throws when the response is not an array', () => {
     expect(() => parseCorrectionResponse('{"index": 0}', [0])).toThrow();
+  });
+});
+
+describe('findMissingIndices', () => {
+  it('returns an empty array when every expected index is covered', () => {
+    const corrections = [
+      { index: 0, speaker: 'Kait', text: 'hi' },
+      { index: 1, speaker: 'James', text: 'hey' },
+    ];
+    expect(findMissingIndices([0, 1], corrections)).toEqual([]);
+  });
+
+  it('reports indices with no corresponding correction', () => {
+    const corrections = [{ index: 0, speaker: 'Kait', text: 'hi' }];
+    expect(findMissingIndices([0, 1, 2], corrections)).toEqual([1, 2]);
+  });
+
+  it('reports every expected index when corrections is empty', () => {
+    expect(findMissingIndices([0, 1], [])).toEqual([0, 1]);
   });
 });

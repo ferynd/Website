@@ -6,7 +6,7 @@ import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
 import { buildCorrectionPrompt } from '@/app/tools/transcriber/lib/buildCorrectionPrompt';
 import { CORRECTION_GEMINI_MODEL, CORRECTION_TEMPERATURE } from '@/app/tools/transcriber/lib/constants';
 import { normalizeSegments } from '@/app/tools/transcriber/lib/formatTranscript';
-import { parseCorrectionResponse } from '@/app/tools/transcriber/lib/parseCorrectionResponse';
+import { findMissingIndices, parseCorrectionResponse } from '@/app/tools/transcriber/lib/parseCorrectionResponse';
 import type { CorrectApiRequestBody, TranscriptSegment } from '@/app/tools/transcriber/lib/types';
 
 export async function POST(req: NextRequest) {
@@ -68,14 +68,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
+  // A syntactically valid but incomplete response (model dropped a line, or
+  // parseCorrectionResponse rejected a malformed item) must NOT be silently
+  // patched with uncorrected text for just the missing lines — that would
+  // hide a real failure from both the warning banner and strict mode. Reject
+  // the whole chunk instead so the client's existing failure handling
+  // (fallback to original segments, count towards the warning, strict-mode
+  // abort) applies consistently.
+  const missingIndices = findMissingIndices(
+    indexed.map((s) => s.index),
+    corrections,
+  );
+  if (missingIndices.length > 0) {
+    return NextResponse.json(
+      {
+        error: `Correction response was incomplete: missing ${missingIndices.length} of ${indexed.length} segments.`,
+      },
+      { status: 502 },
+    );
+  }
+
   const byIndex = new Map(corrections.map((c) => [c.index, c]));
   const segments: TranscriptSegment[] = indexed.map((seg) => {
-    const fix = byIndex.get(seg.index);
+    const fix = byIndex.get(seg.index)!;
     return {
       start: seg.start,
       end: seg.end,
-      speaker: fix?.speaker?.trim() || seg.speaker,
-      text: fix?.text?.trim() || seg.text,
+      speaker: fix.speaker.trim() || seg.speaker,
+      text: fix.text.trim() || seg.text,
     };
   });
 
