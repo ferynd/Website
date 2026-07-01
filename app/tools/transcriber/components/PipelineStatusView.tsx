@@ -22,6 +22,9 @@ function formatElapsed(ms: number): string {
 
 export default function PipelineStatusView({ state }: { state: TranscriberState }) {
   const currentIndex = STEPS.findIndex((s) => s.key === state.status);
+  const steps = state.cleanupSkipped
+    ? STEPS.map((step) => (step.key === 'correcting' ? { ...step, label: 'Cleanup pass (skipped by request)' } : step))
+    : STEPS;
 
   return (
     <div className="rounded-xl border border-border bg-surface-1 p-6 space-y-4">
@@ -34,7 +37,7 @@ export default function PipelineStatusView({ state }: { state: TranscriberState 
         <p className="text-error text-sm">{state.error}</p>
       ) : (
         <ul className="space-y-2">
-          {STEPS.map((step, i) => {
+          {steps.map((step, i) => {
             const done = currentIndex > i || state.status === 'complete';
             const active = step.key === state.status;
             return (

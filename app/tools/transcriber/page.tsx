@@ -13,8 +13,9 @@ import UploadPanel from './components/UploadPanel';
 import PipelineStatusView from './components/PipelineStatusView';
 import TranscriptOutput from './components/TranscriptOutput';
 import SettingsModal from './components/SettingsModal';
+import RequirementsPanel from './components/RequirementsPanel';
 
-function TranscriberShell() {
+function TranscriberShell({ user }: { user: User }) {
   const { state, run, reset } = useTranscriberPipeline();
   const isRunning = !['idle', 'complete', 'failed'].includes(state.status);
   const [showSettings, setShowSettings] = useState(false);
@@ -47,6 +48,8 @@ function TranscriberShell() {
             Upload a long recording and get a cleaned, speaker-labeled, timestamped transcript.
           </p>
         </header>
+
+        <RequirementsPanel user={user} />
 
         <UploadPanel
           disabled={isRunning}
@@ -142,5 +145,5 @@ export default function TranscriberPage() {
     return <RestrictedNotice />;
   }
 
-  return <TranscriberShell />;
+  return <TranscriberShell user={user} />;
 }
