@@ -8,10 +8,13 @@ Persistence is provided via **Firebase (Auth + Firestore)** for selected tools.
   - These MUST NOT be treated as secrets; access is controlled by **Firestore Security Rules**.
   - Do **not** commit any private server keys, service account JSON, or API tokens.
 - Never log PII, tokens, or auth data to the console. Avoid printing document contents that could include personal information.
+- **`GEMINI_API_KEY`** and **`GPT_API_KEY`** are Cloudflare Secrets read via `process.env` inside Edge-runtime API routes only (never in client bundles). `GEMINI_API_KEY` powers Movie/TV Show Tracker classification/recommendations and the Transcriber correction pass; `GPT_API_KEY` powers Transcriber's OpenAI audio transcription calls.
 
 ## Authentication
-- Email/password via Firebase Auth on Trip Cost, Trip Planner, Date Night Roulette, Conflict Tracker, Movie/TV Show Tracker, and Calorie Tracker.
+- Email/password via Firebase Auth on Trip Cost, Trip Planner, Date Night Roulette, Conflict Tracker, Movie/TV Show Tracker, Calorie Tracker, and Transcriber.
 - The admin user is `arkkahdarkkahd@gmail.com` (see `ADMIN_EMAIL` in the Trip Cost config). Use this only for approvals and privileged actions.
+- **Transcriber is admin-only, not shared.** Every other tool above allows any signed-in Firebase user (scoped by Firestore rules); Transcriber additionally rejects any signed-in user whose email isn't exactly `ADMIN_EMAIL`, both client-side (UI hides the tool) and server-side (see below — the server-side check is what actually matters).
+- **Server-side ID token verification:** `app/lib/verifyFirebaseAuth.ts` independently verifies the Firebase ID token on every `/api/transcriber/*` request — this is the only real access control on those routes, since Edge API routes have no other session mechanism. It hand-rolls RS256 signature verification against Google's public JWKS (`crypto.subtle`) instead of using `firebase-admin`, because `firebase-admin` requires Node APIs unavailable on this app's Edge runtime. Client-side checks in the tool's UI are convenience/UX only and must never be treated as the security boundary.
 
 ## Firestore Structure
 Trip Cost data lives under `artifacts/trip-cost/**` (see **ARCHITECTURE.md**). Calorie Tracker uses `artifacts/<appId>/users/{uid}/**` scoped to a user. Trip Planner persists under `artifacts/trip-planner/**` with the following collections:
@@ -59,3 +62,10 @@ To keep one source of truth, do not duplicate or partially copy rules in docs; r
 - Firestore rules for Date Night and Trip Planner are now consolidated into the single root `firestore.rules` file.
 
 - State-machine note: vetoes increment source counters without creating roll docs; only accepted outcomes create `rolls` entries.
+
+### Transcriber
+
+- **No persistence.** This tool has no Firestore collections and stores nothing server-side beyond the lifetime of a single HTTP request. The uploaded audio file is streamed from the browser to `/api/transcriber/transcribe`, forwarded to OpenAI, and discarded; nothing is written to disk (the Edge runtime has none) or to any bucket.
+- **No transcript contents in logs.** Neither API route (`app/api/transcriber/transcribe/route.ts`, `app/api/transcriber/correct/route.ts`) logs request bodies, prompts, or model responses — only generic, sanitized error strings are ever returned to the client (API key fragments are stripped from any upstream error text before it's surfaced).
+- **Access:** restricted to the admin account only (see Authentication above). All transcript/audio data that ever exists only exists in that one authenticated user's browser session and the two upstream API calls (OpenAI, Gemini) made on their behalf.
+- **Large files:** uploads over OpenAI's 25 MB limit are rejected with a clear message (client- and server-side) rather than silently failing or being truncated. There is no Gemini Files API fallback for oversized files in the current implementation — this is a known, documented limitation, not a silent gap.

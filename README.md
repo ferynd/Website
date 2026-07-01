@@ -139,6 +139,20 @@ _"Track shared watchlists, ratings, notes, and mood-based recommendations."_
 
 This React tool lives under **app/tools/shows/** with Edge API routes in **app/api/classify/** and **app/api/recommend/**. Gemini is used as a plain text-in / JSON-out helper for title classification/expansion and watch recommendations. Model choices are client-safe metadata in **app/lib/aiModels.ts**, with local device settings for classification (`gemini-3.1-flash-lite` by default) and recommendations (`gemini-2.5-flash` by default). Recommendation candidates include Watching, Planned, On Hold, and Completed shows that relevant viewers marked as rewatchable.
 
+### Transcriber (Firebase + OpenAI + Gemini-backed, admin-only)
+
+_"Upload a long recording and get a cleaned, speaker-labeled, timestamped transcript."_
+
+This React tool lives under **app/tools/transcriber/** with Edge API routes in **app/api/transcriber/**. Unlike every other Firebase-backed tool on this site, it is restricted to a single account (the site admin) rather than any signed-in user, and it has no Firestore persistence at all — nothing about a run is saved once the browser tab closes.
+
+Key features:
+- **Upload:** accepts a single `.m4a` recording, validated client- and server-side against OpenAI's 25 MB direct-upload limit, with editable speaker names (defaulting to Kait/James) and optional free-text context notes.
+- **Primary transcription:** `gpt-4o-transcribe-diarize` via OpenAI's `/v1/audio/transcriptions` endpoint with `response_format: diarized_json` and `chunking_strategy: auto`, giving segment-level timestamps and sequential speaker labels that get mapped onto the user-provided names in order of first appearance.
+- **Fallback transcription:** if the diarized model/endpoint is unavailable, falls back to `whisper-1` with `verbose_json` (timestamps only, no speaker labels — every segment starts `Unknown`).
+- **Speaker correction pass:** the raw transcript is split into overlapping ~15-minute windows and sent chunk-by-chunk to Gemini (`gemini-2.5-flash`) with a strict JSON-only prompt that fixes obvious speaker misattributions and transcription/punctuation errors without summarizing, rewriting, or softening the wording; uncertain speakers are left `Unknown` rather than guessed. Chunk results are stitched back together by keeping only each window's non-overlapping "core" region, which prevents duplicated lines from the overlap by construction.
+- **Output:** a `[HH:MM:SS] Speaker: text` formatted `.txt` transcript with Download and Copy buttons, plus a step-by-step progress view (validating → uploading → transcribing → correcting → building → complete) with elapsed time.
+- **Access control:** gated to the exact admin email both in the UI (so other signed-in users never see the tool) and independently in every API route via a hand-rolled Firebase ID token verifier (`app/lib/verifyFirebaseAuth.ts`) — see `SECURITY.md` for why this doesn't use `firebase-admin`.
+
 ### Date Night Roulette (Firebase-backed)
 
 _"Spin to pick a random date idea and modifier, log how it went."_
