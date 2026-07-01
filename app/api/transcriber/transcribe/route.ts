@@ -2,6 +2,7 @@ export const runtime = 'edge';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
+import { modelSupportsDiarization, resolveTranscribeModelId } from '@/app/lib/transcribeModels';
 import {
   FALLBACK_TRANSCRIBE_MODEL,
   MAX_OPENAI_UPLOAD_BYTES,
@@ -65,13 +66,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Model choice comes from the Settings pop-up (saved client-side); fall back to the
+  // site default if missing/unrecognized. Only models that return segment-level
+  // timestamps are ever accepted here — see app/lib/transcribeModels.ts for why.
+  const transcribeModelId = resolveTranscribeModelId(form.get('model'), PRIMARY_TRANSCRIBE_MODEL);
+  const diarizes = modelSupportsDiarization(transcribeModelId);
+
   const primaryForm = new FormData();
   primaryForm.set('file', file, file.name);
-  primaryForm.set('model', PRIMARY_TRANSCRIBE_MODEL);
-  primaryForm.set('response_format', 'diarized_json');
-  primaryForm.set('chunking_strategy', 'auto');
+  primaryForm.set('model', transcribeModelId);
+  if (diarizes) {
+    primaryForm.set('response_format', 'diarized_json');
+    primaryForm.set('chunking_strategy', 'auto');
+  } else {
+    primaryForm.set('response_format', 'verbose_json');
+    primaryForm.set('timestamp_granularities[]', 'segment');
+  }
 
-  let mode: TranscriptionMode = 'diarized';
+  let mode: TranscriptionMode = diarizes ? 'diarized' : 'fallback';
   let primaryError: string | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any = null;
@@ -85,13 +97,18 @@ export async function POST(req: NextRequest) {
   if (primaryRes.ok) {
     data = await primaryRes.json();
   } else {
-    // Diarized model/endpoint unavailable for this account/audio — fall back to whisper-1.
+    // Selected model/endpoint unavailable for this account/audio — fall back to whisper-1.
     const errText = await primaryRes.text().catch(() => '');
-    primaryError = sanitizeError(errText) || `OpenAI diarized transcription failed (${primaryRes.status}).`;
+    primaryError = sanitizeError(errText) || `OpenAI transcription failed (${primaryRes.status}).`;
     mode = 'fallback';
   }
 
-  if (mode === 'fallback') {
+  // Nothing left to retry with if the selected model already was the fallback model itself.
+  if (!data && transcribeModelId === FALLBACK_TRANSCRIBE_MODEL) {
+    return NextResponse.json({ error: `Transcription failed: ${primaryError}` }, { status: 502 });
+  }
+
+  if (!data) {
     const fallbackForm = new FormData();
     fallbackForm.set('file', file, file.name);
     fallbackForm.set('model', FALLBACK_TRANSCRIBE_MODEL);
@@ -108,7 +125,7 @@ export async function POST(req: NextRequest) {
       const fallbackErrText = await fallbackRes.text().catch(() => '');
       return NextResponse.json(
         {
-          error: `Transcription failed on both the primary and fallback models. Primary: ${primaryError} Fallback: ${sanitizeError(fallbackErrText)}`,
+          error: `Transcription failed on both the selected and fallback models. Selected (${transcribeModelId}): ${primaryError} Fallback (${FALLBACK_TRANSCRIBE_MODEL}): ${sanitizeError(fallbackErrText)}`,
         },
         { status: 502 },
       );
