@@ -132,7 +132,7 @@ export default function TranscriptOutput({ state, onReset }: { state: Transcribe
             {state.mode === 'diarized'
               ? 'OpenAI diarized'
               : state.mode === 'gemini'
-                ? 'Gemini'
+                ? 'Gemini direct (speakers prompt-inferred)'
                 : 'Fallback (Whisper + inferred speakers)'}
           </span>
         </div>

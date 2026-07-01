@@ -4,14 +4,40 @@ import { Check, Loader2 } from 'lucide-react';
 import type { TranscriberState } from '../useTranscriberPipeline';
 import type { PipelineStatus } from '../lib/types';
 
-const STEPS: { key: PipelineStatus; label: string }[] = [
-  { key: 'validating', label: 'Validating file' },
-  { key: 'uploading', label: 'Uploading' },
-  { key: 'transcribing', label: 'Transcribing' },
-  { key: 'correcting', label: 'Cleaning up transcript' },
-  { key: 'building', label: 'Building final transcript' },
-  { key: 'complete', label: 'Complete' },
+interface StepDef {
+  key: PipelineStatus;
+  label: string;
+}
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: per-provider step sequences                    */
+/* ------------------------------------------------------------ */
+
+const OPENAI_STEP_KEYS: PipelineStatus[] = ['validating', 'uploading', 'transcribing', 'correcting', 'building', 'complete'];
+/** Gemini direct transcription has an extra 'processing' step (Files API
+ * upload activation) between uploading and the transcription call(s) that
+ * the OpenAI path never enters — see lib/providers/geminiProvider.ts. */
+const GEMINI_STEP_KEYS: PipelineStatus[] = [
+  'validating',
+  'uploading',
+  'processing',
+  'transcribing',
+  'correcting',
+  'building',
+  'complete',
 ];
+
+const STEP_LABELS: Record<PipelineStatus, string> = {
+  idle: 'Idle',
+  validating: 'Validating file',
+  uploading: 'Uploading',
+  processing: 'Processing',
+  transcribing: 'Transcribing',
+  correcting: 'Cleaning up transcript',
+  building: 'Building final transcript',
+  complete: 'Complete',
+  failed: 'Failed',
+};
 
 function formatElapsed(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
@@ -21,10 +47,25 @@ function formatElapsed(ms: number): string {
 }
 
 export default function PipelineStatusView({ state }: { state: TranscriberState }) {
-  const currentIndex = STEPS.findIndex((s) => s.key === state.status);
-  const steps = state.cleanupSkipped
-    ? STEPS.map((step) => (step.key === 'correcting' ? { ...step, label: 'Cleanup pass (skipped by request)' } : step))
-    : STEPS;
+  // currentProvider reflects the provider being attempted right now (set
+  // before mode is known); mode reflects the last SUCCESSFUL attempt — using
+  // both keeps the gemini-specific step sequence correct both mid-run and
+  // once complete.
+  const isGemini = state.currentProvider === 'gemini' || state.mode === 'gemini';
+  const stepKeys = isGemini ? GEMINI_STEP_KEYS : OPENAI_STEP_KEYS;
+  const currentIndex = stepKeys.findIndex((key) => key === state.status);
+
+  const steps: StepDef[] = stepKeys.map((key) => {
+    if (key === 'correcting' && state.cleanupSkipped) {
+      return { key, label: 'Cleanup pass (skipped by request)' };
+    }
+    // Fold Gemini's window-loop progress directly into the "Transcribing"
+    // step label ("Transcribing window i of N") rather than a separate line.
+    if (key === 'transcribing' && isGemini && key === state.status && state.chunkProgress) {
+      return { key, label: `Transcribing window ${state.chunkProgress.current} of ${state.chunkProgress.total}` };
+    }
+    return { key, label: STEP_LABELS[key] };
+  });
 
   return (
     <div className="rounded-xl border border-border bg-surface-1 p-6 space-y-4">

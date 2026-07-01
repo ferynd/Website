@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut, type User } from 'firebase/auth';
 import { Settings } from 'lucide-react';
 import Nav from '@/components/Nav';
@@ -8,6 +8,7 @@ import Button from '@/components/Button';
 import AuthForm from '../trip-cost/components/AuthForm';
 import { auth, isAllowedUser } from './lib/firebase';
 import { DEFAULT_CONTEXT_NOTES, DEFAULT_SPEAKER_NAMES } from './lib/constants';
+import { readTranscriberSettings, saveTranscriberSettings, type TranscriberSettings } from './lib/settings';
 import { useTranscriberPipeline } from './useTranscriberPipeline';
 import UploadPanel from './components/UploadPanel';
 import PipelineStatusView from './components/PipelineStatusView';
@@ -20,6 +21,28 @@ function TranscriberShell({ user }: { user: User }) {
   const { state, run, retryWith, completeWithRawOnly, reset } = useTranscriberPipeline();
   const isRunning = !['idle', 'complete', 'failed'].includes(state.status);
   const [showSettings, setShowSettings] = useState(false);
+
+  // Single source-of-truth settings copy for this page (per the Phase 3
+  // plan — UploadPanel/ProviderPicker read/write through it via props,
+  // rather than each owning a separate localStorage-synced copy). Lazy init
+  // is SSR-safe: readTranscriberSettings() returns defaults when window is
+  // undefined. SettingsModal still owns its own read/write cycle (unchanged
+  // from Phase 1/2) — re-read here on close so this copy doesn't go stale
+  // after an edit made there.
+  const [settings, setSettings] = useState<TranscriberSettings>(() => readTranscriberSettings());
+
+  const updateSettings = useCallback((patch: Partial<TranscriberSettings>) => {
+    setSettings((prev) => {
+      const next = { ...prev, ...patch };
+      saveTranscriberSettings(next);
+      return next;
+    });
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setShowSettings(false);
+    setSettings(readTranscriberSettings());
+  }, []);
 
   return (
     <main className="bg-bg text-text min-h-dvh">
@@ -55,6 +78,8 @@ function TranscriberShell({ user }: { user: User }) {
         <UploadPanel
           disabled={isRunning}
           onRun={run}
+          settings={settings}
+          onSettingsChange={updateSettings}
           defaultSpeakerNames={DEFAULT_SPEAKER_NAMES}
           defaultContextNotes={DEFAULT_CONTEXT_NOTES}
         />
@@ -74,7 +99,7 @@ function TranscriberShell({ user }: { user: User }) {
         {state.status === 'complete' && <TranscriptOutput state={state} onReset={reset} />}
       </section>
 
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSettings && <SettingsModal onClose={closeSettings} />}
     </main>
   );
 }

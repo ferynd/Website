@@ -42,10 +42,11 @@ export interface ErrorRecoveryPanelProps {
 /**
  * Replaces the old dead-end "run failed" line: a diagnostics table plus
  * concrete next actions. Retry buttons for the two OpenAI providers are
- * filtered by `classified.retryProviders`; the Gemini button is always
+ * filtered by `classified.retryProviders`; the Gemini retry button is always
  * shown (per the product decision to make it a visible, first-class choice)
- * but currently just explains via the hook's recovery message that direct
- * Gemini transcription isn't wired up yet (Phase 3).
+ * regardless of `retryProviders` — retrying with Gemini is a real, runnable
+ * choice for any failure, not just ones Gemini is specifically recommended
+ * for.
  */
 export default function ErrorRecoveryPanel({
   recovery,

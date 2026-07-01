@@ -21,6 +21,7 @@ import {
   CORRECTION_GEMINI_MODEL,
   CORRECTION_OVERLAP_SECONDS,
   CORRECTION_TEMPERATURE,
+  DEFAULT_GEMINI_TRANSCRIBE_MODEL,
   PRIMARY_TRANSCRIBE_MODEL,
   TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
   TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
@@ -52,11 +53,6 @@ export const CLEANUP_OVERLAP_SECONDS_MAX = 300;
 /** Cleanup-pass model temperature clamp. */
 export const CLEANUP_TEMPERATURE_MIN = 0;
 export const CLEANUP_TEMPERATURE_MAX = 1;
-
-/** Default Gemini model for direct (Phase 3) transcription. Deliberately a
- * separate constant from CORRECTION_GEMINI_MODEL (cleanup pass) even though
- * they currently share a value — the two are tuned independently. */
-const DEFAULT_GEMINI_TRANSCRIBE_MODEL: GeminiModelId = 'gemini-2.5-flash';
 
 const TRANSCRIPTION_PROVIDER_IDS = new Set<TranscriptionProviderId>([
   'openai-diarized',

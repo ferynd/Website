@@ -93,3 +93,23 @@ export function isGemini25Model(modelId: GeminiModelId): boolean {
 export function isGemini3Model(modelId: GeminiModelId): boolean {
   return modelId.startsWith('gemini-3.');
 }
+
+/**
+ * Flash-family subset of AVAILABLE_GEMINI_MODELS usable for direct audio
+ * transcription (Transcriber Phase 3) — Pro/reasoning models are excluded
+ * since they're tuned for text reasoning, not tuned/priced for long-audio
+ * ingestion. Listed ids are cross-checked against the catalog below (rather
+ * than hand-duplicating labels/costs) so callers that want display copy look
+ * it up via `AVAILABLE_GEMINI_MODELS`/`geminiModelOptionLabel`, which stay
+ * the single source of truth. Order here is the one shown in the provider
+ * picker (cheapest → most capable), not the catalog's declaration order.
+ */
+export const GEMINI_TRANSCRIBE_MODELS: GeminiModelId[] = (
+  ['gemini-2.5-flash-lite', 'gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.5-flash'] as const
+).filter(isGeminiModelId);
+
+const GEMINI_TRANSCRIBE_MODEL_IDS = new Set<GeminiModelId>(GEMINI_TRANSCRIBE_MODELS);
+
+export function isGeminiTranscribeModel(value: unknown): value is GeminiModelId {
+  return typeof value === 'string' && GEMINI_TRANSCRIBE_MODEL_IDS.has(value as GeminiModelId);
+}

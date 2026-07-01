@@ -2,15 +2,17 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { auth } from './lib/firebase';
+import { probeAudioDuration } from './lib/audioDuration';
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
 import type { ClassifiedError } from './lib/classifyError';
 import { classifyTranscriptionError } from './lib/classifyError';
-import { FALLBACK_TRANSCRIBE_MODEL, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
+import { ACCEPTED_FILE_EXTENSIONS, FALLBACK_TRANSCRIBE_MODEL, MAX_GEMINI_UPLOAD_BYTES, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
 import { buildCorrectionWarning } from './lib/correctionSummary';
 import { buildManualCleanupPrompt } from './lib/buildManualCleanupPrompt';
 import { formatCleanTranscript } from './lib/formatCleanTranscript';
 import { buildTranscriptText, normalizeSegments } from './lib/formatTranscript';
 import { mergeTurns } from './lib/mergeTurns';
+import { transcribeWithGemini } from './lib/providers/geminiProvider';
 import { transcribeWithOpenAi } from './lib/providers/openaiProvider';
 import type { TranscriptionAttempt, TranscriptionAttemptError, TranscriptionProviderId } from './lib/providers/types';
 import { appendDebugEvent, buildDebugJson, createDebugLog, type DebugLog } from './lib/runDebug';
@@ -55,6 +57,8 @@ export interface TranscriberState {
   status: PipelineStatus;
   error: string | null;
   mode: TranscriptionMode | null;
+  /** The provider currently being attempted — set before mode is known (mode only reflects the last SUCCESSFUL attempt), so PipelineStatusView can show provider-aware step labels (e.g. Gemini's Uploading → Processing → Transcribing) while a run is still in progress. */
+  currentProvider: TranscriptionProviderId | null;
   /** Set when the diarized model was unavailable and the run silently used Whisper instead. */
   primaryError: string | null;
   /** Captured immediately after the first successful provider response, before suppression — always the complete transcript. */
@@ -84,6 +88,7 @@ const initialState: TranscriberState = {
   status: 'idle',
   error: null,
   mode: null,
+  currentProvider: null,
   primaryError: null,
   rawSegments: [],
   rawText: '',
@@ -123,23 +128,26 @@ async function postJson(url: string, body: unknown, idToken: string): Promise<{ 
   return { status: res.status, json };
 }
 
-/** Recovery shown when a run (or an explicit retry) selects the Gemini provider — not implemented until Phase 3. */
-function buildGeminiUnavailableRecovery(file: File): RecoveryInfo {
+/** Constructed (not thrown as a real Error) when a Gemini attempt can't even
+ * start because the browser couldn't determine the file's duration (see
+ * lib/audioDuration.ts) — Gemini direct transcription needs duration up
+ * front to decide single-call vs. windowed transcription, unlike the OpenAI
+ * providers. Shaped exactly like a TranscriptionAttemptError so it flows
+ * through the same catch-and-maybe-auto-fallback handling below as any other
+ * provider failure. */
+function buildDurationUnknownError(file: File, model: string): TranscriptionAttemptError {
   return {
     classified: {
       category: 'unknown',
-      likelyCause: 'Gemini direct transcription arrives in the next update.',
-      recommendedAction: 'Use OpenAI diarized or Whisper for now.',
+      likelyCause: "This browser could not determine the recording's duration, which Gemini direct transcription needs before it can run.",
+      recommendedAction: 'Try an OpenAI provider instead — it does not need the duration up front.',
       retryProviders: ['openai-diarized', 'openai-whisper'],
       suggestsConversion: false,
     },
-    fileName: file.name,
-    fileSizeBytes: file.size,
-    browserMime: file.type || 'unknown',
-    provider: 'gemini',
-    model: null,
-    upstreamStatus: null,
+    httpStatus: null,
     upstreamBody: '',
+    provider: 'gemini',
+    model,
   };
 }
 
@@ -192,55 +200,106 @@ export function useTranscriberPipeline() {
       };
 
       try {
-        if (!file.name.toLowerCase().endsWith('.m4a')) {
-          throw new Error('Please choose an .m4a audio file.');
+        const lowerName = file.name.toLowerCase();
+        if (!ACCEPTED_FILE_EXTENSIONS.some((ext) => lowerName.endsWith(ext))) {
+          throw new Error(`Please choose a supported audio file (${ACCEPTED_FILE_EXTENSIONS.join(', ')}).`);
         }
-        if (file.size > MAX_OPENAI_UPLOAD_BYTES) {
+
+        let providerId: TranscriptionProviderId = forcedProvider ?? settings.provider;
+        const isExplicitRetry = forcedProvider !== undefined;
+
+        // Provider-aware size cap: Gemini's Files API accepts much larger
+        // uploads than OpenAI's direct multipart endpoint (see
+        // MAX_GEMINI_UPLOAD_BYTES / MAX_OPENAI_UPLOAD_BYTES in
+        // lib/constants.ts). Checked against the provider this run starts
+        // with — an auto-fallback hop later in the loop below doesn't
+        // re-check this, matching the equivalent pre-run check UploadPanel
+        // already shows.
+        const maxUploadBytes = providerId === 'gemini' ? MAX_GEMINI_UPLOAD_BYTES : MAX_OPENAI_UPLOAD_BYTES;
+        if (file.size > maxUploadBytes) {
+          const providerLabel = providerId === 'gemini' ? "Gemini's" : "OpenAI's";
           throw new Error(
-            `This file is ${(file.size / 1024 / 1024).toFixed(1)} MB, which is over OpenAI's 25 MB upload limit. Compress the audio (lower bitrate) or split it into smaller parts before uploading.`,
+            `This file is ${(file.size / 1024 / 1024).toFixed(1)} MB, which is over ${providerLabel} ${(maxUploadBytes / 1024 / 1024).toFixed(0)} MB upload limit. Compress the audio (lower bitrate) or split it into smaller parts before uploading.`,
           );
         }
+
         const user = auth.currentUser;
         if (!user) throw new Error('You must be signed in.');
 
         // --- Provider attempt: the chosen provider, plus (when auto-fallback
-        // is on and this isn't already an explicit retry) at most one hop to a
-        // different OpenAI provider. TODO(Phase 3): once Gemini direct
-        // transcription exists, drop the `p !== 'gemini'` guard below so
-        // auto-fallback can hop to it too. ---
-        let providerId: TranscriptionProviderId = forcedProvider ?? settings.provider;
-        const isExplicitRetry = forcedProvider !== undefined;
+        // is on and this isn't already an explicit retry) at most one hop to
+        // a different provider drawn from settings.fallbackOrder — Gemini is
+        // a full candidate here, not just the two OpenAI providers. ---
         const attemptedProviders: TranscriptionProviderId[] = [];
         let attempt: TranscriptionAttempt | null = null;
 
         while (!attempt) {
-          if (providerId === 'gemini') {
-            finalizeFailed(buildGeminiUnavailableRecovery(file), 'Gemini direct transcription arrives in the next update.');
-            return;
-          }
-
           attemptedProviders.push(providerId);
-          const model = providerId === 'openai-whisper' ? FALLBACK_TRANSCRIBE_MODEL : settings.openaiModel;
+          const model =
+            providerId === 'gemini'
+              ? settings.geminiTranscribeModel
+              : providerId === 'openai-whisper'
+                ? FALLBACK_TRANSCRIBE_MODEL
+                : settings.openaiModel;
           appendDebugEvent(debugLog, { kind: 'provider-attempt', provider: providerId, model });
-          setState((s) => ({ ...s, status: 'uploading', uploadProgress: 0 }));
+          setState((s) => ({ ...s, currentProvider: providerId, status: 'uploading', uploadProgress: 0 }));
 
           const idToken = await user.getIdToken();
           try {
-            attempt = await transcribeWithOpenAi({
-              file,
-              speakerNames,
-              model,
-              // The server-side silent whisper retry (backward-compat
-              // default) is only allowed for a fresh run when auto-fallback
-              // is on — this is the "default OFF -> failures surface in the
-              // recovery panel instead of silently degrading" behavior. An
-              // explicit provider retry never allows it either, since that's
-              // already a deliberate single-provider choice.
-              allowWhisperFallback: !isExplicitRetry && settings.autoFallback,
-              idToken,
-              onUploadProgress: (fraction) =>
-                setState((s) => ({ ...s, uploadProgress: fraction, status: fraction >= 1 ? 'transcribing' : 'uploading' })),
-            });
+            if (providerId === 'gemini') {
+              // Gemini needs the recording's duration up front to decide
+              // single-call vs. windowed transcription — OpenAI needs no
+              // such probe. A probe failure is shaped like any other
+              // provider failure so it flows through the same
+              // catch-and-maybe-auto-fallback handling below.
+              const durationSec = await probeAudioDuration(file);
+              if (durationSec === null) {
+                throw buildDurationUnknownError(file, model);
+              }
+
+              attempt = await transcribeWithGemini({
+                file,
+                durationSec,
+                speakerNames,
+                contextNotes,
+                model,
+                idToken,
+                onProgress: (event) => {
+                  if (event.phase === 'upload') {
+                    setState((s) => ({ ...s, uploadProgress: event.fraction, status: 'uploading' }));
+                  } else if (event.phase === 'processing') {
+                    setState((s) => ({ ...s, status: 'processing', uploadProgress: null }));
+                  } else {
+                    setState((s) => ({
+                      ...s,
+                      status: 'transcribing',
+                      chunkProgress: { current: event.current, total: event.total },
+                    }));
+                  }
+                },
+              });
+              // Gemini has no acoustic speaker-reference support — speaker
+              // identity for this run came entirely from the prompt (names,
+              // notes, context), never audio comparison. Surfaced in the
+              // debug JSON so a quality review can see why.
+              appendDebugEvent(debugLog, { kind: 'speaker-reference', status: 'prompt-inferred' });
+            } else {
+              attempt = await transcribeWithOpenAi({
+                file,
+                speakerNames,
+                model,
+                // The server-side silent whisper retry (backward-compat
+                // default) is only allowed for a fresh run when auto-fallback
+                // is on — this is the "default OFF -> failures surface in the
+                // recovery panel instead of silently degrading" behavior. An
+                // explicit provider retry never allows it either, since that's
+                // already a deliberate single-provider choice.
+                allowWhisperFallback: !isExplicitRetry && settings.autoFallback,
+                idToken,
+                onUploadProgress: (fraction) =>
+                  setState((s) => ({ ...s, uploadProgress: fraction, status: fraction >= 1 ? 'transcribing' : 'uploading' })),
+              });
+            }
           } catch (err) {
             const attemptError = err as TranscriptionAttemptError;
             appendDebugEvent(debugLog, {
@@ -255,10 +314,7 @@ export function useTranscriberPipeline() {
             const nextProvider =
               !isExplicitRetry && settings.autoFallback && attemptedProviders.length < 2
                 ? settings.fallbackOrder.find(
-                    (p) =>
-                      p !== 'gemini' &&
-                      !attemptedProviders.includes(p) &&
-                      attemptError.classified.retryProviders.includes(p),
+                    (p) => !attemptedProviders.includes(p) && attemptError.classified.retryProviders.includes(p),
                   )
                 : undefined;
 
@@ -519,9 +575,11 @@ export function useTranscriberPipeline() {
 
   const run = useCallback((opts: TranscriberRunOptions) => performRun(opts), [performRun]);
 
-  /** Re-runs the last submitted file with a specific provider — for now only
-   * the two OpenAI providers actually run; 'gemini' surfaces a "not yet"
-   * recovery message (see buildGeminiUnavailableRecovery) until Phase 3. */
+  /** Re-runs the last submitted file with a specific provider (all three —
+   * both OpenAI providers and Gemini — are real, runnable choices). An
+   * explicit retry never allows the server-side silent whisper fallback and
+   * never triggers the auto-fallback queue itself — it's already a
+   * deliberate single-provider choice from the ErrorRecoveryPanel/settings. */
   const retryWith = useCallback(
     (providerId: TranscriptionProviderId) => {
       const lastOptions = lastRunOptionsRef.current;

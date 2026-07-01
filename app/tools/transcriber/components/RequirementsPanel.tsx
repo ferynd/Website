@@ -5,7 +5,7 @@ import { sendEmailVerification, type User } from 'firebase/auth';
 import { Check, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 import Button from '@/components/Button';
 import { ADMIN_EMAIL } from '../../trip-cost/firebaseConfig';
-import { MAX_OPENAI_UPLOAD_BYTES } from '../lib/constants';
+import { ACCEPTED_FILE_EXTENSIONS, MAX_GEMINI_UPLOAD_BYTES, MAX_OPENAI_UPLOAD_BYTES } from '../lib/constants';
 
 interface StatusResponse {
   signedIn: boolean;
@@ -16,7 +16,8 @@ interface StatusResponse {
   correctionKeyConfigured: boolean | null;
 }
 
-const MAX_MB = (MAX_OPENAI_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
+const OPENAI_MAX_MB = (MAX_OPENAI_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
+const GEMINI_MAX_MB = (MAX_GEMINI_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
 
 function Row({ ok, label, detail }: { ok: boolean | null; label: string; detail?: ReactNode }) {
   return (
@@ -185,16 +186,20 @@ export default function RequirementsPanel({ user }: { user: User }) {
           />
           <Row
             ok={status?.correctionKeyConfigured ?? null}
-            label="Gemini correction key configured on the server"
+            label="Gemini key configured on the server (cleanup pass + Gemini direct transcription)"
             detail={
               status?.correctionKeyConfigured === false
-                ? 'GEMINI_API_KEY is not set in this deployment. The cleanup pass will fail until it is — or use "Skip cleanup pass" below to bypass it entirely.'
+                ? 'GEMINI_API_KEY is not set in this deployment. The cleanup pass and the Gemini transcription provider will both fail until it is — use an OpenAI provider and "Skip cleanup" below to bypass it entirely.'
                 : status && !status.emailVerified
                   ? 'Rechecked automatically once your email is verified.'
                   : undefined
             }
           />
-          <Row ok={true} label={`Audio file: .m4a, up to ${MAX_MB} MB`} detail="Larger files need to be compressed (lower bitrate) or split before uploading." />
+          <Row
+            ok={true}
+            label={`Audio file: ${ACCEPTED_FILE_EXTENSIONS.join(', ')} — up to ${OPENAI_MAX_MB} MB (OpenAI) or ${GEMINI_MAX_MB} MB (Gemini)`}
+            detail="Larger files need to be compressed (lower bitrate) or split before uploading."
+          />
 
           {loadError && (
             <li className="text-sm text-error flex items-center gap-2">
