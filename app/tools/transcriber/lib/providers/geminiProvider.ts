@@ -7,12 +7,21 @@
 //
 // A long recording can't go through one generateContent call (~65k
 // output-token ceiling, Edge wall-clock limits) — above
-// GEMINI_SINGLE_CALL_MAX_SECONDS this windows the file the same way the
+// GEMINI_SINGLE_CALL_MAX_SECONDS this windows the recording the same way the
 // correction pass chunks a long transcript (createChunkWindows +
-// stitchChunkResults), just against a different endpoint.
+// stitchChunkResults), just against a different endpoint. Unlike the
+// correction pass (which chunks already-transcribed text), each window here
+// is REAL sliced audio: the file is decoded once client-side
+// (decodeAudioMono16k.ts), each window's samples are cut out and re-encoded
+// as its own small WAV, and that slice — not the original full file — is
+// what gets uploaded to Gemini and transcribed for that window. This keeps
+// each window call's input (and billing) proportional to that window's
+// duration, instead of resending/reprocessing the entire recording once per
+// window with a "please only look at this part" prompt instruction.
 
 import { blobToBase64 } from '../base64Audio';
 import { classifyTranscriptionError } from '../classifyError';
+import { encodeWavPcm16 } from '../clipAnalysis';
 import {
   GEMINI_FILE_POLL_INTERVAL_MS,
   GEMINI_FILE_POLL_TIMEOUT_MS,
@@ -21,6 +30,7 @@ import {
   GEMINI_WINDOW_SECONDS,
 } from '../constants';
 import { createChunkWindows, type ChunkWindowBounds } from '../chunkTranscript';
+import { decodeToMono16k, sliceMonoSamples, type DecodedMonoAudio } from '../decodeAudioMono16k';
 import { normalizeSegments } from '../formatTranscript';
 import { sanitizeUpstreamError } from '../sanitizeUpstreamError';
 import { stitchChunkResults, type ChunkResult } from '../stitchTranscript';
@@ -304,35 +314,45 @@ async function deleteFileBestEffort(fileName: string, idToken: string): Promise<
   }
 }
 
+/** Encodes a slice of decoded mono samples as a small WAV File ready to upload for one window's transcription call. */
+function encodeWindowFile(sourceFileName: string, samples: Float32Array<ArrayBuffer>, sampleRate: number, index: number): File {
+  const wavBuffer = encodeWavPcm16(samples, sampleRate);
+  return new File([wavBuffer], `${sourceFileName}.window-${index + 1}.wav`, { type: 'audio/wav' });
+}
+
 /**
- * Runs one Gemini direct-transcription attempt end to end: upload, poll for
- * activation, transcribe (single call or windowed depending on duration),
- * then best-effort delete the uploaded file. Returns a normalized
+ * Runs one Gemini direct-transcription attempt end to end. A recording at or
+ * under GEMINI_SINGLE_CALL_MAX_SECONDS uploads the original file once and
+ * makes a single transcription call against it. A longer recording is never
+ * uploaded whole to Gemini: it's decoded once client-side, cut into
+ * overlapping windows, and each window's audio is re-encoded as its own WAV
+ * and uploaded/transcribed/deleted independently — so a window call's input
+ * is exactly that window's audio, never the full file. Returns a normalized
  * TranscriptionAttempt, or throws a TranscriptionAttemptError (a plain
  * object, not an Error instance) on any failure.
  */
 export async function transcribeWithGemini(options: TranscribeWithGeminiOptions): Promise<TranscriptionAttempt> {
   const { file, durationSec, speakerNames, speakerNotes, contextNotes, model, references, idToken, onProgress } = options;
 
-  const uploaded = await uploadFile(file, idToken, model, (fraction) => onProgress({ phase: 'upload', fraction }));
-
   const warnings: string[] = [];
   let segments: TranscriptSegment[];
 
-  // Everything past this point works against a file that now exists on
-  // Google's Files API — wrap it in try/finally so the best-effort delete
-  // below always runs, even if polling/encoding/transcribing throws, rather
-  // than only on the success path. Otherwise a failure here leaks the
-  // upload until its 48h expiry.
-  try {
-    onProgress({ phase: 'processing' });
-    await pollUntilActive(uploaded.fileName, idToken, file, model);
+  // Base64-encode reference clips (if any) once, up front — reused for every
+  // window call below rather than re-encoded per window.
+  const encodedReferences = await encodeReferences(references);
 
-    // Base64-encode reference clips (if any) once, up front — reused for
-    // every window call below rather than re-encoded per window.
-    const encodedReferences = await encodeReferences(references);
+  if (durationSec <= GEMINI_SINGLE_CALL_MAX_SECONDS) {
+    const uploaded = await uploadFile(file, idToken, model, (fraction) => onProgress({ phase: 'upload', fraction }));
 
-    if (durationSec <= GEMINI_SINGLE_CALL_MAX_SECONDS) {
+    // Everything past this point works against a file that now exists on
+    // Google's Files API — wrap it in try/finally so the best-effort delete
+    // below always runs, even if polling/transcribing throws, rather than
+    // only on the success path. Otherwise a failure here leaks the upload
+    // until its 48h expiry.
+    try {
+      onProgress({ phase: 'processing' });
+      await pollUntilActive(uploaded.fileName, idToken, file, model);
+
       onProgress({ phase: 'transcribing', current: 1, total: 1 });
       segments = await transcribeWindow({
         fileUri: uploaded.fileUri,
@@ -348,19 +368,55 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
         idToken,
         file,
       });
-    } else {
-      const windows: ChunkWindowBounds[] = createChunkWindows(durationSec, {
-        chunkSeconds: GEMINI_WINDOW_SECONDS,
-        overlapSeconds: GEMINI_WINDOW_OVERLAP_SECONDS,
+    } finally {
+      const deleteWarning = await deleteFileBestEffort(uploaded.fileName, idToken);
+      if (deleteWarning) warnings.push(deleteWarning);
+    }
+  } else {
+    // Decode the whole recording into mono 16 kHz samples exactly once —
+    // every window below slices out of this same buffer rather than
+    // re-decoding (or re-uploading the original file) per window.
+    let decoded: DecodedMonoAudio;
+    try {
+      onProgress({ phase: 'processing' });
+      decoded = await decodeToMono16k(file);
+    } catch (err) {
+      throw buildAttemptError({
+        httpStatus: null,
+        bodyText: err instanceof Error ? err.message : 'Failed to decode the audio file for windowed transcription.',
+        stage: 'upload',
+        model,
+        file,
       });
+    }
 
-      const chunkResults: ChunkResult[] = [];
-      for (let i = 0; i < windows.length; i++) {
-        const window = windows[i];
+    const windows: ChunkWindowBounds[] = createChunkWindows(durationSec, {
+      chunkSeconds: GEMINI_WINDOW_SECONDS,
+      overlapSeconds: GEMINI_WINDOW_OVERLAP_SECONDS,
+    });
+
+    const chunkResults: ChunkResult[] = [];
+    let deleteFailureCount = 0;
+
+    for (let i = 0; i < windows.length; i++) {
+      const window = windows[i];
+      const windowFile = encodeWindowFile(
+        file.name,
+        sliceMonoSamples(decoded.samples, decoded.sampleRate, window.windowStart, window.windowEnd),
+        decoded.sampleRate,
+        i,
+      );
+
+      const uploadedWindow = await uploadFile(windowFile, idToken, model, (fraction) => onProgress({ phase: 'upload', fraction }));
+
+      try {
+        onProgress({ phase: 'processing' });
+        await pollUntilActive(uploadedWindow.fileName, idToken, windowFile, model);
+
         onProgress({ phase: 'transcribing', current: i + 1, total: windows.length });
         const windowSegments = await transcribeWindow({
-          fileUri: uploaded.fileUri,
-          mimeType: uploaded.mimeType,
+          fileUri: uploadedWindow.fileUri,
+          mimeType: uploadedWindow.mimeType,
           windowStart: window.windowStart,
           windowEnd: window.windowEnd,
           isFullFile: false,
@@ -370,20 +426,22 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
           model,
           references: encodedReferences,
           idToken,
-          file,
+          file: windowFile,
         });
         chunkResults.push({ window, segments: windowSegments });
+      } finally {
+        const deleteWarning = await deleteFileBestEffort(uploadedWindow.fileName, idToken);
+        if (deleteWarning) deleteFailureCount += 1;
       }
-
-      segments = stitchChunkResults(chunkResults);
     }
-  } finally {
-    // On the success path (no throw above), a delete failure is surfaced as
-    // a warning below. On a failure path, this still fires — a best-effort
-    // cleanup attempt whose outcome doesn't matter, since the thrown error
-    // is what propagates from this function either way.
-    const deleteWarning = await deleteFileBestEffort(uploaded.fileName, idToken);
-    if (deleteWarning) warnings.push(deleteWarning);
+
+    if (deleteFailureCount > 0) {
+      warnings.push(
+        `Could not delete ${deleteFailureCount} temporary Gemini window file(s) after transcription (they will expire automatically).`,
+      );
+    }
+
+    segments = stitchChunkResults(chunkResults);
   }
 
   return {
