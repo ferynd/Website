@@ -316,47 +316,30 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
 
   const uploaded = await uploadFile(file, idToken, model, (fraction) => onProgress({ phase: 'upload', fraction }));
 
-  onProgress({ phase: 'processing' });
-  await pollUntilActive(uploaded.fileName, idToken, file, model);
-
-  // Base64-encode reference clips (if any) once, up front — reused for
-  // every window call below rather than re-encoded per window.
-  const encodedReferences = await encodeReferences(references);
-
+  const warnings: string[] = [];
   let segments: TranscriptSegment[];
 
-  if (durationSec <= GEMINI_SINGLE_CALL_MAX_SECONDS) {
-    onProgress({ phase: 'transcribing', current: 1, total: 1 });
-    segments = await transcribeWindow({
-      fileUri: uploaded.fileUri,
-      mimeType: uploaded.mimeType,
-      windowStart: 0,
-      windowEnd: durationSec,
-      isFullFile: true,
-      speakerNames,
-      speakerNotes,
-      contextNotes,
-      model,
-      references: encodedReferences,
-      idToken,
-      file,
-    });
-  } else {
-    const windows: ChunkWindowBounds[] = createChunkWindows(durationSec, {
-      chunkSeconds: GEMINI_WINDOW_SECONDS,
-      overlapSeconds: GEMINI_WINDOW_OVERLAP_SECONDS,
-    });
+  // Everything past this point works against a file that now exists on
+  // Google's Files API — wrap it in try/finally so the best-effort delete
+  // below always runs, even if polling/encoding/transcribing throws, rather
+  // than only on the success path. Otherwise a failure here leaks the
+  // upload until its 48h expiry.
+  try {
+    onProgress({ phase: 'processing' });
+    await pollUntilActive(uploaded.fileName, idToken, file, model);
 
-    const chunkResults: ChunkResult[] = [];
-    for (let i = 0; i < windows.length; i++) {
-      const window = windows[i];
-      onProgress({ phase: 'transcribing', current: i + 1, total: windows.length });
-      const windowSegments = await transcribeWindow({
+    // Base64-encode reference clips (if any) once, up front — reused for
+    // every window call below rather than re-encoded per window.
+    const encodedReferences = await encodeReferences(references);
+
+    if (durationSec <= GEMINI_SINGLE_CALL_MAX_SECONDS) {
+      onProgress({ phase: 'transcribing', current: 1, total: 1 });
+      segments = await transcribeWindow({
         fileUri: uploaded.fileUri,
         mimeType: uploaded.mimeType,
-        windowStart: window.windowStart,
-        windowEnd: window.windowEnd,
-        isFullFile: false,
+        windowStart: 0,
+        windowEnd: durationSec,
+        isFullFile: true,
         speakerNames,
         speakerNotes,
         contextNotes,
@@ -365,15 +348,43 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
         idToken,
         file,
       });
-      chunkResults.push({ window, segments: windowSegments });
+    } else {
+      const windows: ChunkWindowBounds[] = createChunkWindows(durationSec, {
+        chunkSeconds: GEMINI_WINDOW_SECONDS,
+        overlapSeconds: GEMINI_WINDOW_OVERLAP_SECONDS,
+      });
+
+      const chunkResults: ChunkResult[] = [];
+      for (let i = 0; i < windows.length; i++) {
+        const window = windows[i];
+        onProgress({ phase: 'transcribing', current: i + 1, total: windows.length });
+        const windowSegments = await transcribeWindow({
+          fileUri: uploaded.fileUri,
+          mimeType: uploaded.mimeType,
+          windowStart: window.windowStart,
+          windowEnd: window.windowEnd,
+          isFullFile: false,
+          speakerNames,
+          speakerNotes,
+          contextNotes,
+          model,
+          references: encodedReferences,
+          idToken,
+          file,
+        });
+        chunkResults.push({ window, segments: windowSegments });
+      }
+
+      segments = stitchChunkResults(chunkResults);
     }
-
-    segments = stitchChunkResults(chunkResults);
+  } finally {
+    // On the success path (no throw above), a delete failure is surfaced as
+    // a warning below. On a failure path, this still fires — a best-effort
+    // cleanup attempt whose outcome doesn't matter, since the thrown error
+    // is what propagates from this function either way.
+    const deleteWarning = await deleteFileBestEffort(uploaded.fileName, idToken);
+    if (deleteWarning) warnings.push(deleteWarning);
   }
-
-  const warnings: string[] = [];
-  const deleteWarning = await deleteFileBestEffort(uploaded.fileName, idToken);
-  if (deleteWarning) warnings.push(deleteWarning);
 
   return {
     provider: 'gemini',

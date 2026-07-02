@@ -27,6 +27,30 @@ describe('mapDiarizedSegments', () => {
     const [mapped] = mapDiarizedSegments(raw, ['Kait']);
     expect(mapped).toMatchObject({ start: 1.5, end: 3.25, text: 'hello' });
   });
+
+  it('keeps an already-resolved known-speaker label instead of remapping it positionally, even when the second profile speaks first', () => {
+    const raw = [
+      { start: 0, end: 2, text: 'hi', speaker: 'James' },
+      { start: 2, end: 4, text: 'hey', speaker: 'Kait' },
+    ];
+    const mapped = mapDiarizedSegments(raw, ['Kait', 'James']);
+    expect(mapped.map((s) => s.speaker)).toEqual(['James', 'Kait']);
+  });
+
+  it('mixes exact known-name matches with positionally-mapped anonymous labels, without the positional mapping reusing a claimed name', () => {
+    const raw = [
+      { start: 0, end: 2, text: 'hi', speaker: 'James' },
+      { start: 2, end: 4, text: 'hey', speaker: 'A' },
+    ];
+    const mapped = mapDiarizedSegments(raw, ['Kait', 'James']);
+    expect(mapped.map((s) => s.speaker)).toEqual(['James', 'Kait']);
+  });
+
+  it('matches provided speaker names case-insensitively', () => {
+    const raw = [{ start: 0, end: 2, text: 'hi', speaker: 'james' }];
+    const [mapped] = mapDiarizedSegments(raw, ['Kait', 'James']);
+    expect(mapped.speaker).toBe('James');
+  });
 });
 
 describe('mapFallbackSegments', () => {

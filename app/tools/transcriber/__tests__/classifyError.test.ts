@@ -95,6 +95,17 @@ describe('classifyTranscriptionError', () => {
     expect(result.category).toBe('auth-config');
   });
 
+  it('classifies a 401 from our own admin gate during a gemini upload as auth-config, not gemini-upload', () => {
+    const result = classifyTranscriptionError({
+      httpStatus: 401,
+      bodyText: 'Invalid or expired token.',
+      provider: 'gemini',
+      stage: 'upload',
+    });
+    expect(result.category).toBe('auth-config');
+    expect(result.retryProviders).toEqual([]);
+  });
+
   it('classifies a Gemini Files API upload failure as gemini-upload', () => {
     const result = classifyTranscriptionError({
       httpStatus: 500,

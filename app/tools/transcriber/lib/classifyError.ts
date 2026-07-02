@@ -177,6 +177,17 @@ export function classifyTranscriptionError(input: ClassifyTranscriptionErrorInpu
     return build('gemini-parse');
   }
 
+  // Our own admin-gate rejection (requireAdminUser's AuthError wording) must
+  // be recognized before the gemini-upload/poll branch below — a Gemini
+  // upload or poll call that never got past our own auth gate (e.g. an
+  // expired ID token) is a 401/403 from THIS route, not from the Gemini
+  // Files API, so it must not be classified as gemini-upload (which would
+  // steer the recovery panel toward a provider retry instead of
+  // re-authentication). Checked regardless of provider/stage.
+  if ((httpStatus === 401 || httpStatus === 403) && isOwnRouteAuthFailure(bodyText)) {
+    return build('auth-config');
+  }
+
   // Gemini Files API upload/activation failures (Phase 3).
   if (provider === 'gemini' && (stage === 'upload' || stage === 'poll')) {
     return build('gemini-upload');
@@ -189,10 +200,10 @@ export function classifyTranscriptionError(input: ClassifyTranscriptionErrorInpu
     return build('openai-unsupported-format');
   }
 
-  // Auth: distinguish our own admin-gate rejection (nothing to retry) from an
-  // upstream provider auth failure (a different provider's key may still work).
+  // Any remaining 401/403 here is an upstream provider auth failure — our
+  // own admin-gate rejection was already handled above.
   if (httpStatus === 401 || httpStatus === 403) {
-    return isOwnRouteAuthFailure(bodyText) ? build('auth-config') : build('openai-auth');
+    return build('openai-auth');
   }
 
   // An otherwise-unclassified failure of the diarized model specifically

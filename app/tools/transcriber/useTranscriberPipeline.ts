@@ -583,10 +583,12 @@ export function useTranscriberPipeline() {
               contextNotes,
               mode: attempt.mode,
               model: settings.cleanupModel,
-              // When argument tagging is off, nothing extra is sent to the
-              // route at all — it keeps using its own CORRECTION_TEMPERATURE
-              // default, unchanged from pre-Phase-5 behavior.
-              ...(settings.argumentTagging ? { argumentTagging: true, temperature: settings.cleanupTemperature } : {}),
+              // Temperature is sent on every cleanup request so the Settings
+              // modal's Temperature slider affects normal runs too, not just
+              // argument-tagging ones — the route clamps it independently of
+              // argumentTagging (see app/api/transcriber/correct/route.ts).
+              temperature: settings.cleanupTemperature,
+              ...(settings.argumentTagging ? { argumentTagging: true } : {}),
             },
             idToken,
           );
