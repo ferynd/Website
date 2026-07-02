@@ -85,6 +85,25 @@ describe('runDebug', () => {
     expect(JSON.parse(buildDebugJson(log)).speakerReferenceStatus).toBe('prompt-inferred+reference-clips (experimental)');
   });
 
+  it('defaults argumentTagSummary to null when no argument-tagging event was appended', () => {
+    const parsed = JSON.parse(buildDebugJson(createDebugLog(FILE_META)));
+    expect(parsed.argumentTagSummary).toBeNull();
+  });
+
+  it('an argument-tagging event surfaces the zero-filled tag summary', () => {
+    const log = createDebugLog(FILE_META);
+    const tagSummary = {
+      argument_conflict: 2,
+      repair_attempt: 1,
+      emotional_support: 0,
+      logistics_or_normal: 10,
+      unrelated: 0,
+      unclear: 3,
+    };
+    appendDebugEvent(log, { kind: 'argument-tagging', tagSummary });
+    expect(JSON.parse(buildDebugJson(log)).argumentTagSummary).toEqual(tagSummary);
+  });
+
   it('an OpenAI diarized speaker-reference event carries a per-speaker attached/validationStatus array', () => {
     const log = createDebugLog(FILE_META);
     const entries = [

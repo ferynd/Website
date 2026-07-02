@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { mergeTurns } from '../lib/mergeTurns';
-import type { TranscriptSegment } from '../lib/types';
+import type { ArgumentTag, TaggedTranscriptSegment } from '../lib/types';
 
-function seg(start: number, end: number, speaker: string, text: string): TranscriptSegment {
-  return { start, end, speaker, text };
+function seg(start: number, end: number, speaker: string, text: string, tag?: ArgumentTag): TaggedTranscriptSegment {
+  return { start, end, speaker, text, tag };
 }
 
 describe('mergeTurns', () => {
@@ -68,5 +68,50 @@ describe('mergeTurns', () => {
     const segments = [seg(3, 5, 'Kait', 'Second.'), seg(0, 2, 'Kait', 'First.')];
     const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
     expect(result).toEqual([{ start: 0, end: 5, speaker: 'Kait', text: 'First. Second.', segmentCount: 2 }]);
+  });
+
+  describe('argument tagging (majority tag)', () => {
+    it('carries a single segment tag through to the merged block', () => {
+      const segments = [seg(0, 2, 'Kait', 'Hello.', 'argument_conflict')];
+      const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
+      expect(result[0].tag).toBe('argument_conflict');
+    });
+
+    it('carries the majority tag among merged segments', () => {
+      const segments = [
+        seg(0, 1, 'Kait', 'One.', 'argument_conflict'),
+        seg(1.2, 2, 'Kait', 'Two.', 'argument_conflict'),
+        seg(2.3, 3, 'Kait', 'Three.', 'repair_attempt'),
+      ];
+      const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
+      expect(result).toHaveLength(1);
+      expect(result[0].tag).toBe('argument_conflict');
+    });
+
+    it('breaks a tie by the first tag encountered', () => {
+      const segments = [
+        seg(0, 1, 'Kait', 'One.', 'repair_attempt'),
+        seg(1.2, 2, 'Kait', 'Two.', 'argument_conflict'),
+      ];
+      const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
+      expect(result).toHaveLength(1);
+      expect(result[0].tag).toBe('repair_attempt');
+    });
+
+    it('omits tag entirely when no constituent segment carried one', () => {
+      const segments = [seg(0, 2, 'Kait', 'Hello there.')];
+      const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
+      expect(result[0]).not.toHaveProperty('tag');
+    });
+
+    it('tag differences never block merging — same speaker/gap still merges', () => {
+      const segments = [
+        seg(0, 2, 'Kait', 'Hello there.', 'argument_conflict'),
+        seg(3, 5, 'Kait', 'How are you?', 'logistics_or_normal'),
+      ];
+      const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
+      expect(result).toHaveLength(1);
+      expect(result[0].text).toBe('Hello there. How are you?');
+    });
   });
 });

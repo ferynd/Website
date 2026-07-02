@@ -18,18 +18,32 @@ export interface IndexedTranscriptSegment extends TranscriptSegment {
 
 /**
  * Optional argument-relevance tag folded into the cleanup pass (Phase 5) —
- * types only for now, unused until the prompt/parse/UI wiring lands. Chosen
- * to map cleanly onto the future conflict-tracker `Conflict`/`ReflectionInput`
- * draft models: 'lead-up' / 'conflict' / 'repair' / 'support' are the
- * argument-relevant categories that later filter into a draft export;
- * 'unrelated' is explicitly excluded from that export; 'unclear' is the safe
- * fallback for a missing/invalid model response so a bad tag never rejects a
- * whole correction chunk.
+ * assigned per-segment by the same Gemini call that corrects wording (see
+ * buildCorrectionPrompt.ts's `argumentTagging` option), never a separate AI
+ * pass. Chosen to map cleanly onto the future conflict-tracker
+ * `Conflict`/`ReflectionInput` draft models:
+ * - 'argument_conflict': conflict/escalation between the speakers.
+ * - 'repair_attempt': an attempt to repair or de-escalate the conflict.
+ * - 'emotional_support': comfort/support, especially after conflict.
+ * - 'logistics_or_normal': ordinary logistics or neutral conversation.
+ * - 'unrelated': clearly unrelated chatter — excluded from the
+ *   argument-relevant export (lib/argumentTags.ts) except as sandwiched
+ *   lead-up context is never granted to this tag.
+ * - 'unclear': the safe fallback for a missing/invalid model response so a
+ *   bad tag never rejects a whole correction chunk (see
+ *   parseCorrectionResponse.ts) — also eligible as sandwiched lead-up/context
+ *   between two argument-relevant blocks.
  */
-export type ArgumentTag = 'lead-up' | 'conflict' | 'repair' | 'support' | 'unrelated' | 'unclear';
+export type ArgumentTag =
+  | 'argument_conflict'
+  | 'repair_attempt'
+  | 'emotional_support'
+  | 'logistics_or_normal'
+  | 'unrelated'
+  | 'unclear';
 
-/** A transcript segment carrying its optional argument-relevance tag. Unused
- * until Phase 5 wires tagging through the cleanup prompt/parse/UI. */
+/** A transcript segment carrying its optional argument-relevance tag — set
+ * when settings.argumentTagging is on (Phase 5). */
 export interface TaggedTranscriptSegment extends TranscriptSegment {
   tag?: ArgumentTag;
 }
@@ -100,9 +114,14 @@ export interface CorrectApiRequestBody {
   mode: TranscriptionMode;
   /** Gemini model id chosen in Settings; falls back to CORRECTION_GEMINI_MODEL server-side if missing/invalid. */
   model?: string;
+  /** When true, the correction prompt additionally asks for a per-segment ArgumentTag (Phase 5) — no separate AI pass. */
+  argumentTagging?: boolean;
+  /** Overrides CORRECTION_TEMPERATURE for this request; server-clamped to [0, 1]. */
+  temperature?: number;
 }
 
 export interface CorrectApiResponse {
-  segments: TranscriptSegment[];
+  /** Carries `tag` per segment only when the request had `argumentTagging: true`. */
+  segments: TaggedTranscriptSegment[];
   error?: string;
 }

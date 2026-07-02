@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { auth } from './lib/firebase';
 import { probeAudioDuration } from './lib/audioDuration';
+import { buildTagSummary, formatArgumentRelevantTranscript } from './lib/argumentTags';
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
 import type { ClassifiedError } from './lib/classifyError';
 import { classifyTranscriptionError } from './lib/classifyError';
@@ -26,9 +27,11 @@ import { readTranscriberSettings } from './lib/settings';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
 import { suppressArtifacts } from './lib/suppressArtifacts';
 import type {
+  ArgumentTag,
   CorrectApiResponse,
   PipelineStatus,
   SuppressionReport,
+  TaggedTranscriptSegment,
   TranscriptionMode,
   TranscriptSegment,
   TurnBlock,
@@ -89,12 +92,16 @@ export interface TranscriberState {
   /** Captured immediately after the first successful provider response, before suppression — always the complete transcript. */
   rawSegments: TranscriptSegment[];
   rawText: string;
-  /** Segments after suppression + cleanup (pre-merge) — stays segment-granular for future export/tagging use. */
-  cleanedSegments: TranscriptSegment[];
+  /** Segments after suppression + cleanup (pre-merge) — stays segment-granular for future export/tagging use. Carries a `tag` per segment only when this run had settings.argumentTagging on. */
+  cleanedSegments: TaggedTranscriptSegment[];
   /** Null when cleanup hasn't produced output yet (still running, skipped, or failed and completed raw-only). */
   cleanedText: string | null;
   turnBlocks: TurnBlock[];
   suppressionReport: SuppressionReport | null;
+  /** Zero-filled per-ArgumentTag counts (lib/argumentTags.ts's buildTagSummary) — null unless this run had settings.argumentTagging on AND cleanup actually produced output (no separate AI pass; tags come from the same cleanup call). */
+  tagSummary: Record<ArgumentTag, number> | null;
+  /** The argument-relevant filtered transcript (lib/argumentTags.ts's formatArgumentRelevantTranscript) — same null conditions as tagSummary. */
+  argumentRelevantText: string | null;
   recovery: RecoveryInfo | null;
   /** Serialized only on failure, or always when settings.debugMode is 'always'. Never contains transcript text. */
   debugJson: string | null;
@@ -121,6 +128,8 @@ const initialState: TranscriberState = {
   cleanedText: null,
   turnBlocks: [],
   suppressionReport: null,
+  tagSummary: null,
+  argumentRelevantText: null,
   recovery: null,
   debugJson: null,
   uploadProgress: null,
@@ -432,7 +441,12 @@ export function useTranscriberPipeline() {
           // --- Skip the Gemini cleanup pass: return the raw transcript with a
           // manual cleanup prompt prepended, for pasting into a browser AI chat. ---
           setState((s) => ({ ...s, status: 'building', cleanupSkipped: true }));
-          const promptHeader = buildManualCleanupPrompt({ speakerNames, contextNotes, mode: attempt.mode });
+          const promptHeader = buildManualCleanupPrompt({
+            speakerNames,
+            contextNotes,
+            mode: attempt.mode,
+            argumentTagging: settings.argumentTagging,
+          });
           const rawTextWithPrompt = `${promptHeader}\n${rawText}`;
 
           setState((s) => ({
@@ -469,11 +483,18 @@ export function useTranscriberPipeline() {
           setState((s) => ({ ...s, suppressionReport: suppressed.report }));
         }
 
+        // `tagged` is true only for the call after a real cleanup pass that
+        // actually had settings.argumentTagging on — the two early-exit
+        // calls below (nothing to clean up / cleanup disabled) never ran the
+        // Gemini pass at all, so tagSummary/argumentRelevantText stay null
+        // for them regardless of the setting (no separate AI pass, per the
+        // "no extra AI pass" rule — there's nothing to derive tags from).
         const finalizeComplete = (
-          cleanedSegments: TranscriptSegment[],
+          cleanedSegments: TaggedTranscriptSegment[],
           warning: string | null,
           failedChunks: number,
           totalChunks: number,
+          tagged: boolean,
         ) => {
           setState((s) => ({ ...s, status: 'building' }));
           let turnBlocks: TurnBlock[];
@@ -490,8 +511,15 @@ export function useTranscriberPipeline() {
               speaker: seg.speaker,
               text: seg.text,
               segmentCount: 1,
+              ...(seg.tag ? { tag: seg.tag } : {}),
             }));
             cleanedText = buildTranscriptText(cleanedSegments);
+          }
+
+          const tagSummary = tagged ? buildTagSummary(cleanedSegments) : null;
+          const argumentRelevantText = tagged ? formatArgumentRelevantTranscript(turnBlocks) : null;
+          if (tagged && tagSummary) {
+            appendDebugEvent(debugLog, { kind: 'argument-tagging', tagSummary });
           }
 
           // Merge the provider-attempt-level warnings (rejected/unloadable
@@ -505,6 +533,8 @@ export function useTranscriberPipeline() {
             cleanedSegments,
             turnBlocks,
             cleanedText,
+            tagSummary,
+            argumentRelevantText,
             warning: combinedWarning,
             correctionFailedChunks: failedChunks,
             correctionTotalChunks: totalChunks,
@@ -514,12 +544,12 @@ export function useTranscriberPipeline() {
 
         if (segmentsForCleanup.length === 0) {
           // Suppression removed everything (pathological/tiny input) — nothing left to clean up.
-          finalizeComplete([], null, 0, 0);
+          finalizeComplete([], null, 0, 0, false);
           return;
         }
 
         if (!settings.cleanupEnabled) {
-          finalizeComplete(segmentsForCleanup, null, 0, 0);
+          finalizeComplete(segmentsForCleanup, null, 0, 0, false);
           return;
         }
 
@@ -547,7 +577,17 @@ export function useTranscriberPipeline() {
           const idToken = await user.getIdToken();
           const { status: correctStatus, json: correctData } = await postJson(
             '/api/transcriber/correct',
-            { segments: windowSegments, speakerNames, contextNotes, mode: attempt.mode, model: settings.cleanupModel },
+            {
+              segments: windowSegments,
+              speakerNames,
+              contextNotes,
+              mode: attempt.mode,
+              model: settings.cleanupModel,
+              // When argument tagging is off, nothing extra is sent to the
+              // route at all — it keeps using its own CORRECTION_TEMPERATURE
+              // default, unchanged from pre-Phase-5 behavior.
+              ...(settings.argumentTagging ? { argumentTagging: true, temperature: settings.cleanupTemperature } : {}),
+            },
             idToken,
           );
           const correctResult = correctData as CorrectApiResponse;
@@ -562,7 +602,7 @@ export function useTranscriberPipeline() {
             chunkResults.push({ window, segments: windowSegments });
             continue;
           }
-          chunkResults.push({ window, segments: correctResult.segments as TranscriptSegment[] });
+          chunkResults.push({ window, segments: correctResult.segments });
         }
 
         const cleanupEntirelyFailed =
@@ -620,7 +660,7 @@ export function useTranscriberPipeline() {
           });
         }
 
-        finalizeComplete(cleanedSegments, warning, correctionFailedChunks, windows.length);
+        finalizeComplete(cleanedSegments, warning, correctionFailedChunks, windows.length, settings.argumentTagging);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Something went wrong.';
         setState((s) => ({

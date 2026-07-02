@@ -1,13 +1,41 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Check, ChevronDown, ChevronUp, Copy, Download } from 'lucide-react';
 import Button from '@/components/Button';
+import { formatTimestamp } from '../lib/formatTranscript';
 import { readTranscriberSettings } from '../lib/settings';
+import type { ArgumentTag, TurnBlock } from '../lib/types';
 import type { TranscriberState } from '../useTranscriberPipeline';
 
 function todayStamp(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+/** Same "[HH:MM:SS] Speaker: text" shape as formatCleanTranscript, with the
+ * block's tag appended in brackets, e.g. "... [argument_conflict]" — used
+ * only by the "Show tags" toggle below; untagged blocks (tagging was off
+ * for this block, or a merged block had no majority tag) render unchanged. */
+function formatTurnWithTag(block: TurnBlock): string {
+  const tagSuffix = block.tag ? ` [${block.tag}]` : '';
+  return `[${formatTimestamp(block.start)}] ${block.speaker}: ${block.text}${tagSuffix}`;
+}
+
+const TAG_SUMMARY_ORDER: ArgumentTag[] = [
+  'argument_conflict',
+  'repair_attempt',
+  'emotional_support',
+  'logistics_or_normal',
+  'unrelated',
+  'unclear',
+];
+
+function TagSummaryLine({ summary }: { summary: Record<ArgumentTag, number> }) {
+  return (
+    <p className="text-xs text-text-3">
+      Tag counts: {TAG_SUMMARY_ORDER.map((tag) => `${tag}: ${summary[tag]}`).join(' · ')}
+    </p>
+  );
 }
 
 function downloadText(text: string, filename: string) {
@@ -106,10 +134,20 @@ export default function TranscriptOutput({ state, onReset }: { state: Transcribe
   // Lazy init only — this component only ever mounts client-side (after a
   // run completes), so there's no SSR/hydration mismatch to guard against.
   const [settings] = useState(() => readTranscriberSettings());
+  // Inline per-turn tags are hidden by default — this only affects the
+  // Cleaned section's displayed/downloaded text, and only exists at all when
+  // tagging was on for this run (state.tagSummary !== null).
+  const [showTags, setShowTags] = useState(false);
 
   const hasCleaned = state.cleanedText !== null;
   const showCleanedSection = hasCleaned && settings.showCleanedOutput;
   const showRawSection = !showCleanedSection || settings.showRawOutput;
+  const hasTagging = state.tagSummary !== null;
+
+  const cleanedDisplayText = useMemo(() => {
+    if (!showTags || !hasCleaned) return state.cleanedText ?? '';
+    return state.turnBlocks.map(formatTurnWithTag).join('\n\n');
+  }, [showTags, hasCleaned, state.cleanedText, state.turnBlocks]);
 
   const totalRemoved = state.suppressionReport?.removed.reduce((sum, r) => sum + r.count, 0) ?? 0;
 
@@ -175,11 +213,29 @@ export default function TranscriptOutput({ state, onReset }: { state: Transcribe
         </div>
       )}
 
+      {hasTagging && state.tagSummary && (
+        <div className="text-sm text-text-2 bg-surface-2 border border-border rounded-lg px-4 py-3 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>Argument tagging was on for this run.</span>
+            <label className="flex items-center gap-2 text-xs text-text-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showTags}
+                onChange={(e) => setShowTags(e.target.checked)}
+                className="rounded border-border"
+              />
+              Show tags in the Cleaned transcript
+            </label>
+          </div>
+          <TagSummaryLine summary={state.tagSummary} />
+        </div>
+      )}
+
       <div className="space-y-3">
         {showCleanedSection && (
           <TranscriptSection
             title="Cleaned"
-            text={state.cleanedText ?? ''}
+            text={cleanedDisplayText}
             filename={`transcript-cleaned-${todayStamp()}.txt`}
             defaultOpen
           />
@@ -195,6 +251,15 @@ export default function TranscriptOutput({ state, onReset }: { state: Transcribe
                 ? 'No cleaned version is available for this run — this is the unedited transcript.'
                 : undefined
             }
+          />
+        )}
+        {hasTagging && state.argumentRelevantText !== null && (
+          <TranscriptSection
+            title="Argument-relevant transcript"
+            text={state.argumentRelevantText}
+            filename={`transcript-argument-${todayStamp()}.txt`}
+            defaultOpen={false}
+            note="Filtered to conflict, repair, and support turns, plus short surrounding context — excludes ordinary logistics and unrelated chatter."
           />
         )}
       </div>

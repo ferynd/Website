@@ -8,7 +8,8 @@ import { buildCorrectionPrompt } from '@/app/tools/transcriber/lib/buildCorrecti
 import { CORRECTION_GEMINI_MODEL, CORRECTION_TEMPERATURE } from '@/app/tools/transcriber/lib/constants';
 import { normalizeSegments } from '@/app/tools/transcriber/lib/formatTranscript';
 import { findMissingIndices, parseCorrectionResponse } from '@/app/tools/transcriber/lib/parseCorrectionResponse';
-import type { CorrectApiRequestBody, TranscriptSegment } from '@/app/tools/transcriber/lib/types';
+import { CLEANUP_TEMPERATURE_MAX, CLEANUP_TEMPERATURE_MIN } from '@/app/tools/transcriber/lib/settings';
+import type { CorrectApiRequestBody, TaggedTranscriptSegment } from '@/app/tools/transcriber/lib/types';
 
 export async function POST(req: NextRequest) {
   // SECURITY: this is the only gate on this route. Every request must carry
@@ -39,11 +40,21 @@ export async function POST(req: NextRequest) {
   const normalized = normalizeSegments(body.segments);
   const indexed = normalized.map((seg, index) => ({ ...seg, index }));
 
+  // Phase 5: argument tagging folds into this same pass — no separate AI
+  // call. Both fields are optional/client-driven, so clamp/validate
+  // server-side rather than trusting the request body outright.
+  const argumentTagging = body.argumentTagging === true;
+  const temperature =
+    typeof body.temperature === 'number' && Number.isFinite(body.temperature)
+      ? Math.min(CLEANUP_TEMPERATURE_MAX, Math.max(CLEANUP_TEMPERATURE_MIN, body.temperature))
+      : CORRECTION_TEMPERATURE;
+
   const prompt = buildCorrectionPrompt({
     segments: indexed,
     speakerNames: Array.isArray(body.speakerNames) ? body.speakerNames.filter((s) => typeof s === 'string') : [],
     contextNotes: typeof body.contextNotes === 'string' ? body.contextNotes : '',
     mode: body.mode === 'fallback' ? 'fallback' : 'diarized',
+    argumentTagging,
   });
 
   // Model choice comes from the Settings pop-up (saved client-side); falls back to the
@@ -55,7 +66,7 @@ export async function POST(req: NextRequest) {
     // NOTE: never log `prompt` or `raw` — both contain transcript contents.
     raw = await callGemini(prompt, key, {
       modelId,
-      temperature: CORRECTION_TEMPERATURE,
+      temperature,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Correction pass failed.';
@@ -67,6 +78,7 @@ export async function POST(req: NextRequest) {
     corrections = parseCorrectionResponse(
       raw,
       indexed.map((s) => s.index),
+      argumentTagging,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Correction model returned an unexpected response.';
@@ -94,14 +106,16 @@ export async function POST(req: NextRequest) {
   }
 
   const byIndex = new Map(corrections.map((c) => [c.index, c]));
-  const segments: TranscriptSegment[] = indexed.map((seg) => {
+  const segments: TaggedTranscriptSegment[] = indexed.map((seg) => {
     const fix = byIndex.get(seg.index)!;
-    return {
+    const result: TaggedTranscriptSegment = {
       start: seg.start,
       end: seg.end,
       speaker: fix.speaker.trim() || seg.speaker,
       text: fix.text.trim() || seg.text,
     };
+    if (argumentTagging && fix.tag) result.tag = fix.tag;
+    return result;
   });
 
   return NextResponse.json({ segments });

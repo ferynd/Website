@@ -10,6 +10,7 @@
 
 import type { TranscriptionProviderId } from './providers/types';
 import type { SuppressionSensitivity } from './suppressArtifacts';
+import type { ArgumentTag } from './types';
 
 export interface DebugFileMeta {
   name: string;
@@ -55,6 +56,7 @@ export type DebugEvent =
     }
   | { kind: 'cleanup-warning'; at: number; failedChunks: number; totalChunks: number }
   | { kind: 'speaker-reference'; at: number; status: SpeakerReferenceStatus }
+  | { kind: 'argument-tagging'; at: number; tagSummary: Record<ArgumentTag, number> }
   | {
       kind: 'error';
       at: number;
@@ -117,11 +119,13 @@ export function buildDebugJson(log: DebugLog): string {
   const suppression = log.events.filter(isKind('suppression'));
   const cleanupWarnings = log.events.filter(isKind('cleanup-warning'));
   const speakerReferenceEvents = log.events.filter(isKind('speaker-reference'));
+  const argumentTaggingEvents = log.events.filter(isKind('argument-tagging'));
   const errors = log.events.filter(isKind('error'));
 
   const lastProviderAttempt = providerAttempts[providerAttempts.length - 1] ?? null;
   const lastRawCaptured = rawCaptured[rawCaptured.length - 1] ?? null;
   const lastSpeakerReference = speakerReferenceEvents[speakerReferenceEvents.length - 1] ?? null;
+  const lastArgumentTagging = argumentTaggingEvents[argumentTaggingEvents.length - 1] ?? null;
 
   const summary = {
     file: log.file,
@@ -138,6 +142,8 @@ export function buildDebugJson(log: DebugLog): string {
     })),
     cleanupWarnings: cleanupWarnings.map(({ failedChunks, totalChunks }) => ({ failedChunks, totalChunks })),
     speakerReferenceStatus: lastSpeakerReference?.status ?? SPEAKER_REFERENCE_NOT_CONFIGURED,
+    /** Null when this run never tagged (settings.argumentTagging was off, cleanup didn't run, or cleanup produced no output) — see useTranscriberPipeline.ts's finalizeComplete. */
+    argumentTagSummary: lastArgumentTagging?.tagSummary ?? null,
     errors: errors.map(({ category, stage, provider, upstreamStatus, upstreamBody }) => ({
       category,
       stage,

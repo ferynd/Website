@@ -6,7 +6,25 @@ export interface CorrectionPromptInput {
   speakerNames: string[];
   contextNotes: string;
   mode: TranscriptionMode;
+  /** When true, ask the model for an additional per-segment `tag` field (Phase 5, folded into this same pass — never a separate AI call). See ARGUMENT_TAG_GUIDANCE below for the exact rules sent to the model. */
+  argumentTagging?: boolean;
 }
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: argument-tagging guidance sent to the model    */
+/* ------------------------------------------------------------ */
+
+/** One line of guidance per ArgumentTag value (lib/types.ts) — oriented to a
+ * couple's argument recording. Kept next to the enum's own doc comment in
+ * lib/types.ts; update both together if the tag set ever changes. */
+const ARGUMENT_TAG_GUIDANCE = [
+  '- "argument_conflict": the segment shows conflict or escalation between the speakers — disagreement, accusation, raised tension.',
+  '- "repair_attempt": the segment is an attempt to repair or de-escalate the conflict — apologizing, softening, seeking common ground.',
+  '- "emotional_support": the segment offers comfort, reassurance, or emotional support, especially in the aftermath of conflict.',
+  '- "logistics_or_normal": the segment is ordinary logistics or neutral, non-conflict conversation.',
+  '- "unrelated": the segment is clearly unrelated chatter — not part of the couple\'s exchange at all.',
+  '- "unclear": you cannot confidently classify the segment into any of the above.',
+];
 
 /**
  * Builds the strict-JSON-out correction prompt. Timestamps are shown to the
@@ -42,14 +60,30 @@ export function buildCorrectionPrompt(input: CorrectionPromptInput): string {
     rules.push(`- Additional context from the user: ${input.contextNotes.trim()}`);
   }
 
+  if (input.argumentTagging) {
+    rules.push(
+      '',
+      "This recording is being reviewed as part of a couple's argument/relationship conversation. In addition to correcting the transcript, classify each segment with a \"tag\" describing its role in the conversation. This tagging step NEVER changes the wording rules above — it has no effect on how you fix wording, punctuation, or speaker labels.",
+      'Choose exactly one tag per segment from:',
+      ...ARGUMENT_TAG_GUIDANCE,
+    );
+  }
+
+  const outputShape = input.argumentTagging
+    ? '{"index": number, "speaker": string, "text": string, "tag": string}'
+    : '{"index": number, "speaker": string, "text": string}';
+
   const instructions = [
     '',
     'Respond with ONLY a strict JSON array (no prose, no markdown code fences). Each element must be exactly:',
-    '{"index": number, "speaker": string, "text": string}',
+    outputShape,
+    input.argumentTagging
+      ? '"tag" must be exactly one of the six values listed above, spelled exactly as shown.'
+      : null,
     'Return exactly one output element per input segment below, reusing the same "index" values. Do not add, remove, merge, or split segments. Timestamps are not part of your output — the app preserves them.',
     '',
     `Input segments (JSON): ${JSON.stringify(lines)}`,
-  ];
+  ].filter((line): line is string => line !== null);
 
   return [...rules, ...instructions].join('\n');
 }

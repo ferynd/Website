@@ -42,6 +42,58 @@ describe('parseCorrectionResponse', () => {
   });
 });
 
+describe('parseCorrectionResponse — argument tagging', () => {
+  it('ignores/strips a tag field when argumentTagging is false (default)', () => {
+    const raw = JSON.stringify([{ index: 0, speaker: 'Kait', text: 'hi', tag: 'argument_conflict' }]);
+    const result = parseCorrectionResponse(raw, [0]);
+    expect(result).toEqual([{ index: 0, speaker: 'Kait', text: 'hi' }]);
+    expect(result[0]).not.toHaveProperty('tag');
+  });
+
+  it('ignores a tag field when argumentTagging is explicitly false', () => {
+    const raw = JSON.stringify([{ index: 0, speaker: 'Kait', text: 'hi', tag: 'argument_conflict' }]);
+    const result = parseCorrectionResponse(raw, [0], false);
+    expect(result[0]).not.toHaveProperty('tag');
+  });
+
+  it('passes through each valid ArgumentTag value when argumentTagging is true', () => {
+    const tags = [
+      'argument_conflict',
+      'repair_attempt',
+      'emotional_support',
+      'logistics_or_normal',
+      'unrelated',
+      'unclear',
+    ];
+    const raw = JSON.stringify(tags.map((tag, index) => ({ index, speaker: 'Kait', text: 'hi', tag })));
+    const result = parseCorrectionResponse(raw, tags.map((_, i) => i), true);
+    expect(result.map((r) => r.tag)).toEqual(tags);
+  });
+
+  it('falls back an invalid tag value to "unclear" when argumentTagging is true', () => {
+    const raw = JSON.stringify([{ index: 0, speaker: 'Kait', text: 'hi', tag: 'not-a-real-tag' }]);
+    const result = parseCorrectionResponse(raw, [0], true);
+    expect(result[0].tag).toBe('unclear');
+  });
+
+  it('falls back a missing tag value to "unclear" when argumentTagging is true', () => {
+    const raw = JSON.stringify([{ index: 0, speaker: 'Kait', text: 'hi' }]);
+    const result = parseCorrectionResponse(raw, [0], true);
+    expect(result[0].tag).toBe('unclear');
+  });
+
+  it('never drops/rejects an item for having an invalid tag — index/speaker/text still win', () => {
+    const raw = JSON.stringify([
+      { index: 0, speaker: 'Kait', text: 'hi', tag: 42 },
+      { index: 1, speaker: 'James', text: 'hey', tag: null },
+    ]);
+    const result = parseCorrectionResponse(raw, [0, 1], true);
+    expect(result).toHaveLength(2);
+    expect(result[0].tag).toBe('unclear');
+    expect(result[1].tag).toBe('unclear');
+  });
+});
+
 describe('findMissingIndices', () => {
   it('returns an empty array when every expected index is covered', () => {
     const corrections = [
