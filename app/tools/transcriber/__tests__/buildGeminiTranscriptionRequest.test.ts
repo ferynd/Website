@@ -65,20 +65,22 @@ describe('buildGeminiTranscriptionRequest', () => {
     expect(result.generationConfig.temperature).toBe(0.1);
   });
 
-  it('includes a window instruction with H:MM:SS timestamps when isFullFile is false', () => {
+  it('includes a clip-excerpt + add-the-offset instruction with H:MM:SS timestamps when isFullFile is false', () => {
     const result = buildGeminiTranscriptionRequest(
       baseInput({ isFullFile: false, windowStart: 600, windowEnd: 1215 }),
     );
     const promptText = getPromptText(result);
     expect(promptText).toContain('0:10:00');
     expect(promptText).toContain('0:20:15');
-    expect(promptText).toMatch(/Transcribe ONLY the speech between/);
+    expect(promptText).toMatch(/short excerpt from a longer recording/);
+    expect(promptText).toMatch(/add 0:10:00 to it/);
   });
 
-  it('omits the window instruction when isFullFile is true', () => {
+  it('omits the excerpt/add-offset instruction when isFullFile is true', () => {
     const result = buildGeminiTranscriptionRequest(baseInput({ isFullFile: true }));
     const promptText = getPromptText(result);
-    expect(promptText).not.toMatch(/Transcribe ONLY the speech between/);
+    expect(promptText).not.toMatch(/short excerpt from a longer recording/);
+    expect(promptText).not.toMatch(/add .* to it/);
   });
 
   it('formats an hour-plus timestamp as H:MM:SS with an unpadded hour', () => {

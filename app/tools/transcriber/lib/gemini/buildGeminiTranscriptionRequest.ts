@@ -30,7 +30,12 @@ export interface BuildGeminiTranscriptionRequestInput {
   /** Parallel to speakerNames — speakerNotes[i] is the voice/speaking-style note for speakerNames[i], if any. */
   speakerNotes?: string[];
   contextNotes?: string;
-  /** True when this call covers the entire recording in one shot (see GEMINI_SINGLE_CALL_MAX_SECONDS) — the window instruction is only meaningful/emitted when false. */
+  /** True when this call's audio (the fileData part below) is the entire
+   * recording (see GEMINI_SINGLE_CALL_MAX_SECONDS) — false means the audio
+   * is a genuine slice of the recording starting at `windowStart` (see
+   * lib/providers/geminiProvider.ts's per-window slicing via
+   * decodeAudioMono16k.ts), which changes how the timestamp instructions
+   * below are worded. */
   isFullFile: boolean;
   /** Experimental voice-reference clips — absent/empty by default. When present, appended as labeled inlineData parts AFTER the main fileData part (see buildGeminiTranscriptionRequest below). */
   references?: GeminiVoiceReference[];
@@ -104,14 +109,20 @@ function buildPrompt(input: BuildGeminiTranscriptionRequestInput): string {
     '- Break the transcript into segments along natural utterance boundaries (a speaker turn, or a natural pause within a long turn) — do not produce one giant segment for the whole window.',
   ];
 
-  if (!input.isFullFile) {
+  if (input.isFullFile) {
     lines.push(
-      `- Transcribe ONLY the speech between ${formatWindowTimestamp(input.windowStart)} and ${formatWindowTimestamp(input.windowEnd)} (from the start of the recording). Ignore audio outside that range.`,
+      `- Every segment's "start" and "end" must be an absolute timestamp measured from the very beginning of the recording, formatted as H:MM:SS (e.g. "0:10:00", "1:02:15").`,
+    );
+  } else {
+    const clipStart = formatWindowTimestamp(input.windowStart);
+    const clipEnd = formatWindowTimestamp(input.windowEnd);
+    lines.push(
+      `- This audio clip is a short excerpt from a longer recording, NOT the whole recording — it covers only ${clipStart} to ${clipEnd} of the full recording and does not start at 0:00:00 of the full recording.`,
+      `- Every segment's "start" and "end" must still be an absolute timestamp measured from the very beginning of the FULL recording, NOT relative to the start of this clip: take the position where you hear something within this clip and add ${clipStart} to it. Format as H:MM:SS (e.g. "0:10:00", "1:02:15").`,
     );
   }
 
   lines.push(
-    `- Every segment's "start" and "end" must be an absolute timestamp measured from the very beginning of the recording (not relative to the window above), formatted as H:MM:SS (e.g. "0:10:00", "1:02:15").`,
     `- Known speakers in this conversation: ${speakerList}. Use exactly one of these names for every segment when you can identify the speaker. Never invent a name that is not in this list.`,
     '- If you are not confident who is speaking, use exactly the string "Unknown". Do not guess.',
   );
