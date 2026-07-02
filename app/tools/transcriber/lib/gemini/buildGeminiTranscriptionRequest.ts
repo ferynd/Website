@@ -12,6 +12,14 @@
  * optional voice notes, and context given below. Callers surface this as
  * "prompt-inferred" in the UI/debug JSON (see runDebug.ts). */
 
+/** One experimental voice-reference clip (settings.geminiReferenceClips, default OFF — see the plan's "Gemini experimental refs" section). Gemini has no acoustic speaker-reference support the way OpenAI's diarized model does; these are appended as plain labeled audio parts and the model is told they're an extra (unreliable) signal, not a guarantee. */
+export interface GeminiVoiceReference {
+  name: string;
+  mimeType: string;
+  /** Base64-encoded audio bytes (no `data:` prefix) — Gemini's `inlineData.data` field expects this shape. */
+  dataBase64: string;
+}
+
 export interface BuildGeminiTranscriptionRequestInput {
   fileUri: string;
   mimeType: string;
@@ -24,7 +32,14 @@ export interface BuildGeminiTranscriptionRequestInput {
   contextNotes?: string;
   /** True when this call covers the entire recording in one shot (see GEMINI_SINGLE_CALL_MAX_SECONDS) — the window instruction is only meaningful/emitted when false. */
   isFullFile: boolean;
+  /** Experimental voice-reference clips — absent/empty by default. When present, appended as labeled inlineData parts AFTER the main fileData part (see buildGeminiTranscriptionRequest below). */
+  references?: GeminiVoiceReference[];
 }
+
+type GeminiRequestPart =
+  | { text: string }
+  | { fileData: { fileUri: string; mimeType: string } }
+  | { inlineData: { mimeType: string; data: string } };
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: transcription generationConfig                 */
@@ -103,6 +118,12 @@ function buildPrompt(input: BuildGeminiTranscriptionRequestInput): string {
 
   lines.push(...buildSpeakerNotesLines(input.speakerNames, input.speakerNotes));
 
+  if (input.references && input.references.length > 0) {
+    lines.push(
+      `- Experimental: voice reference samples are provided after the main recording for: ${input.references.map((r) => r.name).join(', ')}. Use them only as an extra, unreliable signal to help judge who is speaking when the conversation itself is ambiguous — never override clear context/turn-taking evidence just because a voice sounds similar to a reference.`,
+    );
+  }
+
   if (input.contextNotes?.trim()) {
     lines.push(`- Additional context from the user: ${input.contextNotes.trim()}`);
   }
@@ -122,11 +143,21 @@ function buildPrompt(input: BuildGeminiTranscriptionRequestInput): string {
  * instructions first, then the media they apply to).
  */
 export function buildGeminiTranscriptionRequest(input: BuildGeminiTranscriptionRequestInput) {
+  const parts: GeminiRequestPart[] = [
+    { text: buildPrompt(input) },
+    { fileData: { fileUri: input.fileUri, mimeType: input.mimeType } },
+  ];
+
+  for (const reference of input.references ?? []) {
+    parts.push({ text: `Reference sample of ${reference.name}'s voice:` });
+    parts.push({ inlineData: { mimeType: reference.mimeType, data: reference.dataBase64 } });
+  }
+
   return {
     contents: [
       {
         role: 'user',
-        parts: [{ text: buildPrompt(input) }, { fileData: { fileUri: input.fileUri, mimeType: input.mimeType } }],
+        parts,
       },
     ],
     generationConfig: {

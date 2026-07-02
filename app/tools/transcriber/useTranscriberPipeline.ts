@@ -14,8 +14,13 @@ import { buildTranscriptText, normalizeSegments } from './lib/formatTranscript';
 import { mergeTurns } from './lib/mergeTurns';
 import { transcribeWithGemini } from './lib/providers/geminiProvider';
 import { transcribeWithOpenAi } from './lib/providers/openaiProvider';
-import type { TranscriptionAttempt, TranscriptionAttemptError, TranscriptionProviderId } from './lib/providers/types';
-import { appendDebugEvent, buildDebugJson, createDebugLog, type DebugLog } from './lib/runDebug';
+import type {
+  SpeakerReferenceClip,
+  TranscriptionAttempt,
+  TranscriptionAttemptError,
+  TranscriptionProviderId,
+} from './lib/providers/types';
+import { appendDebugEvent, buildDebugJson, createDebugLog, type DebugLog, type SpeakerReferenceEntry } from './lib/runDebug';
 import { sanitizeUpstreamError } from './lib/sanitizeUpstreamError';
 import { readTranscriberSettings } from './lib/settings';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
@@ -32,13 +37,33 @@ import type {
 export interface TranscriberRunOptions {
   file: File;
   speakerNames: string[];
+  /** Parallel to speakerNames — optional per-speaker voice/speaking-style note from the speaker profile (Phase 4). Passed to Gemini as prompt context; OpenAI has no equivalent field. */
+  speakerNotes?: string[];
   contextNotes: string;
   /** When true, abort the whole cleanup pass (rather than falling back to uncorrected text) on the first chunk failure. */
   strictMode?: boolean;
   /** When true, skip the Gemini cleanup pass entirely and return the raw transcript
    * with a manual cleanup prompt prepended, for pasting into a browser AI chat. */
   skipCleanup?: boolean;
+  /**
+   * Resolves this run's speaker reference clips on demand (see
+   * useSpeakerProfiles.ts's getRunClips() — IndexedDB, or the in-memory
+   * per-run fallback when IndexedDB is unavailable). Only called when the
+   * active provider/settings combination actually needs clips
+   * (openai-diarized + settings.speakerClipsEnabled, or gemini +
+   * settings.geminiReferenceClips) — never for a plain Whisper attempt. A
+   * rejection (e.g. a private-browsing IndexedDB failure) degrades
+   * gracefully: the run continues without clips, with a warning and a
+   * debug event, rather than failing the whole transcription.
+   */
+  getSpeakerClips?: () => Promise<SpeakerReferenceClip[]>;
 }
+
+/** Human-readable warnings surfaced in TranscriberState.warning alongside any cleanup warning — see resolveSpeakerClips/the speaker-reference debug event below. */
+const SPEAKER_CLIPS_LOAD_FAILED_WARNING =
+  'Could not load speaker reference clips from local storage — transcribed without them.';
+const SPEAKER_REFERENCES_REJECTED_WARNING =
+  'OpenAI rejected the attached speaker reference clips for this run — transcribed without them.';
 
 /** Classified error + enough file/provider diagnostics for the ErrorRecoveryPanel's table, without ever holding transcript text. */
 export interface RecoveryInfo {
@@ -174,7 +199,7 @@ export function useTranscriberPipeline() {
   const performRun = useCallback(
     async function runPipeline(opts: TranscriberRunOptions, forcedProvider?: TranscriptionProviderId): Promise<void> {
       lastRunOptionsRef.current = opts;
-      const { file, speakerNames, contextNotes, strictMode = false, skipCleanup = false } = opts;
+      const { file, speakerNames, speakerNotes, contextNotes, strictMode = false, skipCleanup = false, getSpeakerClips } = opts;
 
       setState({ ...initialState, status: 'validating' });
       startTimer();
@@ -232,6 +257,11 @@ export function useTranscriberPipeline() {
         // a full candidate here, not just the two OpenAI providers. ---
         const attemptedProviders: TranscriptionProviderId[] = [];
         let attempt: TranscriptionAttempt | null = null;
+        // Warnings that aren't tied to a single cleanup chunk (e.g. a
+        // rejected or unloadable set of speaker reference clips) —
+        // accumulated across the provider-attempt loop below and merged into
+        // the final `warning` state alongside any cleanup warning.
+        const runWarnings: string[] = [];
 
         while (!attempt) {
           attemptedProviders.push(providerId);
@@ -245,6 +275,29 @@ export function useTranscriberPipeline() {
           setState((s) => ({ ...s, currentProvider: providerId, status: 'uploading', uploadProgress: 0 }));
 
           const idToken = await user.getIdToken();
+
+          // Resolve this attempt's speaker reference clips (IndexedDB or the
+          // per-run fallback — see useSpeakerProfiles.ts's getRunClips(),
+          // threaded through from page.tsx as opts.getSpeakerClips) — only
+          // for the provider/settings combinations that can actually use
+          // them. A load failure degrades gracefully: the attempt continues
+          // with no clips, a warning, and (below) a debug event instead of
+          // failing the run.
+          const wantsOpenAiClips = providerId === 'openai-diarized' && settings.speakerClipsEnabled;
+          const wantsGeminiReferences = providerId === 'gemini' && settings.geminiReferenceClips;
+          let speakerClips: SpeakerReferenceClip[] = [];
+          let clipsLoadFailed = false;
+          if ((wantsOpenAiClips || wantsGeminiReferences) && getSpeakerClips) {
+            try {
+              speakerClips = await getSpeakerClips();
+            } catch {
+              clipsLoadFailed = true;
+              if (!runWarnings.includes(SPEAKER_CLIPS_LOAD_FAILED_WARNING)) {
+                runWarnings.push(SPEAKER_CLIPS_LOAD_FAILED_WARNING);
+              }
+            }
+          }
+
           try {
             if (providerId === 'gemini') {
               // Gemini needs the recording's duration up front to decide
@@ -257,12 +310,16 @@ export function useTranscriberPipeline() {
                 throw buildDurationUnknownError(file, model);
               }
 
+              const geminiReferences = wantsGeminiReferences && speakerClips.length > 0 ? speakerClips : undefined;
+
               attempt = await transcribeWithGemini({
                 file,
                 durationSec,
                 speakerNames,
+                speakerNotes,
                 contextNotes,
                 model,
+                references: geminiReferences,
                 idToken,
                 onProgress: (event) => {
                   if (event.phase === 'upload') {
@@ -280,9 +337,13 @@ export function useTranscriberPipeline() {
               });
               // Gemini has no acoustic speaker-reference support — speaker
               // identity for this run came entirely from the prompt (names,
-              // notes, context), never audio comparison. Surfaced in the
-              // debug JSON so a quality review can see why.
-              appendDebugEvent(debugLog, { kind: 'speaker-reference', status: 'prompt-inferred' });
+              // notes, context), plus the experimental reference clips above
+              // when attached. Surfaced in the debug JSON so a quality
+              // review can see why.
+              appendDebugEvent(debugLog, {
+                kind: 'speaker-reference',
+                status: geminiReferences ? 'prompt-inferred+reference-clips (experimental)' : 'prompt-inferred',
+              });
             } else {
               attempt = await transcribeWithOpenAi({
                 file,
@@ -295,10 +356,25 @@ export function useTranscriberPipeline() {
                 // explicit provider retry never allows it either, since that's
                 // already a deliberate single-provider choice.
                 allowWhisperFallback: !isExplicitRetry && settings.autoFallback,
+                clips: wantsOpenAiClips ? speakerClips : undefined,
                 idToken,
                 onUploadProgress: (fraction) =>
                   setState((s) => ({ ...s, uploadProgress: fraction, status: fraction >= 1 ? 'transcribing' : 'uploading' })),
               });
+
+              if (wantsOpenAiClips) {
+                const entries: SpeakerReferenceEntry[] = speakerNames.map((name) => {
+                  const clip = speakerClips.find((c) => c.name === name);
+                  return clip
+                    ? { name, attached: true, validationStatus: clip.validationStatus }
+                    : { name, attached: false, validationStatus: clipsLoadFailed ? 'unavailable' : 'missing' };
+                });
+                appendDebugEvent(debugLog, { kind: 'speaker-reference', status: entries });
+              }
+
+              if (attempt.warnings.includes('speaker-references-rejected') && !runWarnings.includes(SPEAKER_REFERENCES_REJECTED_WARNING)) {
+                runWarnings.push(SPEAKER_REFERENCES_REJECTED_WARNING);
+              }
             }
           } catch (err) {
             const attemptError = err as TranscriptionAttemptError;
@@ -364,7 +440,7 @@ export function useTranscriberPipeline() {
             status: 'complete',
             rawText: rawTextWithPrompt,
             cleanedText: null,
-            warning: null,
+            warning: runWarnings.length > 0 ? runWarnings.join(' ') : null,
             correctionFailedChunks: 0,
             correctionTotalChunks: 0,
             cleanupSkipped: true,
@@ -418,13 +494,18 @@ export function useTranscriberPipeline() {
             cleanedText = buildTranscriptText(cleanedSegments);
           }
 
+          // Merge the provider-attempt-level warnings (rejected/unloadable
+          // speaker reference clips) with this run's cleanup warning, if any
+          // — both are surfaced through the same TranscriberState.warning.
+          const combinedWarning = [...runWarnings, warning].filter((w): w is string => !!w).join(' ') || null;
+
           setState((s) => ({
             ...s,
             status: 'complete',
             cleanedSegments,
             turnBlocks,
             cleanedText,
-            warning,
+            warning: combinedWarning,
             correctionFailedChunks: failedChunks,
             correctionTotalChunks: totalChunks,
             debugJson: settings.debugMode === 'always' ? buildDebugJson(debugLog) : null,

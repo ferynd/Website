@@ -6,9 +6,27 @@
 // runnable under `npm test` without a path-alias resolver.
 
 import type { ClassifiedError } from '../classifyError';
+import type { ClipValidationStatus } from '../clipAnalysis';
 import type { TranscriptionMode, TranscriptSegment } from '../types';
 
 export type TranscriptionProviderId = 'openai-diarized' | 'openai-whisper' | 'gemini';
+
+/**
+ * A resolved speaker reference clip ready to attach to a transcription
+ * request — produced by useSpeakerProfiles.ts's `getRunClips()` at submit
+ * time (Phase 4), from either IndexedDB or the per-run in-memory fallback
+ * store (when IndexedDB is unavailable). Consumed by both provider modules:
+ * openaiProvider.ts attaches these as known-speaker references when the
+ * diarized model + settings.speakerClipsEnabled are both active;
+ * geminiProvider.ts base64-encodes and attaches them as experimental
+ * inlineData parts when settings.geminiReferenceClips is on.
+ */
+export interface SpeakerReferenceClip {
+  name: string;
+  blob: Blob;
+  mimeType: string;
+  validationStatus: ClipValidationStatus;
+}
 
 /** A single successful transcription-provider run. */
 export interface TranscriptionAttempt {

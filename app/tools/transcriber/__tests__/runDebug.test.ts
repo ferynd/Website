@@ -73,10 +73,26 @@ describe('runDebug', () => {
     expect(parsed.errors).toEqual([]);
   });
 
-  it('a real speaker-reference status event overrides the placeholder', () => {
+  it('a Gemini prompt-inferred speaker-reference event overrides the placeholder', () => {
     const log = createDebugLog(FILE_META);
-    appendDebugEvent(log, { kind: 'speaker-reference', status: 'attached' });
-    expect(JSON.parse(buildDebugJson(log)).speakerReferenceStatus).toBe('attached');
+    appendDebugEvent(log, { kind: 'speaker-reference', status: 'prompt-inferred' });
+    expect(JSON.parse(buildDebugJson(log)).speakerReferenceStatus).toBe('prompt-inferred');
+  });
+
+  it('a Gemini experimental-reference-clips speaker-reference event overrides the placeholder', () => {
+    const log = createDebugLog(FILE_META);
+    appendDebugEvent(log, { kind: 'speaker-reference', status: 'prompt-inferred+reference-clips (experimental)' });
+    expect(JSON.parse(buildDebugJson(log)).speakerReferenceStatus).toBe('prompt-inferred+reference-clips (experimental)');
+  });
+
+  it('an OpenAI diarized speaker-reference event carries a per-speaker attached/validationStatus array', () => {
+    const log = createDebugLog(FILE_META);
+    const entries = [
+      { name: 'Kait', attached: true, validationStatus: 'ok' },
+      { name: 'James', attached: false, validationStatus: 'missing' },
+    ];
+    appendDebugEvent(log, { kind: 'speaker-reference', status: entries });
+    expect(JSON.parse(buildDebugJson(log)).speakerReferenceStatus).toEqual(entries);
   });
 
   it('never carries transcript text: events only accept counts/labels, and the JSON never contains content that was not explicitly passed as a label', () => {

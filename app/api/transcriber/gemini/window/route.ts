@@ -3,8 +3,15 @@ export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeminiTranscribeModel, resolveGeminiModelId } from '@/app/lib/aiModels';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
-import { DEFAULT_GEMINI_TRANSCRIBE_MODEL } from '@/app/tools/transcriber/lib/constants';
-import { buildGeminiTranscriptionRequest } from '@/app/tools/transcriber/lib/gemini/buildGeminiTranscriptionRequest';
+import {
+  DEFAULT_GEMINI_TRANSCRIBE_MODEL,
+  MAX_GEMINI_REFERENCE_CLIPS,
+  MAX_GEMINI_REFERENCE_TOTAL_BYTES,
+} from '@/app/tools/transcriber/lib/constants';
+import {
+  buildGeminiTranscriptionRequest,
+  type GeminiVoiceReference,
+} from '@/app/tools/transcriber/lib/gemini/buildGeminiTranscriptionRequest';
 import {
   isParseableGeminiTranscriptionResponse,
   parseGeminiTranscription,
@@ -85,6 +92,42 @@ export async function POST(req: NextRequest) {
   const contextNotes = typeof body.contextNotes === 'string' ? body.contextNotes : '';
   const isFullFile = body.isFullFile === true;
 
+  // Experimental voice-reference clips (settings.geminiReferenceClips,
+  // default OFF) — re-validated server-side regardless of what the client
+  // already checked. Malformed individual entries are dropped rather than
+  // rejecting the whole request; the count/size caps below DO reject the
+  // request, since silently truncating could attach the wrong subset of
+  // speakers to a run. NEVER log `references` — it's audio content.
+  const referencesRaw = Array.isArray(body.references) ? body.references : [];
+  const references: GeminiVoiceReference[] = [];
+  let totalBase64Length = 0;
+  for (const entry of referencesRaw) {
+    if (!entry || typeof entry !== 'object') continue;
+    const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+    const refMimeType = typeof entry.mimeType === 'string' ? entry.mimeType : '';
+    const dataBase64 = typeof entry.dataBase64 === 'string' ? entry.dataBase64 : '';
+    if (!name || !refMimeType || !dataBase64) continue;
+    references.push({ name, mimeType: refMimeType, dataBase64 });
+    totalBase64Length += dataBase64.length;
+  }
+
+  if (references.length > MAX_GEMINI_REFERENCE_CLIPS) {
+    return NextResponse.json(
+      { error: `At most ${MAX_GEMINI_REFERENCE_CLIPS} voice reference clips are supported per run.` },
+      { status: 400 },
+    );
+  }
+  // Base64 is ~4/3 the size of the raw bytes it encodes — estimate the real byte total from the encoded string length.
+  const estimatedReferenceBytes = Math.ceil((totalBase64Length * 3) / 4);
+  if (estimatedReferenceBytes > MAX_GEMINI_REFERENCE_TOTAL_BYTES) {
+    return NextResponse.json(
+      {
+        error: `Voice reference clips exceed the ${(MAX_GEMINI_REFERENCE_TOTAL_BYTES / 1024 / 1024).toFixed(0)} MB combined limit.`,
+      },
+      { status: 400 },
+    );
+  }
+
   // Model choice comes from the client's settings store; restricted to the
   // Flash-family transcription subset (GEMINI_TRANSCRIBE_MODELS) regardless
   // of what a caller sends — a valid-but-non-transcription Gemini model
@@ -101,6 +144,7 @@ export async function POST(req: NextRequest) {
     speakerNotes,
     contextNotes,
     isFullFile,
+    references: references.length > 0 ? references : undefined,
   });
 
   let res: Response;

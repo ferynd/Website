@@ -22,10 +22,22 @@ const OPENAI_WHISPER_VALUE = 'openai-whisper';
 const GEMINI_VALUE_PREFIX = 'gemini:';
 
 const PROVIDER_HELPER_TEXT: Record<TranscriptionProviderId, string> = {
-  'openai-diarized': 'OpenAI labels distinct speakers directly from the audio — list them in order below.',
+  'openai-diarized':
+    'OpenAI labels distinct speakers directly from the audio, matched in order to your speaker profiles above — their reference clips are attached automatically when "Use speaker clips" is on.',
   'openai-whisper': 'No built-in speaker labels — the cleanup pass infers who is speaking from context.',
-  gemini: 'Speaker names are inferred from the conversation — no voice-reference support.',
+  gemini: 'Speaker names and notes from your speaker profiles are given as context — no acoustic voice-reference support.',
 };
+
+const GEMINI_EXPERIMENTAL_REFERENCE_NOTE =
+  ' Experimental voice-reference clips are also included as an extra signal for this run — reliability is not guaranteed.';
+
+function providerHelperText(settings: TranscriberSettings): string {
+  const base = PROVIDER_HELPER_TEXT[settings.provider];
+  if (settings.provider === 'gemini' && settings.geminiReferenceClips) {
+    return `${base}${GEMINI_EXPERIMENTAL_REFERENCE_NOTE}`;
+  }
+  return base;
+}
 
 function optionValueFor(settings: TranscriberSettings): string {
   return settings.provider === 'gemini' ? `${GEMINI_VALUE_PREFIX}${settings.geminiTranscribeModel}` : settings.provider;
@@ -67,7 +79,7 @@ export default function ProviderPicker({ settings, onChange, disabled }: Provide
             </option>
           ))}
         </Select>
-        <p className="text-xs text-text-3 mt-1">{PROVIDER_HELPER_TEXT[settings.provider]}</p>
+        <p className="text-xs text-text-3 mt-1">{providerHelperText(settings)}</p>
       </div>
 
       <div className="flex flex-wrap gap-x-6 gap-y-2">

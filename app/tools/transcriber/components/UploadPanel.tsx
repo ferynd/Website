@@ -1,23 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Plus, X } from 'lucide-react';
 import Button from '@/components/Button';
-import Input from '@/components/Input';
 import { ACCEPTED_FILE_EXTENSIONS, MAX_GEMINI_UPLOAD_BYTES, MAX_OPENAI_UPLOAD_BYTES } from '../lib/constants';
 import type { TranscriberSettings } from '../lib/settings';
 import ProviderPicker from './ProviderPicker';
 
 interface UploadPanelProps {
   disabled: boolean;
-  defaultSpeakerNames: string[];
   defaultContextNotes: string;
   settings: TranscriberSettings;
   /** Shallow-merged into the settings store — see page.tsx's updateSettings. Threaded through to ProviderPicker. */
   onSettingsChange: (patch: Partial<TranscriberSettings>) => void;
   onRun: (opts: {
     file: File;
-    speakerNames: string[];
     contextNotes: string;
     strictMode: boolean;
     skipCleanup: boolean;
@@ -38,14 +34,12 @@ const ACCEPT_ATTRIBUTE = [
 
 export default function UploadPanel({
   disabled,
-  defaultSpeakerNames,
   defaultContextNotes,
   settings,
   onSettingsChange,
   onRun,
 }: UploadPanelProps) {
   const [file, setFile] = useState<File | null>(null);
-  const [speakerNames, setSpeakerNames] = useState<string[]>(defaultSpeakerNames);
   const [contextNotes, setContextNotes] = useState(defaultContextNotes);
 
   // "Skip cleanup" / "Strict correction" now live in ProviderPicker's toggle
@@ -105,56 +99,10 @@ export default function UploadPanel({
         )}
       </div>
 
-      <div className="space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-text">Speakers</label>
-          <p className="text-xs text-text-3 mt-0.5">
-            Fed to the cleanup pass so it knows which names to assign lines to. Example: with diarized transcription
-            (default), the first speaker detected in the audio is mapped to the first name here, the second detected
-            speaker to the second name, and so on — order matters more than exact spelling.
-          </p>
-        </div>
-        <div className="space-y-2">
-          {speakerNames.map((name, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <Input
-                value={name}
-                disabled={disabled}
-                onChange={(e) => {
-                  const next = [...speakerNames];
-                  next[i] = e.target.value;
-                  setSpeakerNames(next);
-                }}
-                placeholder={`Speaker ${i + 1}`}
-                className="flex-1 w-full"
-                wrapperClassName="flex-1"
-              />
-              {speakerNames.length > 1 && (
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => setSpeakerNames(speakerNames.filter((_, idx) => idx !== i))}
-                  className="text-text-3 hover:text-error focus-ring rounded p-2 flex-shrink-0"
-                  aria-label={`Remove speaker ${i + 1}`}
-                >
-                  <X size={16} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={disabled}
-          onClick={() => setSpeakerNames([...speakerNames, ''])}
-          className="inline-flex items-center gap-2"
-        >
-          <Plus size={14} />
-          Add speaker
-        </Button>
-      </div>
+      <p className="text-xs text-text-3">
+        Speaker names, voice notes, and reference clips are configured in the{' '}
+        <span className="text-text-2">Speaker profiles</span> panel above.
+      </p>
 
       <div className="space-y-2">
         <div>
@@ -181,8 +129,8 @@ export default function UploadPanel({
       {skipCleanup && (
         <p className="text-xs text-text-3">
           Skip cleanup is on — the raw transcript will be returned as-is, with a ready-to-paste cleanup prompt
-          (including your speakers and context notes above) at the top, for pasting into a browser AI chat (ChatGPT,
-          Claude, Gemini, etc.) instead.
+          (including your speaker profiles and context notes) at the top, for pasting into a browser AI chat
+          (ChatGPT, Claude, Gemini, etc.) instead.
         </p>
       )}
 
@@ -194,7 +142,6 @@ export default function UploadPanel({
           file &&
           onRun({
             file,
-            speakerNames: speakerNames.map((s) => s.trim()).filter(Boolean),
             contextNotes,
             strictMode,
             skipCleanup,

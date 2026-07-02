@@ -50,6 +50,20 @@ export const GEMINI_FILE_POLL_TIMEOUT_MS = 120_000;
 export const MAX_GEMINI_UPLOAD_BYTES = 95 * 1024 * 1024;
 
 export const DEFAULT_SPEAKER_NAMES = ['Kait', 'James'];
+
+/** Per-clip and per-run caps for OpenAI known-speaker reference clips
+ * (Phase 4) — re-validated server-side in the transcribe route regardless of
+ * client-side checks. Generous headroom, not a target size: a clip that has
+ * gone through lib/processReferenceClip.ts (mono, 16 kHz, ~8s, PCM16 WAV) is
+ * only ~256 KB. */
+export const MAX_SPEAKER_CLIP_BYTES = 5 * 1024 * 1024;
+export const MAX_SPEAKER_CLIPS = 4;
+
+/** Caps for Gemini's experimental inline voice-reference clips (Phase 4,
+ * settings.geminiReferenceClips — default OFF) — re-validated server-side in
+ * the gemini/window route. */
+export const MAX_GEMINI_REFERENCE_CLIPS = 4;
+export const MAX_GEMINI_REFERENCE_TOTAL_BYTES = 5 * 1024 * 1024;
 export const DEFAULT_CONTEXT_NOTES =
   'There are two speakers. Kait is female and speaks more slowly. James is male and speaks more quickly. Kait is the first person speaking.';
 

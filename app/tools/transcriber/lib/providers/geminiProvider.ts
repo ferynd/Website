@@ -11,6 +11,7 @@
 // correction pass chunks a long transcript (createChunkWindows +
 // stitchChunkResults), just against a different endpoint.
 
+import { blobToBase64 } from '../base64Audio';
 import { classifyTranscriptionError } from '../classifyError';
 import {
   GEMINI_FILE_POLL_INTERVAL_MS,
@@ -24,7 +25,14 @@ import { normalizeSegments } from '../formatTranscript';
 import { sanitizeUpstreamError } from '../sanitizeUpstreamError';
 import { stitchChunkResults, type ChunkResult } from '../stitchTranscript';
 import type { TranscribeErrorInfo, TranscriptSegment } from '../types';
-import type { TranscriptionAttempt, TranscriptionAttemptError } from './types';
+import type { SpeakerReferenceClip, TranscriptionAttempt, TranscriptionAttemptError } from './types';
+
+/** A voice-reference clip already base64-encoded, ready to embed in the window route's JSON body — see encodeReferences below. */
+interface EncodedReference {
+  name: string;
+  mimeType: string;
+  dataBase64: string;
+}
 
 export type GeminiProgressEvent =
   | { phase: 'upload'; fraction: number }
@@ -41,8 +49,18 @@ export interface TranscribeWithGeminiOptions {
   contextNotes: string;
   /** Gemini model id — restricted server-side to GEMINI_TRANSCRIBE_MODELS regardless of what's sent here. */
   model: string;
+  /** Experimental voice-reference clips (settings.geminiReferenceClips, default OFF) — the caller is responsible for only passing these when that setting is on; base64-encoded once here and reused for every window call. */
+  references?: SpeakerReferenceClip[];
   idToken: string;
   onProgress: (event: GeminiProgressEvent) => void;
+}
+
+/** Base64-encodes each reference clip's Blob exactly once (not per-window) — reused across every transcribeWindow() call in a windowed run. Returns undefined for an empty/absent list so the request body omits the field entirely rather than sending `references: []`. */
+async function encodeReferences(references: SpeakerReferenceClip[] | undefined): Promise<EncodedReference[] | undefined> {
+  if (!references || references.length === 0) return undefined;
+  return Promise.all(
+    references.map(async (ref) => ({ name: ref.name, mimeType: ref.mimeType, dataBase64: await blobToBase64(ref.blob) })),
+  );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -211,13 +229,26 @@ interface WindowCallParams {
   speakerNotes?: string[];
   contextNotes: string;
   model: string;
+  references?: EncodedReference[];
   idToken: string;
   file: File;
 }
 
 async function transcribeWindow(params: WindowCallParams): Promise<TranscriptSegment[]> {
-  const { fileUri, mimeType, windowStart, windowEnd, isFullFile, speakerNames, speakerNotes, contextNotes, model, idToken, file } =
-    params;
+  const {
+    fileUri,
+    mimeType,
+    windowStart,
+    windowEnd,
+    isFullFile,
+    speakerNames,
+    speakerNotes,
+    contextNotes,
+    model,
+    references,
+    idToken,
+    file,
+  } = params;
 
   let status: number;
   let json: JsonRecord;
@@ -225,7 +256,18 @@ async function transcribeWindow(params: WindowCallParams): Promise<TranscriptSeg
     const res = await fetch('/api/transcriber/gemini/window', {
       method: 'POST',
       headers: { Authorization: `Bearer ${idToken}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fileUri, mimeType, windowStart, windowEnd, isFullFile, speakerNames, speakerNotes, contextNotes, model }),
+      body: JSON.stringify({
+        fileUri,
+        mimeType,
+        windowStart,
+        windowEnd,
+        isFullFile,
+        speakerNames,
+        speakerNotes,
+        contextNotes,
+        model,
+        references,
+      }),
     });
     status = res.status;
     json = await res.json().catch(() => ({ error: `Server returned a non-JSON response (HTTP ${res.status}).` }));
@@ -270,12 +312,16 @@ async function deleteFileBestEffort(fileName: string, idToken: string): Promise<
  * object, not an Error instance) on any failure.
  */
 export async function transcribeWithGemini(options: TranscribeWithGeminiOptions): Promise<TranscriptionAttempt> {
-  const { file, durationSec, speakerNames, speakerNotes, contextNotes, model, idToken, onProgress } = options;
+  const { file, durationSec, speakerNames, speakerNotes, contextNotes, model, references, idToken, onProgress } = options;
 
   const uploaded = await uploadFile(file, idToken, model, (fraction) => onProgress({ phase: 'upload', fraction }));
 
   onProgress({ phase: 'processing' });
   await pollUntilActive(uploaded.fileName, idToken, file, model);
+
+  // Base64-encode reference clips (if any) once, up front — reused for
+  // every window call below rather than re-encoded per window.
+  const encodedReferences = await encodeReferences(references);
 
   let segments: TranscriptSegment[];
 
@@ -291,6 +337,7 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
       speakerNotes,
       contextNotes,
       model,
+      references: encodedReferences,
       idToken,
       file,
     });
@@ -314,6 +361,7 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
         speakerNotes,
         contextNotes,
         model,
+        references: encodedReferences,
         idToken,
         file,
       });

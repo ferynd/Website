@@ -10,7 +10,7 @@ import { FALLBACK_TRANSCRIBE_MODEL } from '../constants';
 import { normalizeSegments } from '../formatTranscript';
 import { sanitizeUpstreamError } from '../sanitizeUpstreamError';
 import type { TranscribeApiResponse, TranscribeErrorInfo } from '../types';
-import type { TranscriptionAttempt, TranscriptionAttemptError, TranscriptionProviderId } from './types';
+import type { SpeakerReferenceClip, TranscriptionAttempt, TranscriptionAttemptError, TranscriptionProviderId } from './types';
 
 export interface TranscribeWithOpenAiOptions {
   file: File;
@@ -19,6 +19,8 @@ export interface TranscribeWithOpenAiOptions {
   model: string;
   /** When false, the route must NOT silently retry whisper-1 on a primary-model failure — see the transcribe route. */
   allowWhisperFallback: boolean;
+  /** Known-speaker reference clips (Phase 4) — the caller (useTranscriberPipeline.ts) is responsible for only passing these when settings.speakerClipsEnabled AND the diarized model is in use; the server independently re-checks both and re-validates size/count. */
+  clips?: SpeakerReferenceClip[];
   idToken: string;
   onUploadProgress: (fraction: number) => void;
 }
@@ -34,6 +36,7 @@ function postFormWithProgress(
   speakerNames: string[],
   model: string,
   allowWhisperFallback: boolean,
+  clips: SpeakerReferenceClip[],
   idToken: string,
   onUploadProgress: (fraction: number) => void,
 ): Promise<{ status: number; rawText: string }> {
@@ -52,6 +55,15 @@ function postFormWithProgress(
     form.set('speakerNames', JSON.stringify(speakerNames));
     form.set('model', model);
     form.set('allowWhisperFallback', String(allowWhisperFallback));
+    if (clips.length > 0) {
+      // NEVER log clip contents — only the (already non-sensitive) names go
+      // through JSON.stringify here; the audio bytes are appended as files.
+      form.set('speakerClipNames', JSON.stringify(clips.map((clip) => clip.name)));
+      clips.forEach((clip, i) => {
+        const extension = clip.mimeType.includes('wav') ? 'wav' : 'audio';
+        form.append('speakerClips[]', clip.blob, `speaker-clip-${i}.${extension}`);
+      });
+    }
     xhr.send(form);
   });
 }
@@ -89,13 +101,21 @@ function buildAttemptError(params: {
  * check for its `classified` field) instead of a generic exception.
  */
 export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions): Promise<TranscriptionAttempt> {
-  const { file, speakerNames, model, allowWhisperFallback, idToken, onUploadProgress } = options;
+  const { file, speakerNames, model, allowWhisperFallback, clips = [], idToken, onUploadProgress } = options;
   const providerGuess = guessProviderId(model);
 
   let status: number;
   let rawText: string;
   try {
-    const result = await postFormWithProgress(file, speakerNames, model, allowWhisperFallback, idToken, onUploadProgress);
+    const result = await postFormWithProgress(
+      file,
+      speakerNames,
+      model,
+      allowWhisperFallback,
+      clips,
+      idToken,
+      onUploadProgress,
+    );
     status = result.status;
     rawText = result.rawText;
   } catch (err) {

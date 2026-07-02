@@ -18,6 +18,31 @@ export interface DebugFileMeta {
   durationSec?: number;
 }
 
+/**
+ * Per-speaker outcome for one OpenAI diarized run's known-speaker
+ * references (Phase 4) — 'attached' means this run's request included that
+ * speaker's clip; `validationStatus` mirrors lib/clipAnalysis.ts's
+ * ClipValidationStatus but is kept as a plain string here (not imported)
+ * since debug events must stay JSON-serializable labels/counts only.
+ */
+export interface SpeakerReferenceEntry {
+  name: string;
+  attached: boolean;
+  validationStatus: string;
+}
+
+/**
+ * What informed speaker identity for this run: 'prompt-inferred' (Gemini,
+ * no acoustic reference support), 'prompt-inferred+reference-clips
+ * (experimental)' (Gemini with settings.geminiReferenceClips clips
+ * attached), or one entry per configured speaker profile describing whether
+ * that speaker's clip was attached (OpenAI diarized + settings.speakerClipsEnabled).
+ */
+export type SpeakerReferenceStatus =
+  | 'prompt-inferred'
+  | 'prompt-inferred+reference-clips (experimental)'
+  | SpeakerReferenceEntry[];
+
 export type DebugEvent =
   | { kind: 'provider-attempt'; at: number; provider: TranscriptionProviderId; model: string }
   | { kind: 'raw-captured'; at: number; segmentCount: number }
@@ -29,7 +54,7 @@ export type DebugEvent =
       segmentsRemoved: number;
     }
   | { kind: 'cleanup-warning'; at: number; failedChunks: number; totalChunks: number }
-  | { kind: 'speaker-reference'; at: number; status: string }
+  | { kind: 'speaker-reference'; at: number; status: SpeakerReferenceStatus }
   | {
       kind: 'error';
       at: number;
@@ -57,7 +82,7 @@ export interface DebugLog {
  */
 type DistributiveOmit<T, K extends keyof T> = T extends unknown ? Omit<T, K> : never;
 
-/** Placeholder value used until Phase 4 wires real speaker-clip status through. */
+/** Value used when a run never appended a 'speaker-reference' event at all — e.g. Whisper (no speaker/diarization concept, so no reference status applies) or a run that failed before reaching the provider call. */
 export const SPEAKER_REFERENCE_NOT_CONFIGURED = 'not-configured';
 
 /** Starts a new, empty debug log for one pipeline run. */
