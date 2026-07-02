@@ -39,6 +39,7 @@ Canonical instruction entry point for Claude Code, Codex, and other coding agent
 - **Tailwind** with tokens from `globals.css`; keep UI consistent with existing utilities.
 - **Icons** via `lucide-react`.
 - Prefer minimal, focused diffs.
+- For tools with several client-side user settings, prefer one versioned localStorage object with a pure `parseStored*` parser (never throws, per-field fallback) plus SSR-safe `read/save` wrappers — see `app/tools/transcriber/lib/settings.ts`.
 - Static sub-sites must include a back link to `/` or their section.
 - Firebase web keys are public identifiers. Enforce access through Firestore Security Rules. Never commit private server keys.
 

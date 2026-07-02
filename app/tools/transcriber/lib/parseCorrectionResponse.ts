@@ -1,7 +1,20 @@
+import type { ArgumentTag } from './types';
+
+const VALID_ARGUMENT_TAGS = new Set<ArgumentTag>([
+  'argument_conflict',
+  'repair_attempt',
+  'emotional_support',
+  'logistics_or_normal',
+  'unrelated',
+  'unclear',
+]);
+
 export interface CorrectionResultItem {
   index: number;
   speaker: string;
   text: string;
+  /** Only ever set when the caller passed `argumentTagging: true` — see parseCorrectionResponse's third parameter. */
+  tag?: ArgumentTag;
 }
 
 /**
@@ -11,8 +24,19 @@ export interface CorrectionResultItem {
  * this with `findMissingIndices` and reject the whole chunk (rather than
  * quietly filling gaps with uncorrected text) so a partial/malformed
  * response is treated as a correction failure — see the correct API route.
+ *
+ * `argumentTagging` (Phase 5, default false) controls the optional per-item
+ * `tag` field: when true, a valid ArgumentTag value passes through as-is and
+ * a missing/invalid one falls back to `'unclear'` — a bad tag NEVER causes
+ * the item itself to be dropped/rejected, unlike a missing/malformed
+ * index/speaker/text above. When false, any `tag` present in the raw
+ * response is ignored/stripped — the returned item never carries one.
  */
-export function parseCorrectionResponse(raw: string, expectedIndices: number[]): CorrectionResultItem[] {
+export function parseCorrectionResponse(
+  raw: string,
+  expectedIndices: number[],
+  argumentTagging = false,
+): CorrectionResultItem[] {
   const cleaned = raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
 
   let parsed: unknown;
@@ -39,7 +63,15 @@ export function parseCorrectionResponse(raw: string, expectedIndices: number[]):
       expected.has((item as { index: number }).index)
     ) {
       const record = item as { index: number; speaker: string; text: string };
-      results.push({ index: record.index, speaker: record.speaker, text: record.text });
+      const result: CorrectionResultItem = { index: record.index, speaker: record.speaker, text: record.text };
+      if (argumentTagging) {
+        const rawTag = (item as Record<string, unknown>).tag;
+        result.tag =
+          typeof rawTag === 'string' && VALID_ARGUMENT_TAGS.has(rawTag as ArgumentTag)
+            ? (rawTag as ArgumentTag)
+            : 'unclear';
+      }
+      results.push(result);
     }
   }
 

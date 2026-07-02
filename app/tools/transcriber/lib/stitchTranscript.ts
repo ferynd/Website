@@ -1,9 +1,12 @@
 import type { ChunkWindowBounds } from './chunkTranscript';
-import type { TranscriptSegment } from './types';
+import type { TaggedTranscriptSegment } from './types';
 
 export interface ChunkResult {
   window: ChunkWindowBounds;
-  segments: TranscriptSegment[];
+  /** TaggedTranscriptSegment (not plain TranscriptSegment) so an optional
+   * ArgumentTag (Phase 5, from the correct route when argumentTagging is on)
+   * survives stitching untouched — see useTranscriberPipeline.ts. */
+  segments: TaggedTranscriptSegment[];
 }
 
 /**
@@ -16,10 +19,10 @@ export interface ChunkResult {
  * regions from producing duplicated lines by construction. A belt-and-braces
  * de-dup on (start, speaker, text) guards against exact-boundary edge cases.
  */
-export function stitchChunkResults(results: ChunkResult[]): TranscriptSegment[] {
+export function stitchChunkResults(results: ChunkResult[]): TaggedTranscriptSegment[] {
   const lastIndex = results.reduce((max, r) => Math.max(max, r.window.index), 0);
   const seen = new Set<string>();
-  const stitched: TranscriptSegment[] = [];
+  const stitched: TaggedTranscriptSegment[] = [];
 
   for (const { window, segments } of results) {
     const isLastWindow = window.index === lastIndex;

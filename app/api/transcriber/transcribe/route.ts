@@ -3,19 +3,31 @@ export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
 import { modelSupportsDiarization, resolveTranscribeModelId } from '@/app/lib/transcribeModels';
+import { blobToDataUrl } from '@/app/tools/transcriber/lib/base64Audio';
+import { buildOpenAiTranscriptionEntries, type OpenAiClipReference } from '@/app/tools/transcriber/lib/buildOpenAiTranscriptionForm';
 import {
   FALLBACK_TRANSCRIBE_MODEL,
   MAX_OPENAI_UPLOAD_BYTES,
+  MAX_SPEAKER_CLIP_BYTES,
+  MAX_SPEAKER_CLIPS,
   PRIMARY_TRANSCRIBE_MODEL,
 } from '@/app/tools/transcriber/lib/constants';
 import { mapDiarizedSegments, mapFallbackSegments } from '@/app/tools/transcriber/lib/mapSpeakerLabels';
-import type { TranscriptionMode } from '@/app/tools/transcriber/lib/types';
+import { sanitizeUpstreamError } from '@/app/tools/transcriber/lib/sanitizeUpstreamError';
+import type { TranscribeErrorInfo, TranscriptionMode } from '@/app/tools/transcriber/lib/types';
+import type { TranscriptionProviderId } from '@/app/tools/transcriber/lib/providers/types';
 
 const OPENAI_TRANSCRIPTIONS_URL = 'https://api.openai.com/v1/audio/transcriptions';
 
-// Never let API key fragments leak into error responses that reach the client.
-function sanitizeError(text: string): string {
-  return text.replace(/sk-[A-Za-z0-9]{10,}/g, 'sk-***').slice(0, 500);
+/** Builds a multipart FormData for one OpenAI transcription attempt from a
+ * pure entries list (see buildOpenAiTranscriptionEntries) — `.append` (not
+ * `.set`) since known_speaker_names[]/known_speaker_references[] repeat one
+ * entry per clip. */
+function buildTranscriptionForm(file: File, entries: [string, string][]): FormData {
+  const form = new FormData();
+  form.set('file', file, file.name);
+  for (const [key, value] of entries) form.append(key, value);
+  return form;
 }
 
 export async function POST(req: NextRequest) {
@@ -66,29 +78,93 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Optional known-speaker reference clips (Phase 4) — trimmed WAV/audio
+  // Files from lib/speakerClips.ts (IndexedDB) or the per-run fallback,
+  // parallel to speakerClipNames. Re-validated here regardless of what the
+  // client already checked. NEVER log a clip's bytes, its data URL, or its
+  // name alongside audio content.
+  const clipFiles = form.getAll('speakerClips[]').filter((entry): entry is File => entry instanceof File);
+
+  let clipNames: string[] = [];
+  const clipNamesRaw = form.get('speakerClipNames');
+  if (typeof clipNamesRaw === 'string') {
+    try {
+      const parsed = JSON.parse(clipNamesRaw);
+      if (Array.isArray(parsed)) clipNames = parsed.filter((s) => typeof s === 'string');
+    } catch {
+      clipNames = [];
+    }
+  }
+
+  if (clipFiles.length > 0) {
+    if (clipFiles.length > MAX_SPEAKER_CLIPS) {
+      return NextResponse.json(
+        { error: `At most ${MAX_SPEAKER_CLIPS} speaker reference clips are supported per run.` },
+        { status: 400 },
+      );
+    }
+    if (clipNames.length !== clipFiles.length) {
+      return NextResponse.json({ error: 'speakerClipNames must have exactly one name per speaker clip.' }, { status: 400 });
+    }
+    for (const clipFile of clipFiles) {
+      if (clipFile.size > MAX_SPEAKER_CLIP_BYTES) {
+        return NextResponse.json(
+          {
+            error: `Each speaker reference clip must be under ${(MAX_SPEAKER_CLIP_BYTES / 1024 / 1024).toFixed(0)} MB.`,
+          },
+          { status: 400 },
+        );
+      }
+      if (!clipFile.type.startsWith('audio/')) {
+        return NextResponse.json({ error: 'Speaker reference clips must be audio files.' }, { status: 400 });
+      }
+    }
+  }
+
   // Model choice comes from the Settings pop-up (saved client-side); fall back to the
   // site default if missing/unrecognized. Only models that return segment-level
   // timestamps are ever accepted here — see app/lib/transcribeModels.ts for why.
   const transcribeModelId = resolveTranscribeModelId(form.get('model'), PRIMARY_TRANSCRIBE_MODEL);
   const diarizes = modelSupportsDiarization(transcribeModelId);
+  const providerId: TranscriptionProviderId = diarizes ? 'openai-diarized' : 'openai-whisper';
 
-  const primaryForm = new FormData();
-  primaryForm.set('file', file, file.name);
-  primaryForm.set('model', transcribeModelId);
-  if (diarizes) {
-    primaryForm.set('response_format', 'diarized_json');
-    primaryForm.set('chunking_strategy', 'auto');
-  } else {
-    primaryForm.set('response_format', 'verbose_json');
-    primaryForm.set('timestamp_granularities[]', 'segment');
+  // Known-speaker fields are only ever meaningful for the diarize model —
+  // buildOpenAiTranscriptionEntries also enforces this, but converting to
+  // data URLs is real work, so skip it entirely for whisper.
+  let clipReferences: OpenAiClipReference[] = [];
+  if (diarizes && clipFiles.length > 0) {
+    clipReferences = await Promise.all(
+      clipFiles.map(async (clipFile, i) => ({
+        name: clipNames[i],
+        dataUrl: await blobToDataUrl(clipFile, clipFile.type),
+      })),
+    );
   }
+
+  // Backward-compat default ('true'): the pre-Phase-2 behavior (silently
+  // retrying whisper-1 when the selected/diarized model call fails) is
+  // preserved unless the caller explicitly opts out — driven by the
+  // auto-fallback setting client-side.
+  const allowWhisperFallbackRaw = form.get('allowWhisperFallback');
+  const allowWhisperFallback = typeof allowWhisperFallbackRaw === 'string' ? allowWhisperFallbackRaw !== 'false' : true;
+
+  const primaryForm = buildTranscriptionForm(
+    file,
+    buildOpenAiTranscriptionEntries({
+      model: transcribeModelId,
+      diarizes,
+      clips: clipReferences.length > 0 ? clipReferences : undefined,
+    }),
+  );
 
   let mode: TranscriptionMode = diarizes ? 'diarized' : 'fallback';
   let primaryError: string | null = null;
+  let primaryErrorInfo: TranscribeErrorInfo | null = null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let data: any = null;
+  const warnings: string[] = [];
 
-  const primaryRes = await fetch(OPENAI_TRANSCRIPTIONS_URL, {
+  let primaryRes = await fetch(OPENAI_TRANSCRIPTIONS_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
     body: primaryForm,
@@ -97,15 +173,66 @@ export async function POST(req: NextRequest) {
   if (primaryRes.ok) {
     data = await primaryRes.json();
   } else {
-    // Selected model/endpoint unavailable for this account/audio — fall back to whisper-1.
+    // Selected model/endpoint unavailable for this account/audio.
     const errText = await primaryRes.text().catch(() => '');
-    primaryError = sanitizeError(errText) || `OpenAI transcription failed (${primaryRes.status}).`;
-    mode = 'fallback';
+    const sanitizedBody = sanitizeUpstreamError(errText);
+
+    // OpenAI occasionally rejects the known_speaker_* fields themselves
+    // (e.g. a malformed reference) rather than the transcription request as
+    // a whole — when that's the specific failure, retry ONCE on the same
+    // (diarized) model without the clips before giving up on it entirely.
+    const isKnownSpeakerRejection =
+      diarizes && clipReferences.length > 0 && primaryRes.status === 400 && /known_speaker/i.test(errText);
+
+    if (isKnownSpeakerRejection) {
+      const retryForm = buildTranscriptionForm(
+        file,
+        buildOpenAiTranscriptionEntries({ model: transcribeModelId, diarizes }),
+      );
+      const retryRes = await fetch(OPENAI_TRANSCRIPTIONS_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: retryForm,
+      });
+
+      if (retryRes.ok) {
+        data = await retryRes.json();
+        warnings.push('speaker-references-rejected');
+      } else {
+        const retryErrText = await retryRes.text().catch(() => '');
+        const sanitizedRetryBody = sanitizeUpstreamError(retryErrText);
+        primaryError = sanitizedRetryBody || `OpenAI transcription failed (${retryRes.status}).`;
+        mode = 'fallback';
+        primaryErrorInfo = {
+          provider: providerId,
+          model: transcribeModelId,
+          stage: 'transcribe',
+          upstreamStatus: retryRes.status,
+          upstreamBody: sanitizedRetryBody,
+        };
+        primaryRes = retryRes;
+      }
+    } else {
+      primaryError = sanitizedBody || `OpenAI transcription failed (${primaryRes.status}).`;
+      mode = 'fallback';
+      primaryErrorInfo = {
+        provider: providerId,
+        model: transcribeModelId,
+        stage: 'transcribe',
+        upstreamStatus: primaryRes.status,
+        upstreamBody: sanitizedBody,
+      };
+    }
   }
 
-  // Nothing left to retry with if the selected model already was the fallback model itself.
-  if (!data && transcribeModelId === FALLBACK_TRANSCRIBE_MODEL) {
-    return NextResponse.json({ error: `Transcription failed: ${primaryError}` }, { status: 502 });
+  // Nothing left to retry with if the selected model already was the fallback
+  // model itself, or the caller opted out of the silent whisper retry (auto-fallback
+  // setting off — the client's recovery panel handles retry choices instead).
+  if (!data && (transcribeModelId === FALLBACK_TRANSCRIBE_MODEL || !allowWhisperFallback)) {
+    return NextResponse.json(
+      { error: `Transcription failed: ${primaryError}`, errorInfo: primaryErrorInfo },
+      { status: primaryRes.status },
+    );
   }
 
   if (!data) {
@@ -123,9 +250,17 @@ export async function POST(req: NextRequest) {
 
     if (!fallbackRes.ok) {
       const fallbackErrText = await fallbackRes.text().catch(() => '');
+      const sanitizedFallbackBody = sanitizeUpstreamError(fallbackErrText);
       return NextResponse.json(
         {
-          error: `Transcription failed on both the selected and fallback models. Selected (${transcribeModelId}): ${primaryError} Fallback (${FALLBACK_TRANSCRIBE_MODEL}): ${sanitizeError(fallbackErrText)}`,
+          error: `Transcription failed on both the selected and fallback models. Selected (${transcribeModelId}): ${primaryError} Fallback (${FALLBACK_TRANSCRIBE_MODEL}): ${sanitizedFallbackBody}`,
+          errorInfo: {
+            provider: 'openai-whisper',
+            model: FALLBACK_TRANSCRIBE_MODEL,
+            stage: 'transcribe',
+            upstreamStatus: fallbackRes.status,
+            upstreamBody: sanitizedFallbackBody,
+          },
         },
         { status: 502 },
       );
@@ -142,5 +277,6 @@ export async function POST(req: NextRequest) {
     mode,
     segments,
     primaryError: mode === 'fallback' ? primaryError : null,
+    warnings,
   });
 }

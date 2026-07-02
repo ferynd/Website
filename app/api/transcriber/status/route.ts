@@ -21,6 +21,10 @@ export async function GET(req: NextRequest) {
     emailVerified: false,
     email: null as string | null,
     transcribeKeyConfigured: null as boolean | null,
+    // Field name kept for compatibility, but this one key (GEMINI_API_KEY)
+    // now gates BOTH the cleanup pass and the Gemini direct-transcription
+    // provider (see app/api/transcriber/gemini/*) — RequirementsPanel's
+    // display copy reflects both uses.
     correctionKeyConfigured: null as boolean | null,
   };
 
