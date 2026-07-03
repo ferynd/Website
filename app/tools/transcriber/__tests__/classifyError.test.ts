@@ -64,6 +64,56 @@ describe('classifyTranscriptionError', () => {
     expect(result.retryProviders).toContain('gemini');
   });
 
+  it('frames a 400 rejection of a supported extension as file-specific, never as the format being unsupported (observed .m4a failure)', () => {
+    const result = classifyTranscriptionError({
+      httpStatus: 400,
+      bodyText: '{"error":{"message":"Audio file might be corrupted or unsupported","type":"invalid_request_error","param":"file","code":"invalid_value"}}',
+      provider: 'openai-diarized',
+      stage: 'transcribe',
+      fileName: '2026-07-23_nail_discussion_faststart.m4a',
+      fileSizeBytes: 9523824,
+      browserMime: 'audio/mpeg',
+    });
+    expect(result.category).toBe('openai-unsupported-format');
+    expect(result.suggestsConversion).toBe(true);
+    expect(result.retryProviders).toContain('gemini');
+    // The copy must say .m4a IS supported and OpenAI rejected THIS file...
+    expect(result.likelyCause).toContain('.m4a');
+    expect(result.likelyCause).toMatch(/supported format/i);
+    // ...and flag the extension/MIME mismatch as a hint about the contents.
+    expect(result.likelyCause).toContain('audio/mpeg');
+    // Never the old "convert because the format is unsupported" framing.
+    expect(result.recommendedAction).not.toMatch(/convert the file to/i);
+  });
+
+  it('does not flag a MIME mismatch when the browser MIME is a normal one for the extension', () => {
+    const result = classifyTranscriptionError({
+      httpStatus: 400,
+      bodyText: 'The audio could not be decoded or its format is not supported.',
+      provider: 'openai-diarized',
+      stage: 'transcribe',
+      fileName: 'session.m4a',
+      browserMime: 'audio/x-m4a',
+    });
+    expect(result.category).toBe('openai-unsupported-format');
+    expect(result.likelyCause).toContain('.m4a');
+    expect(result.likelyCause).not.toContain('audio/x-m4a');
+  });
+
+  it('keeps the generic decode-failure copy for an unknown extension', () => {
+    const result = classifyTranscriptionError({
+      httpStatus: 400,
+      bodyText: 'Invalid file format.',
+      provider: 'openai-whisper',
+      stage: 'transcribe',
+      fileName: 'session.amr',
+      browserMime: 'audio/amr',
+    });
+    expect(result.category).toBe('openai-unsupported-format');
+    expect(result.likelyCause.length).toBeGreaterThan(0);
+    expect(result.likelyCause).not.toContain('.amr');
+  });
+
   it('classifies a 401 from OpenAI upstream as openai-auth (not our own admin gate)', () => {
     const result = classifyTranscriptionError({
       httpStatus: 401,

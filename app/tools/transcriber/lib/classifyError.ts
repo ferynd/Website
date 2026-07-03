@@ -56,6 +56,50 @@ const GEMINI_PARSE_PATTERN = /invalid json|json array|schema|missing \d+ of \d+|
 
 const OPENAI_PROVIDERS = new Set<TranscriptionProviderId>(['openai-diarized', 'openai-whisper']);
 
+/** Extensions OpenAI's transcription endpoint documents as supported, with
+ * the browser MIME types plausibly reported for each. A rejection of one of
+ * these must never be phrased as the file *type* being unsupported — OpenAI
+ * refused this specific file's container/encoding. A browser MIME outside
+ * the expected set (e.g. "audio/mpeg" for .m4a) is called out as a hint the
+ * contents may not match the extension. */
+const OPENAI_SUPPORTED_EXTENSION_MIMES: Record<string, string[]> = {
+  '.aac': ['audio/aac', 'audio/x-aac'],
+  '.flac': ['audio/flac', 'audio/x-flac'],
+  '.m4a': ['audio/mp4', 'audio/x-m4a', 'audio/m4a', 'audio/aac'],
+  '.mp3': ['audio/mpeg', 'audio/mp3'],
+  '.mp4': ['audio/mp4', 'video/mp4'],
+  '.mpeg': ['audio/mpeg', 'video/mpeg'],
+  '.mpga': ['audio/mpeg'],
+  '.oga': ['audio/ogg'],
+  '.ogg': ['audio/ogg', 'application/ogg'],
+  '.wav': ['audio/wav', 'audio/x-wav', 'audio/wave'],
+  '.webm': ['audio/webm', 'video/webm'],
+};
+
+/** File-specific copy for openai-unsupported-format when the extension is
+ * one OpenAI supports — the generic default copy would otherwise read as
+ * ".m4a isn't supported", which is wrong and misleading. */
+function unsupportedFormatOverrides(input: ClassifyTranscriptionErrorInput): Partial<Omit<ClassifiedError, 'category'>> {
+  const fileName = input.fileName ?? '';
+  const dotIndex = fileName.lastIndexOf('.');
+  const ext = dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : '';
+  const expectedMimes = OPENAI_SUPPORTED_EXTENSION_MIMES[ext];
+  if (!expectedMimes) return {};
+
+  let likelyCause =
+    `OpenAI rejected this specific file's container/encoding — ${ext} itself is a supported format, ` +
+    'so the problem is how this particular file is encoded (or corruption), not the file type.';
+  const browserMime = input.browserMime?.toLowerCase() ?? '';
+  if (browserMime && browserMime !== 'unknown' && !expectedMimes.includes(browserMime)) {
+    likelyCause += ` The browser reported its type as "${input.browserMime}", which is unusual for ${ext} — the file's contents may not match its extension.`;
+  }
+
+  return {
+    likelyCause,
+    recommendedAction: `Try Gemini (it tolerates more encodings), or re-export the audio (e.g. to WAV or MP3) to rebuild the container and retry.`,
+  };
+}
+
 function build(
   category: ErrorCategory,
   overrides: Partial<Omit<ClassifiedError, 'category'>> = {},
@@ -74,8 +118,8 @@ function build(
       suggestsConversion: false,
     },
     'openai-unsupported-format': {
-      likelyCause: 'OpenAI could not decode this audio file — the format or encoding is likely unsupported or the file is corrupted.',
-      recommendedAction: 'Convert the file to MP3, WAV, or AAC and try again, or try Gemini.',
+      likelyCause: 'OpenAI could not decode this audio file — it rejected the container/encoding, or the file is corrupted.',
+      recommendedAction: 'Try Gemini (it tolerates more encodings), or re-export the audio (e.g. to WAV or MP3) and retry.',
       retryProviders: ['gemini'],
       suggestsConversion: true,
     },
@@ -197,7 +241,7 @@ export function classifyTranscriptionError(input: ClassifyTranscriptionErrorInpu
   // Deliberately gated on wording, never on file size, so a large-but-valid
   // file with a plain 500 is never mislabeled as a format/size problem.
   if (httpStatus === 400 && UNSUPPORTED_FORMAT_PATTERN.test(bodyText)) {
-    return build('openai-unsupported-format');
+    return build('openai-unsupported-format', unsupportedFormatOverrides(input));
   }
 
   // Any remaining 401/403 here is an upstream provider auth failure — our
