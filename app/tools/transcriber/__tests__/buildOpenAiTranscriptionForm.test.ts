@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildOpenAiTranscriptionEntries } from '../lib/buildOpenAiTranscriptionForm';
+import { buildOpenAiTranscriptionEntries, resolveOpenAiUploadMime } from '../lib/buildOpenAiTranscriptionForm';
 
 describe('buildOpenAiTranscriptionEntries', () => {
   it('includes the model and diarized response_format/chunking fields when diarizes is true', () => {
@@ -46,5 +46,38 @@ describe('buildOpenAiTranscriptionEntries', () => {
     const clips = [{ name: 'Kait', dataUrl: 'data:audio/wav;base64,AAA' }];
     const entries = buildOpenAiTranscriptionEntries({ model: 'whisper-1', diarizes: false, clips });
     expect(entries.some(([key]) => key.startsWith('known_speaker'))).toBe(false);
+  });
+});
+
+describe('resolveOpenAiUploadMime', () => {
+  it('corrects a misreported browser MIME for a .m4a file to audio/mp4 (observed failure case)', () => {
+    expect(resolveOpenAiUploadMime('2026-07-23_nail_discussion_faststart.m4a', 'audio/mpeg')).toBe('audio/mp4');
+  });
+
+  it('derives the MIME from the extension when the browser reports none', () => {
+    expect(resolveOpenAiUploadMime('session.m4a', '')).toBe('audio/mp4');
+    expect(resolveOpenAiUploadMime('session.wav', '')).toBe('audio/wav');
+  });
+
+  it('overrides a generic application/octet-stream for a known extension', () => {
+    expect(resolveOpenAiUploadMime('session.mp3', 'application/octet-stream')).toBe('audio/mpeg');
+  });
+
+  it('is case-insensitive on the extension', () => {
+    expect(resolveOpenAiUploadMime('SESSION.M4A', 'audio/mpeg')).toBe('audio/mp4');
+  });
+
+  it('keeps a specific browser MIME for an unknown extension', () => {
+    expect(resolveOpenAiUploadMime('session.opus', 'audio/opus')).toBe('audio/opus');
+  });
+
+  it('falls back to application/octet-stream for an unknown extension with a generic/empty browser MIME', () => {
+    expect(resolveOpenAiUploadMime('session.xyz', '')).toBe('application/octet-stream');
+    expect(resolveOpenAiUploadMime('noextension', 'application/octet-stream')).toBe('application/octet-stream');
+  });
+
+  it('agrees with the extension for the common already-correct cases (no unnecessary rewrap)', () => {
+    expect(resolveOpenAiUploadMime('session.mp3', 'audio/mpeg')).toBe('audio/mpeg');
+    expect(resolveOpenAiUploadMime('session.webm', 'audio/webm')).toBe('audio/webm');
   });
 });

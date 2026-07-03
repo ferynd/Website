@@ -98,7 +98,9 @@ export default function ErrorRecoveryPanel({
           <p className="text-sm text-text-2">{recovery.classified.likelyCause}</p>
           <p className="text-sm text-text-2">{recovery.classified.recommendedAction}</p>
           {recovery.classified.suggestsConversion && (
-            <p className="text-sm text-warning">Try converting the file to MP3, WAV, or AAC and re-uploading.</p>
+            <p className="text-sm text-warning">
+              If it keeps failing, re-export the audio (e.g. to WAV or MP3) to rebuild the container, then re-upload.
+            </p>
           )}
         </div>
       </div>

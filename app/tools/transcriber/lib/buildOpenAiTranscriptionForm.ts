@@ -7,6 +7,45 @@
 // Relative imports here deliberately (see note at top of ../settings.ts) —
 // this module is imported directly by vitest.
 
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: extension -> canonical upload MIME             */
+/* ------------------------------------------------------------ */
+
+/** Canonical multipart content types for the audio extensions OpenAI's
+ * transcription endpoint documents as supported. Superset of
+ * ACCEPTED_FILE_EXTENSIONS in ./constants.ts (OpenAI also takes flac/mp4/
+ * mpga/oga, which other upload paths may hand this route). */
+const OPENAI_EXTENSION_MIME_MAP: Record<string, string> = {
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+  '.m4a': 'audio/mp4',
+  '.mp3': 'audio/mpeg',
+  '.mp4': 'audio/mp4',
+  '.mpeg': 'audio/mpeg',
+  '.mpga': 'audio/mpeg',
+  '.oga': 'audio/ogg',
+  '.ogg': 'audio/ogg',
+  '.wav': 'audio/wav',
+  '.webm': 'audio/webm',
+};
+
+/**
+ * Resolves the multipart content type to send OpenAI for an uploaded audio
+ * file. The file extension always wins over the browser-reported MIME for
+ * known audio extensions: OS/browser MIME registries misreport real files
+ * (observed: a valid .m4a reported as "audio/mpeg"), and forwarding that
+ * mismatched type makes OpenAI 400 the upload as "corrupted or unsupported"
+ * even though .m4a itself is supported. For unknown extensions the browser
+ * MIME is kept as-is (generic/empty falls back to application/octet-stream).
+ */
+export function resolveOpenAiUploadMime(fileName: string, browserMime: string): string {
+  const dotIndex = fileName.lastIndexOf('.');
+  const ext = dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : '';
+  const canonical = OPENAI_EXTENSION_MIME_MAP[ext];
+  if (canonical) return canonical;
+  return browserMime && browserMime !== 'application/octet-stream' ? browserMime : 'application/octet-stream';
+}
+
 export interface OpenAiClipReference {
   name: string;
   /** Base64 data-URL string, e.g. "data:audio/wav;base64,...." — the shape OpenAI's known_speaker_references[] field expects. */

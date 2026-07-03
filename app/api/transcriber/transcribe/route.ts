@@ -4,7 +4,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
 import { modelSupportsDiarization, resolveTranscribeModelId } from '@/app/lib/transcribeModels';
 import { blobToDataUrl } from '@/app/tools/transcriber/lib/base64Audio';
-import { buildOpenAiTranscriptionEntries, type OpenAiClipReference } from '@/app/tools/transcriber/lib/buildOpenAiTranscriptionForm';
+import {
+  buildOpenAiTranscriptionEntries,
+  resolveOpenAiUploadMime,
+  type OpenAiClipReference,
+} from '@/app/tools/transcriber/lib/buildOpenAiTranscriptionForm';
 import {
   FALLBACK_TRANSCRIBE_MODEL,
   MAX_OPENAI_UPLOAD_BYTES,
@@ -52,10 +56,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid upload.' }, { status: 400 });
   }
 
-  const file = form.get('file');
-  if (!(file instanceof File)) {
+  const rawFile = form.get('file');
+  if (!(rawFile instanceof File)) {
     return NextResponse.json({ error: 'No audio file provided.' }, { status: 400 });
   }
+
+  // Never forward the browser-reported MIME as-is: OS MIME registries
+  // misreport real files (a valid .m4a arriving as "audio/mpeg"), and OpenAI
+  // 400s a multipart part whose content type contradicts its container as
+  // "corrupted or unsupported". The extension-derived type wins for known
+  // audio extensions (see resolveOpenAiUploadMime).
+  const uploadMime = resolveOpenAiUploadMime(rawFile.name, rawFile.type);
+  const file = uploadMime === rawFile.type ? rawFile : new File([rawFile], rawFile.name, { type: uploadMime });
 
   // Re-validate the 25 MB OpenAI limit server-side — never trust client-side checks alone.
   if (file.size > MAX_OPENAI_UPLOAD_BYTES) {
