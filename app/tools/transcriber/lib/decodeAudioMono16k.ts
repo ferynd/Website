@@ -23,11 +23,31 @@ export interface DecodedMonoAudio {
   durationSec: number;
 }
 
+/**
+ * Constructs an AudioContext at AUDIO_MONO_SAMPLE_RATE (16 kHz) when
+ * possible, rather than the platform default (commonly 44.1/48 kHz).
+ * `decodeAudioData` resamples the decoded PCM to the CONTEXT's rate, not the
+ * source file's — so for a real-world 1-3 HOUR, 16 kHz mono phone
+ * recording (this tool's primary use case; see lib/preprocessOpenAiAudio.ts
+ * and the OpenAI long-recording preprocessing path), decoding into a
+ * default 48 kHz context would upsample 3x on the way in, turning a ~350 MB
+ * mono float32 buffer into ~1 GB+ before `resampleTo16k` below even runs —
+ * enough to crash the tab. Requesting the target rate up front makes that
+ * resample a no-op instead. Wrapped in try/catch because some
+ * browsers/engines reject a non-hardware sample rate in the constructor
+ * options; falling back to the default-rate context keeps decoding working
+ * there (resampleTo16k still downsamples correctly, just at higher peak
+ * memory for a very long file).
+ */
 function createAudioContext(): AudioContext {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const AudioContextCtor: typeof AudioContext | undefined = (window as any).AudioContext ?? (window as any).webkitAudioContext;
   if (!AudioContextCtor) throw new Error('This browser does not support Web Audio decoding.');
-  return new AudioContextCtor();
+  try {
+    return new AudioContextCtor({ sampleRate: AUDIO_MONO_SAMPLE_RATE });
+  } catch {
+    return new AudioContextCtor();
+  }
 }
 
 /** Averages all channels of an AudioBuffer down to a single mono Float32Array — see lib/processReferenceClip.ts's original for the `Float32Array<ArrayBuffer>` typing rationale. */

@@ -58,6 +58,20 @@ export type DebugEvent =
   | { kind: 'speaker-reference'; at: number; status: SpeakerReferenceStatus }
   | { kind: 'argument-tagging'; at: number; tagSummary: Record<ArgumentTag, number> }
   | {
+      /** Recorded once per run that went through OpenAI's client-side
+       * long-recording preprocessing/chunking path (lib/preprocessOpenAiAudio.ts)
+       * — counts and durations only, mirroring TranscriptionAttempt's
+       * `preprocessReport` field (lib/providers/types.ts). */
+      kind: 'preprocess';
+      at: number;
+      originalDurationSec: number;
+      keptDurationSec: number;
+      silenceRemovedSec: number;
+      speedFactor: number;
+      finalDurationSec: number;
+      chunkCount: number;
+    }
+  | {
       kind: 'error';
       at: number;
       category: string;
@@ -120,12 +134,14 @@ export function buildDebugJson(log: DebugLog): string {
   const cleanupWarnings = log.events.filter(isKind('cleanup-warning'));
   const speakerReferenceEvents = log.events.filter(isKind('speaker-reference'));
   const argumentTaggingEvents = log.events.filter(isKind('argument-tagging'));
+  const preprocessEvents = log.events.filter(isKind('preprocess'));
   const errors = log.events.filter(isKind('error'));
 
   const lastProviderAttempt = providerAttempts[providerAttempts.length - 1] ?? null;
   const lastRawCaptured = rawCaptured[rawCaptured.length - 1] ?? null;
   const lastSpeakerReference = speakerReferenceEvents[speakerReferenceEvents.length - 1] ?? null;
   const lastArgumentTagging = argumentTaggingEvents[argumentTaggingEvents.length - 1] ?? null;
+  const lastPreprocess = preprocessEvents[preprocessEvents.length - 1] ?? null;
 
   const summary = {
     file: log.file,
@@ -144,6 +160,17 @@ export function buildDebugJson(log: DebugLog): string {
     speakerReferenceStatus: lastSpeakerReference?.status ?? SPEAKER_REFERENCE_NOT_CONFIGURED,
     /** Null when this run never tagged (settings.argumentTagging was off, cleanup didn't run, or cleanup produced no output) — see useTranscriberPipeline.ts's finalizeComplete. */
     argumentTagSummary: lastArgumentTagging?.tagSummary ?? null,
+    /** Null unless this run's OpenAI attempt went through the client-side long-recording preprocessing/chunking path. */
+    preprocess: lastPreprocess
+      ? {
+          originalDurationSec: lastPreprocess.originalDurationSec,
+          keptDurationSec: lastPreprocess.keptDurationSec,
+          silenceRemovedSec: lastPreprocess.silenceRemovedSec,
+          speedFactor: lastPreprocess.speedFactor,
+          finalDurationSec: lastPreprocess.finalDurationSec,
+          chunkCount: lastPreprocess.chunkCount,
+        }
+      : null,
     errors: errors.map(({ category, stage, provider, upstreamStatus, upstreamBody }) => ({
       category,
       stage,

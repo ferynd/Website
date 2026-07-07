@@ -13,7 +13,24 @@ interface StepDef {
 /* CONFIGURATION: per-provider step sequences                    */
 /* ------------------------------------------------------------ */
 
-const OPENAI_STEP_KEYS: PipelineStatus[] = ['validating', 'uploading', 'transcribing', 'correcting', 'building', 'complete'];
+/** The OpenAI path also enters 'processing' — but only for a long/large
+ * recording that goes through client-side preprocessing/chunking (silence
+ * removal, optional speed-up) — and unlike Gemini's Files-API activation,
+ * that happens BEFORE any upload (see lib/preprocessOpenAiAudio.ts /
+ * lib/providers/openaiProvider.ts's onPreparing), hence 'processing'
+ * preceding 'uploading' here. A plain small-file run never enters it, so
+ * it's just marked done-by-sequence once the run reaches 'uploading', same
+ * as every other step here (this list is sequence-based, not
+ * event-verified). */
+const OPENAI_STEP_KEYS: PipelineStatus[] = [
+  'validating',
+  'processing',
+  'uploading',
+  'transcribing',
+  'correcting',
+  'building',
+  'complete',
+];
 /** Gemini direct transcription has an extra 'processing' step (Files API
  * upload activation) between uploading and the transcription call(s) that
  * the OpenAI path never enters — see lib/providers/geminiProvider.ts. */
@@ -59,10 +76,19 @@ export default function PipelineStatusView({ state }: { state: TranscriberState 
     if (key === 'correcting' && state.cleanupSkipped) {
       return { key, label: 'Cleanup pass (skipped by request)' };
     }
-    // Fold Gemini's window-loop progress directly into the "Transcribing"
-    // step label ("Transcribing window i of N") rather than a separate line.
-    if (key === 'transcribing' && isGemini && key === state.status && state.chunkProgress) {
-      return { key, label: `Transcribing window ${state.chunkProgress.current} of ${state.chunkProgress.total}` };
+    // OpenAI's 'processing' step is client-side audio preprocessing
+    // (silence removal / speed-up), not Gemini's Files API activation —
+    // distinct label for the same status key.
+    if (key === 'processing' && !isGemini) {
+      return { key, label: 'Optimizing audio…' };
+    }
+    // Fold the chunk-loop progress directly into the "Transcribing" step
+    // label — "Transcribing window i of N" for Gemini's per-window calls,
+    // "Transcribing chunk i of N" for OpenAI's preprocessed chunks — rather
+    // than a separate line.
+    if (key === 'transcribing' && key === state.status && state.chunkProgress) {
+      const unit = isGemini ? 'window' : 'chunk';
+      return { key, label: `Transcribing ${unit} ${state.chunkProgress.current} of ${state.chunkProgress.total}` };
     }
     return { key, label: STEP_LABELS[key] };
   });

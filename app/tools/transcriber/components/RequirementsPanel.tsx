@@ -5,7 +5,14 @@ import { sendEmailVerification, type User } from 'firebase/auth';
 import { Check, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 import Button from '@/components/Button';
 import { ADMIN_EMAIL } from '../../trip-cost/firebaseConfig';
-import { ACCEPTED_FILE_EXTENSIONS, MAX_GEMINI_UPLOAD_BYTES, MAX_OPENAI_UPLOAD_BYTES } from '../lib/constants';
+import {
+  ACCEPTED_FILE_EXTENSIONS,
+  MAX_GEMINI_UPLOAD_BYTES,
+  MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES,
+  MAX_OPENAI_UPLOAD_BYTES,
+  OPENAI_SINGLE_REQUEST_MAX_SECONDS,
+} from '../lib/constants';
+import type { TranscriberSettings } from '../lib/settings';
 
 interface StatusResponse {
   signedIn: boolean;
@@ -17,7 +24,9 @@ interface StatusResponse {
 }
 
 const OPENAI_MAX_MB = (MAX_OPENAI_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
+const OPENAI_PREPROCESSED_MAX_MB = (MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
 const GEMINI_MAX_MB = (MAX_GEMINI_UPLOAD_BYTES / (1024 * 1024)).toFixed(0);
+const OPENAI_SINGLE_REQUEST_MAX_MINUTES = Math.round(OPENAI_SINGLE_REQUEST_MAX_SECONDS / 60);
 
 function Row({ ok, label, detail }: { ok: boolean | null; label: string; detail?: ReactNode }) {
   return (
@@ -45,7 +54,7 @@ function Row({ ok, label, detail }: { ok: boolean | null; label: string; detail?
  * is visible and explained *before* the admin uploads a file, instead of
  * surfacing only as a generic 401 mid-run.
  */
-export default function RequirementsPanel({ user }: { user: User }) {
+export default function RequirementsPanel({ user, settings }: { user: User; settings: TranscriberSettings }) {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -197,8 +206,16 @@ export default function RequirementsPanel({ user }: { user: User }) {
           />
           <Row
             ok={true}
-            label={`Audio file: ${ACCEPTED_FILE_EXTENSIONS.join(', ')} — up to ${OPENAI_MAX_MB} MB (OpenAI) or ${GEMINI_MAX_MB} MB (Gemini)`}
-            detail="Larger files need to be compressed (lower bitrate) or split before uploading."
+            label={
+              settings.openaiPreprocessing
+                ? `Audio file: ${ACCEPTED_FILE_EXTENSIONS.join(', ')} — up to ${OPENAI_PREPROCESSED_MAX_MB} MB (OpenAI, auto-optimized) or ${GEMINI_MAX_MB} MB (Gemini)`
+                : `Audio file: ${ACCEPTED_FILE_EXTENSIONS.join(', ')} — up to ${OPENAI_MAX_MB} MB (OpenAI) or ${GEMINI_MAX_MB} MB (Gemini)`
+            }
+            detail={
+              settings.openaiPreprocessing
+                ? `OpenAI recordings over ~${OPENAI_SINGLE_REQUEST_MAX_MINUTES} minutes are automatically optimized (long silences removed, optionally sped up) and transcribed in chunks with original timestamps preserved — see Settings. Files still over the limit above need to be compressed (lower bitrate) or split first.`
+                : 'Larger files need to be compressed (lower bitrate) or split before uploading.'
+            }
           />
 
           {loadError && (
