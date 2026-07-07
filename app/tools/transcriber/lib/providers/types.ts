@@ -36,6 +36,19 @@ export interface TranscriptionAttempt {
   segments: TranscriptSegment[];
   /** Non-fatal notices (e.g. "diarized model unavailable, used Whisper"). Always present, possibly empty. */
   warnings: string[];
+  /** Set only when this attempt went through OpenAI's client-side
+   * preprocessing/chunking path (lib/preprocessOpenAiAudio.ts) — counts and
+   * durations only, surfaced in the debug log (lib/runDebug.ts's
+   * 'preprocess' event) so a long-recording run's silence-removal/speed-up/
+   * chunk-count decisions are visible without ever holding transcript text. */
+  preprocessReport?: {
+    originalDurationSec: number;
+    keptDurationSec: number;
+    silenceRemovedSec: number;
+    speedFactor: number;
+    finalDurationSec: number;
+    chunkCount: number;
+  };
 }
 
 /**

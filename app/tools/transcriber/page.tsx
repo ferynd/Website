@@ -99,7 +99,7 @@ function TranscriberShell({ user }: { user: User }) {
           </p>
         </header>
 
-        <RequirementsPanel user={user} />
+        <RequirementsPanel user={user} settings={settings} />
 
         <SpeakerProfilesPanel sp={sp} disabled={isRunning} />
 

@@ -7,6 +7,7 @@ import { AVAILABLE_TRANSCRIBE_MODELS } from '@/app/lib/transcribeModels';
 import Button from '@/components/Button';
 import { ADMIN_EMAIL } from '../../trip-cost/firebaseConfig';
 import type { TranscriptionProviderId } from '../lib/providers/types';
+import { OPENAI_SPEED_FACTOR_MAX, OPENAI_SPEED_FACTOR_MIN } from '../lib/constants';
 import {
   CLEANUP_CHUNK_SECONDS_MAX,
   CLEANUP_CHUNK_SECONDS_MIN,
@@ -354,6 +355,32 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               description="Also attach reference clips to Gemini runs as an extra signal. Gemini has no built-in acoustic speaker-reference support — this is prompt-based and unproven, so it's off by default."
               checked={settings.geminiReferenceClips}
               onChange={(checked) => updateSettings({ geminiReferenceClips: checked })}
+            />
+          </Section>
+
+          <Section title="OpenAI long recordings">
+            <ToggleField
+              label="Auto-optimize & chunk long recordings"
+              description="When an OpenAI run's recording is long or large enough to risk gpt-4o-transcribe-diarize's duration cap or OpenAI's 25 MB upload limit, remove long silences, optionally speed up, and split it into chunks client-side, then stitch the results back together with timestamps remapped to the original recording. Off falls back to a single plain upload (may fail on long/large files)."
+              checked={settings.openaiPreprocessing}
+              onChange={(checked) => updateSettings({ openaiPreprocessing: checked })}
+            />
+            <ToggleField
+              label="Remove long silences"
+              description="Trims long stretches of silence out of the recording before chunking, shrinking both duration and upload size. Only applies when auto-optimize is on."
+              checked={settings.openaiSilenceRemoval}
+              disabled={!settings.openaiPreprocessing}
+              onChange={(checked) => updateSettings({ openaiSilenceRemoval: checked })}
+            />
+            <NumberField
+              label="Speed-up factor"
+              description="Speeds up the whole recording before chunking, shrinking both duration and upload size further — but raises the pitch slightly. Set to 1.0 if transcription accuracy suffers."
+              value={settings.openaiSpeedFactor}
+              min={OPENAI_SPEED_FACTOR_MIN}
+              max={OPENAI_SPEED_FACTOR_MAX}
+              step={0.05}
+              disabled={!settings.openaiPreprocessing}
+              onCommit={(value) => updateSettings({ openaiSpeedFactor: value })}
             />
           </Section>
 

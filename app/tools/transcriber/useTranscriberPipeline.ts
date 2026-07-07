@@ -7,7 +7,13 @@ import { buildTagSummary, formatArgumentRelevantTranscript } from './lib/argumen
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
 import type { ClassifiedError } from './lib/classifyError';
 import { classifyTranscriptionError } from './lib/classifyError';
-import { ACCEPTED_FILE_EXTENSIONS, FALLBACK_TRANSCRIBE_MODEL, MAX_GEMINI_UPLOAD_BYTES, MAX_OPENAI_UPLOAD_BYTES } from './lib/constants';
+import {
+  ACCEPTED_FILE_EXTENSIONS,
+  FALLBACK_TRANSCRIBE_MODEL,
+  MAX_GEMINI_UPLOAD_BYTES,
+  MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES,
+  MAX_OPENAI_UPLOAD_BYTES,
+} from './lib/constants';
 import { buildCorrectionWarning } from './lib/correctionSummary';
 import { buildManualCleanupPrompt } from './lib/buildManualCleanupPrompt';
 import { formatCleanTranscript } from './lib/formatCleanTranscript';
@@ -248,8 +254,17 @@ export function useTranscriberPipeline() {
         // lib/constants.ts). Checked against the provider this run starts
         // with — an auto-fallback hop later in the loop below doesn't
         // re-check this, matching the equivalent pre-run check UploadPanel
-        // already shows.
-        const maxUploadBytes = providerId === 'gemini' ? MAX_GEMINI_UPLOAD_BYTES : MAX_OPENAI_UPLOAD_BYTES;
+        // already shows. When settings.openaiPreprocessing is on, an OpenAI
+        // run's cap widens to MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES — the
+        // ORIGINAL file is decoded/chunked entirely client-side and never
+        // itself uploaded to our server in that path (see
+        // lib/providers/openaiProvider.ts).
+        const maxUploadBytes =
+          providerId === 'gemini'
+            ? MAX_GEMINI_UPLOAD_BYTES
+            : settings.openaiPreprocessing
+              ? MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES
+              : MAX_OPENAI_UPLOAD_BYTES;
         if (file.size > maxUploadBytes) {
           const providerLabel = providerId === 'gemini' ? "Gemini's" : "OpenAI's";
           throw new Error(
@@ -354,6 +369,13 @@ export function useTranscriberPipeline() {
                 status: geminiReferences ? 'prompt-inferred+reference-clips (experimental)' : 'prompt-inferred',
               });
             } else {
+              // Duration is only probed when preprocessing is enabled — it's
+              // one more input (alongside file size) to decide whether this
+              // run needs client-side chunking; a probe failure (null) just
+              // means chunking falls back to deciding on size alone, unlike
+              // Gemini where an unknown duration is fatal to the attempt.
+              const openAiDurationSec = settings.openaiPreprocessing ? await probeAudioDuration(file) : null;
+
               attempt = await transcribeWithOpenAi({
                 file,
                 speakerNames,
@@ -366,10 +388,26 @@ export function useTranscriberPipeline() {
                 // already a deliberate single-provider choice.
                 allowWhisperFallback: !isExplicitRetry && settings.autoFallback,
                 clips: wantsOpenAiClips ? speakerClips : undefined,
+                durationSec: openAiDurationSec,
+                preprocess: {
+                  enabled: settings.openaiPreprocessing,
+                  silenceRemoval: settings.openaiSilenceRemoval,
+                  speedFactor: settings.openaiSpeedFactor,
+                },
+                onPreparing: () => setState((s) => ({ ...s, status: 'processing', uploadProgress: null })),
+                onChunkProgress: (current, total) =>
+                  setState((s) => ({ ...s, status: 'transcribing', chunkProgress: { current, total } })),
                 idToken,
                 onUploadProgress: (fraction) =>
                   setState((s) => ({ ...s, uploadProgress: fraction, status: fraction >= 1 ? 'transcribing' : 'uploading' })),
               });
+
+              if (attempt.preprocessReport) {
+                appendDebugEvent(debugLog, {
+                  kind: 'preprocess',
+                  ...attempt.preprocessReport,
+                });
+              }
 
               if (wantsOpenAiClips) {
                 const entries: SpeakerReferenceEntry[] = speakerNames.map((name) => {

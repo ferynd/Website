@@ -22,6 +22,9 @@ import {
   CORRECTION_OVERLAP_SECONDS,
   CORRECTION_TEMPERATURE,
   DEFAULT_GEMINI_TRANSCRIBE_MODEL,
+  OPENAI_SPEED_FACTOR_DEFAULT,
+  OPENAI_SPEED_FACTOR_MAX,
+  OPENAI_SPEED_FACTOR_MIN,
   PRIMARY_TRANSCRIBE_MODEL,
   TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
   TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
@@ -91,6 +94,12 @@ export interface TranscriberSettings {
   cleanupOverlapSeconds: number; // 90
   argumentTagging: boolean; // false
   debugMode: 'on-failure' | 'always'; // 'on-failure'
+  /** Auto-optimize & chunk long/large OpenAI recordings client-side (silence removal + optional speed-up + chunking under both OpenAI caps) instead of the plain single-request upload. Gemini is unaffected. */
+  openaiPreprocessing: boolean; // true
+  /** Remove real silence from the recording before chunking (only meaningful when openaiPreprocessing is on). */
+  openaiSilenceRemoval: boolean; // true
+  /** Playback-rate speed-up applied to the whole recording before chunking — raises pitch slightly; set to 1.0 if accuracy suffers. */
+  openaiSpeedFactor: number; // 1.2
 }
 
 export const DEFAULT_TRANSCRIBER_SETTINGS: TranscriberSettings = {
@@ -116,6 +125,9 @@ export const DEFAULT_TRANSCRIBER_SETTINGS: TranscriberSettings = {
   cleanupOverlapSeconds: CORRECTION_OVERLAP_SECONDS,
   argumentTagging: false,
   debugMode: 'on-failure',
+  openaiPreprocessing: true,
+  openaiSilenceRemoval: true,
+  openaiSpeedFactor: OPENAI_SPEED_FACTOR_DEFAULT,
 };
 
 /** Fresh copy of the defaults — callers get their own `fallbackOrder` array
@@ -245,6 +257,14 @@ export function parseStoredSettings(
     ),
     argumentTagging: parseBoolean(base.argumentTagging, DEFAULT_TRANSCRIBER_SETTINGS.argumentTagging),
     debugMode: resolveDebugMode(base.debugMode),
+    openaiPreprocessing: parseBoolean(base.openaiPreprocessing, DEFAULT_TRANSCRIBER_SETTINGS.openaiPreprocessing),
+    openaiSilenceRemoval: parseBoolean(base.openaiSilenceRemoval, DEFAULT_TRANSCRIBER_SETTINGS.openaiSilenceRemoval),
+    openaiSpeedFactor: clampNumber(
+      base.openaiSpeedFactor,
+      OPENAI_SPEED_FACTOR_MIN,
+      OPENAI_SPEED_FACTOR_MAX,
+      DEFAULT_TRANSCRIBER_SETTINGS.openaiSpeedFactor,
+    ),
   };
 }
 

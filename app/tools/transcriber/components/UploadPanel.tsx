@@ -2,7 +2,13 @@
 
 import { useMemo, useState } from 'react';
 import Button from '@/components/Button';
-import { ACCEPTED_FILE_EXTENSIONS, MAX_GEMINI_UPLOAD_BYTES, MAX_OPENAI_UPLOAD_BYTES } from '../lib/constants';
+import {
+  ACCEPTED_FILE_EXTENSIONS,
+  MAX_GEMINI_UPLOAD_BYTES,
+  MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES,
+  MAX_OPENAI_UPLOAD_BYTES,
+  OPENAI_SINGLE_REQUEST_MAX_SECONDS,
+} from '../lib/constants';
 import type { TranscriberSettings } from '../lib/settings';
 import ProviderPicker from './ProviderPicker';
 
@@ -48,9 +54,16 @@ export default function UploadPanel({
   const skipCleanup = !settings.cleanupEnabled;
   const strictMode = settings.strictCorrection && !skipCleanup;
 
-  const maxUploadBytes = settings.provider === 'gemini' ? MAX_GEMINI_UPLOAD_BYTES : MAX_OPENAI_UPLOAD_BYTES;
+  const openAiUsesPreprocessing = settings.provider !== 'gemini' && settings.openaiPreprocessing;
+  const maxUploadBytes =
+    settings.provider === 'gemini'
+      ? MAX_GEMINI_UPLOAD_BYTES
+      : openAiUsesPreprocessing
+        ? MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES
+        : MAX_OPENAI_UPLOAD_BYTES;
   const maxUploadMb = (maxUploadBytes / (1024 * 1024)).toFixed(0);
   const providerLabel = settings.provider === 'gemini' ? 'Gemini' : 'OpenAI';
+  const openAiSingleRequestMaxMinutes = Math.round(OPENAI_SINGLE_REQUEST_MAX_SECONDS / 60);
 
   const validation = useMemo(() => {
     if (!file) return null;
@@ -125,6 +138,14 @@ export default function UploadPanel({
       </div>
 
       <ProviderPicker settings={settings} onChange={onSettingsChange} disabled={disabled} />
+
+      {openAiUsesPreprocessing && (
+        <p className="text-xs text-text-3">
+          Recordings over ~{openAiSingleRequestMaxMinutes} minutes are automatically optimized (long silences
+          removed, optionally sped up) and transcribed in chunks, then stitched back together with the original
+          recording&apos;s timestamps — configurable in Settings.
+        </p>
+      )}
 
       {skipCleanup && (
         <p className="text-xs text-text-3">

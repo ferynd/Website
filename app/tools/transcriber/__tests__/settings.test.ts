@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { OPENAI_SPEED_FACTOR_MAX, OPENAI_SPEED_FACTOR_MIN } from '../lib/constants';
 import {
   CLEANUP_CHUNK_SECONDS_MAX,
   CLEANUP_CHUNK_SECONDS_MIN,
@@ -51,6 +52,9 @@ describe('parseStoredSettings', () => {
       cleanupOverlapSeconds: 120,
       argumentTagging: true,
       debugMode: 'always' as const,
+      openaiPreprocessing: false,
+      openaiSilenceRemoval: false,
+      openaiSpeedFactor: 1.35,
     };
     const serialized = JSON.stringify(settings);
     expect(parseStoredSettings(serialized)).toEqual(settings);
@@ -99,6 +103,32 @@ describe('parseStoredSettings', () => {
       expect(result.autoFallback).toBe(DEFAULT_TRANSCRIBER_SETTINGS.autoFallback);
       expect(result.suppressionEnabled).toBe(DEFAULT_TRANSCRIBER_SETTINGS.suppressionEnabled);
       expect(result.argumentTagging).toBe(DEFAULT_TRANSCRIBER_SETTINGS.argumentTagging);
+    });
+
+    it('defaults openaiPreprocessing/openaiSilenceRemoval/openaiSpeedFactor to true/true/OPENAI_SPEED_FACTOR_DEFAULT when missing', () => {
+      const result = parseStoredSettings(JSON.stringify({}));
+      expect(result.openaiPreprocessing).toBe(DEFAULT_TRANSCRIBER_SETTINGS.openaiPreprocessing);
+      expect(result.openaiSilenceRemoval).toBe(DEFAULT_TRANSCRIBER_SETTINGS.openaiSilenceRemoval);
+      expect(result.openaiSpeedFactor).toBe(DEFAULT_TRANSCRIBER_SETTINGS.openaiSpeedFactor);
+    });
+
+    it('accepts explicit openaiPreprocessing/openaiSilenceRemoval false values', () => {
+      const raw = JSON.stringify({ openaiPreprocessing: false, openaiSilenceRemoval: false });
+      const result = parseStoredSettings(raw);
+      expect(result.openaiPreprocessing).toBe(false);
+      expect(result.openaiSilenceRemoval).toBe(false);
+    });
+
+    it('falls back non-boolean values on openaiPreprocessing/openaiSilenceRemoval to the default', () => {
+      const raw = JSON.stringify({ openaiPreprocessing: 'nope', openaiSilenceRemoval: 0 });
+      const result = parseStoredSettings(raw);
+      expect(result.openaiPreprocessing).toBe(DEFAULT_TRANSCRIBER_SETTINGS.openaiPreprocessing);
+      expect(result.openaiSilenceRemoval).toBe(DEFAULT_TRANSCRIBER_SETTINGS.openaiSilenceRemoval);
+    });
+
+    it('falls back a non-numeric openaiSpeedFactor to the default', () => {
+      const raw = JSON.stringify({ openaiSpeedFactor: 'fast' });
+      expect(parseStoredSettings(raw).openaiSpeedFactor).toBe(DEFAULT_TRANSCRIBER_SETTINGS.openaiSpeedFactor);
     });
 
     it('falls back non-numeric values on numeric fields to the default', () => {
@@ -163,6 +193,19 @@ describe('parseStoredSettings', () => {
 
     it('accepts an in-range numeric value unchanged', () => {
       expect(parseStoredSettings(JSON.stringify({ mergeGapSeconds: 3 })).mergeGapSeconds).toBe(3);
+    });
+
+    it('clamps openaiSpeedFactor at both bounds', () => {
+      expect(parseStoredSettings(JSON.stringify({ openaiSpeedFactor: 0 })).openaiSpeedFactor).toBe(
+        OPENAI_SPEED_FACTOR_MIN,
+      );
+      expect(parseStoredSettings(JSON.stringify({ openaiSpeedFactor: 99 })).openaiSpeedFactor).toBe(
+        OPENAI_SPEED_FACTOR_MAX,
+      );
+    });
+
+    it('accepts an in-range openaiSpeedFactor unchanged', () => {
+      expect(parseStoredSettings(JSON.stringify({ openaiSpeedFactor: 1.3 })).openaiSpeedFactor).toBe(1.3);
     });
   });
 
