@@ -101,6 +101,25 @@ describe('buildKeptTimeline', () => {
     expect(timeline.processedDurationSec).toBeCloseTo(4, 10);
     expect(timeline.mapProcessedToOriginal(1.5)).toBeCloseTo(3.5, 10);
   });
+
+  it('resolves a seam-exact time by bias: start -> after the removed gap, end -> before it', () => {
+    const timeline = buildKeptTimeline(intervals);
+    // Processed second 2 is exactly the seam between interval 0 (orig end 2)
+    // and interval 1 (orig start 5) — 3 removed seconds apart in original time.
+    expect(timeline.mapProcessedToOriginal(2, 'start')).toBeCloseTo(5, 10);
+    expect(timeline.mapProcessedToOriginal(2, 'end')).toBeCloseTo(2, 10);
+    // Default bias is 'start'.
+    expect(timeline.mapProcessedToOriginal(2)).toBeCloseTo(5, 10);
+    // A seam-exact time that arrived through a speed-factor round-trip
+    // (divide then multiply) still counts as on the seam.
+    const speedFactor = 1.2;
+    expect(timeline.mapProcessedToOriginal((2 / speedFactor) * speedFactor, 'start')).toBeCloseTo(5, 10);
+  });
+
+  it('never applies start bias at the very end of the timeline (no next interval)', () => {
+    const timeline = buildKeptTimeline(intervals);
+    expect(timeline.mapProcessedToOriginal(timeline.processedDurationSec, 'start')).toBeCloseTo(10.5, 10);
+  });
 });
 
 describe('planChunks', () => {
@@ -211,6 +230,31 @@ describe('createChunkTimeMapper', () => {
     const chunks = [{ finalStart: 0, finalEnd: 5 }];
     const mapTime = createChunkTimeMapper(chunks, timeline, 1);
     expect(mapTime(0, -10)).toBeCloseTo(0, 10);
+  });
+
+  it('maps a later chunk cut at a silence seam so its first segment starts AFTER the removed gap', () => {
+    // Kept intervals [0,4] and [9,15]: planChunks prefers the interior
+    // boundary (processed second 4), so chunk 1 starts exactly on the seam.
+    const timeline = buildKeptTimeline([
+      { start: 0, end: 4 },
+      { start: 9, end: 15 },
+    ]);
+    const speedFactor = 1.2;
+    const chunks = planChunks(timeline, {
+      speedFactor,
+      maxChunkSeconds: 5,
+      maxChunkBytes: 0,
+      bytesPerSecond: 0,
+    });
+    expect(chunks[1].finalStart).toBeCloseTo(4 / speedFactor, 10);
+
+    const mapTime = createChunkTimeMapper(chunks, timeline, speedFactor);
+    // Chunk 1's first segment (chunk-local start 0) begins the speech AFTER
+    // the removed silence: original 9, not the pre-gap 4.
+    expect(mapTime(1, 0, 'start')).toBeCloseTo(9, 6);
+    // Chunk 0's last segment END on the same seam belongs to the speech
+    // BEFORE the gap: original 4.
+    expect(mapTime(0, chunks[0].finalEnd - chunks[0].finalStart, 'end')).toBeCloseTo(4, 6);
   });
 });
 

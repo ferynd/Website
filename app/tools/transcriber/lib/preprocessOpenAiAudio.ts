@@ -45,6 +45,7 @@ import {
   detectKeptIntervals,
   planChunks,
   type KeptInterval,
+  type TimeBias,
 } from './preprocessAudioPlan';
 
 export interface PreprocessOpenAiAudioOptions {
@@ -64,8 +65,8 @@ export interface PreprocessReport {
 
 export interface PreprocessedOpenAiAudio {
   chunkFiles: File[];
-  /** Maps (chunkIndex, secondsIntoThatChunk) back to ORIGINAL-recording seconds. */
-  mapTime: (chunkIndex: number, tSec: number) => number;
+  /** Maps (chunkIndex, secondsIntoThatChunk) back to ORIGINAL-recording seconds. `bias` resolves seam-exact times — see preprocessAudioPlan.ts's TimeBias. */
+  mapTime: (chunkIndex: number, tSec: number, bias?: TimeBias) => number;
   report: PreprocessReport;
 }
 

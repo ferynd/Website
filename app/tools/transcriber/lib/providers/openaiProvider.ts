@@ -117,6 +117,13 @@ function buildAttemptError(params: {
   return { classified, httpStatus, upstreamBody: bodyText, provider, model };
 }
 
+/** Surfaced when a multi-chunk diarized run had no speaker reference clips
+ * attached — per-chunk anonymous-label mapping can swap speaker names across
+ * chunk boundaries without an acoustic anchor (see the note at the combine
+ * step below). */
+export const CHUNKED_DIARIZATION_NO_CLIPS_WARNING =
+  'This recording was transcribed in multiple chunks without speaker reference clips — speaker names may swap between chunks. Add reference clips in Speaker Profiles to anchor speaker identity, and double-check labels around long pauses.';
+
 /** Prefixes an already-classified attempt error's diagnostic body with a
  * `Chunk i/n:` marker, without re-classifying it (the underlying
  * category/likelyCause/recommendedAction/retryProviders are unaffected —
@@ -265,17 +272,27 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
       speedFactor: preprocess.speedFactor,
     });
   } catch (err) {
-    throw buildAttemptError({
+    // NOT routed through classifyTranscriptionError: a null-httpStatus
+    // failure classifies as a network interruption ("check your connection"),
+    // which is wrong for a local decode failure and would bury the real
+    // recovery options. Built directly instead — same pattern as
+    // useTranscriberPipeline.ts's buildDurationUnknownError.
+    const detail = err instanceof Error && err.message ? ` (${err.message})` : '';
+    const attemptError: TranscriptionAttemptError = {
+      classified: {
+        category: 'unknown',
+        likelyCause: `This browser could not decode and prepare the audio for chunked transcription${detail}.`,
+        recommendedAction:
+          'Try Gemini instead (recordings up to 20 minutes upload directly with no browser decoding), or re-export the audio (e.g. to WAV or MP3) and retry.',
+        retryProviders: ['gemini'],
+        suggestsConversion: false,
+      },
       httpStatus: null,
-      bodyText:
-        err instanceof Error
-          ? `This browser could not decode/prepare the audio for chunked transcription: ${err.message}`
-          : 'This browser could not decode/prepare the audio for chunked transcription.',
+      upstreamBody: err instanceof Error ? err.message : '',
       provider: guessProviderId(model),
       model,
-      stage: 'upload',
-      file,
-    });
+    };
+    throw attemptError;
   }
 
   // Speed up speaker reference clips by the same factor so pitch-shifted
@@ -325,5 +342,16 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
   }
 
   const combined = combineChunkResponses(perChunk, preprocessed.mapTime);
+  // Diarized chunks are mapped to speaker names independently per request
+  // (lib/mapSpeakerLabels.ts): with reference clips attached, OpenAI returns
+  // the actual known-speaker names, anchoring identity acoustically across
+  // chunks — but without clips, the anonymous A/B labels get first-appearance
+  // positional mapping per chunk, so a later chunk that opens with the other
+  // speaker can silently swap names at the boundary. No API mechanism exists
+  // to anchor identity without clips (the Gemini cleanup pass partially
+  // corrects flips from context), so surface it as a run warning instead.
+  if (combined.mode === 'diarized' && total > 1 && effectiveClips.length === 0) {
+    combined.warnings.push(CHUNKED_DIARIZATION_NO_CLIPS_WARNING);
+  }
   return finalizeAttempt(combined, model, preprocessed.report);
 }

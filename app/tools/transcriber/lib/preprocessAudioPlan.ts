@@ -42,6 +42,14 @@ const MIN_MEANINGFUL_CHUNK_FRACTION = 0.1;
 /** Tiny epsilon for floating-point-safe boundary/loop comparisons. */
 const EPSILON = 1e-9;
 
+/** Seam tolerance for mapProcessedToOriginal's bias handling: a chunk
+ * boundary in FINAL time is `offsets[k] / speedFactor`, and the mapper
+ * multiplies back by speedFactor, so the float round-trip can land within
+ * ~1e-12 of the exact seam. Anything this close counts as ON the seam —
+ * well below segment-timestamp resolution (~10 ms), so it can never
+ * misclassify a genuinely interior time. */
+const SEAM_EPSILON = 1e-6;
+
 export interface KeptInterval {
   /** ORIGINAL-recording-time seconds. */
   start: number;
@@ -174,6 +182,18 @@ export function detectKeptIntervals(
   return kept.length > 0 ? kept : [{ start: 0, end: duration }];
 }
 
+/**
+ * Which side of a removed-silence seam an ambiguous timestamp belongs to. A
+ * processed time landing exactly on the seam between two kept intervals is
+ * both the earlier interval's end and the later one's start — two ORIGINAL
+ * times that differ by the removed silence. A segment START on the seam
+ * belongs to the speech AFTER the gap ('start'); a segment END on the seam
+ * belongs to the speech BEFORE it ('end'). This matters in practice because
+ * planChunks deliberately cuts at these seams, so a later chunk's first
+ * segment (chunk-local start 0) lands exactly on one.
+ */
+export type TimeBias = 'start' | 'end';
+
 export interface KeptTimeline {
   /** The kept intervals, in ORIGINAL-time seconds, as passed in. */
   intervals: KeptInterval[];
@@ -181,8 +201,8 @@ export interface KeptTimeline {
   offsets: number[];
   /** Total duration of the concatenated kept audio, in processed-time seconds. */
   processedDurationSec: number;
-  /** Maps a processed-time (post-silence-removal, pre-speed-up) second back to the ORIGINAL recording's time, clamped to bounds. */
-  mapProcessedToOriginal(pSec: number): number;
+  /** Maps a processed-time (post-silence-removal, pre-speed-up) second back to the ORIGINAL recording's time, clamped to bounds. `bias` (default 'start') resolves times landing exactly on a seam between kept intervals — see TimeBias. */
+  mapProcessedToOriginal(pSec: number, bias?: TimeBias): number;
 }
 
 /**
@@ -200,7 +220,7 @@ export function buildKeptTimeline(intervals: KeptInterval[]): KeptTimeline {
   }
   const processedDurationSec = cursor;
 
-  function mapProcessedToOriginal(pSec: number): number {
+  function mapProcessedToOriginal(pSec: number, bias: TimeBias = 'start'): number {
     if (intervals.length === 0) return 0;
     const clamped = Math.max(0, Math.min(processedDurationSec, pSec));
 
@@ -209,6 +229,10 @@ export function buildKeptTimeline(intervals: KeptInterval[]): KeptTimeline {
       const length = Math.max(0, intervals[idx].end - intervals[idx].start);
       const end = start + length;
       const isLast = idx === intervals.length - 1;
+      // Exactly on the seam with the next interval: with 'start' bias the
+      // time belongs to the speech AFTER the removed gap, so fall through to
+      // the next interval instead of returning this one's end (see TimeBias).
+      if (bias === 'start' && !isLast && Math.abs(clamped - end) <= SEAM_EPSILON) continue;
       if (clamped <= end + EPSILON || isLast) {
         const within = Math.max(0, Math.min(length, clamped - start));
         return intervals[idx].start + within;
@@ -300,19 +324,21 @@ export function planChunks(timeline: KeptTimeline, opts: PlanChunksOptions): Pla
  * silence-removal concatenation (back to original time). Both inputs are
  * clamped: an out-of-range chunkIndex clamps to the nearest valid chunk, a
  * negative tSec clamps to 0 (the upper bound is left to
- * mapProcessedToOriginal's own clamping).
+ * mapProcessedToOriginal's own clamping). `bias` (default 'start') resolves
+ * times landing exactly on a removed-silence seam — see TimeBias; pass 'end'
+ * when mapping a segment's end time.
  */
 export function createChunkTimeMapper(
   chunks: PlannedChunk[],
   timeline: KeptTimeline,
   speedFactor: number,
-): (chunkIndex: number, tSec: number) => number {
-  return (chunkIndex: number, tSec: number) => {
+): (chunkIndex: number, tSec: number, bias?: TimeBias) => number {
+  return (chunkIndex: number, tSec: number, bias: TimeBias = 'start') => {
     if (chunks.length === 0) return 0;
     const idx = Math.max(0, Math.min(chunks.length - 1, Math.trunc(chunkIndex)));
     const chunk = chunks[idx];
     const t = Math.max(0, tSec);
-    return timeline.mapProcessedToOriginal((chunk.finalStart + t) * speedFactor);
+    return timeline.mapProcessedToOriginal((chunk.finalStart + t) * speedFactor, bias);
   };
 }
 
@@ -347,7 +373,7 @@ export const MIXED_CHUNK_MODE_WARNING =
  */
 export function combineChunkResponses(
   perChunk: ChunkTranscriptionResult[],
-  mapTime: (chunkIndex: number, sec: number) => number,
+  mapTime: (chunkIndex: number, sec: number, bias?: TimeBias) => number,
 ): CombinedTranscriptionResult {
   const segments: TranscriptSegment[] = [];
   const warnings: string[] = [];
@@ -366,8 +392,11 @@ export function combineChunkResponses(
     }
 
     for (const seg of chunk.segments) {
-      const start = mapTime(i, seg.start);
-      const end = Math.max(start, mapTime(i, seg.end));
+      // Explicit biases so a timestamp landing exactly on a removed-silence
+      // seam (a chunk's first segment start, a chunk's last segment end)
+      // resolves to the correct side of the gap in original time.
+      const start = mapTime(i, seg.start, 'start');
+      const end = Math.max(start, mapTime(i, seg.end, 'end'));
       segments.push({ ...seg, start, end });
     }
   });
