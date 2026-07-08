@@ -219,6 +219,18 @@ service cloud.firestore {
     }
 
     /* ==================================================================================
+       RECIPE STANDARDIZER TOOL
+       ================================================================================== */
+
+    // Recipes are private per-user documents:
+    //   artifacts/recipe-standardizer/users/{uid}/recipes/{recipeId}
+    // The legacy CalorieTracker wildcard above already permits this path, but this
+    // explicit block keeps the tool working if that legacy rule is ever tightened.
+    match /artifacts/recipe-standardizer/users/{userId}/{document=**} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    /* ==================================================================================
        SHOW TRACKER
        ================================================================================== */
 
