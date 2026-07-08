@@ -116,6 +116,12 @@ _“Estimate CIFI research payout timing with logged rate history and interactiv
 This React tool lives under **app/tools/cifi-research-estimator/**. It stores configuration and local history in browser `localStorage` using the namespaced `website:tools:cifi-research-estimator:v1:*` keys, fits linear/exponential/logarithmic growth models client-side, and renders interactive SVG charts without a charting dependency.
 
 
+### Recipe Standardizer (Firebase-backed)
+
+_"Paste a ChatGPT-converted recipe as strict JSON, then prep, cook, scale, and save it in a workflow-first format."_
+
+This React tool lives under **app/tools/recipe-standardizer/**. The site makes no AI API calls: it provides a copyable ChatGPT conversion prompt, the user converts a recipe to strict JSON in ChatGPT manually, and pastes the JSON back. The importer validates strictly (exact-path errors for missing fields and broken ingredient references), then renders the recipe as workflow accordion sections (Overview / Ingredients / Prep / Cook / Scaling / JSON) with a sticky jump bar, gram-first quantities with secondary equivalents, and non-destructive scaling (servings / multiplier / target weight / portions). The Ingredients panel is the single hub for ingredient views, with a segmented mode control: Recipe Workflow (grouped by section, with editing and nutrition matching), Shopping / Pantry (consolidated checklist in workflow order), and Grocery Category (the same checklist by store section). Renaming an ingredient updates all structured displays and opens a review of affected step text so instructions never silently contradict the substitution. Recipes save per-user to `artifacts/recipe-standardizer/users/{uid}/recipes`, and edits to a saved recipe always prompt update / save-as-new / cancel. Ingredients carry a `nutritionLink` hook that name-matches against the Calorie Tracker's saved food items for future nutrition integration.
+
 ### Conflict Tracker (Firebase-backed)
 
 _"A private place to reflect after conflict, preserve what happened, track what each person is owning, and notice patterns over time."_

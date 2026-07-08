@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Nav from '@/components/Nav';
-import { ArrowRight, Calculator, HeartPulse, BarChart, Plane, Dices, Tv, HeartHandshake, LineChart, Mic } from 'lucide-react';
+import { ArrowRight, Calculator, CookingPot, HeartPulse, BarChart, Plane, Dices, Tv, HeartHandshake, LineChart, Mic } from 'lucide-react';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: icon size and list of available tools          */
@@ -51,6 +51,12 @@ const toolList = [
     description: 'Split expenses and calculate balances for a group trip.',
     href: '/tools/trip-cost',
     icon: <Calculator size={cardIconSize} className="text-accent" />,
+  },
+  {
+    name: 'Recipe Standardizer',
+    description: 'Paste a ChatGPT-converted recipe as strict JSON, then prep, cook, scale, and save it in a workflow-first format.',
+    href: '/tools/recipe-standardizer',
+    icon: <CookingPot size={cardIconSize} className="text-accent" />,
   },
   {
     name: 'Nutrition Tracker',

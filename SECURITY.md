@@ -31,6 +31,12 @@ Trip Cost data lives under `artifacts/trip-cost/**` (see **ARCHITECTURE.md**). C
 - **Linked data**: `costTrackerId` maintains the 1:1 link to Trip Cost trips. All participant mutations must keep the two tools synchronized.
 - **Uploads**: Images land in Storage under `artifacts/trip-planner/uploads/{plannerId}/**` and should be compressed client-side (see `PlanContext` image helpers) before upload.
 
+### Recipe Standardizer
+
+- Firestore path: `artifacts/recipe-standardizer/users/{uid}/recipes/{recipeId}` — recipes are private to the authenticated user (owner-only read/write; see `firestore.rules`).
+- Reads the same user's CalorieTracker saved foods (`artifacts/default-app-id/users/{uid}/foodItems`) for optional nutrition-link matching; it never reads another user's data and never writes to CalorieTracker paths.
+- No AI/API calls: recipe conversion happens in ChatGPT outside the site; only user-pasted JSON is processed client-side.
+
 ## Firestore Security Rules (authoritative)
 The canonical Firestore rules are maintained in `firestore.rules` at the repository root.
 
