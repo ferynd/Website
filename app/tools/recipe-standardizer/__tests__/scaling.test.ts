@@ -75,6 +75,16 @@ describe('scaleEquivalentText', () => {
     expect(scaleEquivalentText('a pinch', 2)).toBeNull();
     expect(scaleEquivalentText('', 2)).toBeNull();
   });
+
+  it('refuses to scale ranges instead of corrupting them', () => {
+    expect(scaleEquivalentText('1-2 cloves', 2)).toBeNull();
+    expect(scaleEquivalentText('1–2 cloves', 2)).toBeNull();
+    expect(scaleEquivalentText('1 to 2 tbsp', 2)).toBeNull();
+    expect(scaleEquivalentText('1 or 2 eggs', 2)).toBeNull();
+    expect(scaleEquivalentText('1/2-1 cup', 2)).toBeNull();
+    // "or"/"to" inside a following word is not a range.
+    expect(scaleEquivalentText('2 oranges', 2)).toBe('4 oranges');
+  });
 });
 
 describe('applyScaleToRecipe', () => {

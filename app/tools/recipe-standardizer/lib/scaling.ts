@@ -146,11 +146,16 @@ const formatAmount = (value: number): string => {
   return String(rounded);
 };
 
+// A range continues right after the leading amount: "1-2 cloves", "1 to 2 tbsp",
+// "1 or 2 eggs". Scaling only the first number would corrupt the instruction.
+const RANGE_CONTINUATION = /^(?:[-–—]|to\b|or\b)\s*[\d¼½¾⅓⅔⅛⅜⅝⅞]/i;
+
 /**
  * Best-effort scaling of a free-text equivalent like "2 cups" or "1 1/2 tbsp".
  * Returns the scaled string when the text starts with a parseable amount,
  * otherwise null — callers should then show the baseline text labeled as
- * unscaled rather than displaying a wrong number.
+ * unscaled rather than displaying a wrong number. Ranges ("1-2 cloves") are
+ * deliberately not scaled.
  */
 export const scaleEquivalentText = (equivalent: string, factor: number): string | null => {
   const trimmed = equivalent.trim();
@@ -160,8 +165,9 @@ export const scaleEquivalentText = (equivalent: string, factor: number): string 
   if (!match) return null;
   const amount = parseLeadingAmount(match[1]);
   if (amount === null) return null;
-  const rest = match[2] ?? '';
-  return `${formatAmount(amount * factor)}${rest ? ` ${rest.trim()}` : ''}`;
+  const rest = (match[2] ?? '').trim();
+  if (RANGE_CONTINUATION.test(rest)) return null;
+  return `${formatAmount(amount * factor)}${rest ? ` ${rest}` : ''}`;
 };
 
 /** Bake a scale factor into a recipe, producing a new baseline. */

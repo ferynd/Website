@@ -52,7 +52,9 @@ export default function ConsolidatedList({ recipe, factor, order, checked, onTog
                       {item.totalQuantityG !== null ? formatGrams(item.totalQuantityG) : ''}
                       {item.hasUnweighedPart ? (item.totalQuantityG !== null ? ' + unweighed part' : 'no weight') : ''}
                     </span>
-                    {item.equivalent && <span className="text-text-3">({item.equivalent})</span>}
+                    {item.equivalent && (
+                      <span className="text-text-3">({item.equivalent}{item.equivalentUnscaled ? ' at 1×' : ''})</span>
+                    )}
                     {item.optional && <span className="text-xs italic text-text-3">optional</span>}
                     {item.ingredientIds.length > 1 && (
                       <span className="text-xs text-text-3">used in {item.sectionIds.length} sections</span>

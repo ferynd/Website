@@ -61,6 +61,26 @@ describe('parseRecipeJson', () => {
     expect(result.errors.some((e) => e.includes('ingredients[1].id'))).toBe(true);
   });
 
+  it('identifies duplicate step ids within a list', () => {
+    const raw = validRecipeJson();
+    raw.prepSteps[1].id = raw.prepSteps[0].id;
+    const result = parseObject(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.includes('prepSteps[1].id') && e.includes('duplicate'))).toBe(true);
+  });
+
+  it('normalizes a primarySectionId missing from sectionIds into sectionIds, with a warning', () => {
+    const raw = validRecipeJson();
+    // Primary points at sec-dry but sectionIds only lists sec-dough.
+    raw.ingredients[2].primarySectionId = 'sec-dry';
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recipe.ingredients[2].sectionIds).toContain('sec-dry');
+    expect(result.warnings.some((w) => w.includes('ingredients[2].primarySectionId'))).toBe(true);
+  });
+
   it('identifies duplicate section ids', () => {
     const raw = validRecipeJson();
     raw.sections[1].id = raw.sections[0].id;

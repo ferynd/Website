@@ -12,7 +12,9 @@ import { parseRecipeJson } from '../lib/schema';
 import type { Recipe } from '../lib/types';
 
 interface ImportPanelProps {
-  onImport: (recipe: Recipe, warnings: string[]) => void;
+  /** Returns false when the import was declined (e.g. the user kept an
+   *  unsaved recipe) — the pasted JSON is preserved in that case. */
+  onImport: (recipe: Recipe, warnings: string[]) => boolean;
 }
 
 /**
@@ -42,8 +44,11 @@ export default function ImportPanel({ onImport }: ImportPanelProps) {
       return;
     }
     setErrors([]);
-    setRawJson('');
-    onImport(result.recipe, result.warnings);
+    // Clear the paste box only once the workspace accepts the import — a
+    // declined discard-confirmation must not cost the user their paste.
+    if (onImport(result.recipe, result.warnings)) {
+      setRawJson('');
+    }
   };
 
   return (

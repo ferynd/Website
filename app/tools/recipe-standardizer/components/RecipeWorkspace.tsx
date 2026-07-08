@@ -95,6 +95,12 @@ export default function RecipeWorkspace() {
     overview: true, ingredients: true, prep: true, cook: true, scaling: false, json: false,
   });
   const panelRefs = useRef<Partial<Record<PanelKey, HTMLElement | null>>>({});
+  // Latest committed draft, for async flows that must not act on a stale closure.
+  const draftRef = useRef<Recipe | null>(null);
+  draftRef.current = draft;
+  // Bumped whenever a different recipe (or none) becomes current, so an
+  // in-flight nutrition match can detect that its result no longer applies.
+  const recipeSessionRef = useRef(0);
 
   const dirty = useMemo(
     () => Boolean(draft && (!currentId || JSON.stringify(draft) !== JSON.stringify(baseline))),
@@ -112,6 +118,7 @@ export default function RecipeWorkspace() {
     !dirty || window.confirm('You have unsaved changes on the current recipe. Discard them?');
 
   const openRecipe = (recipe: Recipe, id: string | null, importWarnings: string[]) => {
+    recipeSessionRef.current += 1;
     setBaseline(recipe);
     setDraft(recipe);
     setCurrentId(id);
@@ -122,24 +129,32 @@ export default function RecipeWorkspace() {
     setLibraryOpen(false);
   };
 
-  const handleImport = async (recipe: Recipe, importWarnings: string[]) => {
-    if (!confirmDiscard()) return;
+  /** Returns false when the user keeps their unsaved recipe (so the import
+   *  panel can preserve the pasted JSON for another attempt). */
+  const handleImport = (recipe: Recipe, importWarnings: string[]): boolean => {
+    if (!confirmDiscard()) return false;
     openRecipe(recipe, null, importWarnings);
     // Best-effort auto-match against Nutrition Tracker foods on import; the
     // recipe stays fully usable when this fails (offline, no foods, etc.).
-    // Functional updates so a quick user edit is never clobbered by the
-    // async match result.
-    try {
-      const foods = await loadFoodItems();
-      if (foods.length > 0) {
-        const { summary } = applyNutritionMatches(recipe, foods);
-        setBaseline((prev) => (prev ? applyNutritionMatches(prev, foods).recipe : prev));
-        setDraft((prev) => (prev ? applyNutritionMatches(prev, foods).recipe : prev));
+    // Only the draft is updated — never the baseline — so matches found after
+    // a quick save still read as unsaved changes instead of silently looking
+    // clean while Firestore holds the unmatched version. The session token +
+    // draftRef keep a slow result from clobbering a newer recipe or edit.
+    const session = recipeSessionRef.current;
+    void (async () => {
+      try {
+        const foods = await loadFoodItems();
+        if (foods.length === 0 || session !== recipeSessionRef.current) return;
+        const current = draftRef.current;
+        if (!current) return;
+        const { recipe: matched, summary } = applyNutritionMatches(current, foods);
+        setDraft(matched);
         setStatus(`Nutrition match: ${summary.linked} linked, ${summary.likely} likely, ${summary.unlinked} unlinked (see Ingredients).`);
+      } catch {
+        /* matching is optional — never block import */
       }
-    } catch {
-      /* matching is optional — never block import */
-    }
+    })();
+    return true;
   };
 
   const handleLoad = async (recipeId: string) => {
@@ -163,6 +178,7 @@ export default function RecipeWorkspace() {
 
   const handleClose = () => {
     if (!confirmDiscard()) return;
+    recipeSessionRef.current += 1;
     setBaseline(null);
     setDraft(null);
     setCurrentId(null);
@@ -269,8 +285,16 @@ export default function RecipeWorkspace() {
 
   const runNutritionMatch = async (): Promise<MatchSummary> => {
     if (!draft) throw new Error('No recipe open.');
+    const session = recipeSessionRef.current;
     const foods = await loadFoodItems();
-    const { recipe: matched, summary } = applyNutritionMatches(draft, foods);
+    // Apply against the *latest* draft, not the click-time closure — and bail
+    // out entirely if a different recipe was opened while the read ran.
+    if (session !== recipeSessionRef.current) {
+      throw new Error('The open recipe changed while matching — run it again.');
+    }
+    const current = draftRef.current;
+    if (!current) throw new Error('No recipe open.');
+    const { recipe: matched, summary } = applyNutritionMatches(current, foods);
     setDraft(matched);
     return summary;
   };

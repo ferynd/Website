@@ -35,6 +35,19 @@ describe('buildShoppingItems', () => {
     expect(butter?.equivalent).toBeNull();
   });
 
+  it('flags a baseline-text equivalent as unscaled at a non-1 factor', () => {
+    const base = recipe();
+    base.ingredients[0].equivalent = 'a generous handful';
+    const items = buildShoppingItems(base, 2);
+    const chocolate = items.find((i) => i.displayName === 'dark chocolate');
+    expect(chocolate?.equivalent).toBe('a generous handful');
+    expect(chocolate?.equivalentUnscaled).toBe(true);
+    // Parseable equivalents scale and are not flagged.
+    const flour = items.find((i) => i.displayName === 'all-purpose flour');
+    expect(flour?.equivalent).toBe('5 cups');
+    expect(flour?.equivalentUnscaled).toBe(false);
+  });
+
   it('flags partially unweighed consolidations', () => {
     const base = recipe();
     base.ingredients.push({ ...base.ingredients[2], id: 'ing-butter-2', quantityG: null });

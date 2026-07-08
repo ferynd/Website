@@ -26,6 +26,8 @@ export interface ShoppingItem {
   hasUnweighedPart: boolean;
   /** Scaled equivalent text, only when the line came from a single entry. */
   equivalent: string | null;
+  /** True when `equivalent` could not be scaled and shows the baseline (1×) text. */
+  equivalentUnscaled: boolean;
   groceryCategory: string;
   optional: boolean;
   sectionIds: string[];
@@ -54,6 +56,7 @@ export const buildShoppingItems = (recipe: Recipe, factor: number): ShoppingItem
     const scaledG = scaleQuantityG(ing.quantityG, factor);
     const existing = byKey.get(key);
     if (!existing) {
+      const scaledEquivalent = ing.equivalent ? scaleEquivalentText(ing.equivalent, factor) : null;
       byKey.set(key, {
         entries: [ing],
         item: {
@@ -61,7 +64,9 @@ export const buildShoppingItems = (recipe: Recipe, factor: number): ShoppingItem
           displayName: ing.displayName,
           totalQuantityG: scaledG,
           hasUnweighedPart: scaledG === null,
-          equivalent: ing.equivalent ? scaleEquivalentText(ing.equivalent, factor) ?? ing.equivalent : null,
+          equivalent: ing.equivalent ? scaledEquivalent ?? ing.equivalent : null,
+          // Baseline-text fallback must be labeled, same as the workflow view.
+          equivalentUnscaled: Boolean(ing.equivalent && scaledEquivalent === null && factor !== 1),
           groceryCategory: ing.groceryCategory,
           optional: ing.optional,
           sectionIds: [...ing.sectionIds],
@@ -79,6 +84,7 @@ export const buildShoppingItems = (recipe: Recipe, factor: number): ShoppingItem
     }
     // Consolidated lines drop the single-entry equivalent — summed free text is unreliable.
     item.equivalent = null;
+    item.equivalentUnscaled = false;
     item.optional = item.optional && ing.optional;
     if (!item.groceryCategory && ing.groceryCategory) item.groceryCategory = ing.groceryCategory;
     ing.sectionIds.forEach((sid) => {

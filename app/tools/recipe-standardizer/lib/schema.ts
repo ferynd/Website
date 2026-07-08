@@ -198,6 +198,12 @@ const readIngredients = (
     if (!primarySectionId && sectionRefs.length > 0) {
       primarySectionId = sectionRefs[0];
     }
+    // A valid primary section missing from sectionIds would make the workflow
+    // grouping and the section cards contradict each other — normalize it in.
+    if (primarySectionId && !sectionRefs.includes(primarySectionId)) {
+      sectionRefs.push(primarySectionId);
+      warnings.push(`${path}.primarySectionId "${primarySectionId}" was not listed in sectionIds — added it.`);
+    }
 
     ingredients.push({
       id,
@@ -234,12 +240,21 @@ const readSteps = (
     return [];
   }
   const steps: RecipeStep[] = [];
+  const seenIds = new Set<string>();
   raw.forEach((entry, i) => {
     const path = `${field}[${i}]`;
     if (!isObject(entry)) {
       errors.push(`${path} must be an object.`);
       return;
     }
+    // Step ids must be unique within the list: the rename review flow and
+    // React keys address steps by (list, id), so duplicates would collide.
+    const id = asString(entry.id) || `${field}-${i + 1}`;
+    if (seenIds.has(id)) {
+      errors.push(`${path}.id "${id}" is a duplicate ${field} id — every step needs a unique id.`);
+      return;
+    }
+    seenIds.add(id);
     const text = asString(entry.text);
     if (!text) errors.push(`${path}.text is missing.`);
     const sectionId = asString(entry.sectionId);
@@ -257,7 +272,7 @@ const readSteps = (
     let order = readNullableNumber(entry.order, `${path}.order`, errors);
     if (order === null) order = i + 1;
     steps.push({
-      id: asString(entry.id) || `${field}-${i + 1}`,
+      id,
       sectionId,
       text,
       ingredientRefs,
