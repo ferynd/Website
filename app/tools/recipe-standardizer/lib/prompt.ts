@@ -8,8 +8,10 @@
  * pastes the strict-JSON result back into the Import panel.
  *
  * Keep the JSON shape here in sync with lib/types.ts and lib/schema.ts.
- * (`shoppingList` is kept in the prompt for output completeness, but the
- * importer ignores it and always derives the list from ingredients.)
+ * There is deliberately no `shoppingList` in the shape — the tool always
+ * derives the shopping/grocery views from ingredients, so the prompt spends
+ * the model's effort on accurate section/grocery/reference metadata instead.
+ * (The importer still tolerates and ignores a pasted `shoppingList`.)
  */
 export const CHATGPT_CONVERSION_PROMPT = `Convert the recipe I provide into strict JSON for my Recipe Standardizer tool.
 
@@ -29,6 +31,14 @@ General rules:
 - Include ingredient IDs and reference those IDs in steps where useful.
 - Flag assumptions, uncertain conversions, or missing details in notes.
 - Do not calculate nutrition.
+- Do not output a shopping list — the tool derives shopping and grocery views from the ingredients, so ingredient metadata must be accurate instead.
+
+Ingredient metadata accuracy (important — the tool builds every view from these fields):
+- Give each ingredient a clean, specific displayName (e.g. "unsalted butter", not "butter (unsalted, softened)") — put preparation details in prepNote instead.
+- Set sectionIds to every section where the ingredient is actually used, and primarySectionId to the section where it is first measured or staged.
+- Set groceryCategory on every ingredient using common store sections (e.g. Produce, Dairy, Meat, Baking, Pantry, Spices, Frozen).
+- Write a useful prepNote whenever the ingredient needs preparation (softened, chopped, room temperature, divided, etc.).
+- In every prep and active step, list the ids of the ingredients that step uses in ingredientRefs — the tool renders live quantities from these references.
 
 Workflow grouping rules:
 Use a hybrid prep + execution structure.
@@ -174,16 +184,6 @@ Use this JSON shape. Add fields if necessary, but keep it predictable. Every sec
       "visualCue": "",
       "dependencyNote": "",
       "order": 1
-    }
-  ],
-  "shoppingList": [
-    {
-      "ingredientId": "",
-      "displayName": "",
-      "totalQuantityG": null,
-      "equivalent": "",
-      "usedInSections": [],
-      "groceryCategory": ""
     }
   ],
   "notes": []

@@ -17,9 +17,11 @@ interface IngredientEditModalProps {
 
 /**
  * Edit one ingredient. Because steps reference ingredients by id, a rename
- * or substitution here flows through every section, step chip, and the
- * shopping list. Renaming resets a non-confirmed nutrition link so a stale
- * match is never carried onto a different food.
+ * or substitution here flows through every structured display — sections,
+ * step chips, and the shopping modes. Step prose is handled separately: a
+ * rename opens StepTextReviewModal so affected instruction text can be
+ * updated too instead of going stale. Renaming also resets a non-confirmed
+ * nutrition link so a stale match is never carried onto a different food.
  */
 export default function IngredientEditModal({ ingredient, onSave, onCancel }: IngredientEditModalProps) {
   const [displayName, setDisplayName] = useState(ingredient.displayName);

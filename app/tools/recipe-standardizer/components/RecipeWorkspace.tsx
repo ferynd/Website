@@ -3,7 +3,7 @@
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: accordion panel registry                       */
 /* ------------------------------------------------------------ */
-const PANEL_KEYS = ['overview', 'ingredients', 'prep', 'cook', 'shopping', 'scaling', 'json'] as const;
+const PANEL_KEYS = ['overview', 'ingredients', 'prep', 'cook', 'scaling', 'json'] as const;
 type PanelKey = (typeof PANEL_KEYS)[number];
 
 const PANEL_LABELS: Record<PanelKey, string> = {
@@ -11,7 +11,6 @@ const PANEL_LABELS: Record<PanelKey, string> = {
   ingredients: 'Ingredients',
   prep: 'Prep',
   cook: 'Cook',
-  shopping: 'Shopping',
   scaling: 'Scaling',
   json: 'JSON',
 };
@@ -28,7 +27,6 @@ import {
   ListChecks,
   Save,
   Scale,
-  ShoppingCart,
   UtensilsCrossed,
   X,
 } from 'lucide-react';
@@ -38,6 +36,12 @@ import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
+import {
+  applyStepTextUpdates,
+  findAffectedSteps,
+  type AffectedStep,
+  type StepTextUpdate,
+} from '../lib/stepTextUpdate';
 import type { Recipe, RecipeIngredient } from '../lib/types';
 import AccordionSection from './AccordionSection';
 import ImportPanel from './ImportPanel';
@@ -46,17 +50,22 @@ import RecipeLibrary from './RecipeLibrary';
 import SaveChoiceModal from './SaveChoiceModal';
 import ScalingPanel from './ScalingPanel';
 import SectionCard from './SectionCard';
-import ShoppingListView from './ShoppingListView';
+import StepTextReviewModal from './StepTextReviewModal';
 
 const PANEL_ICONS: Record<PanelKey, React.ReactNode> = {
   overview: <Info size={18} />,
   ingredients: <ListChecks size={18} />,
   prep: <ClipboardList size={18} />,
   cook: <ChefHat size={18} />,
-  shopping: <ShoppingCart size={18} />,
   scaling: <Scale size={18} />,
   json: <FileJson size={18} />,
 };
+
+interface StepReviewState {
+  oldName: string;
+  newName: string;
+  items: AffectedStep[];
+}
 
 const NO_SCALE: ScaleResult = { factor: 1, label: 'baseline' };
 
@@ -79,10 +88,11 @@ export default function RecipeWorkspace() {
   const [status, setStatus] = useState('');
   const [loadError, setLoadError] = useState('');
   const [saveModalSummary, setSaveModalSummary] = useState<string | null>(null);
+  const [stepReview, setStepReview] = useState<StepReviewState | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [jsonCopied, setJsonCopied] = useState(false);
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
-    overview: true, ingredients: true, prep: true, cook: true, shopping: false, scaling: false, json: false,
+    overview: true, ingredients: true, prep: true, cook: true, scaling: false, json: false,
   });
   const panelRefs = useRef<Partial<Record<PanelKey, HTMLElement | null>>>({});
 
@@ -163,11 +173,30 @@ export default function RecipeWorkspace() {
   };
 
   const handleIngredientChange = (updated: RecipeIngredient) => {
+    const previous = draft?.ingredients.find((ing) => ing.id === updated.id);
     setDraft((prev) =>
       prev
         ? { ...prev, ingredients: prev.ingredients.map((ing) => (ing.id === updated.id ? updated : ing)) }
         : prev,
     );
+    // A rename updates every structured display, but step text is free prose —
+    // offer a review of affected steps so instructions can't contradict chips.
+    if (
+      draft &&
+      previous &&
+      previous.displayName.trim().toLowerCase() !== updated.displayName.trim().toLowerCase()
+    ) {
+      const items = findAffectedSteps(draft, updated.id, previous.displayName, updated.displayName);
+      if (items.length > 0) {
+        setStepReview({ oldName: previous.displayName, newName: updated.displayName, items });
+      }
+    }
+  };
+
+  const handleStepReviewApply = (updates: StepTextUpdate[]) => {
+    setStepReview(null);
+    if (updates.length === 0) return;
+    setDraft((prev) => (prev ? applyStepTextUpdates(prev, updates) : prev));
   };
 
   const handleNameChange = (name: string) => {
@@ -419,7 +448,7 @@ export default function RecipeWorkspace() {
               ref={(el) => { panelRefs.current.ingredients = el; }}
               title={PANEL_LABELS.ingredients}
               icon={PANEL_ICONS.ingredients}
-              subtitle="All ingredients by workflow section — grams first, edits flow through the whole recipe"
+              subtitle="Workflow, shopping/pantry, and grocery views — grams first, with editing and nutrition links"
               open={open.ingredients}
               onToggle={() => togglePanel('ingredients')}
             >
@@ -478,17 +507,6 @@ export default function RecipeWorkspace() {
             </AccordionSection>
 
             <AccordionSection
-              ref={(el) => { panelRefs.current.shopping = el; }}
-              title={PANEL_LABELS.shopping}
-              icon={PANEL_ICONS.shopping}
-              subtitle="Consolidated shopping / pantry pull / mise en place checklist"
-              open={open.shopping}
-              onToggle={() => togglePanel('shopping')}
-            >
-              <ShoppingListView recipe={draft} factor={scale.factor} />
-            </AccordionSection>
-
-            <AccordionSection
               ref={(el) => { panelRefs.current.scaling = el; }}
               title={PANEL_LABELS.scaling}
               icon={PANEL_ICONS.scaling}
@@ -526,6 +544,17 @@ export default function RecipeWorkspace() {
           <UtensilsCrossed size={32} className="mx-auto mb-3 text-accent" />
           <p>Open a saved recipe or import a new one above to get cooking.</p>
         </div>
+      )}
+
+      {stepReview && draft && (
+        <StepTextReviewModal
+          oldName={stepReview.oldName}
+          newName={stepReview.newName}
+          recipe={draft}
+          items={stepReview.items}
+          onApply={handleStepReviewApply}
+          onSkip={() => setStepReview(null)}
+        />
       )}
 
       {saveModalSummary && draft && (

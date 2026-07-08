@@ -1,8 +1,14 @@
 'use client';
 
 /* ------------------------------------------------------------ */
-/* CONFIGURATION: none                                           */
+/* CONFIGURATION: ingredient display modes                       */
 /* ------------------------------------------------------------ */
+const MODES = [
+  { key: 'workflow', label: 'Recipe Workflow' },
+  { key: 'shopping', label: 'Shopping / Pantry' },
+  { key: 'grocery', label: 'Grocery Category' },
+] as const;
+type IngredientMode = (typeof MODES)[number]['key'];
 
 import { useState } from 'react';
 import { HeartPulse, Link2, Pencil } from 'lucide-react';
@@ -10,6 +16,7 @@ import Button from '@/components/Button';
 import { formatAmount } from '../lib/display';
 import type { MatchSummary } from '../lib/nutritionMatch';
 import type { NutritionLink, Recipe, RecipeIngredient } from '../lib/types';
+import ConsolidatedList from './ConsolidatedList';
 import IngredientEditModal from './IngredientEditModal';
 
 interface IngredientsViewProps {
@@ -42,15 +49,30 @@ function NutritionBadge({ link }: { link: NutritionLink }) {
 }
 
 /**
- * All ingredients grouped by their primary workflow section, with inline
- * editing and Nutrition Tracker link status. Matching is on-demand (one
- * Firestore read of the CalorieTracker foodItems list) and never blocks
- * saving or using the recipe.
+ * The single hub for all ingredient views, switched by a compact segmented
+ * control:
+ * - Recipe Workflow: ingredients grouped by primary workflow section, with
+ *   inline editing and Nutrition Tracker link status/matching.
+ * - Shopping / Pantry: consolidated checklist grouped by first-use section.
+ * - Grocery Category: the same consolidated checklist grouped by category.
+ * Checkbox ticks are shared between the two consolidated modes and survive
+ * mode switches (view state only — not persisted).
  */
 export default function IngredientsView({ recipe, factor, onIngredientChange, onRunNutritionMatch }: IngredientsViewProps) {
+  const [mode, setMode] = useState<IngredientMode>('workflow');
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<RecipeIngredient | null>(null);
   const [matching, setMatching] = useState(false);
   const [matchMessage, setMatchMessage] = useState('');
+
+  const toggleChecked = (key: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const runMatch = async () => {
     setMatching(true);
@@ -101,28 +123,59 @@ export default function IngredientsView({ recipe, factor, onIngredientChange, on
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button size="sm" variant="secondary" onClick={runMatch} loading={matching} className="inline-flex items-center gap-2">
-          <HeartPulse size={16} /> Match against Nutrition Tracker foods
-        </Button>
-        {matchMessage && <p className="text-xs text-text-2">{matchMessage}</p>}
+      {/* Segmented mode control — wraps on narrow screens */}
+      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface-2 p-1 w-fit max-w-full" role="group" aria-label="Ingredient view mode">
+        {MODES.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setMode(key)}
+            aria-pressed={mode === key}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors focus-ring ${
+              mode === key ? 'bg-accent text-black' : 'text-text-2 hover:text-text hover:bg-surface-1'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {orderedSections.map((section) => {
-        const items = recipe.ingredients.filter((ing) => ing.primarySectionId === section.id);
-        if (items.length === 0) return null;
-        return (
-          <div key={section.id}>
-            <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-text-3">{section.name}</h3>
-            <ul className="space-y-1">{items.map(renderRow)}</ul>
+      {mode === 'workflow' && (
+        <>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" variant="secondary" onClick={runMatch} loading={matching} className="inline-flex items-center gap-2">
+              <HeartPulse size={16} /> Match against Nutrition Tracker foods
+            </Button>
+            {matchMessage && <p className="text-xs text-text-2">{matchMessage}</p>}
           </div>
-        );
-      })}
-      {unassigned.length > 0 && (
-        <div>
-          <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-text-3">No section</h3>
-          <ul className="space-y-1">{unassigned.map(renderRow)}</ul>
-        </div>
+
+          {orderedSections.map((section) => {
+            const items = recipe.ingredients.filter((ing) => ing.primarySectionId === section.id);
+            if (items.length === 0) return null;
+            return (
+              <div key={section.id}>
+                <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-text-3">{section.name}</h3>
+                <ul className="space-y-1">{items.map(renderRow)}</ul>
+              </div>
+            );
+          })}
+          {unassigned.length > 0 && (
+            <div>
+              <h3 className="mb-2 text-sm font-semibold uppercase tracking-wide text-text-3">No section</h3>
+              <ul className="space-y-1">{unassigned.map(renderRow)}</ul>
+            </div>
+          )}
+        </>
+      )}
+
+      {mode !== 'workflow' && (
+        <ConsolidatedList
+          recipe={recipe}
+          factor={factor}
+          order={mode === 'shopping' ? 'workflow' : 'grocery'}
+          checked={checked}
+          onToggle={toggleChecked}
+        />
       )}
 
       {editing && (

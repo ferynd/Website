@@ -9,8 +9,10 @@ export const RECIPE_SCHEMA_VERSION = 1;
  * Grams (`quantityG`) are the source of truth for every quantity; the
  * `equivalent` string is display-only secondary text ("2 cups", "3 cloves").
  * Steps reference ingredients by id (`ingredientRefs`) so ingredient edits
- * (rename, substitution) flow through every rendered view without editing
- * step text.
+ * (rename, substitution) flow through every *structured* display — section
+ * ingredient lists, step chips, shopping modes. Step `text` is free prose:
+ * a rename triggers a review of affected steps (lib/stepTextUpdate.ts)
+ * rather than a silent rewrite.
  *
  * Nutrition integration: each ingredient carries a `nutritionLink` that can
  * point at a CalorieTracker saved food item
