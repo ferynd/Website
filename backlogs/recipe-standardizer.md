@@ -1,191 +1,301 @@
-# Recipe Standardizer — Nutrition Rollout Backlog
+# Recipe Standardizer — Nutrition Integration Rollout Backlog
 
-Single source of truth for the Recipe Standardizer → Nutrition Tracker (CalorieTracker)
-integration rollout. The v1 tool (PR #149, merged) imports ChatGPT-converted recipes,
-scales gram-first, and *records* name-match links to CalorieTracker food items. This
-rollout makes those links useful end-to-end: nutrition data enters via the conversion
-prompt, ingredients can be pushed into the tracker, recipes compute their own nutrition,
-and whole recipes become loggable food items.
+Single source of truth for the Recipe Standardizer → CalorieTracker nutrition rollout.
+This is the plan of record supplied by the user on 2026-07-09; it supersedes the earlier
+R1–R6 draft (no R-item was ever started — ignore R-ids in old discussion).
+
+The v1 tool (PR #149, merged; `app/tools/recipe-standardizer/`, live at
+`/tools/recipe-standardizer`) imports ChatGPT-converted recipes as strict JSON, displays
+them workflow-first, scales, and saves per-user to Firestore. Each ingredient carries a
+`nutritionLink` stub (`linked | likely | unlinked`, food-item id + confidence) that
+name-matches the CalorieTracker's saved foods — but the link is recorded, not used. This
+rollout adds: confirming/managing links (P1), gathering nutrition for unlinked
+ingredients via ChatGPT paste-back (P2), computing full recipe nutrition (P3), exporting
+a finished recipe as a normal tracker food (P4), docs/hardening (P5), and two optional
+late phases (P6 diary logging, P7 in-site Gemini).
+
+**Constraint carried forward:** no AI API calls from the website in the core flow (P0–P5).
+The user runs prompts in ChatGPT manually and pastes strict JSON back — same pattern as
+recipe import. (The repo has Gemini Edge-route infra — `app/lib/aiConfig.ts`,
+`app/lib/aiModels.ts`, used by Show Tracker — which only optional P7 may reuse.)
 
 ## Parameters (for `backlogs/protocol.md`)
 
-- **Working branch:** `working/recipe-standardizer-backlog`
-- **Commit scope:** `recipe-standardizer`; item ids `R<N>` (next new id: **R7**; never reuse ids)
+- **Branch strategy (overrides the protocol's single long-lived branch; everything else
+  in the protocol applies unchanged):** one branch and one PR **per phase**, started
+  from fresh `origin/main` after the previous phase merges:
+  `working/recipe-standardizer-p<N>`. Web/remote sessions may be pinned to a `claude/*`
+  branch — fine, per protocol.
+- **Commit scope:** `recipe-standardizer`; item ids `P<N>` = phases 0–7 (next new id:
+  **P8**; never reuse ids). Work phases strictly in order; P6/P7 are optional — do not
+  start them unless the user explicitly asks.
 - **Archive:** `backlogs/recipe-standardizer-completed.md`
-- **Tests:**
-  - Pure lib / schema / logic changes: `npm test` from repo root (vitest; covers
-    `app/tools/recipe-standardizer/__tests__/`). Add or update tests for every new pure
-    function, validator change, or regression fix.
-  - Component / page changes: also `npm run lint` and `npm run build`.
-  - Never touches `public/tools/CalorieTracker/` code, so its suite is not required —
-    unless an item explicitly changes tracker code (none currently do).
+- **Tests:** `npm test` from repo root (Vitest — new pure libs get `__tests__/` coverage
+  like the existing 6 suites); component/page changes also `npm run lint` and
+  `npm run build`. Optional deploy-parity check: `npx --yes @cloudflare/next-on-pages@1`
+  (delete `.vercel/` afterward — it pollutes local vitest discovery). CalorieTracker
+  code is only touched in the possible P6 alternative — if so, also run
+  `cd public/tools/CalorieTracker && npm test`.
 
 ## Session protocol
 
 Follow `backlogs/protocol.md` with the parameters above.
 
-## Context facts (verified against the codebase — do not re-derive)
+## Interop contracts (read first — everything bridges through these)
 
-Read `ARCHITECTURE.md` § "Recipe Standardizer" for tool behavior. Key integration facts:
+### CalorieTracker food items (`artifacts/default-app-id/users/{uid}/foodItems/{foodId}`)
 
-- **Recipe storage:** one doc per recipe at
-  `artifacts/recipe-standardizer/users/{uid}/recipes/{recipeId}` shaped
-  `{ name, recipe, createdAt, updatedAt }` (`lib/db.ts`). Loads re-run the strict
-  validator (`lib/schema.ts` — pure, never throws, exact-path errors + non-fatal warnings).
-- **Tracker food storage:** `artifacts/default-app-id/users/{uid}/foodItems/{foodId}`.
-  Doc shape (see `public/tools/CalorieTracker/food/save.js`):
-  `{ name, quantity, <nutrient keys>, lastUpdated: <ISO string> }` — flat fields, no
-  nesting. Doc id = `name.toLowerCase().replace(/[^a-z0-9]/g, '_')`.
-- **Tracker semantics:** nutrient field values are **per 1 unit of `quantity`**; a log
-  entry adds `quantity × value` per nutrient (`food/manager.js`). `quantity` is a
-  unitless multiplier — the unit convention lives in the food's name.
-- **Nutrient keys:** `allNutrients` in `public/tools/CalorieTracker/constants.js` —
-  `calories, protein, carbs, fat, fiber, potassium, magnesium, sodium, calcium, choline,
-  vitaminB12, folate, vitaminC, vitaminB6, vitaminA, vitaminD, vitaminE, vitaminK,
-  selenium, iodine, phosphorus, iron, zinc, omega3`. Units follow the tracker's
-  `DEFAULT_BASELINE_TARGETS` conventions (standard US RDA units: kcal; g for
-  protein/carbs/fat/fiber/omega3; mg for potassium, magnesium, sodium, calcium, choline,
-  vitaminC, vitaminB6, vitaminE, iron, zinc, phosphorus; mcg for vitaminB12, folate,
-  vitaminA, vitaminD, vitaminK, selenium, iodine).
-- **Firestore rules:** the legacy wildcard `match /artifacts/{appId}/users/{userId}/{document=**}`
-  in `firestore.rules` already lets a signed-in user read/write **their own** foodItems
-  from any tool — no rules change needed for cross-tool writes, but `SECURITY.md` must
-  document each new write surface.
-- **Link model:** each ingredient carries `nutritionLink`
-  (`linked | likely | unlinked`, `lib/types.ts`). Matching (`lib/nutritionMatch.ts`):
-  exact normalized name → `linked`; token score ≥ 0.6 → `likely` + `needsUserReview`;
-  else `unlinked`. Re-matching (`applyNutritionMatches`) preserves only `linked` entries.
-- **No AI calls on the site:** nutrition data can only enter via the copyable ChatGPT
-  conversion prompt (`lib/prompt.ts`) + strict-JSON paste (`lib/schema.ts`), or manual
-  entry in the UI.
-- **Food list access:** `RecipeContext.loadFoodItems()` → `fetchFoodItems(uid)` in
-  `lib/db.ts` already reads the tracker's foodItems (id + name only today).
+Verified against source (file:line refs in `public/tools/CalorieTracker/`):
 
-## Invariants
+- Doc shape (`food/save.js:67`): `{ name, quantity, ...24 nutrient keys, lastUpdated }`.
+  No schemaVersion, no id field inside the doc.
+- Doc ID is a name slug (`food/save.js:65`):
+  `name.toLowerCase().replace(/[^a-z0-9]/g, '_')`. `setDoc` overwrites on collision —
+  collisions must be handled deliberately (getDoc-check first, then ask).
+- Nutrients are stored **per 1 quantity-unit, unit-agnostic**. `quantity` is a bare
+  numeric multiplier (default 1) with no physical basis — no grams/serving distinction
+  exists anywhere in the tracker. Logged amount = `quantity × storedNutrient`.
+- 24 canonical nutrient keys (`constants.js:50–77`), units implied by convention, values
+  assumed already canonical: `calories` (kcal); `protein, carbs, fat, fiber, omega3`
+  (g); `potassium, magnesium, sodium, calcium, choline, vitaminC, vitaminB6, vitaminE,
+  iron, zinc, phosphorus` (mg); `vitaminB12, folate, vitaminA, vitaminD, vitaminK,
+  selenium, iodine` (mcg).
+- Bounds: `NUTRIENT_MAX_BOUNDS` (`constants.js:135–143`), flat `{key: max}` map used to
+  clamp inputs.
+- ⚠️ **Do NOT add custom fields to foodItems docs.** CalorieTracker's save flow rebuilds
+  the whole doc (`setDoc`, no merge) from its fixed shape — any extra field is silently
+  dropped on the next edit/resave in the tracker. All recipe-side metadata (grams basis,
+  link info, export back-reference) lives on the **recipe** documents.
+- Daily entries (`dailyEntries/{YYYY-MM-DD}`, schemaVersion 2, `state/schema.js:71–125`)
+  embed copies of per-unit nutrients plus quantity; they never reference foodItem ids.
 
-Preserve these unless the user explicitly asks to change them:
+### The grams-basis bridge (core design decision)
 
-- Grams (`quantityG`) stay the source of truth for quantities; `equivalent` is
-  display-only text.
-- Import stays strict-JSON with exact-path errors; the site never calls an AI API.
-- Any change to an already-saved recipe routes through `SaveChoiceModal`
-  (update / save-as-new / cancel) — no silent overwrites. The same "no silent
-  overwrite" rule applies to writes into the tracker's `foodItems` (duplicate check +
-  confirm, mirroring `food/save.js`'s duplicate dialog behavior).
-- Nutrition matching/linking/data **never blocks** importing or saving a recipe —
-  missing data degrades to warnings and coverage notes.
-- Any recipe shape change bumps `RECIPE_SCHEMA_VERSION` and must still load existing
-  v1 Firestore docs and v1 pasted JSON (normalize with defaults + non-fatal warning;
-  never reject).
-- Shopping/grocery views stay derived from ingredients at render time; no stored
-  shopping list.
+Recipe ingredients are gram-based; tracker foods have no defined physical basis. Bridge
+it **on the recipe side**:
+
+- Extend `NutritionLink` (`lib/types.ts`) with `gramsPerUnit: number | null` = "grams of
+  this ingredient per 1 quantity-unit of the linked food". Per-gram nutrition =
+  `storedNutrient / gramsPerUnit`; an ingredient's contribution =
+  `ingredient.quantityG × storedNutrient / gramsPerUnit`.
+- Foods created BY the recipe tool are always **per-100 g** (`quantity: 1` = 100 g
+  edible portion), so `gramsPerUnit` auto-fills to 100.
+- Pre-existing tracker foods: the user supplies `gramsPerUnit` once at link-confirmation
+  time ("1 unit of 'Butter' = how many grams?"). A link without `gramsPerUnit` stays
+  usable for everything except nutrition math and counts as "not computable" in coverage.
+
+## Current state (what a fresh session inherits)
+
+- Tool code: `app/tools/recipe-standardizer/` — `lib/` (pure: `schema.ts`, `scaling.ts`,
+  `shoppingList.ts`, `nutritionMatch.ts`, `stepTextUpdate.ts`, `naming.ts`,
+  `display.ts`, `prompt.ts`; Firebase: `firebase.ts`, `db.ts`), `components/`,
+  `RecipeContext.tsx`, `__tests__/` (6 files, 60 tests).
+- `lib/db.ts` already has `fetchFoodItems(uid)` returning `{id, name}[]` from the
+  tracker's collection (`CALORIE_TRACKER_APP_ID = 'default-app-id'`).
+- `lib/nutritionMatch.ts`: exact normalized name ⇒ `linked` (confidence 1, no review);
+  token similarity ≥ 0.6 (capped 0.95) ⇒ `likely` + review flag; else `unlinked`.
+  `applyNutritionMatches` never downgrades a confirmed `linked`.
+- Recipes saved as `{name, recipe, createdAt, updatedAt}` at
+  `artifacts/recipe-standardizer/users/{uid}/recipes/{id}`; loads re-run the strict
+  import validator, so **any schema extension must be additive with defaults** (see
+  `parseRecipeJson`'s `readNutritionLink`).
+- Firestore rules: explicit owner-only block for the recipe path is in
+  `firestore.rules`; the legacy wildcard `artifacts/{appId}/users/{userId}/**`
+  (owner-only) already authorizes recipe-tool reads/writes of foodItems. No rules
+  changes needed for any phase except possibly P6/P7.
+- Conventions (`AGENTS.md`): TypeScript + Tailwind tokens, lucide-react, pure libs with
+  Vitest under `__tests__/`, Conventional Commits, update ARCHITECTURE/SECURITY/README
+  when fundamentals change.
+
+## Risk register / bridging notes
+
+- **Unit ambiguity is the #1 correctness risk.** Everything hangs on the per-100 g
+  convention for created foods and explicit `gramsPerUnit` for pre-existing ones. Never
+  infer a basis silently; "unknown basis" ⇒ excluded from math + surfaced.
+- **Slug collisions overwrite** in the tracker's own save flow — the recipe tool must
+  always getDoc-check before setDoc and ask.
+- **Never write extra fields to foodItems docs** (tracker resaves drop them). All
+  metadata lives on recipe docs.
+- **Linked-food drift:** tracker-side edits change nutrition under a link silently —
+  acceptable (that's how the tracker works), but show `matchedName` vs current name
+  mismatch as a soft "re-review" hint (cheap check during the P3 fetch).
+- **Raw-vs-cooked:** computed nutrition is raw-ingredient-based; per-100 g-cooked
+  requires final weight. Label accordingly; encourage filling `actualFinalWeightG`
+  (field already exists in Overview).
+- **Firestore rules deploys are manual** — any phase touching rules (only P6/P7 might)
+  must call this out in its PR.
+- Carried-over v1 invariants still apply: strict-JSON import with exact-path errors;
+  saved-recipe edits route through `SaveChoiceModal` (no silent overwrites); nutrition
+  linking never blocks importing or saving; shopping/grocery views stay derived from
+  ingredients.
+
+## Verification (every phase)
+
+- `npm test`, `npm run lint`, `npm run build`; optional
+  `npx --yes @cloudflare/next-on-pages@1` parity check (delete `.vercel/` afterward).
+- End-to-end against the Cloudflare Pages branch preview (each PR gets one): exercise
+  the phase's acceptance line with a real recipe import. Live-Firebase steps are
+  user-verified — list the manual steps in the PR body.
+- Cross-tool check for P2/P4/P6: open `/tools/CalorieTracker/index.html` as the same
+  user and confirm the created/exported food (and logged entry, P6) appears and
+  computes correctly in the tracker's own UI.
 
 ---
 
-## Active items
+## Active items (work strictly in order; P6/P7 only on explicit user request)
 
-Rollout goal: a user converts a recipe in ChatGPT (prompt now includes per-100 g
-nutrition), imports it, reviews/creates ingredient links, sees the recipe's computed
-nutrition, and can log either single ingredients or the whole recipe in the
-Nutrition Tracker. R1 → R2/R3 → R4/R5 is the dependency spine; R6 is the final
-real-data gate.
+### P0 — Post-merge housekeeping (do first, ~10 min, user-assisted)
 
-### HIGH
+- [ ] **P0 Deploy rules + production smoke test.** Deploy `firestore.rules` to Firebase
+  (manual, Firebase console/CLI — the repo file is source of truth but doesn't
+  auto-deploy; the tool currently works only via the legacy wildcard rule). Smoke-test
+  production: import a recipe, save, reload, run nutrition match. Agent's role: remind
+  the user, provide the exact steps, and record confirmation here; no code. Do not
+  block P1 coding on this, but flag it in every PR until confirmed.
 
-- [ ] **R1 Schema v2: per-ingredient nutrition data.** Add optional
-  `nutritionPer100g: Partial<Record<NutrientKey, number>> | null` to `RecipeIngredient`
-  (values per 100 g of the ingredient; `NutrientKey` = the 24 tracker keys listed in
-  Context facts, exported from a new shared constant in `lib/types.ts`). Bump
-  `RECIPE_SCHEMA_VERSION` to 2. Validator: v1 docs/JSON normalize to
-  `nutritionPer100g: null` (no error, no warning); reject non-numeric or negative
-  values with exact-path errors; unknown keys → non-fatal warning and dropped. Update
-  the ChatGPT prompt (`lib/prompt.ts`) to request best-estimate per-100 g values —
-  calories/protein/carbs/fat expected, micros optional, `null` when unknown — and
-  document the units. Show per-100 g data read-only in `IngredientEditModal` with
-  manual edit support.
-  Accept: v1 fixture still parses clean; v2 fixture round-trips; prompt text names the
-  exact keys and units; tests cover normalization, rejection, and unknown-key warning.
-  Files: `lib/types.ts`, `lib/schema.ts`, `lib/prompt.ts`,
-  `components/IngredientEditModal.tsx`, `__tests__/schema.test.ts`, `__tests__/fixtures.ts`.
+### P1 — Link management UI (confirm / pick / unlink + grams basis)
 
-- [ ] **R2 Ingredient → tracker food item export.** Depends: R1. New pure
-  `lib/foodItemExport.ts`: `buildFoodItemDoc(ingredient)` → `{ id, data }` where
-  `data = { name: '<Ingredient name> (100g)', quantity: 1, ...nutritionPer100g mapped
-  onto flat tracker keys (absent keys → 0), lastUpdated: ISO }` and id is derived from
-  the full name per the tracker's id rule. Convention (document in ARCHITECTURE.md):
-  exported ingredient foods are per-100 g, so tracker `quantity` 1.5 = 150 g. New
-  `createFoodItem(uid, id, data)` in `lib/db.ts` (setDoc). UI: "Add to Nutrition
-  Tracker" action on `unlinked`/`likely` ingredients (IngredientEditModal and/or
-  IngredientsView badge), enabled only when `nutritionPer100g` has at least `calories`;
-  confirm modal previews name + values; duplicate guard — if the id or a
-  case-insensitive name match exists in the fetched food list, require an explicit
-  overwrite-or-rename choice, never silent. On success, re-run matching so the link
-  flips to `linked` with the new `foodItemId`. Update `SECURITY.md`: recipe tool now
-  writes to the CalorieTracker foodItems path (own-uid only, existing wildcard rule).
-  Accept: builder unit-tested (id derivation, key mapping, zero-fill, name suffix);
-  export → link flip verified manually; duplicate path can't clobber without confirm.
-  Files: `lib/foodItemExport.ts` (new), `lib/db.ts`, `RecipeContext.tsx`,
-  `components/IngredientEditModal.tsx`, `components/IngredientsView.tsx`,
-  `__tests__/foodItemExport.test.ts` (new), `SECURITY.md`, `ARCHITECTURE.md`.
+- [ ] **P1 LinkEditor + `gramsPerUnit`.** Goal: the user can resolve every
+  `likely`/`unlinked` badge into a confirmed link or an explicit no-match, and record
+  `gramsPerUnit`.
+  - `lib/types.ts`: add `gramsPerUnit: number | null` to `NutritionLink`; update
+    `UNLINKED_NUTRITION`.
+  - `lib/schema.ts` → `readNutritionLink`: accept the new field (number > 0 or null) —
+    additive; old saved recipes parse with null.
+  - `lib/db.ts`: extend the food fetch to also return each food's `quantity` and
+    nutrient values (full doc read, same collection) — needed by P3–P5. Keep
+    `FoodItemRef` for matching; add `FoodItemFull`.
+  - New component `LinkEditor` (modal or inline expansion in Ingredients → Recipe
+    Workflow mode, launched from the nutrition badge): shows current status; **Confirm**
+    (`likely` → `linked`), **Pick from list** (searchable dropdown over fetched foods,
+    reuse `nameSimilarity` for sort), **Unlink / mark as no-match**, and a
+    grams-per-unit input (prefill 100 when the food was recipe-created; required before
+    "computable"). Confirming sets `status: 'linked'`, `needsUserReview: false`.
+  - Link edits mark the draft dirty → existing update/save-as-new/cancel flow already
+    guards persistence (no new save logic).
+  - Tests: schema round-trip of `gramsPerUnit`; pure `lib/linking.ts` helper if
+    non-trivial logic emerges (e.g. `isComputableLink` predicate).
+  - Accept: every badge is clickable; a confirmed link with grams basis survives
+    save/reload; old recipes still load.
 
-- [ ] **R3 Recipe nutrition computation + Overview display.** Depends: R1. New pure
-  `lib/nutrition.ts`: `computeRecipeNutrition(recipe)` sums
-  `quantityG × nutritionPer100g / 100` per ingredient into totals per nutrient key, and
-  returns `{ totals, perServing, perPortion, coverage }` — perServing from
-  `servings.currentServings ?? baselineServings`, perPortion from
-  `servings.portionCount` (else from total weight ÷ `portionSizeG`), and
-  `coverage = { includedCount, excluded: [{id, displayName, reason}] }` listing every
-  ingredient skipped for missing grams or missing nutrition data (never silently
-  pretend complete). Compute from the **scaled working copy** the UI renders, not the
-  baseline. UI: "Nutrition" block in the Overview accordion — macro line
-  (kcal / P / C / F) prominent, expandable micros table, coverage warning listing
-  excluded ingredients. Update the ARCHITECTURE.md line that says computing recipe
-  nutrition "is a documented follow-up, not in v1".
-  Accept: math unit-tested incl. null grams, null nutrition, zero servings/portions
-  (no division blowups), scaling factor applied; coverage list exact.
-  Files: `lib/nutrition.ts` (new), `components/RecipeWorkspace.tsx` (Overview),
-  `__tests__/nutrition.test.ts` (new), `ARCHITECTURE.md`.
+### P2 — Ingredient nutrition intake via external AI (paste-back)
 
-### MEDIUM
+- [ ] **P2 Nutrition prompt + import + food creation.** Depends: P1. Goal:
+  batch-generate a ChatGPT prompt for all unlinked ingredients, paste strict JSON back,
+  create real tracker foods (per-100 g), auto-link.
+  - `lib/nutritionPrompt.ts` (pure): `buildNutritionPrompt(ingredients: {name, prepNote}[])`
+    — instructs ChatGPT to return strict JSON only:
+    `{ "schemaVersion": 1, "foods": [{ "ingredientName": "", "per100g": { <all 24 canonical keys, numbers> }, "confidence": "high|medium|low", "notes": "" }] }`,
+    values per 100 g edible portion, canonical units listed explicitly (embed the
+    kcal/g/mg/mcg unit table per key), estimate-and-flag when uncertain, no commentary.
+    Include the ingredient list verbatim.
+  - `lib/nutritionImport.ts` (pure, mirrors `schema.ts` style): `parseNutritionJson(raw)`
+    → exact-path errors; clamp each value to a local copy of the tracker's
+    `NUTRIENT_MAX_BOUNDS`. Duplicate the 24-key bounds + canonical-keys list into
+    `lib/trackerNutrients.ts` with a pointer comment to
+    `public/tools/CalorieTracker/constants.js` — the static tool is a separate JS
+    package, don't import across.
+  - `lib/db.ts`: `createFoodItem(uid, name, per100g)` — writes
+    `{ name, quantity: 1, ...nutrients, lastUpdated: new Date().toISOString() }` with
+    the slug doc id. **Collision handling:** getDoc first; if the slug exists, do not
+    overwrite — offer "link to existing food instead" or "rename and create".
+  - New component `NutritionIntakePanel` (entry points: the unlinked summary in
+    Ingredients mode, and P3's coverage warning): step 1 copy prompt (unlinked
+    ingredient names auto-included), step 2 paste JSON, step 3 review table (name →
+    matched ingredient, calories sanity column, confidence) with per-row accept/skip,
+    then create foods + auto-link (`status: 'linked'`, `gramsPerUnit: 100`,
+    `matchConfidence: 1`). Rows whose `ingredientName` matches no current unlinked
+    ingredient: show and let the user assign or skip (don't hard-fail the batch).
+  - Tests: prompt content (units table present, names embedded), parser
+    errors/clamping, slug collision logic (pure part).
+  - Accept: recipe with N unlinked ingredients → one prompt → one paste → N new tracker
+    foods visible in CalorieTracker's own search, ingredients linked with grams basis,
+    recipe saved with links.
 
-- [ ] **R4 Batch link-review panel.** Depends: R2. One place to clear all
-  `needsUserReview` flags: a "Review links" surface in the Ingredients panel (workflow
-  mode) listing every `likely`/`unlinked` ingredient with per-row actions —
-  **accept** suggested match (→ `linked`, review flag off), **choose** from a
-  searchable list of fetched foods, **create** in tracker (reuse R2 flow), or
-  **dismiss** (stays `unlinked`, review flag off so it stops nagging). Pure
-  state-transition helpers for each action. Edits mark the recipe dirty and route
-  through the normal save flow — no new persistence path.
-  Accept: transitions unit-tested; review badge count reaches zero after a full pass;
-  dismissed items survive re-match (extend `applyNutritionMatches` to also preserve
-  dismissed links — note: today it only preserves `linked`).
-  Files: `lib/nutritionMatch.ts`, `components/IngredientsView.tsx` (or new
-  `components/LinkReviewPanel.tsx`), `__tests__/nutritionMatch.test.ts`.
+### P3 — Recipe nutrition computation & display
 
-- [ ] **R5 Recipe → tracker food item export ("log this recipe").** Depends: R2, R3.
-  Button in Overview/Scaling area: writes ONE foodItems doc for the whole recipe —
-  name = recipe name, nutrient values = R3's `perPortion` (fallback `perServing`;
-  if neither is derivable, disable with an explanatory tooltip), `quantity: 1` = one
-  portion. Same confirm + duplicate guard as R2. If coverage is incomplete, the confirm
-  modal must show the excluded-ingredient list and require explicit "export partial"
-  acknowledgement. Document the per-portion convention in ARCHITECTURE.md.
-  Accept: builder path unit-tested (portion fallback chain, partial-coverage flag);
-  exported doc loggable in the tracker.
-  Files: `lib/foodItemExport.ts`, `components/RecipeWorkspace.tsx` and/or
-  `components/ScalingPanel.tsx`, `__tests__/foodItemExport.test.ts`, `ARCHITECTURE.md`.
+- [ ] **P3 `lib/nutrition.ts` + Nutrition panel.** Depends: P1 (P2 for full coverage).
+  Goal: show what the recipe actually contains, honestly scoped to link coverage.
+  - `computeRecipeNutrition(recipe, foods: Map<foodItemId, FoodItemFull>, factor)` →
+    `{ totals: Record<nutrientKey, number>, coveredGrams, totalGrams, uncomputable:
+    {ingredientId, reason: 'unlinked'|'no-grams-basis'|'no-weight'|'food-missing'}[] }`.
+    Contribution = `quantityG × factor × nutrient / gramsPerUnit`. Optional ingredients
+    included by default with a toggle.
+  - Derivations: per serving (`baselineServings`), per portion
+    (`portionCount`/`portionSizeG`), per 100 g cooked
+    (÷ `actualFinalWeightG ?? estimatedFinalWeightG`, labeled "estimated" when using
+    the estimate — note in UI that nutrition is computed from raw ingredient weights;
+    water loss is why per-100 g-cooked needs the final weight).
+  - New **Nutrition** accordion panel in `RecipeWorkspace` (nav becomes Overview /
+    Ingredients / Prep / Cook / Nutrition / Scaling / JSON): coverage banner ("87% of
+    ingredient grams linked — 2 ingredients missing", CTA → P2 panel / P1 editor),
+    compact macro row + expandable full 24-nutrient table, per-total/serving/portion/
+    100 g toggle. Respects the live scale factor.
+  - Stale-food handling: if a linked `foodItemId` no longer exists, surface it in
+    `uncomputable` and flag the badge for re-review (don't crash, don't silently zero).
+    Cheap drift hint: show `matchedName` vs current food name mismatch as "re-review".
+  - Fetch foods once per recipe session via `RecipeContext` (reuse P1's `FoodItemFull`
+    fetch); recompute pure-side on draft/factor changes.
+  - Tests: contribution math incl. `gramsPerUnit` division, coverage accounting, per-X
+    derivations, missing-food and no-basis paths.
+  - Accept: fully-linked recipe shows plausible totals that scale with the working-copy
+    factor; partially-linked recipe clearly shows coverage and never presents partial
+    totals as complete.
 
-### ROLLOUT GATE (work last)
+### P4 — "Linking off": export recipe as a tracker food
 
-- [ ] **R6 Real-recipe rollout QA.** Depends: R1–R5 merged. The user converts their real
-  recipe collection in ChatGPT with the updated prompt and imports each recipe. Agent's
-  role per session: take the user's reported friction (validation errors, prompt
-  misses, bad matches, unit mistakes), fix `lib/prompt.ts` / `lib/schema.ts` /
-  matcher thresholds accordingly, and keep a one-line running friction note on this
-  item. Do not start R6 work unless the user supplies recipes or reports friction.
-  Accept (user-confirmed): their collection imports cleanly with nutrition data, links
-  reviewed to zero flags, and at least one recipe logged in the tracker end-to-end.
+- [ ] **P4 Recipe export.** Depends: P3. Goal: one click turns the finished recipe into
+  a normal CalorieTracker food so portions are logged inside the tracker.
+  - Export button in the Nutrition panel (enabled when coverage = 100% of weighed,
+    non-optional grams — otherwise confirm with an "exports partial nutrition" warning).
+  - Basis: per portion when portion data exists (nutrients = totals / portionCount,
+    food name `"{Recipe Name} (1 portion)"`), else per 100 g cooked (needs final
+    weight; name `"{Recipe Name} (100 g)"`). `quantity: 1`. Same slug + collision
+    handling as P2 (re-export of the same recipe → offer overwrite — the natural
+    "update the food after editing the recipe" path).
+  - Store a back-reference **on the recipe doc** (never on the food doc):
+    `export: { foodItemId, basis, exportedAt, nutritionSnapshotHash }` → UI shows
+    "exported / recipe changed since export — re-export?".
+  - `lib/schema.ts`: accept the optional `export` block additively.
+  - Tests: per-portion vs per-100 g basis math, snapshot-hash staleness detection.
+  - Accept: exported recipe appears in CalorieTracker's food search; logging
+    `quantity: 2` there yields 2 portions' nutrients; editing the recipe shows the
+    stale-export indicator; re-export updates the same food doc.
 
-### LOW / NICE-TO-HAVE
+### P5 — Docs, polish, and hardening pass (small; before optional phases)
 
-_(empty — slot future ideas here, e.g. gramsPerUnit on links to compute nutrition from
-already-saved tracker foods that predate R1 data)_
+- [ ] **P5 Docs + migration sanity + UX debt.** Depends: P4.
+  - Update `ARCHITECTURE.md` (Recipe Standardizer section: link management, nutrition
+    pipeline, export contract, the do-not-add-fields-to-foodItems rule), `SECURITY.md`
+    (recipe tool now writes foodItems — same-user only), `README.md`, and the
+    tools-page card description.
+  - Migration sanity: load every pre-existing saved recipe shape in tests (fixture
+    without `gramsPerUnit`/`export`).
+  - UX debt: persist Ingredients-mode checkbox ticks per recipe (localStorage, keyed by
+    recipe id — follow `app/tools/transcriber/lib/settings.ts` versioned-object
+    pattern); confirm P1's pick-list closed the old "likely match review" gap.
+
+### P6 — OPTIONAL: direct diary logging from the recipe tool
+
+- [ ] **P6 "Log a portion to today."** Do NOT build unless the user explicitly asks
+  (deliberately last: duplicates tracker-owned logic). Writes
+  `dailyEntries/{YYYY-MM-DD}` exactly per v2 schema (`state/schema.js:71–125`): append
+  `{id: crypto.randomUUID(), name, quantity, timestamp, ...perUnitNutrients}` to
+  `foodItems[]`, add `quantity × nutrient` into top-level totals, set
+  `schemaVersion: 2`, preserve all other fields (read-modify-write of the whole doc).
+  Risks: schema drift with the tracker, concurrent same-day edits. Recommendation:
+  only build if logging inside the tracker (P4 flow) proves annoying in practice;
+  prefer a small CalorieTracker-side "import from recipe" instead if drift worries
+  grow (that alternative touches tracker code → run its test suite).
+
+### P7 — OPTIONAL: in-site Gemini enrichment
+
+- [ ] **P7 Edge route for nutrition enrichment.** Do NOT build unless the user
+  explicitly asks (relaxes the no-AI-calls stance — ship only if the manual round trip
+  proves tedious). One Edge route (`app/api/recipe-nutrition/route.ts`) reusing
+  `app/lib/aiConfig.ts` + `AVAILABLE_GEMINI_MODELS`, returning the exact same JSON
+  contract as P2's paste-back so it's just a second entry point into
+  `parseNutritionJson` → review table → create foods. Gate the button on key
+  availability (mirror Show Tracker's pattern). Update `SECURITY.md` (new API
+  surface); the route must not be admin-gated but should require Firebase auth if any
+  server secret is spent per call (follow `app/lib/verifyFirebaseAuth.ts` precedent).

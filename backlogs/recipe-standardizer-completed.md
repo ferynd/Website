@@ -7,14 +7,6 @@ Pre-backlog context: the v1 tool itself shipped in PR #149 (merge `3dd5bd1`) bef
 backlog existed — strict-JSON import, workflow sections, gram-first scaling, Ingredients
 hub, per-user Firestore saves, and name-only nutrition links.
 
-## HIGH
-
-_(none yet)_
-
-## MEDIUM
-
-_(none yet)_
-
-## LOW
+## Completed phases (P0–P7, in order)
 
 _(none yet)_

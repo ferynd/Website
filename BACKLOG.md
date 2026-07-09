@@ -7,8 +7,9 @@ backlog file supplies its own Parameters block (branch, scope, ids, tests).
 ## Active backlogs (priority order)
 
 1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout
-   (items `R1`–`R6`: schema v2 nutrition data, ingredient/recipe export to the tracker,
-   recipe nutrition computation, link review, real-recipe QA gate).
+   (phase items `P0`–`P7`: rules deploy/smoke test, link management + grams basis,
+   ChatGPT paste-back nutrition intake, recipe nutrition computation, export to
+   tracker, docs/hardening; P6/P7 optional).
 2. `backlogs/calorie-tracker.md` — CalorieTracker (items `#N`; protocol, invariants,
    and any active items).
 
