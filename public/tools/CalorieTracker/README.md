@@ -2,7 +2,7 @@
 
 A Firebase-backed, client-side nutrition tracker built with plain JavaScript ES modules and Chart.js. Runs as a standalone static app under `/public/tools/CalorieTracker/` and is linked from the main site's Tools page.
 
-> **Active work:** See [`backlogs/calorie-tracker.md`](../../../backlogs/calorie-tracker.md) at the repo root — the single source of truth for ongoing CalorieTracker work, including the session-continuation protocol, branch/PR strategy, status legend, and the prioritized item list. To pick up where a prior session left off, start a new session with any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, or a close paraphrase — the protocol (reconcile merged items, then work the top-priority items) runs automatically.
+> **Active work:** See [`backlogs/calorie-tracker.md`](../../../backlogs/calorie-tracker.md) at the repo root — the single source of truth for ongoing CalorieTracker work (parameters, invariants, and the prioritized item list; the shared session protocol lives in [`backlogs/protocol.md`](../../../backlogs/protocol.md)). To pick up where a prior session left off, start a new session with any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, or a close paraphrase — the protocol (reconcile merged items, then work the top-priority items) runs automatically.
 
 ---
 
