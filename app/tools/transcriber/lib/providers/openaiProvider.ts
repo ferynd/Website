@@ -13,7 +13,8 @@
 // speeds up the whole buffer, splits it into chunks that each fit under
 // both caps (lib/preprocessOpenAiAudio.ts), transcribes the chunks through
 // the SAME /api/transcriber/transcribe route as a normal small file — up
-// to OPENAI_PARALLEL_CHUNK_REQUESTS in flight at once — and stitches the
+// to `parallelChunkRequests` (settings.openaiParallelChunks, default
+// OPENAI_PARALLEL_CHUNK_REQUESTS) in flight at once — and stitches the
 // results back together with every segment's timestamp remapped to
 // ORIGINAL-recording time (lib/preprocessAudioPlan.ts's
 // combineChunkResponses). Every chunk is always attempted even when one
@@ -66,6 +67,8 @@ export interface TranscribeWithOpenAiOptions {
   preprocess: { enabled: boolean; silenceRemoval: boolean; speedFactor: number };
   /** Per-chunk result store for the chunked path only — see TranscribeChunkCache. Absent means no caching (every chunk always transcribed fresh). */
   chunkCache?: TranscribeChunkCache;
+  /** How many chunk requests run in flight at once on the chunked path — settings.openaiParallelChunks (already clamped by the settings store); defaults to OPENAI_PARALLEL_CHUNK_REQUESTS when absent. */
+  parallelChunkRequests?: number;
   /** Fired each time a chunk COMPLETES on the chunked path — `completed` of `total` chunks done (chunks run in parallel, so there is no single "current" chunk). */
   onChunkProgress?: (completed: number, total: number) => void;
   /** Fired once, before preprocessing starts, only on the chunked path — lets the caller show a "preparing/optimizing audio" status. */
@@ -274,6 +277,7 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
     durationSec,
     preprocess,
     chunkCache,
+    parallelChunkRequests = OPENAI_PARALLEL_CHUNK_REQUESTS,
     onChunkProgress,
     onPreparing,
     idToken,
@@ -341,7 +345,7 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
 
   const total = preprocessed.chunkFiles.length;
 
-  // Chunks run in parallel (bounded by OPENAI_PARALLEL_CHUNK_REQUESTS), so
+  // Chunks run in parallel (bounded by parallelChunkRequests), so
   // progress is reported as an aggregate: upload progress is the mean of
   // every chunk's own upload fraction, and it stops being reported once the
   // first chunk COMPLETES — from there the run presents as "N of M chunks
@@ -361,7 +365,7 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
 
   const settled = await mapWithConcurrency(
     preprocessed.chunkFiles,
-    OPENAI_PARALLEL_CHUNK_REQUESTS,
+    parallelChunkRequests,
     async (chunkFile, i): Promise<ChunkTranscriptionResult> => {
       const cached = chunkCache?.get(total, i);
       if (cached) {

@@ -13,11 +13,15 @@ import {
   CLEANUP_CHUNK_SECONDS_MIN,
   CLEANUP_OVERLAP_SECONDS_MAX,
   CLEANUP_OVERLAP_SECONDS_MIN,
+  CLEANUP_PARALLEL_CHUNKS_MAX,
+  CLEANUP_PARALLEL_CHUNKS_MIN,
   CLEANUP_TEMPERATURE_MAX,
   CLEANUP_TEMPERATURE_MIN,
   DEFAULT_TRANSCRIBER_SETTINGS,
   MERGE_GAP_SECONDS_MAX,
   MERGE_GAP_SECONDS_MIN,
+  OPENAI_PARALLEL_CHUNKS_MAX,
+  OPENAI_PARALLEL_CHUNKS_MIN,
   parseStoredSettings,
   readTranscriberSettings,
   saveTranscriberSettings,
@@ -382,6 +386,16 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               disabled={!settings.openaiPreprocessing}
               onCommit={(value) => updateSettings({ openaiSpeedFactor: value })}
             />
+            <NumberField
+              label="Parallel chunk uploads"
+              description="How many chunks transcribe at once (1 = one at a time). Each in-flight chunk is a ~20 MB upload sharing your connection, so past ~4 the extra parallelism mostly just splits the same bandwidth; lower it if runs start hitting OpenAI rate limits."
+              value={settings.openaiParallelChunks}
+              min={OPENAI_PARALLEL_CHUNKS_MIN}
+              max={OPENAI_PARALLEL_CHUNKS_MAX}
+              step={1}
+              disabled={!settings.openaiPreprocessing}
+              onCommit={(value) => updateSettings({ openaiParallelChunks: value })}
+            />
           </Section>
 
           <Section title="Outputs">
@@ -502,6 +516,16 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               step={15}
               disabled={!settings.cleanupEnabled}
               onCommit={(value) => updateSettings({ cleanupOverlapSeconds: value })}
+            />
+            <NumberField
+              label="Parallel chunk requests"
+              description="How many cleanup chunks are corrected at once (1 = one at a time). The default assumes a paid-tier Gemini key; lower it if chunks start failing with rate-limit (429) errors."
+              value={settings.cleanupParallelChunks}
+              min={CLEANUP_PARALLEL_CHUNKS_MIN}
+              max={CLEANUP_PARALLEL_CHUNKS_MAX}
+              step={1}
+              disabled={!settings.cleanupEnabled}
+              onCommit={(value) => updateSettings({ cleanupParallelChunks: value })}
             />
           </Section>
 

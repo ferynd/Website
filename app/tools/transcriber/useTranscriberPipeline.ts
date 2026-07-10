@@ -10,7 +10,6 @@ import { classifyTranscriptionError } from './lib/classifyError';
 import { mapWithConcurrency } from './lib/concurrency';
 import {
   ACCEPTED_FILE_EXTENSIONS,
-  CLEANUP_PARALLEL_CHUNK_REQUESTS,
   FALLBACK_TRANSCRIBE_MODEL,
   MAX_GEMINI_UPLOAD_BYTES,
   MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES,
@@ -560,6 +559,7 @@ export function useTranscriberPipeline() {
                   speedFactor: settings.openaiSpeedFactor,
                 },
                 chunkCache,
+                parallelChunkRequests: settings.openaiParallelChunks,
                 onPreparing: () => setState((s) => ({ ...s, status: 'processing', uploadProgress: null })),
                 // Chunks run in parallel, so `current` is "chunks completed
                 // so far", not a single in-flight chunk's position.
@@ -843,13 +843,14 @@ export function useTranscriberPipeline() {
         let reusedCleanupChunks = 0;
         setState((s) => ({ ...s, chunkProgress: { current: 0, total: windows.length } }));
 
-        // Windows run in parallel (bounded by CLEANUP_PARALLEL_CHUNK_REQUESTS).
-        // Strict mode stops NEW windows from starting after the first failure;
-        // windows already in flight finish (and cache their result), so even
-        // an aborted pass saves completed work for a resume.
+        // Windows run in parallel (bounded by settings.cleanupParallelChunks,
+        // already clamped by the settings store). Strict mode stops NEW
+        // windows from starting after the first failure; windows already in
+        // flight finish (and cache their result), so even an aborted pass
+        // saves completed work for a resume.
         const settledWindows = await mapWithConcurrency(
           windows,
-          CLEANUP_PARALLEL_CHUNK_REQUESTS,
+          settings.cleanupParallelChunks,
           async (window: ChunkWindowBounds): Promise<ChunkResult> => {
             try {
               const windowSegments = segmentsInWindow(segmentsForCleanup, window);

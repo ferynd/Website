@@ -5,11 +5,15 @@ import {
   CLEANUP_CHUNK_SECONDS_MIN,
   CLEANUP_OVERLAP_SECONDS_MAX,
   CLEANUP_OVERLAP_SECONDS_MIN,
+  CLEANUP_PARALLEL_CHUNKS_MAX,
+  CLEANUP_PARALLEL_CHUNKS_MIN,
   CLEANUP_TEMPERATURE_MAX,
   CLEANUP_TEMPERATURE_MIN,
   DEFAULT_TRANSCRIBER_SETTINGS,
   MERGE_GAP_SECONDS_MAX,
   MERGE_GAP_SECONDS_MIN,
+  OPENAI_PARALLEL_CHUNKS_MAX,
+  OPENAI_PARALLEL_CHUNKS_MIN,
   parseStoredSettings,
 } from '../lib/settings';
 
@@ -55,6 +59,8 @@ describe('parseStoredSettings', () => {
       openaiPreprocessing: false,
       openaiSilenceRemoval: false,
       openaiSpeedFactor: 1.35,
+      openaiParallelChunks: 2,
+      cleanupParallelChunks: 9,
     };
     const serialized = JSON.stringify(settings);
     expect(parseStoredSettings(serialized)).toEqual(settings);
@@ -206,6 +212,38 @@ describe('parseStoredSettings', () => {
 
     it('accepts an in-range openaiSpeedFactor unchanged', () => {
       expect(parseStoredSettings(JSON.stringify({ openaiSpeedFactor: 1.3 })).openaiSpeedFactor).toBe(1.3);
+    });
+
+    it('clamps openaiParallelChunks at both bounds', () => {
+      expect(parseStoredSettings(JSON.stringify({ openaiParallelChunks: 0 })).openaiParallelChunks).toBe(
+        OPENAI_PARALLEL_CHUNKS_MIN,
+      );
+      expect(parseStoredSettings(JSON.stringify({ openaiParallelChunks: 99 })).openaiParallelChunks).toBe(
+        OPENAI_PARALLEL_CHUNKS_MAX,
+      );
+    });
+
+    it('clamps cleanupParallelChunks at both bounds', () => {
+      expect(parseStoredSettings(JSON.stringify({ cleanupParallelChunks: -3 })).cleanupParallelChunks).toBe(
+        CLEANUP_PARALLEL_CHUNKS_MIN,
+      );
+      expect(parseStoredSettings(JSON.stringify({ cleanupParallelChunks: 500 })).cleanupParallelChunks).toBe(
+        CLEANUP_PARALLEL_CHUNKS_MAX,
+      );
+    });
+
+    it('rounds fractional parallel-request counts to whole numbers', () => {
+      expect(parseStoredSettings(JSON.stringify({ openaiParallelChunks: 3.6 })).openaiParallelChunks).toBe(4);
+      expect(parseStoredSettings(JSON.stringify({ cleanupParallelChunks: 5.2 })).cleanupParallelChunks).toBe(5);
+    });
+
+    it('falls back non-numeric parallel-request counts to the defaults', () => {
+      expect(parseStoredSettings(JSON.stringify({ openaiParallelChunks: 'many' })).openaiParallelChunks).toBe(
+        DEFAULT_TRANSCRIBER_SETTINGS.openaiParallelChunks,
+      );
+      expect(parseStoredSettings(JSON.stringify({ cleanupParallelChunks: null })).cleanupParallelChunks).toBe(
+        DEFAULT_TRANSCRIBER_SETTINGS.cleanupParallelChunks,
+      );
     });
   });
 
