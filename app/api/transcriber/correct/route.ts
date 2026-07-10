@@ -4,12 +4,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callGemini } from '@/app/lib/aiConfig';
 import { resolveGeminiModelId } from '@/app/lib/aiModels';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
-import { buildCorrectionPrompt } from '@/app/tools/transcriber/lib/buildCorrectionPrompt';
+import {
+  buildCorrectionPrompt,
+  buildCorrectionResponseSchema,
+} from '@/app/tools/transcriber/lib/buildCorrectionPrompt';
 import { CORRECTION_GEMINI_MODEL, CORRECTION_TEMPERATURE } from '@/app/tools/transcriber/lib/constants';
+import { shouldRevertCorrection } from '@/app/tools/transcriber/lib/correctionGuards';
 import { normalizeSegments } from '@/app/tools/transcriber/lib/formatTranscript';
-import { findMissingIndices, parseCorrectionResponse } from '@/app/tools/transcriber/lib/parseCorrectionResponse';
+import {
+  findMissingIndices,
+  parseCorrectionResponse,
+  type CorrectionResultItem,
+} from '@/app/tools/transcriber/lib/parseCorrectionResponse';
 import { CLEANUP_TEMPERATURE_MAX, CLEANUP_TEMPERATURE_MIN } from '@/app/tools/transcriber/lib/settings';
 import type { CorrectApiRequestBody, TaggedTranscriptSegment } from '@/app/tools/transcriber/lib/types';
+
+/** How many times the Gemini call is attempted per request — 2 means one
+ * automatic re-ask when the first response fails, is invalid JSON, or drops
+ * segments. A second sample at low temperature usually completes cleanly,
+ * which turns most would-be "chunk failed, left uncorrected" outcomes into
+ * successes without any client round trip. */
+const CORRECTION_MODEL_ATTEMPTS = 2;
 
 export async function POST(req: NextRequest) {
   // SECURITY: this is the only gate on this route. Every request must carry
@@ -61,62 +76,78 @@ export async function POST(req: NextRequest) {
   // site default if missing/unrecognized.
   const modelId = resolveGeminiModelId(body.model, CORRECTION_GEMINI_MODEL);
 
-  let raw: string;
-  try {
-    // NOTE: never log `prompt` or `raw` — both contain transcript contents.
-    raw = await callGemini(prompt, key, {
-      modelId,
-      temperature,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Correction pass failed.';
-    return NextResponse.json({ error: message }, { status: 502 });
+  // Structured output: constrain the response to the prompt's exact shape
+  // (index/speaker/text, plus a required tag enum when argument tagging is
+  // on) so fences/prose/malformed items can't come back at all.
+  const responseSchema = buildCorrectionResponseSchema(argumentTagging);
+  const expectedIndices = indexed.map((s) => s.index);
+
+  // One model call, retried once (CORRECTION_MODEL_ATTEMPTS) on upstream
+  // failure, invalid JSON, or an incomplete response. A syntactically valid
+  // but incomplete response (model dropped a line, or parseCorrectionResponse
+  // rejected a malformed item) must NOT be silently patched with uncorrected
+  // text for just the missing lines — that would hide a real failure from
+  // both the warning banner and strict mode. If the re-ask also fails, the
+  // whole chunk is rejected so the client's failure handling (fallback to
+  // original segments, count towards the warning, strict-mode abort) applies
+  // consistently.
+  let corrections: CorrectionResultItem[] | null = null;
+  let lastError = 'Correction pass failed.';
+  for (let attempt = 0; attempt < CORRECTION_MODEL_ATTEMPTS && corrections === null; attempt++) {
+    let raw: string;
+    try {
+      // NOTE: never log `prompt` or `raw` — both contain transcript contents.
+      raw = await callGemini(prompt, key, {
+        modelId,
+        temperature,
+        responseSchema,
+      });
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Correction pass failed.';
+      continue;
+    }
+
+    let parsed: CorrectionResultItem[];
+    try {
+      parsed = parseCorrectionResponse(raw, expectedIndices, argumentTagging);
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'Correction model returned an unexpected response.';
+      continue;
+    }
+
+    const missingIndices = findMissingIndices(expectedIndices, parsed);
+    if (missingIndices.length > 0) {
+      lastError = `Correction response was incomplete: missing ${missingIndices.length} of ${indexed.length} segments.`;
+      continue;
+    }
+
+    corrections = parsed;
   }
 
-  let corrections;
-  try {
-    corrections = parseCorrectionResponse(
-      raw,
-      indexed.map((s) => s.index),
-      argumentTagging,
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Correction model returned an unexpected response.';
-    return NextResponse.json({ error: message }, { status: 502 });
+  if (corrections === null) {
+    return NextResponse.json({ error: lastError }, { status: 502 });
   }
 
-  // A syntactically valid but incomplete response (model dropped a line, or
-  // parseCorrectionResponse rejected a malformed item) must NOT be silently
-  // patched with uncorrected text for just the missing lines — that would
-  // hide a real failure from both the warning banner and strict mode. Reject
-  // the whole chunk instead so the client's existing failure handling
-  // (fallback to original segments, count towards the warning, strict-mode
-  // abort) applies consistently.
-  const missingIndices = findMissingIndices(
-    indexed.map((s) => s.index),
-    corrections,
-  );
-  if (missingIndices.length > 0) {
-    return NextResponse.json(
-      {
-        error: `Correction response was incomplete: missing ${missingIndices.length} of ${indexed.length} segments.`,
-      },
-      { status: 502 },
-    );
-  }
-
+  // Divergence guardrail (lib/correctionGuards.ts): a corrected text whose
+  // length drifts far outside the original's can't be a preservation-first
+  // fix — keep the original text for that segment (speaker fixes still
+  // apply) and report how many reverted so the client can log it.
   const byIndex = new Map(corrections.map((c) => [c.index, c]));
+  let revertedSegments = 0;
   const segments: TaggedTranscriptSegment[] = indexed.map((seg) => {
     const fix = byIndex.get(seg.index)!;
+    const correctedText = fix.text.trim();
+    const revert = shouldRevertCorrection(seg.text, correctedText);
+    if (revert) revertedSegments += 1;
     const result: TaggedTranscriptSegment = {
       start: seg.start,
       end: seg.end,
       speaker: fix.speaker.trim() || seg.speaker,
-      text: fix.text.trim() || seg.text,
+      text: revert ? seg.text : correctedText,
     };
     if (argumentTagging && fix.tag) result.tag = fix.tag;
     return result;
   });
 
-  return NextResponse.json({ segments });
+  return NextResponse.json({ segments, revertedSegments });
 }

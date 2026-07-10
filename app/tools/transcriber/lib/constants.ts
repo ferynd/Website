@@ -27,6 +27,12 @@ export const DEFAULT_GEMINI_TRANSCRIBE_MODEL: GeminiModelId = 'gemini-2.5-flash'
 export const CORRECTION_CHUNK_SECONDS = 15 * 60; // 15 minutes
 export const CORRECTION_OVERLAP_SECONDS = 90; // 1.5 minutes
 
+/** How many cleanup-pass chunk requests run in flight at once (see
+ * lib/concurrency.ts's mapWithConcurrency in useTranscriberPipeline.ts) —
+ * modest, to stay well clear of Gemini per-minute rate limits while still
+ * cutting a long recording's cleanup wall-clock roughly by this factor. */
+export const CLEANUP_PARALLEL_CHUNK_REQUESTS = 3;
+
 /** Recordings at or under this duration go through Gemini direct
  * transcription as a single generateContent call — above it, the client
  * windows the file (see GEMINI_WINDOW_SECONDS) the same way the correction
@@ -67,6 +73,11 @@ export const OPENAI_SINGLE_REQUEST_MAX_SECONDS = 1200; // 20 minutes
 /** Per-chunk duration cap, in the FINAL (post-silence-removal,
  * post-speed-up) time domain — see lib/preprocessAudioPlan.ts's planChunks. */
 export const OPENAI_CHUNK_MAX_SECONDS = 1200; // 20 minutes
+
+/** How many preprocessed-chunk transcription requests run in flight at once
+ * (lib/providers/openaiProvider.ts's chunked path) — bounded so parallel
+ * ~20 MB uploads don't saturate the connection or trip OpenAI rate limits. */
+export const OPENAI_PARALLEL_CHUNK_REQUESTS = 3;
 
 /** Per-chunk encoded-size cap, in bytes — with 16 kHz mono PCM16 WAV
  * (WAV_PCM16_MONO_16K_BYTES_PER_SECOND below) this is the binding cap in

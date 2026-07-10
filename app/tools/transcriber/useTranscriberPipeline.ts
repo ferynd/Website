@@ -7,8 +7,10 @@ import { buildTagSummary, formatArgumentRelevantTranscript } from './lib/argumen
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
 import type { ClassifiedError } from './lib/classifyError';
 import { classifyTranscriptionError } from './lib/classifyError';
+import { mapWithConcurrency } from './lib/concurrency';
 import {
   ACCEPTED_FILE_EXTENSIONS,
+  CLEANUP_PARALLEL_CHUNK_REQUESTS,
   FALLBACK_TRANSCRIBE_MODEL,
   MAX_GEMINI_UPLOAD_BYTES,
   MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES,
@@ -19,8 +21,12 @@ import { buildManualCleanupPrompt } from './lib/buildManualCleanupPrompt';
 import { formatCleanTranscript } from './lib/formatCleanTranscript';
 import { buildTranscriptText, normalizeSegments } from './lib/formatTranscript';
 import { mergeTurns } from './lib/mergeTurns';
-import { transcribeWithGemini } from './lib/providers/geminiProvider';
-import { transcribeWithOpenAi } from './lib/providers/openaiProvider';
+import { transcribeWithGemini, type GeminiWindowCache } from './lib/providers/geminiProvider';
+import {
+  transcribeWithOpenAi,
+  type OneRequestResult,
+  type TranscribeChunkCache,
+} from './lib/providers/openaiProvider';
 import type {
   SpeakerReferenceClip,
   TranscriptionAttempt,
@@ -74,6 +80,18 @@ const SPEAKER_CLIPS_LOAD_FAILED_WARNING =
 const SPEAKER_REFERENCES_REJECTED_WARNING =
   'OpenAI rejected the attached speaker reference clips for this run — transcribed without them.';
 
+/** What a Resume (re-running the same file with the same provider and
+ * parameters) can skip: work saved from the failed run in the per-run
+ * caches. `stage: 'transcribe'` means completed transcription chunks are
+ * saved; `stage: 'cleanup'` means the ENTIRE transcription is saved (a
+ * resume skips it outright) plus `completedChunks` corrected cleanup
+ * chunks. */
+export interface ResumeInfo {
+  stage: 'transcribe' | 'cleanup';
+  completedChunks: number;
+  totalChunks: number;
+}
+
 /** Classified error + enough file/provider diagnostics for the ErrorRecoveryPanel's table, without ever holding transcript text. */
 export interface RecoveryInfo {
   classified: ClassifiedError;
@@ -85,6 +103,8 @@ export interface RecoveryInfo {
   upstreamStatus: number | null;
   /** Already sanitized + truncated — see lib/sanitizeUpstreamError.ts. */
   upstreamBody: string;
+  /** Set when part of this run's work is already saved and a Resume would reuse it — see ResumeInfo. */
+  resume?: ResumeInfo | null;
 }
 
 export interface TranscriberState {
@@ -168,6 +188,57 @@ async function postJson(url: string, body: unknown, idToken: string): Promise<{ 
   return { status: res.status, json };
 }
 
+/** Thrown by a cleanup-chunk worker so the settled-results aggregation can
+ * fall back to that window's uncorrected segments. `status: null` means the
+ * request itself failed (network), not that the route returned an error. */
+interface CleanupChunkFailure {
+  status: number | null;
+  json: JsonRecord;
+}
+
+/* ------------------------------------------------------------ */
+/* Resume caches: per-run saved work reused by an explicit retry */
+/* ------------------------------------------------------------ */
+
+/** File identity for cache keys — name + size + lastModified is enough to
+ * tell "the same recording the user just submitted" apart from a different
+ * file without hashing its contents. */
+function buildFileKey(file: File): string {
+  return `${file.name}|${file.size}|${file.lastModified}`;
+}
+
+/** Completed transcription chunks from a failed OpenAI chunked run — only
+ * valid for an identical chunk plan, hence the stored `chunkCount` (see
+ * lib/providers/openaiProvider.ts's TranscribeChunkCache contract). */
+interface TranscribeChunkCacheState {
+  key: string;
+  chunkCount: number | null;
+  results: Map<number, OneRequestResult>;
+}
+
+/** Completed transcription windows from a failed Gemini windowed run —
+ * the Gemini-side counterpart of TranscribeChunkCacheState (see
+ * lib/providers/geminiProvider.ts's GeminiWindowCache contract). */
+interface GeminiWindowCacheState {
+  key: string;
+  windowCount: number | null;
+  results: Map<number, TranscriptSegment[]>;
+}
+
+/** A fully successful transcription (any provider) kept so a retry after a
+ * cleanup failure never re-transcribes the audio at all. */
+interface AttemptCacheState {
+  key: string;
+  attempt: TranscriptionAttempt;
+}
+
+/** Successfully corrected cleanup chunks, keyed by window index. */
+interface CleanupChunkCacheState {
+  key: string;
+  windowCount: number;
+  results: Map<number, TaggedTranscriptSegment[]>;
+}
+
 /** Constructed (not thrown as a real Error) when a Gemini attempt can't even
  * start because the browser couldn't determine the file's duration (see
  * lib/audioDuration.ts) — Gemini direct transcription needs duration up
@@ -198,6 +269,16 @@ export function useTranscriberPipeline() {
   /** The most recent run's options, so retryWith() can re-run the same file without re-prompting for it. */
   const lastRunOptionsRef = useRef<TranscriberRunOptions | null>(null);
   const debugLogRef = useRef<DebugLog | null>(null);
+  /** The provider the most recent run last attempted — resume() re-runs it so the caches below stay applicable. */
+  const lastProviderRef = useRef<TranscriptionProviderId | null>(null);
+  // Resume caches (see the cache-state interfaces above). Writes happen on
+  // every run; READS only happen on an explicit retry/resume — a fresh run
+  // always starts clean so re-submitting a file never silently serves stale
+  // results. reset() clears all of them.
+  const transcribeChunkCacheRef = useRef<TranscribeChunkCacheState | null>(null);
+  const geminiWindowCacheRef = useRef<GeminiWindowCacheState | null>(null);
+  const attemptCacheRef = useRef<AttemptCacheState | null>(null);
+  const cleanupCacheRef = useRef<CleanupChunkCacheState | null>(null);
 
   const startTimer = useCallback(() => {
     startRef.current = Date.now();
@@ -281,6 +362,8 @@ export function useTranscriberPipeline() {
         // a full candidate here, not just the two OpenAI providers. ---
         const attemptedProviders: TranscriptionProviderId[] = [];
         let attempt: TranscriptionAttempt | null = null;
+        /** Cache key of the most recent attempt — everything that can change its transcription result participates (file identity, provider, model, preprocessing parameters, speaker names/notes; context notes only affect the Gemini transcription prompt, so they only key Gemini attempts). */
+        let currentAttemptKey: string | null = null;
         // Warnings that aren't tied to a single cleanup chunk (e.g. a
         // rejected or unloadable set of speaker reference clips) —
         // accumulated across the provider-attempt loop below and merged into
@@ -295,7 +378,29 @@ export function useTranscriberPipeline() {
               : providerId === 'openai-whisper'
                 ? FALLBACK_TRANSCRIBE_MODEL
                 : settings.openaiModel;
+          const attemptKey = [
+            buildFileKey(file),
+            providerId,
+            model,
+            `pre:${settings.openaiPreprocessing ? 1 : 0}${settings.openaiSilenceRemoval ? 1 : 0}:${settings.openaiSpeedFactor}`,
+            `names:${speakerNames.join(',')}`,
+            `notes:${(speakerNotes ?? []).join('|')}`,
+            providerId === 'gemini' ? `ctx:${contextNotes}` : '',
+          ].join('||');
+          currentAttemptKey = attemptKey;
+          lastProviderRef.current = providerId;
           appendDebugEvent(debugLog, { kind: 'provider-attempt', provider: providerId, model });
+
+          // On an explicit retry/resume with an identical key, the failed
+          // run's fully successful transcription is reused outright — the
+          // run skips straight past the provider call to the cleanup pass.
+          if (isExplicitRetry && attemptCacheRef.current?.key === attemptKey) {
+            attempt = attemptCacheRef.current.attempt;
+            appendDebugEvent(debugLog, { kind: 'resume', stage: 'transcription', reusedChunks: 1, totalChunks: 1 });
+            setState((s) => ({ ...s, currentProvider: providerId }));
+            continue;
+          }
+
           setState((s) => ({ ...s, currentProvider: providerId, status: 'uploading', uploadProgress: 0 }));
 
           const idToken = await user.getIdToken();
@@ -336,6 +441,31 @@ export function useTranscriberPipeline() {
 
               const geminiReferences = wantsGeminiReferences && speakerClips.length > 0 ? speakerClips : undefined;
 
+              // Per-window resume cache for the windowed path — the Gemini
+              // counterpart of the OpenAI chunk cache below: reused only on
+              // an explicit retry with an identical key; hits counted for
+              // the debug log.
+              if (!isExplicitRetry || geminiWindowCacheRef.current?.key !== attemptKey) {
+                geminiWindowCacheRef.current = { key: attemptKey, windowCount: null, results: new Map() };
+              }
+              const windowCacheState = geminiWindowCacheRef.current;
+              let reusedGeminiWindows = 0;
+              const windowCache: GeminiWindowCache = {
+                get(windowCount, index) {
+                  if (windowCacheState.windowCount !== windowCount) return undefined;
+                  const cached = windowCacheState.results.get(index);
+                  if (cached) reusedGeminiWindows += 1;
+                  return cached;
+                },
+                set(windowCount, index, segments) {
+                  if (windowCacheState.windowCount !== windowCount) {
+                    windowCacheState.windowCount = windowCount;
+                    windowCacheState.results.clear();
+                  }
+                  windowCacheState.results.set(index, segments);
+                },
+              };
+
               attempt = await transcribeWithGemini({
                 file,
                 durationSec,
@@ -344,6 +474,7 @@ export function useTranscriberPipeline() {
                 contextNotes,
                 model,
                 references: geminiReferences,
+                windowCache,
                 idToken,
                 onProgress: (event) => {
                   if (event.phase === 'upload') {
@@ -359,6 +490,15 @@ export function useTranscriberPipeline() {
                   }
                 },
               });
+              if (reusedGeminiWindows > 0 && windowCacheState.windowCount) {
+                appendDebugEvent(debugLog, {
+                  kind: 'resume',
+                  stage: 'transcribe-chunks',
+                  reusedChunks: reusedGeminiWindows,
+                  totalChunks: windowCacheState.windowCount,
+                });
+              }
+
               // Gemini has no acoustic speaker-reference support — speaker
               // identity for this run came entirely from the prompt (names,
               // notes, context), plus the experimental reference clips above
@@ -375,6 +515,31 @@ export function useTranscriberPipeline() {
               // means chunking falls back to deciding on size alone, unlike
               // Gemini where an unknown duration is fatal to the attempt.
               const openAiDurationSec = settings.openaiPreprocessing ? await probeAudioDuration(file) : null;
+
+              // Per-chunk resume cache for the chunked path — reused only on
+              // an explicit retry with an identical key; a fresh run (or a
+              // key change) starts a new, empty cache. Hits are counted for
+              // the debug log.
+              if (!isExplicitRetry || transcribeChunkCacheRef.current?.key !== attemptKey) {
+                transcribeChunkCacheRef.current = { key: attemptKey, chunkCount: null, results: new Map() };
+              }
+              const chunkCacheState = transcribeChunkCacheRef.current;
+              let reusedTranscribeChunks = 0;
+              const chunkCache: TranscribeChunkCache = {
+                get(chunkCount, index) {
+                  if (chunkCacheState.chunkCount !== chunkCount) return undefined;
+                  const cached = chunkCacheState.results.get(index);
+                  if (cached) reusedTranscribeChunks += 1;
+                  return cached;
+                },
+                set(chunkCount, index, result) {
+                  if (chunkCacheState.chunkCount !== chunkCount) {
+                    chunkCacheState.chunkCount = chunkCount;
+                    chunkCacheState.results.clear();
+                  }
+                  chunkCacheState.results.set(index, result);
+                },
+              };
 
               attempt = await transcribeWithOpenAi({
                 file,
@@ -394,13 +559,25 @@ export function useTranscriberPipeline() {
                   silenceRemoval: settings.openaiSilenceRemoval,
                   speedFactor: settings.openaiSpeedFactor,
                 },
+                chunkCache,
                 onPreparing: () => setState((s) => ({ ...s, status: 'processing', uploadProgress: null })),
+                // Chunks run in parallel, so `current` is "chunks completed
+                // so far", not a single in-flight chunk's position.
                 onChunkProgress: (current, total) =>
                   setState((s) => ({ ...s, status: 'transcribing', chunkProgress: { current, total } })),
                 idToken,
                 onUploadProgress: (fraction) =>
                   setState((s) => ({ ...s, uploadProgress: fraction, status: fraction >= 1 ? 'transcribing' : 'uploading' })),
               });
+
+              if (reusedTranscribeChunks > 0 && chunkCacheState.chunkCount) {
+                appendDebugEvent(debugLog, {
+                  kind: 'resume',
+                  stage: 'transcribe-chunks',
+                  reusedChunks: reusedTranscribeChunks,
+                  totalChunks: chunkCacheState.chunkCount,
+                });
+              }
 
               if (attempt.preprocessReport) {
                 appendDebugEvent(debugLog, {
@@ -446,6 +623,38 @@ export function useTranscriberPipeline() {
               continue;
             }
 
+            // Chunks/windows that completed before this failure are saved in
+            // their cache — surface that so the recovery panel can offer a
+            // Resume that only redoes what failed. Only offered when the
+            // cache belongs to THIS attempt's key (an auto-fallback hop to a
+            // different provider starts a fresh cache).
+            const failedChunkCache = transcribeChunkCacheRef.current;
+            const failedWindowCache = geminiWindowCacheRef.current;
+            let resume: ResumeInfo | null = null;
+            if (
+              failedChunkCache &&
+              failedChunkCache.key === attemptKey &&
+              failedChunkCache.chunkCount !== null &&
+              failedChunkCache.results.size > 0
+            ) {
+              resume = {
+                stage: 'transcribe',
+                completedChunks: failedChunkCache.results.size,
+                totalChunks: failedChunkCache.chunkCount,
+              };
+            } else if (
+              failedWindowCache &&
+              failedWindowCache.key === attemptKey &&
+              failedWindowCache.windowCount !== null &&
+              failedWindowCache.results.size > 0
+            ) {
+              resume = {
+                stage: 'transcribe',
+                completedChunks: failedWindowCache.results.size,
+                totalChunks: failedWindowCache.windowCount,
+              };
+            }
+
             finalizeFailed(
               {
                 classified: attemptError.classified,
@@ -456,6 +665,7 @@ export function useTranscriberPipeline() {
                 model: attemptError.model,
                 upstreamStatus: attemptError.httpStatus,
                 upstreamBody: attemptError.upstreamBody,
+                resume,
               },
               attemptError.classified.likelyCause,
             );
@@ -471,6 +681,15 @@ export function useTranscriberPipeline() {
         }
         const rawText = buildTranscriptText(rawSegments);
         appendDebugEvent(debugLog, { kind: 'raw-captured', segmentCount: rawSegments.length });
+
+        // Transcription succeeded — save the whole attempt so a later
+        // failure (e.g. in the cleanup pass) never forces re-transcribing
+        // this file on retry, and drop the now-redundant per-chunk caches.
+        if (currentAttemptKey) {
+          attemptCacheRef.current = { key: currentAttemptKey, attempt };
+          transcribeChunkCacheRef.current = null;
+          geminiWindowCacheRef.current = null;
+        }
 
         const fallbackNotice = attempt.warnings.find((w) => w.startsWith('Diarized model unavailable')) ?? null;
         setState((s) => ({ ...s, mode: attempt!.mode, primaryError: fallbackNotice, rawSegments, rawText }));
@@ -598,52 +817,132 @@ export function useTranscriberPipeline() {
           overlapSeconds: settings.cleanupOverlapSeconds,
         });
 
-        const chunkResults: ChunkResult[] = [];
-        let correctionFailedChunks = 0;
-        let lastChunkFailure: { status: number; json: JsonRecord } | null = null;
-
-        for (let i = 0; i < windows.length; i++) {
-          const window: ChunkWindowBounds = windows[i];
-          setState((s) => ({ ...s, chunkProgress: { current: i + 1, total: windows.length } }));
-
-          const windowSegments = segmentsInWindow(segmentsForCleanup, window);
-          if (windowSegments.length === 0) {
-            chunkResults.push({ window, segments: [] });
-            continue;
-          }
-
-          const idToken = await user.getIdToken();
-          const { status: correctStatus, json: correctData } = await postJson(
-            '/api/transcriber/correct',
-            {
-              segments: windowSegments,
-              speakerNames,
-              contextNotes,
-              mode: attempt.mode,
-              model: settings.cleanupModel,
-              // Temperature is sent on every cleanup request so the Settings
-              // modal's Temperature slider affects normal runs too, not just
-              // argument-tagging ones — the route clamps it independently of
-              // argumentTagging (see app/api/transcriber/correct/route.ts).
-              temperature: settings.cleanupTemperature,
-              ...(settings.argumentTagging ? { argumentTagging: true } : {}),
-            },
-            idToken,
-          );
-          const correctResult = correctData as CorrectApiResponse;
-
-          if (correctStatus < 200 || correctStatus >= 300) {
-            correctionFailedChunks += 1;
-            lastChunkFailure = { status: correctStatus, json: correctData };
-
-            if (strictMode) break; // strict mode: the first chunk failure ends the cleanup pass entirely (see cleanupEntirelyFailed below)
-
-            // Don't lose the chunk — keep the uncorrected segments and surface a warning at the end.
-            chunkResults.push({ window, segments: windowSegments });
-            continue;
-          }
-          chunkResults.push({ window, segments: correctResult.segments });
+        // Successfully corrected chunks are cached (and reused on an
+        // explicit retry with identical parameters) the same way completed
+        // transcription chunks are — a cleanup failure never costs the
+        // chunks that already corrected cleanly.
+        const cleanupKey = [
+          currentAttemptKey ?? buildFileKey(file),
+          `sup:${settings.suppressionEnabled ? settings.suppressionSensitivity : 'off'}`,
+          `clean:${settings.cleanupModel}:${settings.cleanupTemperature}:${settings.cleanupChunkSeconds}:${settings.cleanupOverlapSeconds}:${settings.argumentTagging ? 1 : 0}`,
+          `ctx:${contextNotes}`,
+        ].join('||');
+        if (
+          !isExplicitRetry ||
+          cleanupCacheRef.current?.key !== cleanupKey ||
+          cleanupCacheRef.current?.windowCount !== windows.length
+        ) {
+          cleanupCacheRef.current = { key: cleanupKey, windowCount: windows.length, results: new Map() };
         }
+        const cleanupCache = cleanupCacheRef.current;
+
+        // `attempt` is a `let` the closure below can't narrow — snapshot the
+        // mode (already known non-null here) for the per-window requests.
+        const attemptMode = attempt.mode;
+        let completedWindows = 0;
+        let reusedCleanupChunks = 0;
+        setState((s) => ({ ...s, chunkProgress: { current: 0, total: windows.length } }));
+
+        // Windows run in parallel (bounded by CLEANUP_PARALLEL_CHUNK_REQUESTS).
+        // Strict mode stops NEW windows from starting after the first failure;
+        // windows already in flight finish (and cache their result), so even
+        // an aborted pass saves completed work for a resume.
+        const settledWindows = await mapWithConcurrency(
+          windows,
+          CLEANUP_PARALLEL_CHUNK_REQUESTS,
+          async (window: ChunkWindowBounds): Promise<ChunkResult> => {
+            try {
+              const windowSegments = segmentsInWindow(segmentsForCleanup, window);
+              if (windowSegments.length === 0) {
+                return { window, segments: [] };
+              }
+
+              const cached = cleanupCache.results.get(window.index);
+              if (cached) {
+                reusedCleanupChunks += 1;
+                return { window, segments: cached };
+              }
+
+              let correctStatus: number;
+              let correctData: JsonRecord;
+              try {
+                const idToken = await user.getIdToken();
+                const response = await postJson(
+                  '/api/transcriber/correct',
+                  {
+                    segments: windowSegments,
+                    speakerNames,
+                    contextNotes,
+                    mode: attemptMode,
+                    model: settings.cleanupModel,
+                    // Temperature is sent on every cleanup request so the Settings
+                    // modal's Temperature slider affects normal runs too, not just
+                    // argument-tagging ones — the route clamps it independently of
+                    // argumentTagging (see app/api/transcriber/correct/route.ts).
+                    temperature: settings.cleanupTemperature,
+                    ...(settings.argumentTagging ? { argumentTagging: true } : {}),
+                  },
+                  idToken,
+                );
+                correctStatus = response.status;
+                correctData = response.json;
+              } catch (err) {
+                const failure: CleanupChunkFailure = {
+                  status: null,
+                  json: { error: err instanceof Error ? err.message : 'Network error during the cleanup pass.' },
+                };
+                throw failure;
+              }
+
+              if (correctStatus < 200 || correctStatus >= 300) {
+                const failure: CleanupChunkFailure = { status: correctStatus, json: correctData };
+                throw failure;
+              }
+
+              const correctResult = correctData as CorrectApiResponse;
+              if (typeof correctResult.revertedSegments === 'number' && correctResult.revertedSegments > 0) {
+                appendDebugEvent(debugLog, {
+                  kind: 'correction-guardrail',
+                  chunkIndex: window.index,
+                  revertedSegments: correctResult.revertedSegments,
+                });
+              }
+              cleanupCache.results.set(window.index, correctResult.segments);
+              return { window, segments: correctResult.segments };
+            } finally {
+              completedWindows += 1;
+              const done = completedWindows;
+              setState((s) => ({ ...s, chunkProgress: { current: done, total: windows.length } }));
+            }
+          },
+          { stopOnError: strictMode },
+        );
+
+        if (reusedCleanupChunks > 0) {
+          appendDebugEvent(debugLog, {
+            kind: 'resume',
+            stage: 'cleanup-chunks',
+            reusedChunks: reusedCleanupChunks,
+            totalChunks: windows.length,
+          });
+        }
+
+        const chunkFailures = settledWindows
+          .filter((result) => result.status === 'rejected')
+          .map((result) => (result as { status: 'rejected'; reason: unknown }).reason as CleanupChunkFailure);
+        const correctionFailedChunks = chunkFailures.length;
+        const lastChunkFailure = chunkFailures.length > 0 ? chunkFailures[chunkFailures.length - 1] : null;
+
+        const chunkResults: ChunkResult[] = settledWindows.map((result, i) =>
+          result.status === 'fulfilled'
+            ? result.value
+            : // A failed window falls back to its uncorrected segments (the
+              // pre-existing "don't lose the chunk" behavior); a skipped one
+              // (strict mode stopped the pass) is treated the same way — in
+              // strict mode the run fails below either way and raw stays
+              // available.
+              { window: windows[i], segments: segmentsInWindow(segmentsForCleanup, windows[i]) },
+        );
 
         const cleanupEntirelyFailed =
           windows.length > 0 && (correctionFailedChunks === windows.length || (strictMode && correctionFailedChunks > 0));
@@ -684,6 +983,14 @@ export function useTranscriberPipeline() {
               model: settings.cleanupModel,
               upstreamStatus: httpStatus,
               upstreamBody: bodyText,
+              // The transcription itself is cached (see attemptCacheRef), so
+              // a Resume skips straight to the cleanup pass and reuses any
+              // chunks that corrected cleanly before the failure.
+              resume: {
+                stage: 'cleanup',
+                completedChunks: cleanupCache.results.size,
+                totalChunks: windows.length,
+              },
             },
             debugJson: buildDebugJson(debugLog),
           }));
@@ -740,7 +1047,10 @@ export function useTranscriberPipeline() {
    * both OpenAI providers and Gemini — are real, runnable choices). An
    * explicit retry never allows the server-side silent whisper fallback and
    * never triggers the auto-fallback queue itself — it's already a
-   * deliberate single-provider choice from the ErrorRecoveryPanel/settings. */
+   * deliberate single-provider choice from the ErrorRecoveryPanel/settings.
+   * When the chosen provider (and every other cache-key parameter) matches
+   * the failed run, saved work — completed transcription chunks, the whole
+   * transcription, corrected cleanup chunks — is reused automatically. */
   const retryWith = useCallback(
     (providerId: TranscriptionProviderId) => {
       const lastOptions = lastRunOptionsRef.current;
@@ -749,6 +1059,16 @@ export function useTranscriberPipeline() {
     },
     [performRun],
   );
+
+  /** Re-runs the last submitted file with the SAME provider the failed run
+   * last attempted, so every resume cache stays applicable — only the work
+   * that actually failed is redone (see RecoveryInfo.resume). */
+  const resume = useCallback(() => {
+    const lastOptions = lastRunOptionsRef.current;
+    const providerId = lastProviderRef.current;
+    if (!lastOptions || !providerId) return;
+    void performRun(lastOptions, providerId);
+  }, [performRun]);
 
   /** Moves a run that has a raw transcript (but no cleaned output — cleanup failed or was never run) to 'complete'. */
   const completeWithRawOnly = useCallback(() => {
@@ -759,8 +1079,13 @@ export function useTranscriberPipeline() {
     stopTimer();
     lastRunOptionsRef.current = null;
     debugLogRef.current = null;
+    lastProviderRef.current = null;
+    transcribeChunkCacheRef.current = null;
+    geminiWindowCacheRef.current = null;
+    attemptCacheRef.current = null;
+    cleanupCacheRef.current = null;
     setState(initialState);
   }, [stopTimer]);
 
-  return { state, run, retryWith, completeWithRawOnly, reset };
+  return { state, run, retryWith, resume, completeWithRawOnly, reset };
 }

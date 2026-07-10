@@ -11,22 +11,45 @@
 // exceeds either threshold, this decodes the file once client-side (never
 // uploading the original to our server), removes real silence, optionally
 // speeds up the whole buffer, splits it into chunks that each fit under
-// both caps (lib/preprocessOpenAiAudio.ts), transcribes each chunk through
-// the SAME /api/transcriber/transcribe route as a normal small file, and
-// stitches the results back together with every segment's timestamp
-// remapped to ORIGINAL-recording time (lib/preprocessAudioPlan.ts's
-// combineChunkResponses). A small file (or preprocessing disabled) takes
-// exactly the pre-existing single-request path — no decoding, no behavior
-// change.
+// both caps (lib/preprocessOpenAiAudio.ts), transcribes the chunks through
+// the SAME /api/transcriber/transcribe route as a normal small file — up
+// to OPENAI_PARALLEL_CHUNK_REQUESTS in flight at once — and stitches the
+// results back together with every segment's timestamp remapped to
+// ORIGINAL-recording time (lib/preprocessAudioPlan.ts's
+// combineChunkResponses). Every chunk is always attempted even when one
+// fails, and each success is stored in the caller-supplied chunk cache
+// (see TranscribeChunkCache) BEFORE any failure is surfaced, so a retry
+// re-runs only the chunks that actually failed. A small file (or
+// preprocessing disabled) takes exactly the pre-existing single-request
+// path — no decoding, no behavior change.
 
 import { classifyTranscriptionError } from '../classifyError';
-import { FALLBACK_TRANSCRIBE_MODEL, MAX_OPENAI_UPLOAD_BYTES, OPENAI_SINGLE_REQUEST_MAX_SECONDS } from '../constants';
+import { mapWithConcurrency } from '../concurrency';
+import {
+  FALLBACK_TRANSCRIBE_MODEL,
+  MAX_OPENAI_UPLOAD_BYTES,
+  OPENAI_PARALLEL_CHUNK_REQUESTS,
+  OPENAI_SINGLE_REQUEST_MAX_SECONDS,
+} from '../constants';
 import { normalizeSegments } from '../formatTranscript';
 import { applySpeedFactorToClip, preprocessForOpenAi, type PreprocessReport } from '../preprocessOpenAiAudio';
 import { combineChunkResponses, type ChunkTranscriptionResult } from '../preprocessAudioPlan';
 import { sanitizeUpstreamError } from '../sanitizeUpstreamError';
 import type { TranscribeApiResponse, TranscribeErrorInfo, TranscriptionMode } from '../types';
 import type { SpeakerReferenceClip, TranscriptionAttempt, TranscriptionAttemptError, TranscriptionProviderId } from './types';
+
+/**
+ * Caller-supplied per-chunk result store for the chunked path, so completed
+ * chunks survive a failed run and an explicit retry re-transcribes only the
+ * chunks that failed. The implementation (useTranscriberPipeline.ts) owns
+ * keying/invalidation: results are only valid for an identical chunk plan,
+ * so `chunkCount` is passed on every call and a mismatch with the stored
+ * plan must discard the stored results.
+ */
+export interface TranscribeChunkCache {
+  get(chunkCount: number, index: number): OneRequestResult | undefined;
+  set(chunkCount: number, index: number, result: OneRequestResult): void;
+}
 
 export interface TranscribeWithOpenAiOptions {
   file: File;
@@ -41,8 +64,10 @@ export interface TranscribeWithOpenAiOptions {
   durationSec: number | null;
   /** Long-recording preprocessing/chunking controls — see useTranscriberPipeline.ts's settings.openaiPreprocessing/openaiSilenceRemoval/openaiSpeedFactor. */
   preprocess: { enabled: boolean; silenceRemoval: boolean; speedFactor: number };
-  /** Fired once per chunk, 1-indexed, only on the chunked path. */
-  onChunkProgress?: (current: number, total: number) => void;
+  /** Per-chunk result store for the chunked path only — see TranscribeChunkCache. Absent means no caching (every chunk always transcribed fresh). */
+  chunkCache?: TranscribeChunkCache;
+  /** Fired each time a chunk COMPLETES on the chunked path — `completed` of `total` chunks done (chunks run in parallel, so there is no single "current" chunk). */
+  onChunkProgress?: (completed: number, total: number) => void;
   /** Fired once, before preprocessing starts, only on the chunked path — lets the caller show a "preparing/optimizing audio" status. */
   onPreparing?: () => void;
   idToken: string;
@@ -132,7 +157,7 @@ function prefixChunkError(err: TranscriptionAttemptError, current: number, total
   return { ...err, upstreamBody: `Chunk ${current}/${total}: ${err.upstreamBody}` };
 }
 
-interface OneRequestResult {
+export interface OneRequestResult {
   mode: TranscriptionMode;
   segments: ChunkTranscriptionResult['segments'];
   primaryError: string | null;
@@ -248,6 +273,7 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
     clips = [],
     durationSec,
     preprocess,
+    chunkCache,
     onChunkProgress,
     onPreparing,
     idToken,
@@ -314,32 +340,72 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
   }
 
   const total = preprocessed.chunkFiles.length;
-  const perChunk: ChunkTranscriptionResult[] = [];
 
-  for (let i = 0; i < total; i++) {
-    onChunkProgress?.(i + 1, total);
-    try {
-      const chunkResult = await transcribeOneRequest(
-        preprocessed.chunkFiles[i],
-        speakerNames,
-        model,
-        allowWhisperFallback,
-        effectiveClips,
-        idToken,
-        (fraction) => {
-          onUploadProgress((i + fraction) / total);
-          // The pipeline's upload handler flips status back to 'uploading'
-          // whenever the overall fraction is under 1 — re-assert this
-          // chunk's "transcribing" state once ITS upload completes, so the
-          // status doesn't read 'uploading' while waiting on the response.
-          if (fraction >= 1) onChunkProgress?.(i + 1, total);
-        },
-      );
-      perChunk.push(chunkResult);
-    } catch (err) {
-      throw prefixChunkError(err as TranscriptionAttemptError, i + 1, total);
+  // Chunks run in parallel (bounded by OPENAI_PARALLEL_CHUNK_REQUESTS), so
+  // progress is reported as an aggregate: upload progress is the mean of
+  // every chunk's own upload fraction, and it stops being reported once the
+  // first chunk COMPLETES — from there the run presents as "N of M chunks
+  // done" via onChunkProgress (the pipeline's upload handler would otherwise
+  // flip the status back to 'uploading' on every later chunk's upload event).
+  const uploadFractions = new Array<number>(total).fill(0);
+  let completedChunks = 0;
+  const reportUploadProgress = () => {
+    if (completedChunks === 0) {
+      onUploadProgress(uploadFractions.reduce((sum, f) => sum + f, 0) / total);
     }
+  };
+  const reportChunkDone = () => {
+    completedChunks += 1;
+    onChunkProgress?.(completedChunks, total);
+  };
+
+  const settled = await mapWithConcurrency(
+    preprocessed.chunkFiles,
+    OPENAI_PARALLEL_CHUNK_REQUESTS,
+    async (chunkFile, i): Promise<ChunkTranscriptionResult> => {
+      const cached = chunkCache?.get(total, i);
+      if (cached) {
+        uploadFractions[i] = 1;
+        reportUploadProgress();
+        reportChunkDone();
+        return cached;
+      }
+      try {
+        const chunkResult = await transcribeOneRequest(
+          chunkFile,
+          speakerNames,
+          model,
+          allowWhisperFallback,
+          effectiveClips,
+          idToken,
+          (fraction) => {
+            uploadFractions[i] = fraction;
+            reportUploadProgress();
+          },
+        );
+        chunkCache?.set(total, i, chunkResult);
+        reportChunkDone();
+        return chunkResult;
+      } catch (err) {
+        throw prefixChunkError(err as TranscriptionAttemptError, i + 1, total);
+      }
+    },
+  );
+
+  // Every chunk was attempted and every success is already in the cache —
+  // only now surface a failure, so a retry resumes from the failed chunks
+  // instead of starting over.
+  const failures = settled.filter((r): r is { status: 'rejected'; reason: unknown } => r.status === 'rejected');
+  if (failures.length > 0) {
+    const firstError = failures[0].reason as TranscriptionAttemptError;
+    if (failures.length === 1) throw firstError;
+    throw {
+      ...firstError,
+      upstreamBody: `${failures.length} of ${total} chunks failed (${total - failures.length} succeeded and are saved for retry). First failure — ${firstError.upstreamBody}`,
+    } satisfies TranscriptionAttemptError;
   }
+
+  const perChunk = settled.map((r) => (r as { status: 'fulfilled'; value: ChunkTranscriptionResult }).value);
 
   const combined = combineChunkResponses(perChunk, preprocessed.mapTime);
   // Diarized chunks are mapped to speaker names independently per request

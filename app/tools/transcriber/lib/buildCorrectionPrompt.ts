@@ -14,6 +14,19 @@ export interface CorrectionPromptInput {
 /* CONFIGURATION: argument-tagging guidance sent to the model    */
 /* ------------------------------------------------------------ */
 
+/** The six valid ArgumentTag values (lib/types.ts), in guidance order — used
+ * for both the prompt guidance below and the response schema's enum. Update
+ * all three together (plus parseCorrectionResponse's validation set) if the
+ * tag set ever changes. */
+const ARGUMENT_TAG_VALUES = [
+  'argument_conflict',
+  'repair_attempt',
+  'emotional_support',
+  'logistics_or_normal',
+  'unrelated',
+  'unclear',
+] as const;
+
 /** One line of guidance per ArgumentTag value (lib/types.ts) — oriented to a
  * couple's argument recording. Kept next to the enum's own doc comment in
  * lib/types.ts; update both together if the tag set ever changes. */
@@ -47,6 +60,8 @@ export function buildCorrectionPrompt(input: CorrectionPromptInput): string {
     '- Do NOT summarize, rewrite, paraphrase, sanitize, therapize, or add analysis or commentary.',
     '- Do NOT infer or invent content that was not actually said — never complete a sentence or fill in a thought that trails off.',
     '- Preserve the original wording as closely as possible: misspeaking, false starts, unfinished thoughts, interruptions, repeated words, filler, and emotionally important or upsetting phrasing all stay exactly as spoken.',
+    '- Most segments need NO text changes at all. When a segment is already correct, return its speaker and text exactly as given.',
+    "- Treat each segment as an independent unit: every fix happens entirely within that one segment's own text. Never move words between segments, and never merge, split, add, or drop segments — even a segment that looks like noise or a duplicate must come back under its own index.",
     '- You may fix an obvious automatic-speech-recognition (ASR) error only when context strongly supports the correction, plus punctuation and formatting.',
     '- You may correct an obvious speaker-label flip (e.g. two adjacent lines are clearly swapped) using context, turn-taking, and speaking style.',
     `- Known speakers in this conversation: ${speakerList}.`,
@@ -80,10 +95,38 @@ export function buildCorrectionPrompt(input: CorrectionPromptInput): string {
     input.argumentTagging
       ? '"tag" must be exactly one of the six values listed above, spelled exactly as shown.'
       : null,
-    'Return exactly one output element per input segment below, reusing the same "index" values. Do not add, remove, merge, or split segments. Timestamps are not part of your output — the app preserves them.',
+    'Return exactly one output element per input segment below, reusing the same "index" values and keeping the array in the same index order as the input. Do not add, remove, merge, or split segments. Timestamps are not part of your output — the app preserves them.',
     '',
     `Input segments (JSON): ${JSON.stringify(lines)}`,
   ].filter((line): line is string => line !== null);
 
   return [...rules, ...instructions].join('\n');
+}
+
+/**
+ * Builds the Gemini structured-output `responseSchema` matching the prompt's
+ * output shape above (same uppercase type-name convention as
+ * lib/gemini/buildGeminiTranscriptionRequest.ts's transcription schema).
+ * Constraining the response server-side — instead of relying on the prompt
+ * alone — eliminates markdown fences, prose preambles, and malformed items,
+ * the main causes of whole-chunk correction failures. When `argumentTagging`
+ * is on, `tag` is a required enum of the six valid values, so an invalid tag
+ * can't come back at all (parseCorrectionResponse still falls back to
+ * 'unclear' defensively).
+ */
+export function buildCorrectionResponseSchema(argumentTagging: boolean) {
+  const properties: Record<string, unknown> = {
+    index: { type: 'INTEGER' },
+    speaker: { type: 'STRING' },
+    text: { type: 'STRING' },
+  };
+  const required = ['index', 'speaker', 'text'];
+  if (argumentTagging) {
+    properties.tag = { type: 'STRING', enum: [...ARGUMENT_TAG_VALUES] };
+    required.push('tag');
+  }
+  return {
+    type: 'ARRAY',
+    items: { type: 'OBJECT', properties, required },
+  };
 }

@@ -72,6 +72,28 @@ export type DebugEvent =
       chunkCount: number;
     }
   | {
+      /** A retry/resume reused work saved from an earlier failed run:
+       * previously transcribed chunks ('transcribe-chunks'), an entire
+       * cached transcription ('transcription', reported as 1 of 1), or
+       * previously corrected cleanup chunks ('cleanup-chunks'). Counts
+       * only — never transcript text. */
+      kind: 'resume';
+      at: number;
+      stage: 'transcribe-chunks' | 'transcription' | 'cleanup-chunks';
+      reusedChunks: number;
+      totalChunks: number;
+    }
+  | {
+      /** The correct route's divergence guardrail (lib/correctionGuards.ts)
+       * kept the original text for this many segments in one cleanup chunk
+       * because the model's rewrite drifted too far in length to be a
+       * plausible preservation-first correction. */
+      kind: 'correction-guardrail';
+      at: number;
+      chunkIndex: number;
+      revertedSegments: number;
+    }
+  | {
       kind: 'error';
       at: number;
       category: string;
