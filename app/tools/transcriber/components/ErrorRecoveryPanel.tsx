@@ -1,10 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, Check, ClipboardCopy, Download, RotateCcw, Settings2 } from 'lucide-react';
+import { AlertTriangle, Check, ClipboardCopy, Download, Play, RotateCcw, Settings2 } from 'lucide-react';
 import Button from '@/components/Button';
 import type { TranscriptionProviderId } from '../lib/providers/types';
-import type { RecoveryInfo } from '../useTranscriberPipeline';
+import type { RecoveryInfo, ResumeInfo } from '../useTranscriberPipeline';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: retry button labels + which providers can always be offered */
@@ -30,11 +30,23 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+/** Human-readable line describing what a Resume would reuse — see useTranscriberPipeline.ts's ResumeInfo. */
+function describeResume(resume: ResumeInfo): string {
+  if (resume.stage === 'transcribe') {
+    return `${resume.completedChunks} of ${resume.totalChunks} transcription chunks already succeeded and are saved — Resume re-runs only the ones that failed.`;
+  }
+  return resume.completedChunks > 0
+    ? `The transcription is saved, and ${resume.completedChunks} of ${resume.totalChunks} cleanup chunks already succeeded — Resume redoes only the cleanup that failed.`
+    : 'The transcription is saved — Resume skips straight to re-running the cleanup pass.';
+}
+
 export interface ErrorRecoveryPanelProps {
   recovery: RecoveryInfo;
   /** When non-empty, the raw-preserving actions (download / complete with raw only) are offered. */
   rawText: string;
   onRetry: (providerId: TranscriptionProviderId) => void;
+  /** Re-runs with the same provider/parameters as the failed run, reusing everything recovery.resume says is saved. Only rendered when recovery.resume is set. */
+  onResume: () => void;
   onOpenSettings: () => void;
   onCompleteWithRawOnly: () => void;
 }
@@ -52,6 +64,7 @@ export default function ErrorRecoveryPanel({
   recovery,
   rawText,
   onRetry,
+  onResume,
   onOpenSettings,
   onCompleteWithRawOnly,
 }: ErrorRecoveryPanelProps) {
@@ -102,6 +115,7 @@ export default function ErrorRecoveryPanel({
               If it keeps failing, re-export the audio (e.g. to WAV or MP3) to rebuild the container, then re-upload.
             </p>
           )}
+          {recovery.resume && <p className="text-sm text-success">{describeResume(recovery.resume)}</p>}
         </div>
       </div>
 
@@ -119,11 +133,20 @@ export default function ErrorRecoveryPanel({
       </dl>
 
       <div className="flex flex-wrap gap-3">
+        {recovery.resume && (
+          <Button type="button" variant="primary" onClick={onResume} className="inline-flex items-center gap-2">
+            <Play size={16} />
+            Resume run
+          </Button>
+        )}
         {offeredOpenAiRetries.map((providerId) => (
           <Button
             key={providerId}
             type="button"
-            variant="primary"
+            // Resume (when offered) is the one primary action — picking a
+            // provider explicitly still works (and still reuses saved work
+            // when it's the same provider) but demotes to secondary.
+            variant={recovery.resume ? 'secondary' : 'primary'}
             onClick={() => onRetry(providerId)}
             className="inline-flex items-center gap-2"
           >

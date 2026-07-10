@@ -49,6 +49,19 @@ export type GeminiProgressEvent =
   | { phase: 'processing' }
   | { phase: 'transcribing'; current: number; total: number };
 
+/**
+ * Caller-supplied per-window result store for the windowed path, so windows
+ * already transcribed before a failure survive it and an explicit retry
+ * skips them (upload and all). Same contract as openaiProvider.ts's
+ * TranscribeChunkCache: results are only valid for an identical window
+ * plan, so `windowCount` is passed on every call and a mismatch with the
+ * stored plan must discard the stored results.
+ */
+export interface GeminiWindowCache {
+  get(windowCount: number, index: number): TranscriptSegment[] | undefined;
+  set(windowCount: number, index: number, segments: TranscriptSegment[]): void;
+}
+
 export interface TranscribeWithGeminiOptions {
   file: File;
   /** Probed client-side via lib/audioDuration.ts before this provider runs — required to decide single-call vs. windowed transcription. */
@@ -61,6 +74,8 @@ export interface TranscribeWithGeminiOptions {
   model: string;
   /** Experimental voice-reference clips (settings.geminiReferenceClips, default OFF) — the caller is responsible for only passing these when that setting is on; base64-encoded once here and reused for every window call. */
   references?: SpeakerReferenceClip[];
+  /** Per-window result store for the windowed path only — see GeminiWindowCache. Absent means no caching. The single-call path (short recordings) never uses it. */
+  windowCache?: GeminiWindowCache;
   idToken: string;
   onProgress: (event: GeminiProgressEvent) => void;
 }
@@ -332,7 +347,8 @@ function encodeWindowFile(sourceFileName: string, samples: Float32Array<ArrayBuf
  * object, not an Error instance) on any failure.
  */
 export async function transcribeWithGemini(options: TranscribeWithGeminiOptions): Promise<TranscriptionAttempt> {
-  const { file, durationSec, speakerNames, speakerNotes, contextNotes, model, references, idToken, onProgress } = options;
+  const { file, durationSec, speakerNames, speakerNotes, contextNotes, model, references, windowCache, idToken, onProgress } =
+    options;
 
   const warnings: string[] = [];
   let segments: TranscriptSegment[];
@@ -400,6 +416,19 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
 
     for (let i = 0; i < windows.length; i++) {
       const window = windows[i];
+
+      // A window transcribed by an earlier (failed) run skips everything —
+      // slicing, upload, polling, the transcription call — outright. Windows
+      // stay sequential here (each has its own upload+activation round trip,
+      // and a failure is usually systemic), but a mid-run failure no longer
+      // costs the windows already done: they're in the cache for the retry.
+      const cachedSegments = windowCache?.get(windows.length, i);
+      if (cachedSegments) {
+        chunkResults.push({ window, segments: cachedSegments });
+        onProgress({ phase: 'transcribing', current: i + 1, total: windows.length });
+        continue;
+      }
+
       const windowFile = encodeWindowFile(
         file.name,
         sliceMonoSamples(decoded.samples, decoded.sampleRate, window.windowStart, window.windowEnd),
@@ -429,6 +458,7 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
           file: windowFile,
         });
         chunkResults.push({ window, segments: windowSegments });
+        windowCache?.set(windows.length, i, windowSegments);
       } finally {
         const deleteWarning = await deleteFileBestEffort(uploadedWindow.fileName, idToken);
         if (deleteWarning) deleteFailureCount += 1;

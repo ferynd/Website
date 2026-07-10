@@ -20,7 +20,7 @@ import RequirementsPanel from './components/RequirementsPanel';
 import SpeakerProfilesPanel from './components/SpeakerProfilesPanel';
 
 function TranscriberShell({ user }: { user: User }) {
-  const { state, run, retryWith, completeWithRawOnly, reset } = useTranscriberPipeline();
+  const { state, run, retryWith, resume, completeWithRawOnly, reset } = useTranscriberPipeline();
   // Source of truth for speaker profile metadata + reference clips (Phase 4)
   // — SpeakerProfilesPanel renders it, and its speakerNames/speakerNotes/
   // getRunClips() feed every run below, replacing the old free-form
@@ -118,6 +118,7 @@ function TranscriberShell({ user }: { user: User }) {
             recovery={state.recovery}
             rawText={state.rawText}
             onRetry={retryWith}
+            onResume={resume}
             onOpenSettings={() => setShowSettings(true)}
             onCompleteWithRawOnly={completeWithRawOnly}
           />

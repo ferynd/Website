@@ -19,6 +19,10 @@ export interface GeminiRequestOptions {
   modelId?: GeminiModelId;
   temperature?: number;
   thinkingLevel?: GeminiThinkingLevel;
+  /** Optional structured-output schema (Gemini's `responseSchema`), applied
+   * alongside the JSON response mime type — constrains the model to the
+   * given shape instead of relying on prompt instructions alone. */
+  responseSchema?: unknown;
 }
 
 export const geminiEndpoint = (
@@ -43,6 +47,10 @@ export function buildGeminiRequest(prompt: string, options: GeminiRequestOptions
 
   if (isGemini3Model(modelId) && options.thinkingLevel) {
     generationConfig.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+  }
+
+  if (options.responseSchema !== undefined) {
+    generationConfig.responseSchema = options.responseSchema;
   }
 
   return {

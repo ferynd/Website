@@ -82,13 +82,15 @@ export default function PipelineStatusView({ state }: { state: TranscriberState 
     if (key === 'processing' && !isGemini) {
       return { key, label: 'Optimizing audio…' };
     }
-    // Fold the chunk-loop progress directly into the "Transcribing" step
-    // label — "Transcribing window i of N" for Gemini's per-window calls,
-    // "Transcribing chunk i of N" for OpenAI's preprocessed chunks — rather
-    // than a separate line.
+    // Fold the chunk progress directly into the "Transcribing" step label
+    // rather than a separate line. Gemini's windows run sequentially, so
+    // `current` is the window being worked on; OpenAI's preprocessed chunks
+    // run in PARALLEL, so there is no single current chunk — `current` is
+    // how many chunks have completed.
     if (key === 'transcribing' && key === state.status && state.chunkProgress) {
-      const unit = isGemini ? 'window' : 'chunk';
-      return { key, label: `Transcribing ${unit} ${state.chunkProgress.current} of ${state.chunkProgress.total}` };
+      return isGemini
+        ? { key, label: `Transcribing window ${state.chunkProgress.current} of ${state.chunkProgress.total}` }
+        : { key, label: `Transcribing chunks — ${state.chunkProgress.current} of ${state.chunkProgress.total} done` };
     }
     return { key, label: STEP_LABELS[key] };
   });
@@ -137,8 +139,10 @@ export default function PipelineStatusView({ state }: { state: TranscriberState 
       )}
 
       {state.status === 'correcting' && state.chunkProgress && (
+        // Cleanup chunks run in parallel — `current` is chunks completed, not
+        // a single in-flight chunk's position.
         <p className="text-sm text-text-2">
-          Chunk {state.chunkProgress.current} of {state.chunkProgress.total}
+          {state.chunkProgress.current} of {state.chunkProgress.total} chunks done
         </p>
       )}
 

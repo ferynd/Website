@@ -17,11 +17,13 @@
 import { resolveGeminiModelId, type GeminiModelId } from '../../../lib/aiModels';
 import { resolveTranscribeModelId, type TranscribeModelId } from '../../../lib/transcribeModels';
 import {
+  CLEANUP_PARALLEL_CHUNK_REQUESTS,
   CORRECTION_CHUNK_SECONDS,
   CORRECTION_GEMINI_MODEL,
   CORRECTION_OVERLAP_SECONDS,
   CORRECTION_TEMPERATURE,
   DEFAULT_GEMINI_TRANSCRIBE_MODEL,
+  OPENAI_PARALLEL_CHUNK_REQUESTS,
   OPENAI_SPEED_FACTOR_DEFAULT,
   OPENAI_SPEED_FACTOR_MAX,
   OPENAI_SPEED_FACTOR_MIN,
@@ -56,6 +58,16 @@ export const CLEANUP_OVERLAP_SECONDS_MAX = 300;
 /** Cleanup-pass model temperature clamp. */
 export const CLEANUP_TEMPERATURE_MIN = 0;
 export const CLEANUP_TEMPERATURE_MAX = 1;
+
+/** Parallel-request clamps: how many OpenAI transcription chunks / cleanup
+ * chunk requests may run in flight at once. 1 = fully sequential. The OpenAI
+ * ceiling is lower because each in-flight chunk is a ~20 MB upload held in
+ * memory and sharing one uplink; cleanup requests are small JSON bodies
+ * whose ceiling is really the model provider's per-minute rate limit. */
+export const OPENAI_PARALLEL_CHUNKS_MIN = 1;
+export const OPENAI_PARALLEL_CHUNKS_MAX = 8;
+export const CLEANUP_PARALLEL_CHUNKS_MIN = 1;
+export const CLEANUP_PARALLEL_CHUNKS_MAX = 12;
 
 const TRANSCRIPTION_PROVIDER_IDS = new Set<TranscriptionProviderId>([
   'openai-diarized',
@@ -100,6 +112,10 @@ export interface TranscriberSettings {
   openaiSilenceRemoval: boolean; // true
   /** Playback-rate speed-up applied to the whole recording before chunking — raises pitch slightly; set to 1.0 if accuracy suffers. */
   openaiSpeedFactor: number; // 1.2
+  /** How many preprocessed-chunk transcription requests run in flight at once on the OpenAI chunked path (integer; 1 = sequential). */
+  openaiParallelChunks: number; // 4
+  /** How many cleanup-pass chunk requests run in flight at once (integer; 1 = sequential). Lower it if a free-tier Gemini key starts returning 429s. */
+  cleanupParallelChunks: number; // 6
 }
 
 export const DEFAULT_TRANSCRIBER_SETTINGS: TranscriberSettings = {
@@ -128,6 +144,8 @@ export const DEFAULT_TRANSCRIBER_SETTINGS: TranscriberSettings = {
   openaiPreprocessing: true,
   openaiSilenceRemoval: true,
   openaiSpeedFactor: OPENAI_SPEED_FACTOR_DEFAULT,
+  openaiParallelChunks: OPENAI_PARALLEL_CHUNK_REQUESTS,
+  cleanupParallelChunks: CLEANUP_PARALLEL_CHUNK_REQUESTS,
 };
 
 /** Fresh copy of the defaults — callers get their own `fallbackOrder` array
@@ -143,6 +161,12 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
 function clampNumber(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, value));
+}
+
+/** clampNumber for integer-valued settings (parallel request counts) — a fractional stored value rounds to the nearest whole number before clamping. */
+function clampInteger(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
 }
 
 function resolveProviderId(value: unknown, fallback: TranscriptionProviderId): TranscriptionProviderId {
@@ -264,6 +288,18 @@ export function parseStoredSettings(
       OPENAI_SPEED_FACTOR_MIN,
       OPENAI_SPEED_FACTOR_MAX,
       DEFAULT_TRANSCRIBER_SETTINGS.openaiSpeedFactor,
+    ),
+    openaiParallelChunks: clampInteger(
+      base.openaiParallelChunks,
+      OPENAI_PARALLEL_CHUNKS_MIN,
+      OPENAI_PARALLEL_CHUNKS_MAX,
+      DEFAULT_TRANSCRIBER_SETTINGS.openaiParallelChunks,
+    ),
+    cleanupParallelChunks: clampInteger(
+      base.cleanupParallelChunks,
+      CLEANUP_PARALLEL_CHUNKS_MIN,
+      CLEANUP_PARALLEL_CHUNKS_MAX,
+      DEFAULT_TRANSCRIBER_SETTINGS.cleanupParallelChunks,
     ),
   };
 }

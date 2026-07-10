@@ -123,5 +123,10 @@ export interface CorrectApiRequestBody {
 export interface CorrectApiResponse {
   /** Carries `tag` per segment only when the request had `argumentTagging: true`. */
   segments: TaggedTranscriptSegment[];
+  /** How many segments the route's divergence guardrail reverted to their
+   * original text because the model's rewrite drifted too far in length to
+   * be a plausible preservation-first correction (lib/correctionGuards.ts).
+   * Present (possibly 0) on success. */
+  revertedSegments?: number;
   error?: string;
 }
