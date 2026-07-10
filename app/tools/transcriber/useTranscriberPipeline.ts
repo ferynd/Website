@@ -328,6 +328,18 @@ export function useTranscriberPipeline() {
         let providerId: TranscriptionProviderId = forcedProvider ?? settings.provider;
         const isExplicitRetry = forcedProvider !== undefined;
 
+        // A fresh submission (anything that isn't an explicit retry/resume)
+        // starts from a clean slate: the resume caches only ever hold work
+        // from the run the user is actively retrying — never an older run's
+        // results that a later mid-run failure could otherwise make
+        // reachable again through the next Retry click.
+        if (!isExplicitRetry) {
+          transcribeChunkCacheRef.current = null;
+          geminiWindowCacheRef.current = null;
+          attemptCacheRef.current = null;
+          cleanupCacheRef.current = null;
+        }
+
         // Provider-aware size cap: Gemini's Files API accepts much larger
         // uploads than OpenAI's direct multipart endpoint (see
         // MAX_GEMINI_UPLOAD_BYTES / MAX_OPENAI_UPLOAD_BYTES in
@@ -361,7 +373,7 @@ export function useTranscriberPipeline() {
         // a full candidate here, not just the two OpenAI providers. ---
         const attemptedProviders: TranscriptionProviderId[] = [];
         let attempt: TranscriptionAttempt | null = null;
-        /** Cache key of the most recent attempt — everything that can change its transcription result participates (file identity, provider, model, preprocessing parameters, speaker names/notes; context notes only affect the Gemini transcription prompt, so they only key Gemini attempts). */
+        /** Cache key of the most recent attempt — everything that can change its transcription result participates (file identity, provider, model, preprocessing parameters, speaker names/notes, attached reference-clip fingerprint; context notes only affect the Gemini transcription prompt, so they only key Gemini attempts). */
         let currentAttemptKey: string | null = null;
         // Warnings that aren't tied to a single cleanup chunk (e.g. a
         // rejected or unloadable set of speaker reference clips) —
@@ -377,40 +389,16 @@ export function useTranscriberPipeline() {
               : providerId === 'openai-whisper'
                 ? FALLBACK_TRANSCRIBE_MODEL
                 : settings.openaiModel;
-          const attemptKey = [
-            buildFileKey(file),
-            providerId,
-            model,
-            `pre:${settings.openaiPreprocessing ? 1 : 0}${settings.openaiSilenceRemoval ? 1 : 0}:${settings.openaiSpeedFactor}`,
-            `names:${speakerNames.join(',')}`,
-            `notes:${(speakerNotes ?? []).join('|')}`,
-            providerId === 'gemini' ? `ctx:${contextNotes}` : '',
-          ].join('||');
-          currentAttemptKey = attemptKey;
-          lastProviderRef.current = providerId;
-          appendDebugEvent(debugLog, { kind: 'provider-attempt', provider: providerId, model });
-
-          // On an explicit retry/resume with an identical key, the failed
-          // run's fully successful transcription is reused outright — the
-          // run skips straight past the provider call to the cleanup pass.
-          if (isExplicitRetry && attemptCacheRef.current?.key === attemptKey) {
-            attempt = attemptCacheRef.current.attempt;
-            appendDebugEvent(debugLog, { kind: 'resume', stage: 'transcription', reusedChunks: 1, totalChunks: 1 });
-            setState((s) => ({ ...s, currentProvider: providerId }));
-            continue;
-          }
-
-          setState((s) => ({ ...s, currentProvider: providerId, status: 'uploading', uploadProgress: 0 }));
-
-          const idToken = await user.getIdToken();
-
           // Resolve this attempt's speaker reference clips (IndexedDB or the
           // per-run fallback — see useSpeakerProfiles.ts's getRunClips(),
           // threaded through from page.tsx as opts.getSpeakerClips) — only
           // for the provider/settings combinations that can actually use
-          // them. A load failure degrades gracefully: the attempt continues
-          // with no clips, a warning, and (below) a debug event instead of
-          // failing the run.
+          // them. Resolved BEFORE the cache key below because clips are a
+          // provider input: adding/replacing one must invalidate saved
+          // chunks rather than let a retry reuse no-clips results. A load
+          // failure degrades gracefully: the attempt continues with no
+          // clips, a warning, and (below) a debug event instead of failing
+          // the run.
           const wantsOpenAiClips = providerId === 'openai-diarized' && settings.speakerClipsEnabled;
           const wantsGeminiReferences = providerId === 'gemini' && settings.geminiReferenceClips;
           let speakerClips: SpeakerReferenceClip[] = [];
@@ -425,6 +413,58 @@ export function useTranscriberPipeline() {
               }
             }
           }
+
+          // The server-side silent whisper retry (backward-compat default)
+          // is only allowed for a fresh run when auto-fallback is on — this
+          // is the "default OFF -> failures surface in the recovery panel
+          // instead of silently degrading" behavior. An explicit provider
+          // retry never allows it either, since that's already a deliberate
+          // single-provider choice. Also gates cached-result reuse below: a
+          // chunk/attempt that silently degraded to Whisper must not be
+          // resurrected by a retry that promises no silent fallback.
+          const allowWhisperFallback = !isExplicitRetry && settings.autoFallback;
+
+          // Name + byte size per attached clip — cheap fingerprint that
+          // changes whenever a clip is added, removed, or re-recorded.
+          const clipsFingerprint =
+            wantsOpenAiClips || wantsGeminiReferences
+              ? speakerClips.map((clip) => `${clip.name}:${clip.blob.size}`).join(',')
+              : 'off';
+
+          const attemptKey = [
+            buildFileKey(file),
+            providerId,
+            model,
+            `pre:${settings.openaiPreprocessing ? 1 : 0}${settings.openaiSilenceRemoval ? 1 : 0}:${settings.openaiSpeedFactor}`,
+            `names:${speakerNames.join(',')}`,
+            `notes:${(speakerNotes ?? []).join('|')}`,
+            `clips:${clipsFingerprint}`,
+            providerId === 'gemini' ? `ctx:${contextNotes}` : '',
+          ].join('||');
+          currentAttemptKey = attemptKey;
+          lastProviderRef.current = providerId;
+          appendDebugEvent(debugLog, { kind: 'provider-attempt', provider: providerId, model });
+
+          // On an explicit retry/resume with an identical key, the failed
+          // run's fully successful transcription is reused outright — the
+          // run skips straight past the provider call to the cleanup pass.
+          // Exception: a diarized retry never reuses an attempt that
+          // silently fell back to Whisper (mode 'fallback') — the retry's
+          // whole point is a real diarized transcription.
+          if (
+            isExplicitRetry &&
+            attemptCacheRef.current?.key === attemptKey &&
+            !(attemptCacheRef.current.attempt.mode === 'fallback' && providerId === 'openai-diarized')
+          ) {
+            attempt = attemptCacheRef.current.attempt;
+            appendDebugEvent(debugLog, { kind: 'resume', stage: 'transcription', reusedChunks: 1, totalChunks: 1 });
+            setState((s) => ({ ...s, currentProvider: providerId }));
+            continue;
+          }
+
+          setState((s) => ({ ...s, currentProvider: providerId, status: 'uploading', uploadProgress: 0 }));
+
+          const idToken = await user.getIdToken();
 
           try {
             if (providerId === 'gemini') {
@@ -528,6 +568,15 @@ export function useTranscriberPipeline() {
                 get(chunkCount, index) {
                   if (chunkCacheState.chunkCount !== chunkCount) return undefined;
                   const cached = chunkCacheState.results.get(index);
+                  // A diarized-run chunk that silently degraded to Whisper is
+                  // only reusable by a run that would allow that fallback
+                  // itself — a no-fallback retry re-transcribes it diarized
+                  // instead of resurrecting the degraded result. (An explicit
+                  // openai-whisper run's chunks are 'fallback' by definition
+                  // and stay reusable.)
+                  if (cached && cached.mode === 'fallback' && providerId === 'openai-diarized' && !allowWhisperFallback) {
+                    return undefined;
+                  }
                   if (cached) reusedTranscribeChunks += 1;
                   return cached;
                 },
@@ -544,13 +593,10 @@ export function useTranscriberPipeline() {
                 file,
                 speakerNames,
                 model,
-                // The server-side silent whisper retry (backward-compat
-                // default) is only allowed for a fresh run when auto-fallback
-                // is on — this is the "default OFF -> failures surface in the
-                // recovery panel instead of silently degrading" behavior. An
-                // explicit provider retry never allows it either, since that's
-                // already a deliberate single-provider choice.
-                allowWhisperFallback: !isExplicitRetry && settings.autoFallback,
+                // Computed above (with the clip fingerprint) — see the
+                // comment there for why an explicit retry never allows the
+                // server-side silent whisper retry.
+                allowWhisperFallback,
                 clips: wantsOpenAiClips ? speakerClips : undefined,
                 durationSec: openAiDurationSec,
                 preprocess: {
