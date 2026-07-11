@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { attachChunkProvenance } from '../lib/segmentProvenance';
 import { mapDiarizedSegments } from '../lib/mapSpeakerLabels';
-import { matchOverlapLinks, reconcileSpeakers } from '../lib/reconcileSpeakers';
+import { collectWindowOverlapLinks, matchOverlapLinks, reconcileSpeakers } from '../lib/reconcileSpeakers';
 import type { TranscriptSegment } from '../lib/types';
 
 const NAMES = ['Kait', 'James'];
@@ -209,5 +209,48 @@ describe('matchOverlapLinks', () => {
     const owned = chunk(0, [['A', 100, 104, 'We really need to talk about what happened yesterday evening']]);
     const dupes = chunk(1, [['B', 100.5, 104.2, 'We really need to talk about what happened yesterday, I think']]);
     expect(matchOverlapLinks(owned, dupes)).toHaveLength(1);
+  });
+});
+
+describe('collectWindowOverlapLinks (Gemini windowed path)', () => {
+  it('recovers identity links from window overlaps before core-only stitching would discard them', () => {
+    // Window 0 core [0, 600); window 1 core [600, 1200) with overlap reaching
+    // back before 600. The same seam sentence is transcribed by both windows
+    // — window 0 owns it (starts in its core); window 1's copy is overlap.
+    const w0Segments = chunk(0, [
+      ['Kait', 0, 4, 'Anchored opening line.'],
+      ['A', 596, 599.5, 'This seam sentence appears in both windows.'],
+    ]);
+    const w1Segments = chunk(1, [
+      ['B', 596.4, 600.1, 'This seam sentence appears in both windows.'],
+      ['B', 601, 605, 'Fresh speech after the boundary.'],
+    ]);
+    const links = collectWindowOverlapLinks([
+      { window: { index: 0, coreStart: 0, coreEnd: 600 }, segments: w0Segments },
+      { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
+    ]);
+    expect(links).toEqual([
+      { localSpeakerIdA: w1Segments[0].localSpeakerId, localSpeakerIdB: w0Segments[1].localSpeakerId },
+    ]);
+  });
+
+  it('produces no links when overlap segments have no core-owned match', () => {
+    const w0Segments = chunk(0, [['Kait', 0, 4, 'Anchored opening line only.']]);
+    const w1Segments = chunk(1, [['B', 601, 605, 'Entirely fresh core speech.']]);
+    const links = collectWindowOverlapLinks([
+      { window: { index: 0, coreStart: 0, coreEnd: 600 }, segments: w0Segments },
+      { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
+    ]);
+    expect(links).toEqual([]);
+  });
+
+  it('treats everything past the LAST window\'s coreStart as owned (no false duplicates at the tail)', () => {
+    // The last window keeps everything from its coreStart onward, even past
+    // coreEnd — mirroring stitchChunkResults' last-window rule.
+    const w1Segments = chunk(1, [['B', 1250, 1255, 'Tail speech past the nominal core end.']]);
+    const links = collectWindowOverlapLinks([
+      { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
+    ]);
+    expect(links).toEqual([]);
   });
 });

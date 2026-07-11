@@ -278,21 +278,27 @@ interface AttemptCacheState {
   attempt: TranscriptionAttempt;
 }
 
-/** Successfully corrected cleanup chunks, keyed by window index. */
+/** Successful cleanup-chunk TEXT PATCHES (segment id -> corrected text),
+ * keyed by window index. Deliberately NOT whole segments: speakers can
+ * legitimately differ between runs with the same cleanup key (the repair
+ * stage is a model call), so a cache hit re-applies the text patches to the
+ * CURRENT run's freshly-computed window segments — cached text, never
+ * cached speakers. */
 interface CleanupChunkCacheState {
   key: string;
   windowCount: number;
-  results: Map<number, TaggedTranscriptSegment[]>;
+  results: Map<number, Map<string, string>>;
 }
 
-/** Successful speaker-repair batch responses, keyed by batch index — one
- * entry per (model, escalation-pass) cache key. Independent of the cleanup
- * and classification caches: repairing speakers never invalidates corrected
- * text or classifications, and vice versa. */
+/** Successful speaker-repair batch responses. One cache object per upstream
+ * identity (repair key base); entries are keyed
+ * `<model>:<pass>:<batchCount>#<batchIndex>`, so the base and escalation
+ * passes coexist instead of evicting each other on a retry. Independent of
+ * the cleanup and classification caches: repairing speakers never
+ * invalidates corrected text or classifications, and vice versa. */
 interface SpeakerRepairCacheState {
   key: string;
-  batchCount: number;
-  results: Map<number, SpeakerRepairPatch[]>;
+  results: Map<string, SpeakerRepairPatch[]>;
 }
 
 /** Successful classification-window responses, keyed by window index.
@@ -1057,22 +1063,20 @@ export function useTranscriberPipeline() {
             attemptKey: currentAttemptKey ?? buildFileKey(file),
             contextNotes,
           });
+          // One cache object for BOTH passes — entries are pass-qualified, so
+          // an explicit retry reuses the base and escalation batches alike.
+          if (!isExplicitRetry || speakerRepairCacheRef.current?.key !== repairKeyBase) {
+            speakerRepairCacheRef.current = { key: repairKeyBase, results: new Map() };
+          }
+          const repairCache = speakerRepairCacheRef.current;
 
           const runRepairPass = async (model: string, escalation: boolean): Promise<void> => {
             const batches = buildRepairBatches(workingSegments);
             if (batches.length === 0) return;
-            const cacheKey = [repairKeyBase, model, escalation ? 'esc' : 'base'].join('||');
-            if (
-              !isExplicitRetry ||
-              speakerRepairCacheRef.current?.key !== cacheKey ||
-              speakerRepairCacheRef.current?.batchCount !== batches.length
-            ) {
-              speakerRepairCacheRef.current = { key: cacheKey, batchCount: batches.length, results: new Map() };
-            }
-            const repairCache = speakerRepairCacheRef.current;
+            const passKey = `${model}:${escalation ? 'esc' : 'base'}:${batches.length}`;
 
             const settledBatches = await mapWithConcurrency(batches, 2, async (batch, i): Promise<SpeakerRepairPatch[]> => {
-              const cached = repairCache.results.get(i);
+              const cached = repairCache.results.get(`${passKey}#${i}`);
               if (cached) return cached;
               const idToken = await user.getIdToken();
               const response = await postJson(
@@ -1094,7 +1098,7 @@ export function useTranscriberPipeline() {
               const result = response.json as SpeakerRepairApiResponse;
               recordUsage('speaker-repair', result.usage);
               const patches = Array.isArray(result.patches) ? result.patches : [];
-              repairCache.results.set(i, patches);
+              repairCache.results.set(`${passKey}#${i}`, patches);
               return patches;
             });
 
@@ -1350,6 +1354,17 @@ export function useTranscriberPipeline() {
         // windows from starting after the first failure; windows already in
         // flight finish (and cache their result), so even an aborted pass
         // saves completed work for a resume.
+        /** Applies cached/fresh text patches to this run's CURRENT window
+         * segments — cached text never resurrects a prior run's speakers. */
+        const applyTextPatches = (
+          windowSegments: TaggedTranscriptSegment[],
+          patchTextById: Map<string, string>,
+        ): TaggedTranscriptSegment[] =>
+          windowSegments.map((seg) => {
+            const text = seg.id !== undefined ? patchTextById.get(seg.id) : undefined;
+            return text !== undefined ? { ...seg, text } : seg;
+          });
+
         const settledWindows = await mapWithConcurrency(
           windows,
           settings.cleanupParallelChunks,
@@ -1363,7 +1378,7 @@ export function useTranscriberPipeline() {
               const cached = cleanupCache.results.get(window.index);
               if (cached) {
                 reusedCleanupChunks += 1;
-                return { window, segments: cached };
+                return { window, segments: applyTextPatches(windowSegments, cached) };
               }
 
               let correctStatus: number;
@@ -1419,15 +1434,13 @@ export function useTranscriberPipeline() {
               // Apply the sparse text patches locally — omitted segments are
               // unchanged by definition, and every provenance field survives
               // untouched. Only this window's segments can match (ids are
-              // validated server-side against the request).
+              // validated server-side against the request). The cache stores
+              // the PATCHES, not the patched segments — see
+              // CleanupChunkCacheState.
               const patchTextById = new Map((correctResult.patches ?? []).map((p) => [p.segmentId, p.text]));
               patchCounts.textPatchesApplied += patchTextById.size;
-              const corrected = windowSegments.map((seg) => {
-                const text = seg.id !== undefined ? patchTextById.get(seg.id) : undefined;
-                return text !== undefined ? { ...seg, text } : seg;
-              });
-              cleanupCache.results.set(window.index, corrected);
-              return { window, segments: corrected };
+              cleanupCache.results.set(window.index, patchTextById);
+              return { window, segments: applyTextPatches(windowSegments, patchTextById) };
             } finally {
               completedWindows += 1;
               const done = completedWindows;
