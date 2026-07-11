@@ -27,8 +27,10 @@ const OPENAI_STEP_KEYS: PipelineStatus[] = [
   'processing',
   'uploading',
   'transcribing',
+  'repairing',
   'correcting',
   'building',
+  'classifying',
   'complete',
 ];
 /** Gemini direct transcription has an extra 'processing' step (Files API
@@ -39,8 +41,10 @@ const GEMINI_STEP_KEYS: PipelineStatus[] = [
   'uploading',
   'processing',
   'transcribing',
+  'repairing',
   'correcting',
   'building',
+  'classifying',
   'complete',
 ];
 
@@ -50,8 +54,10 @@ const STEP_LABELS: Record<PipelineStatus, string> = {
   uploading: 'Uploading',
   processing: 'Processing',
   transcribing: 'Transcribing',
+  repairing: 'Resolving speakers',
   correcting: 'Cleaning up transcript',
   building: 'Building final transcript',
+  classifying: 'Tagging argument content',
   complete: 'Complete',
   failed: 'Failed',
 };

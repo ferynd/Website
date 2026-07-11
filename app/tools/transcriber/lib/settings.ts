@@ -17,6 +17,8 @@
 import { resolveGeminiModelId, type GeminiModelId } from '../../../lib/aiModels';
 import { resolveTranscribeModelId, type TranscribeModelId } from '../../../lib/transcribeModels';
 import {
+  ARGUMENT_CLASSIFIER_GEMINI_MODEL,
+  ARGUMENT_EXPAND_SECONDS_DEFAULT,
   CLEANUP_PARALLEL_CHUNK_REQUESTS,
   CORRECTION_CHUNK_SECONDS,
   CORRECTION_GEMINI_MODEL,
@@ -28,6 +30,7 @@ import {
   OPENAI_SPEED_FACTOR_MAX,
   OPENAI_SPEED_FACTOR_MIN,
   PRIMARY_TRANSCRIBE_MODEL,
+  SPEAKER_REPAIR_GEMINI_MODEL,
   TRANSCRIBER_CORRECTION_MODEL_STORAGE_KEY,
   TRANSCRIBER_TRANSCRIBE_MODEL_STORAGE_KEY,
 } from './constants';
@@ -69,6 +72,11 @@ export const OPENAI_PARALLEL_CHUNKS_MAX = 8;
 export const CLEANUP_PARALLEL_CHUNKS_MIN = 1;
 export const CLEANUP_PARALLEL_CHUNKS_MAX = 12;
 
+/** Argument-range context expansion clamp (seconds) — how far each
+ * conflict/repair/support block's range extends before and after it. */
+export const ARGUMENT_EXPAND_SECONDS_MIN = 30;
+export const ARGUMENT_EXPAND_SECONDS_MAX = 300;
+
 const TRANSCRIPTION_PROVIDER_IDS = new Set<TranscriptionProviderId>([
   'openai-diarized',
   'openai-whisper',
@@ -105,6 +113,16 @@ export interface TranscriberSettings {
   cleanupChunkSeconds: number; // 900
   cleanupOverlapSeconds: number; // 90
   argumentTagging: boolean; // false
+  /** Run the targeted speaker-repair stage when the quality gate triggers (lib/speakerQuality.ts). */
+  speakerRepairEnabled: boolean; // true
+  /** Gemini model for the speaker-repair stage — cheapest Flash-Lite by default; still-unresolved segments escalate once to SPEAKER_REPAIR_ESCALATION_MODEL. */
+  speakerRepairModel: GeminiModelId; // 'gemini-2.5-flash-lite'
+  /** Gemini model for the argument-classification stage — cheapest Flash-Lite by default. */
+  argumentClassifierModel: GeminiModelId; // 'gemini-2.5-flash-lite'
+  /** How far each argument range extends before/after a conflict/repair/support block, seconds. Changing this reuses the cached classification — only the pure range construction reruns. */
+  argumentExpandSeconds: number; // 90
+  /** Show the detailed (still text-free) speaker-quality metrics in the transcript view, not just the one-line warning. */
+  showQualityDetails: boolean; // false
   debugMode: 'on-failure' | 'always'; // 'on-failure'
   /** Auto-optimize & chunk long/large OpenAI recordings client-side (silence removal + optional speed-up + chunking under both OpenAI caps) instead of the plain single-request upload. Gemini is unaffected. */
   openaiPreprocessing: boolean; // true
@@ -140,6 +158,11 @@ export const DEFAULT_TRANSCRIBER_SETTINGS: TranscriberSettings = {
   cleanupChunkSeconds: CORRECTION_CHUNK_SECONDS,
   cleanupOverlapSeconds: CORRECTION_OVERLAP_SECONDS,
   argumentTagging: false,
+  speakerRepairEnabled: true,
+  speakerRepairModel: SPEAKER_REPAIR_GEMINI_MODEL,
+  argumentClassifierModel: ARGUMENT_CLASSIFIER_GEMINI_MODEL,
+  argumentExpandSeconds: ARGUMENT_EXPAND_SECONDS_DEFAULT,
+  showQualityDetails: false,
   debugMode: 'on-failure',
   openaiPreprocessing: true,
   openaiSilenceRemoval: true,
@@ -280,6 +303,19 @@ export function parseStoredSettings(
       DEFAULT_TRANSCRIBER_SETTINGS.cleanupOverlapSeconds,
     ),
     argumentTagging: parseBoolean(base.argumentTagging, DEFAULT_TRANSCRIBER_SETTINGS.argumentTagging),
+    speakerRepairEnabled: parseBoolean(base.speakerRepairEnabled, DEFAULT_TRANSCRIBER_SETTINGS.speakerRepairEnabled),
+    speakerRepairModel: resolveGeminiModelId(base.speakerRepairModel, DEFAULT_TRANSCRIBER_SETTINGS.speakerRepairModel),
+    argumentClassifierModel: resolveGeminiModelId(
+      base.argumentClassifierModel,
+      DEFAULT_TRANSCRIBER_SETTINGS.argumentClassifierModel,
+    ),
+    argumentExpandSeconds: clampNumber(
+      base.argumentExpandSeconds,
+      ARGUMENT_EXPAND_SECONDS_MIN,
+      ARGUMENT_EXPAND_SECONDS_MAX,
+      DEFAULT_TRANSCRIBER_SETTINGS.argumentExpandSeconds,
+    ),
+    showQualityDetails: parseBoolean(base.showQualityDetails, DEFAULT_TRANSCRIBER_SETTINGS.showQualityDetails),
     debugMode: resolveDebugMode(base.debugMode),
     openaiPreprocessing: parseBoolean(base.openaiPreprocessing, DEFAULT_TRANSCRIBER_SETTINGS.openaiPreprocessing),
     openaiSilenceRemoval: parseBoolean(base.openaiSilenceRemoval, DEFAULT_TRANSCRIBER_SETTINGS.openaiSilenceRemoval),

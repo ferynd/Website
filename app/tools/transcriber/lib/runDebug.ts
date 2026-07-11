@@ -9,8 +9,10 @@
 // transcript content.
 
 import type { TranscriptionProviderId } from './providers/types';
+import type { SpeakerReconcileReport } from './reconcileSpeakers';
+import type { SpeakerQualityReport } from './speakerQuality';
 import type { SuppressionSensitivity } from './suppressArtifacts';
-import type { ArgumentTag } from './types';
+import type { ArgumentTag, StageUsage } from './types';
 
 export interface DebugFileMeta {
   name: string;
@@ -94,6 +96,49 @@ export type DebugEvent =
       revertedSegments: number;
     }
   | {
+      /** The deterministic global reconciliation stage ran — counts only (lib/reconcileSpeakers.ts). */
+      kind: 'reconciliation';
+      at: number;
+      report: SpeakerReconcileReport;
+    }
+  | {
+      /** The speaker quality gate ran — counts/durations only (lib/speakerQuality.ts). */
+      kind: 'quality';
+      at: number;
+      report: SpeakerQualityReport;
+    }
+  | {
+      /** One targeted speaker-repair pass completed (lib/speakerRepair.ts) — sparse patch counts only. */
+      kind: 'speaker-repair';
+      at: number;
+      model: string;
+      batches: number;
+      failedBatches: number;
+      targets: number;
+      applied: number;
+      rejected: number;
+      belowConfidence: number;
+      escalation: boolean;
+    }
+  | {
+      /** The argument-classification stage completed (lib/argumentClassify.ts) — id/tag counts only. */
+      kind: 'classification';
+      at: number;
+      model: string;
+      windows: number;
+      failedWindows: number;
+      blocks: number;
+      missingBlocks: number;
+      tagSummary: Record<ArgumentTag, number>;
+    }
+  | {
+      /** Provider-reported token usage for one stage request — never invented; absent fields were not reported. */
+      kind: 'usage';
+      at: number;
+      stage: 'transcribe' | 'speaker-repair' | 'correct' | 'classify';
+      usage: StageUsage;
+    }
+  | {
       kind: 'error';
       at: number;
       category: string;
@@ -104,10 +149,56 @@ export type DebugEvent =
       upstreamBody: string;
     };
 
+/**
+ * Text-free stage manifest for one run — set once (setDebugManifest) when
+ * the run finishes (success or failure) and serialized at the top of the
+ * debug JSON. Everything here is versions, counts, hashes, and safe settings
+ * — NEVER transcript text, audio bytes, prompts, keys, or personal content.
+ */
+export interface StageManifest {
+  pipelineSchemaVersion: number;
+  mappingAlgorithmVersion: string;
+  /** Build commit when the deployment exposes one (NEXT_PUBLIC_GIT_COMMIT); null otherwise. */
+  gitCommit: string | null;
+  /** Model used per stage; null when a stage didn't run. */
+  models: {
+    transcribe: { provider: TranscriptionProviderId; model: string } | null;
+    speakerRepair: string | null;
+    correction: string | null;
+    classification: string | null;
+  };
+  /** Safe snapshot of the run's settings — booleans/numbers/model ids only. */
+  settings: Record<string, boolean | number | string>;
+  /** Expected/completed work per chunked stage; null when a stage didn't run. */
+  chunks: {
+    transcription: { expected: number; completed: number } | null;
+    cleanup: { expected: number; completed: number } | null;
+    classification: { expected: number; completed: number } | null;
+  };
+  /** Reference-clip attachment status: per-speaker attached flag + SHA-256 content hash. */
+  referenceClips: { name: string; attached: boolean; sha256: string | null }[];
+  quality: SpeakerQualityReport | null;
+  /** Sparse patch counts per stage. */
+  patches: {
+    speakerRepairApplied: number;
+    speakerRepairRejected: number;
+    textPatchesApplied: number;
+    textPatchesReverted: number;
+    classificationsApplied: number;
+  };
+  /** Provider-reported usage entries, in stage order (never invented). */
+  usage: { stage: string; usage: StageUsage }[];
+  /** Providers attempted, in order (auto-fallback path). */
+  fallbackPath: TranscriptionProviderId[];
+  /** Symbolic warning codes for this run — never free text. */
+  warningCodes: string[];
+}
+
 export interface DebugLog {
   createdAt: number;
   file: DebugFileMeta;
   events: DebugEvent[];
+  manifest?: StageManifest;
 }
 
 /**
@@ -142,6 +233,12 @@ function isKind<K extends DebugEvent['kind']>(kind: K) {
   return (event: DebugEvent): event is Extract<DebugEvent, { kind: K }> => event.kind === kind;
 }
 
+/** Attaches the run's stage manifest (see StageManifest) — call once when the run finishes. */
+export function setDebugManifest(log: DebugLog, manifest: StageManifest): DebugLog {
+  log.manifest = manifest;
+  return log;
+}
+
 /**
  * Serializes the accumulated log into the debug JSON shape: file metadata,
  * selected provider/model, the fallback path actually attempted, the raw
@@ -167,6 +264,8 @@ export function buildDebugJson(log: DebugLog): string {
 
   const summary = {
     file: log.file,
+    /** Text-free stage manifest (versions, models, counts, hashes) — null when the run never reached completion handling. */
+    manifest: log.manifest ?? null,
     provider: {
       selected: lastProviderAttempt?.provider ?? null,
       model: lastProviderAttempt?.model ?? null,

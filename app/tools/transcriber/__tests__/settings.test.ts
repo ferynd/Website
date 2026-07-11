@@ -318,4 +318,51 @@ describe('parseStoredSettings', () => {
       expect(parseStoredSettings(raw).fallbackOrder).toEqual(DEFAULT_TRANSCRIBER_SETTINGS.fallbackOrder);
     });
   });
+
+  describe('pipeline v2 additions (speaker repair / classification settings)', () => {
+    it('defaults the new fields when absent from a stored v1 object (settings migration)', () => {
+      // A pre-existing stored object from before this pipeline version has
+      // none of the new keys — they must all land on their defaults without
+      // disturbing the stored fields.
+      const raw = JSON.stringify({ provider: 'gemini', mergeGapSeconds: 4 });
+      const result = parseStoredSettings(raw);
+      expect(result.provider).toBe('gemini');
+      expect(result.mergeGapSeconds).toBe(4);
+      expect(result.speakerRepairEnabled).toBe(true);
+      expect(result.speakerRepairModel).toBe('gemini-2.5-flash-lite');
+      expect(result.argumentClassifierModel).toBe('gemini-2.5-flash-lite');
+      expect(result.argumentExpandSeconds).toBe(90);
+      expect(result.showQualityDetails).toBe(false);
+    });
+
+    it('preserves a previously saved speed factor (e.g. the old 1.2 default) even though the default is now 1.0', () => {
+      const result = parseStoredSettings(JSON.stringify({ openaiSpeedFactor: 1.2 }));
+      expect(result.openaiSpeedFactor).toBe(1.2);
+      // ...while a fresh store gets the new 1.0 default.
+      expect(parseStoredSettings(null).openaiSpeedFactor).toBe(1.0);
+    });
+
+    it('round-trips the new fields and clamps argumentExpandSeconds', () => {
+      const raw = JSON.stringify({
+        speakerRepairEnabled: false,
+        speakerRepairModel: 'gemini-2.5-flash',
+        argumentClassifierModel: 'gemini-3.1-flash-lite',
+        argumentExpandSeconds: 9999,
+        showQualityDetails: true,
+      });
+      const result = parseStoredSettings(raw);
+      expect(result.speakerRepairEnabled).toBe(false);
+      expect(result.speakerRepairModel).toBe('gemini-2.5-flash');
+      expect(result.argumentClassifierModel).toBe('gemini-3.1-flash-lite');
+      expect(result.argumentExpandSeconds).toBe(300); // clamped to the max
+      expect(result.showQualityDetails).toBe(true);
+    });
+
+    it('falls back invalid model ids on the new model fields to their defaults', () => {
+      const raw = JSON.stringify({ speakerRepairModel: 'gpt-9', argumentClassifierModel: 42 });
+      const result = parseStoredSettings(raw);
+      expect(result.speakerRepairModel).toBe(DEFAULT_TRANSCRIBER_SETTINGS.speakerRepairModel);
+      expect(result.argumentClassifierModel).toBe(DEFAULT_TRANSCRIBER_SETTINGS.argumentClassifierModel);
+    });
+  });
 });

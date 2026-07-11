@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { appendDebugEvent, buildDebugJson, createDebugLog, SPEAKER_REFERENCE_NOT_CONFIGURED } from '../lib/runDebug';
+import { appendDebugEvent, buildDebugJson, createDebugLog, setDebugManifest, SPEAKER_REFERENCE_NOT_CONFIGURED } from '../lib/runDebug';
 
 const FILE_META = { name: 'argument-2026-06-30.m4a', sizeBytes: 16 * 1024 * 1024, mimeType: 'audio/x-m4a' };
 
@@ -142,5 +142,63 @@ describe('runDebug', () => {
         }
       }
     }
+  });
+
+  describe('stage manifest', () => {
+    function sampleManifest() {
+      return {
+        pipelineSchemaVersion: 2,
+        mappingAlgorithmVersion: 'map-v2/reconcile-v1',
+        gitCommit: null,
+        models: {
+          transcribe: { provider: 'openai-diarized' as const, model: 'gpt-4o-transcribe-diarize' },
+          speakerRepair: 'gemini-2.5-flash-lite',
+          correction: 'gemini-2.5-flash',
+          classification: null,
+        },
+        settings: { cleanupEnabled: true, openaiSpeedFactor: 1.0, provider: 'openai-diarized' },
+        chunks: {
+          transcription: { expected: 4, completed: 4 },
+          cleanup: { expected: 3, completed: 3 },
+          classification: null,
+        },
+        referenceClips: [{ name: 'Kait', attached: true, sha256: 'ab'.repeat(32) }],
+        quality: null,
+        patches: {
+          speakerRepairApplied: 2,
+          speakerRepairRejected: 0,
+          textPatchesApplied: 5,
+          textPatchesReverted: 1,
+          classificationsApplied: 0,
+        },
+        usage: [{ stage: 'correct', usage: { model: 'gemini-2.5-flash', inputTokens: 100, outputTokens: 20, requests: 1 } }],
+        fallbackPath: ['openai-diarized' as const],
+        warningCodes: ['speaker-quality-low'],
+      };
+    }
+
+    it('setDebugManifest attaches the manifest and buildDebugJson serializes it at the top level', () => {
+      const log = createDebugLog({ name: 'a.m4a', sizeBytes: 10, mimeType: 'audio/mp4' });
+      setDebugManifest(log, sampleManifest());
+      const parsed = JSON.parse(buildDebugJson(log));
+      expect(parsed.manifest.pipelineSchemaVersion).toBe(2);
+      expect(parsed.manifest.models.speakerRepair).toBe('gemini-2.5-flash-lite');
+      expect(parsed.manifest.referenceClips[0].sha256).toHaveLength(64);
+    });
+
+    it('manifest defaults to null when never set', () => {
+      const log = createDebugLog({ name: 'a.m4a', sizeBytes: 10, mimeType: 'audio/mp4' });
+      expect(JSON.parse(buildDebugJson(log)).manifest).toBeNull();
+    });
+
+    it('a full manifest never carries transcript text — only versions, counts, hashes, and safe settings', () => {
+      const log = createDebugLog({ name: 'a.m4a', sizeBytes: 10, mimeType: 'audio/mp4' });
+      setDebugManifest(log, sampleManifest());
+      const json = buildDebugJson(log);
+      // The manifest shape has no field that could carry content; spot-check
+      // that serialization only contains the values we passed as labels.
+      expect(json).not.toMatch(/"text"/);
+      expect(json).not.toMatch(/"prompt"/);
+    });
   });
 });
