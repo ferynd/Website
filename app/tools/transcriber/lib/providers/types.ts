@@ -7,7 +7,8 @@
 
 import type { ClassifiedError } from '../classifyError';
 import type { ClipValidationStatus } from '../clipAnalysis';
-import type { TranscriptionMode, TranscriptSegment } from '../types';
+import type { OverlapLink } from '../reconcileSpeakers';
+import type { StageUsage, TranscriptionMode, TranscriptSegment } from '../types';
 
 export type TranscriptionProviderId = 'openai-diarized' | 'openai-whisper' | 'gemini';
 
@@ -36,6 +37,11 @@ export interface TranscriptionAttempt {
   segments: TranscriptSegment[];
   /** Non-fatal notices (e.g. "diarized model unavailable, used Whisper"). Always present, possibly empty. */
   warnings: string[];
+  /** Cross-chunk speaker-identity links recovered from audio-overlap regions
+   * (chunked/windowed paths only) — input to lib/reconcileSpeakers.ts. */
+  overlapLinks?: OverlapLink[];
+  /** Provider token usage, one entry per request that reported it. */
+  usage?: StageUsage[];
   /** Set only when this attempt went through OpenAI's client-side
    * preprocessing/chunking path (lib/preprocessOpenAiAudio.ts) — counts and
    * durations only, surfaced in the debug log (lib/runDebug.ts's

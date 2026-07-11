@@ -132,9 +132,9 @@ describe('planChunks', () => {
       bytesPerSecond: 2,
     });
     expect(chunks).toEqual([
-      { finalStart: 0, finalEnd: 5 },
-      { finalStart: 5, finalEnd: 10 },
-      { finalStart: 10, finalEnd: 12 },
+      { finalStart: 0, finalEnd: 5, encodeStart: 0 },
+      { finalStart: 5, finalEnd: 10, encodeStart: 5 },
+      { finalStart: 10, finalEnd: 12, encodeStart: 10 },
     ]);
   });
 
@@ -153,8 +153,8 @@ describe('planChunks', () => {
       bytesPerSecond: 0, // byte cap disabled -> duration cap only
     });
     expect(chunks).toEqual([
-      { finalStart: 0, finalEnd: 4 },
-      { finalStart: 4, finalEnd: 10 },
+      { finalStart: 0, finalEnd: 4, encodeStart: 0 },
+      { finalStart: 4, finalEnd: 10, encodeStart: 4 },
     ]);
   });
 
@@ -167,10 +167,10 @@ describe('planChunks', () => {
       bytesPerSecond: 0,
     });
     expect(chunks).toEqual([
-      { finalStart: 0, finalEnd: 6 },
-      { finalStart: 6, finalEnd: 12 },
-      { finalStart: 12, finalEnd: 18 },
-      { finalStart: 18, finalEnd: 20 },
+      { finalStart: 0, finalEnd: 6, encodeStart: 0 },
+      { finalStart: 6, finalEnd: 12, encodeStart: 6 },
+      { finalStart: 12, finalEnd: 18, encodeStart: 12 },
+      { finalStart: 18, finalEnd: 20, encodeStart: 18 },
     ]);
 
     // Exact tiling: no gaps/overlaps, and the last chunk ends at finalDuration exactly.
@@ -188,12 +188,66 @@ describe('planChunks', () => {
       maxChunkBytes: 0,
       bytesPerSecond: 0,
     });
-    expect(chunks).toEqual([{ finalStart: 0, finalEnd: 3 }]);
+    expect(chunks).toEqual([{ finalStart: 0, finalEnd: 3, encodeStart: 0 }]);
   });
 
   it('returns [] when the timeline has no kept audio', () => {
     const timeline = buildKeptTimeline([]);
     expect(planChunks(timeline, { speedFactor: 1, maxChunkSeconds: 10, maxChunkBytes: 0, bytesPerSecond: 0 })).toEqual([]);
+  });
+
+  describe('overlapSeconds', () => {
+    it("starts each later chunk's encoded audio one overlap before its core; cores still tile exactly", () => {
+      const timeline = buildKeptTimeline([{ start: 0, end: 20 }]);
+      const chunks = planChunks(timeline, {
+        speedFactor: 1,
+        maxChunkSeconds: 8,
+        maxChunkBytes: 0,
+        bytesPerSecond: 0,
+        overlapSeconds: 2,
+      });
+      // Core budget shrinks by the overlap (8 - 2 = 6).
+      expect(chunks.map((c) => [c.finalStart, c.finalEnd, c.encodeStart])).toEqual([
+        [0, 6, 0],
+        [6, 12, 4],
+        [12, 18, 10],
+        [18, 20, 16],
+      ]);
+      for (let i = 1; i < chunks.length; i++) {
+        expect(chunks[i].finalStart).toBe(chunks[i - 1].finalEnd);
+        // Encoded duration (core + overlap) never exceeds the cap.
+        expect(chunks[i].finalEnd - chunks[i].encodeStart).toBeLessThanOrEqual(8);
+      }
+    });
+
+    it("clamps the first chunk's encodeStart to 0 and never goes negative", () => {
+      const timeline = buildKeptTimeline([{ start: 0, end: 5 }]);
+      const chunks = planChunks(timeline, {
+        speedFactor: 1,
+        maxChunkSeconds: 10,
+        maxChunkBytes: 0,
+        bytesPerSecond: 0,
+        overlapSeconds: 3,
+      });
+      expect(chunks).toEqual([{ finalStart: 0, finalEnd: 5, encodeStart: 0 }]);
+    });
+
+    it('the time mapper offsets chunk-local times by encodeStart, preserving original timestamps', () => {
+      const timeline = buildKeptTimeline([{ start: 0, end: 20 }]);
+      const chunks = planChunks(timeline, {
+        speedFactor: 1,
+        maxChunkSeconds: 8,
+        maxChunkBytes: 0,
+        bytesPerSecond: 0,
+        overlapSeconds: 2,
+      });
+      const mapTime = createChunkTimeMapper(chunks, timeline, 1);
+      // Chunk 1's encoded audio starts at final-time 4; 2s into it is the
+      // core boundary (6), 3s into it is original second 7.
+      expect(mapTime(1, 0)).toBeCloseTo(4, 10);
+      expect(mapTime(1, 2)).toBeCloseTo(6, 10);
+      expect(mapTime(1, 3)).toBeCloseTo(7, 10);
+    });
   });
 });
 
@@ -207,8 +261,8 @@ describe('createChunkTimeMapper', () => {
     const speedFactor = 1.2;
     // finalDuration = 10 / 1.2 = 8.3333...
     const chunks = [
-      { finalStart: 0, finalEnd: 3 },
-      { finalStart: 3, finalEnd: timeline.processedDurationSec / speedFactor },
+      { finalStart: 0, finalEnd: 3, encodeStart: 0 },
+      { finalStart: 3, finalEnd: timeline.processedDurationSec / speedFactor, encodeStart: 3 },
     ];
     const mapTime = createChunkTimeMapper(chunks, timeline, speedFactor);
 
@@ -219,7 +273,7 @@ describe('createChunkTimeMapper', () => {
 
   it('clamps an out-of-range chunk index to the nearest valid chunk', () => {
     const timeline = buildKeptTimeline([{ start: 0, end: 5 }]);
-    const chunks = [{ finalStart: 0, finalEnd: 5 }];
+    const chunks = [{ finalStart: 0, finalEnd: 5, encodeStart: 0 }];
     const mapTime = createChunkTimeMapper(chunks, timeline, 1);
     expect(mapTime(5, 0)).toBe(mapTime(0, 0));
     expect(mapTime(-1, 0)).toBe(mapTime(0, 0));
@@ -227,7 +281,7 @@ describe('createChunkTimeMapper', () => {
 
   it('clamps a negative tSec to 0', () => {
     const timeline = buildKeptTimeline([{ start: 0, end: 5 }]);
-    const chunks = [{ finalStart: 0, finalEnd: 5 }];
+    const chunks = [{ finalStart: 0, finalEnd: 5, encodeStart: 0 }];
     const mapTime = createChunkTimeMapper(chunks, timeline, 1);
     expect(mapTime(0, -10)).toBeCloseTo(0, 10);
   });
@@ -323,5 +377,83 @@ describe('combineChunkResponses', () => {
     const combined = combineChunkResponses(perChunk, (_, sec) => sec);
     expect(combined.segments[0].start).toBe(5);
     expect(combined.segments[0].end).toBe(5);
+  });
+
+  describe('overlap deduplication + identity links', () => {
+    // Chunk plan: chunk 0 core [0, 10); chunk 1 encoded from 8 (2s overlap),
+    // core from 10. mapTime mirrors createChunkTimeMapper's encodeStart math.
+    const encodeStarts = [0, 8];
+    const coreOffsets = [0, 2];
+    const mapTime = (chunkIndex: number, sec: number) => encodeStarts[chunkIndex] + sec;
+
+    it('drops overlap duplicates deterministically and links the identities that transcribed the same speech', () => {
+      const perChunk = [
+        {
+          mode: 'diarized' as const,
+          segments: [
+            {
+              start: 8.5,
+              end: 9.8,
+              speaker: 'Kait',
+              text: 'This straddling sentence appears in both chunks.',
+              chunkIndex: 0,
+              localSpeakerId: 'c0:label:a',
+            },
+          ],
+          primaryError: null,
+          warnings: [],
+        },
+        {
+          mode: 'diarized' as const,
+          segments: [
+            // Chunk-local time 0.6 -> original 8.6: inside the overlap
+            // (before core offset 2) -> duplicate, dropped, linked.
+            {
+              start: 0.6,
+              end: 1.9,
+              speaker: 'Speaker B',
+              text: 'This straddling sentence appears in both chunks.',
+              chunkIndex: 1,
+              localSpeakerId: 'c1:label:b',
+            },
+            // Chunk-local time 2.5 -> original 10.5: inside the core -> kept.
+            {
+              start: 2.5,
+              end: 3.5,
+              speaker: 'Speaker B',
+              text: 'And this is new speech after the boundary.',
+              chunkIndex: 1,
+              localSpeakerId: 'c1:label:b',
+            },
+          ],
+          primaryError: null,
+          warnings: [],
+        },
+      ];
+
+      const combined = combineChunkResponses(perChunk, mapTime, { coreOffsets });
+
+      // No duplicate text survives; timestamps are original-recording time.
+      expect(combined.segments.map((s) => [s.text, s.start])).toEqual([
+        ['This straddling sentence appears in both chunks.', 8.5],
+        ['And this is new speech after the boundary.', 10.5],
+      ]);
+      // The dropped duplicate linked the two chunk-local identities.
+      expect(combined.overlapLinks).toEqual([{ localSpeakerIdA: 'c1:label:b', localSpeakerIdB: 'c0:label:a' }]);
+    });
+
+    it('keeps everything (and produces no links) when no coreOffsets are supplied', () => {
+      const perChunk = [
+        {
+          mode: 'diarized' as const,
+          segments: [{ start: 0.5, end: 1, speaker: 'A', text: 'hello there friend', chunkIndex: 1, localSpeakerId: 'c1:label:a' }],
+          primaryError: null,
+          warnings: [],
+        },
+      ];
+      const combined = combineChunkResponses(perChunk, (_, sec) => sec);
+      expect(combined.segments).toHaveLength(1);
+      expect(combined.overlapLinks).toEqual([]);
+    });
   });
 });

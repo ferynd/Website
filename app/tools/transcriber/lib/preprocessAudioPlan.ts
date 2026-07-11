@@ -18,6 +18,7 @@ import {
   SILENCE_EDGE_PAD_SECONDS,
   SILENCE_FRAME_SECONDS,
 } from './constants';
+import { matchOverlapLinks, type OverlapLink } from './reconcileSpeakers';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: local floors/minimums                          */
@@ -251,12 +252,21 @@ export interface PlanChunksOptions {
   maxChunkSeconds: number;
   maxChunkBytes: number;
   bytesPerSecond: number;
+  /** Audio overlap carried into the START of every chunk after the first,
+   * in FINAL-time seconds — each chunk's encoded audio begins `overlapSeconds`
+   * before its core so the seam speech is transcribed by both neighbors
+   * (identity linking + safe deduplication downstream). Default 0. */
+  overlapSeconds?: number;
 }
 
 export interface PlannedChunk {
-  /** FINAL-time (post-silence-removal, post-speed-up) bounds, seconds. */
+  /** FINAL-time (post-silence-removal, post-speed-up) CORE bounds, seconds —
+   * cores exactly tile [0, finalDuration] with no gaps or overlap. */
   finalStart: number;
   finalEnd: number;
+  /** Where this chunk's ENCODED audio begins: `finalStart` minus the overlap
+   * (clamped to 0). Equal to finalStart for the first chunk / zero overlap. */
+  encodeStart: number;
 }
 
 /**
@@ -273,11 +283,16 @@ export interface PlannedChunk {
  */
 export function planChunks(timeline: KeptTimeline, opts: PlanChunksOptions): PlannedChunk[] {
   const { speedFactor, maxChunkSeconds, maxChunkBytes, bytesPerSecond } = opts;
+  const overlapSeconds = Math.max(0, opts.overlapSeconds ?? 0);
   const finalDuration = timeline.processedDurationSec / speedFactor;
   if (!(finalDuration > 0)) return [];
 
   const byteCapSeconds = bytesPerSecond > 0 ? Math.floor((maxChunkBytes - 44) / bytesPerSecond) : maxChunkSeconds;
-  const effectiveCap = Math.max(1, Math.min(maxChunkSeconds, byteCapSeconds));
+  // The caps bound each chunk's ENCODED audio (core + leading overlap), so
+  // the per-chunk core budget shrinks by the overlap. Conservative for the
+  // first chunk (which has no leading overlap) — one overlap's worth of
+  // slack on a ~10-minute chunk is negligible and keeps the plan simple.
+  const effectiveCap = Math.max(1, Math.min(maxChunkSeconds, byteCapSeconds) - overlapSeconds);
   const minMeaningful = effectiveCap * MIN_MEANINGFUL_CHUNK_FRACTION;
 
   // Interior kept-interval boundaries (the seams between originally
@@ -285,14 +300,14 @@ export function planChunks(timeline: KeptTimeline, opts: PlanChunksOptions): Pla
   // processed time into final time.
   const interiorBoundaries = timeline.offsets.slice(1).map((o) => o / speedFactor);
 
-  const chunks: PlannedChunk[] = [];
+  const cores: { finalStart: number; finalEnd: number }[] = [];
   let cur = 0;
 
   while (cur < finalDuration - EPSILON) {
     const capEnd = cur + effectiveCap;
 
     if (capEnd >= finalDuration - EPSILON) {
-      chunks.push({ finalStart: cur, finalEnd: finalDuration });
+      cores.push({ finalStart: cur, finalEnd: finalDuration });
       break;
     }
 
@@ -304,22 +319,25 @@ export function planChunks(timeline: KeptTimeline, opts: PlanChunksOptions): Pla
     }
 
     if (bestBoundary !== null && bestBoundary - cur >= minMeaningful) {
-      chunks.push({ finalStart: cur, finalEnd: bestBoundary });
+      cores.push({ finalStart: cur, finalEnd: bestBoundary });
       cur = bestBoundary;
     } else {
-      chunks.push({ finalStart: cur, finalEnd: capEnd });
+      cores.push({ finalStart: cur, finalEnd: capEnd });
       cur = capEnd;
     }
   }
 
-  return chunks;
+  return cores.map((core, i) => ({
+    ...core,
+    encodeStart: i === 0 ? core.finalStart : Math.max(0, core.finalStart - overlapSeconds),
+  }));
 }
 
 /**
  * Builds a `(chunkIndex, tSec) => originalSec` mapper from a chunk plan: a
- * time `tSec` seconds into chunk `chunkIndex` (final-time domain, i.e. the
- * chunk's own encoded audio) maps to
- * `timeline.mapProcessedToOriginal((chunks[chunkIndex].finalStart + tSec) * speedFactor)`
+ * time `tSec` seconds into chunk `chunkIndex`'s ENCODED audio (which begins
+ * at `encodeStart`, i.e. overlap included) maps to
+ * `timeline.mapProcessedToOriginal((chunks[chunkIndex].encodeStart + tSec) * speedFactor)`
  * — undoing the speed-up first (back to processed time), then the
  * silence-removal concatenation (back to original time). Both inputs are
  * clamped: an out-of-range chunkIndex clamps to the nearest valid chunk, a
@@ -338,7 +356,7 @@ export function createChunkTimeMapper(
     const idx = Math.max(0, Math.min(chunks.length - 1, Math.trunc(chunkIndex)));
     const chunk = chunks[idx];
     const t = Math.max(0, tSec);
-    return timeline.mapProcessedToOriginal((chunk.finalStart + t) * speedFactor, bias);
+    return timeline.mapProcessedToOriginal((chunk.encodeStart + t) * speedFactor, bias);
   };
 }
 
@@ -354,28 +372,47 @@ export interface CombinedTranscriptionResult {
   segments: TranscriptSegment[];
   primaryError: string | null;
   warnings: string[];
+  /** Chunk-local speaker-identity links recovered from overlap regions —
+   * fed into the deterministic reconciliation stage (lib/reconcileSpeakers.ts). */
+  overlapLinks: OverlapLink[];
 }
 
 /** Warning appended when some chunks came back diarized and others fell back to Whisper — see combineChunkResponses. */
 export const MIXED_CHUNK_MODE_WARNING =
   'Some chunks fell back to Whisper (no diarization) — speaker labels may be inconsistent across the recording.';
 
+export interface CombineChunkOptions {
+  /** Per-chunk core offset in the chunk's OWN encoded audio, in final-time
+   * seconds: `finalStart - encodeStart` (0 for the first chunk / no
+   * overlap). A segment starting before its chunk's core offset is an
+   * overlap duplicate — the previous chunk owns that region — and is
+   * deterministically dropped, after being matched against the owner's
+   * segments to recover a cross-chunk speaker-identity link. */
+  coreOffsets?: number[];
+}
+
 /**
  * Combines per-chunk transcription responses into one stitched result:
  * every segment's start/end is remapped from chunk-local final time back to
  * ORIGINAL-recording time via `mapTime`, all segments are concatenated and
- * sorted by (remapped) start. `mode` is 'diarized' only if every chunk came
- * back diarized; otherwise 'fallback' — and if the chunks were a genuine
- * mix (at least one diarized, at least one not), MIXED_CHUNK_MODE_WARNING is
- * appended. `primaryError` is the first non-null one seen; `warnings` is the
- * de-duplicated union of every chunk's warnings (plus the mixed-mode notice
- * when applicable).
+ * sorted by (remapped) start. Overlap regions (see CombineChunkOptions) are
+ * deduplicated by core ownership — a segment belongs to the chunk whose core
+ * contains its start, mirroring lib/stitchTranscript.ts's rule — and the
+ * dropped duplicates contribute speaker-identity links instead of text.
+ * `mode` is 'diarized' only if every chunk came back diarized; otherwise
+ * 'fallback' — and if the chunks were a genuine mix (at least one diarized,
+ * at least one not), MIXED_CHUNK_MODE_WARNING is appended. `primaryError` is
+ * the first non-null one seen; `warnings` is the de-duplicated union of
+ * every chunk's warnings (plus the mixed-mode notice when applicable).
  */
 export function combineChunkResponses(
   perChunk: ChunkTranscriptionResult[],
   mapTime: (chunkIndex: number, sec: number, bias?: TimeBias) => number,
+  options: CombineChunkOptions = {},
 ): CombinedTranscriptionResult {
+  const coreOffsets = options.coreOffsets ?? [];
   const segments: TranscriptSegment[] = [];
+  const overlapDuplicates: TranscriptSegment[] = [];
   const warnings: string[] = [];
   let primaryError: string | null = null;
   let sawDiarized = false;
@@ -391,13 +428,19 @@ export function combineChunkResponses(
       if (!warnings.includes(w)) warnings.push(w);
     }
 
+    const coreOffset = coreOffsets[i] ?? 0;
     for (const seg of chunk.segments) {
       // Explicit biases so a timestamp landing exactly on a removed-silence
       // seam (a chunk's first segment start, a chunk's last segment end)
       // resolves to the correct side of the gap in original time.
       const start = mapTime(i, seg.start, 'start');
       const end = Math.max(start, mapTime(i, seg.end, 'end'));
-      segments.push({ ...seg, start, end });
+      const remapped = { ...seg, start, end };
+      if (seg.start >= coreOffset - EPSILON) {
+        segments.push(remapped);
+      } else {
+        overlapDuplicates.push(remapped);
+      }
     }
   });
 
@@ -409,5 +452,7 @@ export function combineChunkResponses(
     warnings.push(MIXED_CHUNK_MODE_WARNING);
   }
 
-  return { mode, segments, primaryError, warnings };
+  const overlapLinks = overlapDuplicates.length > 0 ? matchOverlapLinks(segments, overlapDuplicates) : [];
+
+  return { mode, segments, primaryError, warnings, overlapLinks };
 }

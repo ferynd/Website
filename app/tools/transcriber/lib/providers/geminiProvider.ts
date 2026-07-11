@@ -32,7 +32,9 @@ import {
 import { createChunkWindows, type ChunkWindowBounds } from '../chunkTranscript';
 import { decodeToMono16k, sliceMonoSamples, type DecodedMonoAudio } from '../decodeAudioMono16k';
 import { normalizeSegments } from '../formatTranscript';
+import { collectWindowOverlapLinks, type OverlapLink } from '../reconcileSpeakers';
 import { sanitizeUpstreamError } from '../sanitizeUpstreamError';
+import { attachChunkProvenance } from '../segmentProvenance';
 import { stitchChunkResults, type ChunkResult } from '../stitchTranscript';
 import type { TranscribeErrorInfo, TranscriptSegment } from '../types';
 import type { SpeakerReferenceClip, TranscriptionAttempt, TranscriptionAttemptError } from './types';
@@ -352,6 +354,7 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
 
   const warnings: string[] = [];
   let segments: TranscriptSegment[];
+  let overlapLinks: OverlapLink[] = [];
 
   // Base64-encode reference clips (if any) once, up front — reused for every
   // window call below rather than re-encoded per window.
@@ -370,7 +373,7 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
       await pollUntilActive(uploaded.fileName, idToken, file, model);
 
       onProgress({ phase: 'transcribing', current: 1, total: 1 });
-      segments = await transcribeWindow({
+      const windowSegments = await transcribeWindow({
         fileUri: uploaded.fileUri,
         mimeType: uploaded.mimeType,
         windowStart: 0,
@@ -384,6 +387,7 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
         idToken,
         file,
       });
+      segments = attachChunkProvenance(windowSegments, 0);
     } finally {
       const deleteWarning = await deleteFileBestEffort(uploaded.fileName, idToken);
       if (deleteWarning) warnings.push(deleteWarning);
@@ -457,8 +461,11 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
           idToken,
           file: windowFile,
         });
-        chunkResults.push({ window, segments: windowSegments });
-        windowCache?.set(windows.length, i, windowSegments);
+        // Stable ids + window-qualified local identities attach here, BEFORE
+        // caching, so cached and fresh windows carry identical provenance.
+        const withProvenance = attachChunkProvenance(windowSegments, i);
+        chunkResults.push({ window, segments: withProvenance });
+        windowCache?.set(windows.length, i, withProvenance);
       } finally {
         const deleteWarning = await deleteFileBestEffort(uploadedWindow.fileName, idToken);
         if (deleteWarning) deleteFailureCount += 1;
@@ -471,6 +478,9 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
       );
     }
 
+    // Overlap identity links must be recovered BEFORE stitching discards the
+    // overlap segments (stitchChunkResults keeps each window's core only).
+    overlapLinks = collectWindowOverlapLinks(chunkResults);
     segments = stitchChunkResults(chunkResults);
   }
 
@@ -480,5 +490,6 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
     mode: 'gemini',
     segments: normalizeSegments(segments),
     warnings,
+    ...(overlapLinks.length > 0 ? { overlapLinks } : {}),
   };
 }

@@ -36,6 +36,7 @@ import { encodeWavPcm16 } from './clipAnalysis';
 import {
   OPENAI_CHUNK_MAX_BYTES,
   OPENAI_CHUNK_MAX_SECONDS,
+  OPENAI_CHUNK_OVERLAP_SECONDS,
   WAV_PCM16_MONO_16K_BYTES_PER_SECOND,
 } from './constants';
 import { decodeToMono16k, sliceMonoSamples } from './decodeAudioMono16k';
@@ -67,6 +68,10 @@ export interface PreprocessedOpenAiAudio {
   chunkFiles: File[];
   /** Maps (chunkIndex, secondsIntoThatChunk) back to ORIGINAL-recording seconds. `bias` resolves seam-exact times — see preprocessAudioPlan.ts's TimeBias. */
   mapTime: (chunkIndex: number, tSec: number, bias?: TimeBias) => number;
+  /** Per-chunk core offset inside that chunk's own encoded audio (final-time
+   * seconds): everything before it is overlap owned by the previous chunk —
+   * see preprocessAudioPlan.ts's CombineChunkOptions. */
+  coreOffsets: number[];
   report: PreprocessReport;
 }
 
@@ -174,18 +179,20 @@ export async function preprocessForOpenAi(
     maxChunkSeconds: OPENAI_CHUNK_MAX_SECONDS,
     maxChunkBytes: OPENAI_CHUNK_MAX_BYTES,
     bytesPerSecond: WAV_PCM16_MONO_16K_BYTES_PER_SECOND,
+    overlapSeconds: OPENAI_CHUNK_OVERLAP_SECONDS,
   });
 
   onPhase?.('encoding');
   // Each chunk's FINAL-time bounds correspond to processed-time bounds
-  // multiplied by speedFactor — slice that processed-time range out of the
-  // trimmed buffer and speed up just the slice, one chunk at a time
-  // (sequentially, so only one render's buffers are alive at once), instead
-  // of ever rendering the whole sped-up recording as a single buffer.
+  // multiplied by speedFactor — slice that processed-time range (including
+  // the leading overlap, from encodeStart) out of the trimmed buffer and
+  // speed up just the slice, one chunk at a time (sequentially, so only one
+  // render's buffers are alive at once), instead of ever rendering the whole
+  // sped-up recording as a single buffer.
   const chunkFiles: File[] = [];
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
-    const slice = sliceMonoSamples(concatenated, sampleRate, chunk.finalStart * speedFactor, chunk.finalEnd * speedFactor);
+    const slice = sliceMonoSamples(concatenated, sampleRate, chunk.encodeStart * speedFactor, chunk.finalEnd * speedFactor);
     const sped = await applySpeedFactor(slice, sampleRate, speedFactor);
     const wavBuffer = encodeWavPcm16(sped, sampleRate);
     chunkFiles.push(new File([wavBuffer], `${file.name}.chunk-${i + 1}.wav`, { type: 'audio/wav' }));
@@ -196,6 +203,7 @@ export async function preprocessForOpenAi(
   return {
     chunkFiles,
     mapTime,
+    coreOffsets: chunks.map((chunk) => chunk.finalStart - chunk.encodeStart),
     report: {
       originalDurationSec,
       keptDurationSec,
