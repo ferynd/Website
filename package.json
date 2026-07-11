@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "pages:build": "next-on-pages"
+    "pages:build": "next-on-pages",
+    "transcriber:eval": "vite-node scripts/transcriberEval.ts --"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
