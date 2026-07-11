@@ -26,9 +26,10 @@ export function buildTranscriptText(segments: TranscriptSegment[]): string {
 /**
  * Cleans up raw segments coming from either OpenAI or a correction pass:
  * clamps negative/NaN times, ensures end >= start, defaults a missing/blank
- * speaker to 'Unknown', trims text, and drops empty lines.
+ * speaker to 'Unknown', trims text, and drops empty lines. Provenance fields
+ * (id, chunkIndex, localSpeakerId, ...) pass through untouched.
  */
-export function normalizeSegments(segments: TranscriptSegment[]): TranscriptSegment[] {
+export function normalizeSegments<T extends TranscriptSegment>(segments: T[]): T[] {
   return segments
     .map((seg) => {
       const start = Number.isFinite(seg.start) ? Math.max(0, seg.start) : 0;
@@ -36,7 +37,7 @@ export function normalizeSegments(segments: TranscriptSegment[]): TranscriptSegm
       const end = Math.max(start, endRaw);
       const speaker = (seg.speaker ?? '').toString().trim() || 'Unknown';
       const text = (seg.text ?? '').toString().trim();
-      return { start, end, speaker, text };
+      return { ...seg, start, end, speaker, text };
     })
     .filter((seg) => seg.text.length > 0);
 }

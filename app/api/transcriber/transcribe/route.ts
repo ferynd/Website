@@ -282,13 +282,28 @@ export async function POST(req: NextRequest) {
 
   const segments =
     mode === 'diarized'
-      ? mapDiarizedSegments(data.segments ?? [], speakerNames)
+      ? mapDiarizedSegments(data.segments ?? [], speakerNames, { clipsAttached: clipReferences.length > 0 })
       : mapFallbackSegments(data.segments ?? []);
+
+  // Token-usage passthrough — only when OpenAI actually reported token
+  // counts (whisper's verbose_json reports duration, not tokens; nothing is
+  // invented here).
+  const rawUsage = data.usage;
+  const usage =
+    rawUsage && typeof rawUsage.input_tokens === 'number' && typeof rawUsage.output_tokens === 'number'
+      ? {
+          model: mode === 'fallback' ? FALLBACK_TRANSCRIBE_MODEL : transcribeModelId,
+          inputTokens: rawUsage.input_tokens,
+          outputTokens: rawUsage.output_tokens,
+          requests: 1,
+        }
+      : undefined;
 
   return NextResponse.json({
     mode,
     segments,
     primaryError: mode === 'fallback' ? primaryError : null,
     warnings,
+    ...(usage ? { usage } : {}),
   });
 }
