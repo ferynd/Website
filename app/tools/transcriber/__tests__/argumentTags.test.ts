@@ -1,42 +1,40 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ARGUMENT_RELEVANT_GAP_SECONDS,
+  buildArgumentRanges,
   buildTagSummary,
   filterArgumentRelevant,
   formatArgumentRelevantTranscript,
 } from '../lib/argumentTags';
 import type { ArgumentTag, TaggedTranscriptSegment, TurnBlock } from '../lib/types';
 
-function seg(start: number, end: number, tag?: ArgumentTag): TaggedTranscriptSegment {
-  return { start, end, speaker: 'Kait', text: 'text', tag };
-}
-
-function block(start: number, end: number, speaker: string, tag?: ArgumentTag): TurnBlock {
-  return { start, end, speaker, text: `${speaker} at ${start}`, segmentCount: 1, tag };
+let blockCounter = 0;
+function block(start: number, end: number, tag: ArgumentTag | undefined, text?: string): TurnBlock {
+  blockCounter += 1;
+  const id = `t${blockCounter}`;
+  return {
+    id,
+    start,
+    end,
+    speaker: 'Kait',
+    text: text ?? `block ${id}`,
+    segmentCount: 1,
+    segmentIds: [`s0-${blockCounter}`],
+    ...(tag ? { tag } : {}),
+  };
 }
 
 describe('buildTagSummary', () => {
-  it('zero-fills every ArgumentTag value for empty input', () => {
-    expect(buildTagSummary([])).toEqual({
-      argument_conflict: 0,
-      repair_attempt: 0,
-      emotional_support: 0,
-      logistics_or_normal: 0,
-      unrelated: 0,
-      unclear: 0,
-    });
-  });
-
-  it('counts each tag value across segments', () => {
-    const segments = [
-      seg(0, 1, 'argument_conflict'),
-      seg(1, 2, 'argument_conflict'),
-      seg(2, 3, 'repair_attempt'),
-      seg(3, 4, 'unclear'),
+  it('zero-fills every tag and counts occurrences on any tagged items', () => {
+    const segments: TaggedTranscriptSegment[] = [
+      { start: 0, end: 1, speaker: 'Kait', text: 'a', tag: 'argument_conflict' },
+      { start: 1, end: 2, speaker: 'James', text: 'b', tag: 'argument_conflict' },
+      { start: 2, end: 3, speaker: 'Kait', text: 'c', tag: 'unclear' },
+      { start: 3, end: 4, speaker: 'Kait', text: 'd' },
     ];
-    expect(buildTagSummary(segments)).toEqual({
+    const summary = buildTagSummary(segments);
+    expect(summary).toEqual({
       argument_conflict: 2,
-      repair_attempt: 1,
+      repair_attempt: 0,
       emotional_support: 0,
       logistics_or_normal: 0,
       unrelated: 0,
@@ -44,99 +42,127 @@ describe('buildTagSummary', () => {
     });
   });
 
-  it('does not count untagged segments toward any bucket', () => {
-    const segments = [seg(0, 1, undefined), seg(1, 2, 'unrelated')];
-    const summary = buildTagSummary(segments);
-    expect(summary.unrelated).toBe(1);
-    expect(Object.values(summary).reduce((a, b) => a + b, 0)).toBe(1);
+  it('works on turn blocks too (the classification unit)', () => {
+    const summary = buildTagSummary([block(0, 10, 'repair_attempt'), block(10, 20, undefined)]);
+    expect(summary.repair_attempt).toBe(1);
+    expect(summary.unclear).toBe(0);
   });
 });
 
-describe('filterArgumentRelevant', () => {
-  it('returns an empty array for empty input', () => {
-    expect(filterArgumentRelevant([])).toEqual([]);
+describe('buildArgumentRanges / filterArgumentRelevant', () => {
+  const EXPAND = { expandSeconds: 90 };
+
+  it('conflict near the beginning: the range clamps at 0 and captures the lead-out', () => {
+    blockCounter = 0;
+    const blocks = [
+      block(10, 40, 'argument_conflict'),
+      block(50, 80, 'logistics_or_normal'),
+      block(500, 560, 'unrelated'),
+    ];
+    const ranges = buildArgumentRanges(blocks, EXPAND);
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0].start).toBe(0);
+    expect(ranges[0].end).toBe(130);
+    const kept = filterArgumentRelevant(blocks, EXPAND);
+    expect(kept.map((b) => b.id)).toEqual(['t1', 't2']);
   });
 
-  it('keeps blocks tagged argument_conflict, repair_attempt, and emotional_support', () => {
+  it('conflict near the end: the lead-in is captured, the earlier chatter is not', () => {
+    blockCounter = 0;
     const blocks = [
-      block(0, 10, 'Kait', 'argument_conflict'),
-      block(10, 20, 'James', 'repair_attempt'),
-      block(20, 30, 'Kait', 'emotional_support'),
+      block(0, 60, 'unrelated'),
+      block(900, 950, 'logistics_or_normal'), // within 90s before the conflict
+      block(1000, 1060, 'argument_conflict'),
     ];
-    expect(filterArgumentRelevant(blocks)).toEqual(blocks);
+    const kept = filterArgumentRelevant(blocks, EXPAND);
+    expect(kept.map((b) => b.id)).toEqual(['t2', 't3']);
   });
 
-  it('drops unrelated and logistics_or_normal blocks outright', () => {
+  it('earlier argument followed by a neutral ending: the neutral tail is excluded', () => {
+    blockCounter = 0;
     const blocks = [
-      block(0, 10, 'Kait', 'argument_conflict'),
-      block(10, 20, 'James', 'unrelated'),
-      block(20, 30, 'Kait', 'logistics_or_normal'),
-      block(30, 40, 'James', 'repair_attempt'),
+      block(100, 200, 'argument_conflict'),
+      block(210, 260, 'repair_attempt'),
+      block(600, 700, 'logistics_or_normal'),
+      block(710, 800, 'unrelated'),
     ];
-    const result = filterArgumentRelevant(blocks);
-    expect(result).toEqual([blocks[0], blocks[3]]);
+    const kept = filterArgumentRelevant(blocks, EXPAND);
+    // Repair extends the range to 260+90=350 — the 600s+ neutral ending stays out.
+    expect(kept.map((b) => b.id)).toEqual(['t1', 't2']);
   });
 
-  it('keeps an unclear block sandwiched within the gap between two core-tagged blocks', () => {
+  it('multiple separate argument ranges stay separate and chronological', () => {
+    blockCounter = 0;
     const blocks = [
-      block(0, 10, 'Kait', 'argument_conflict'),
-      block(11, 20, 'James', 'unclear'),
-      block(21, 30, 'Kait', 'repair_attempt'),
+      block(0, 50, 'argument_conflict'),
+      block(60, 100, 'unclear'),
+      block(1000, 1050, 'unrelated'),
+      block(2000, 2060, 'argument_conflict'),
+      block(2070, 2100, 'emotional_support'),
     ];
-    expect(filterArgumentRelevant(blocks)).toEqual(blocks);
+    const ranges = buildArgumentRanges(blocks, EXPAND);
+    expect(ranges).toHaveLength(2);
+    expect(ranges[0].blockIds).toEqual(['t1', 't2']);
+    expect(ranges[1].blockIds).toEqual(['t4', 't5']);
+    const kept = filterArgumentRelevant(blocks, EXPAND);
+    expect(kept.map((b) => b.id)).toEqual(['t1', 't2', 't4', 't5']);
   });
 
-  it('keeps an untagged (no tag at all) block sandwiched within the gap', () => {
+  it('logistics INSIDE a conflict range is included (every intervening block, regardless of tag)', () => {
+    blockCounter = 0;
     const blocks = [
-      block(0, 10, 'Kait', 'argument_conflict'),
-      block(11, 20, 'James', undefined),
-      block(21, 30, 'Kait', 'repair_attempt'),
+      block(100, 150, 'argument_conflict'),
+      block(160, 200, 'logistics_or_normal'),
+      block(200, 240, 'unrelated'),
+      block(250, 300, 'argument_conflict'),
     ];
-    expect(filterArgumentRelevant(blocks)).toEqual(blocks);
+    const kept = filterArgumentRelevant(blocks, EXPAND);
+    expect(kept.map((b) => b.id)).toEqual(['t1', 't2', 't3', 't4']);
   });
 
-  it('drops an unclear block whose gap to a neighbor exceeds ARGUMENT_RELEVANT_GAP_SECONDS', () => {
-    const farGap = ARGUMENT_RELEVANT_GAP_SECONDS + 1;
+  it('repair after conflict merges into one continuous range', () => {
+    blockCounter = 0;
     const blocks = [
-      block(0, 10, 'Kait', 'argument_conflict'),
-      block(10 + farGap, 10 + farGap + 5, 'James', 'unclear'),
-      block(10 + farGap + 5 + 10, 10 + farGap + 5 + 20, 'Kait', 'repair_attempt'),
+      block(100, 200, 'argument_conflict'),
+      block(320, 380, 'repair_attempt'), // 120s later — ranges overlap via expansion and merge
     ];
-    expect(filterArgumentRelevant(blocks)).toEqual([blocks[0], blocks[2]]);
+    const ranges = buildArgumentRanges(blocks, EXPAND);
+    expect(ranges).toHaveLength(1);
+    expect(ranges[0].start).toBe(10);
+    expect(ranges[0].end).toBe(470);
   });
 
-  it('drops a leading/trailing unclear block with no core-tagged block on one side', () => {
-    const blocks = [
-      block(0, 10, 'Kait', 'unclear'),
-      block(11, 20, 'James', 'argument_conflict'),
-      block(21, 30, 'Kait', 'unclear'),
-    ];
-    // The first block has no preceding core block; the last has no following one.
-    expect(filterArgumentRelevant(blocks)).toEqual([blocks[1]]);
+  it('no relevant tags: no ranges, empty export', () => {
+    blockCounter = 0;
+    const blocks = [block(0, 50, 'logistics_or_normal'), block(60, 100, 'unrelated'), block(110, 150, 'unclear')];
+    expect(buildArgumentRanges(blocks, EXPAND)).toEqual([]);
+    expect(filterArgumentRelevant(blocks, EXPAND)).toEqual([]);
+    expect(formatArgumentRelevantTranscript(blocks, EXPAND)).toBe('');
   });
 
-  it('never keeps an unrelated block even when sandwiched between two core-tagged blocks', () => {
+  it('preserves block and segment ids on every range', () => {
+    blockCounter = 0;
+    const blocks = [block(100, 150, 'argument_conflict'), block(160, 200, 'unclear')];
+    const ranges = buildArgumentRanges(blocks, EXPAND);
+    expect(ranges[0].blockIds).toEqual(['t1', 't2']);
+    expect(ranges[0].segmentIds).toEqual(['s0-1', 's0-2']);
+  });
+
+  it('respects a custom expansion width', () => {
+    blockCounter = 0;
     const blocks = [
-      block(0, 10, 'Kait', 'argument_conflict'),
-      block(11, 20, 'James', 'unrelated'),
-      block(21, 30, 'Kait', 'repair_attempt'),
+      block(100, 150, 'argument_conflict'),
+      block(200, 240, 'logistics_or_normal'), // 50s after the conflict ends
     ];
-    expect(filterArgumentRelevant(blocks)).toEqual([blocks[0], blocks[2]]);
+    expect(filterArgumentRelevant(blocks, { expandSeconds: 30 }).map((b) => b.id)).toEqual(['t1']);
+    expect(filterArgumentRelevant(blocks, { expandSeconds: 90 }).map((b) => b.id)).toEqual(['t1', 't2']);
   });
 });
 
 describe('formatArgumentRelevantTranscript', () => {
-  it('returns an empty string for empty input', () => {
-    expect(formatArgumentRelevantTranscript([])).toBe('');
-  });
-
-  it('formats only the filtered blocks, one per line with a timestamp', () => {
-    const blocks = [
-      block(0, 10, 'Kait', 'argument_conflict'),
-      block(10, 20, 'James', 'logistics_or_normal'),
-    ];
-    const text = formatArgumentRelevantTranscript(blocks);
-    expect(text).toContain('Kait at 0');
-    expect(text).not.toContain('James at 10');
+  it('formats kept blocks exactly like the cleaned transcript', () => {
+    blockCounter = 0;
+    const blocks = [block(0, 50, 'argument_conflict', 'You never listen.')];
+    expect(formatArgumentRelevantTranscript(blocks)).toBe('[00:00:00] Kait: You never listen.');
   });
 });

@@ -1,31 +1,23 @@
-// Pure helpers for the argument-tagging feature (Phase 5): a zero-filled tag
-// summary for the debug log/UI, and the "argument-relevant" filtered export
-// that keeps only turn blocks plausibly relevant to reviewing a couple's
-// argument, plus a small window of surrounding context.
+// Pure helpers for the argument-relevant export: a zero-filled tag summary
+// for the debug log/UI, and RANGE-BASED argument-range construction — every
+// conflict/repair/support block anchors a range extended ~90s before and
+// after, every intervening block is included regardless of tag (a logistics
+// aside inside an argument stays in context), overlapping/adjacent ranges
+// merge, and isolated unrelated stretches outside every range are excluded.
+// This replaces the old "sandwich" filter, which dropped context unless it
+// sat between two core blocks and skipped lead-in/wind-down entirely.
 //
 // Relative imports here deliberately (see the note at the top of
 // ./settings.ts) — this file needs to stay runnable under `npm test` without
 // a path-alias resolver.
 
+import { ARGUMENT_EXPAND_SECONDS_DEFAULT } from './constants';
 import { formatCleanTranscript } from './formatCleanTranscript';
-import type { ArgumentTag, TaggedTranscriptSegment, TurnBlock } from './types';
+import type { ArgumentTag, TurnBlock } from './types';
 
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: argument-relevant export tuning                */
-/* ------------------------------------------------------------ */
-
-/**
- * Maximum gap (seconds) between an `unclear`/untagged turn block and each of
- * its nearest argument-relevant (core-tagged) neighbors for it to be kept as
- * lead-up/context. A block further than this from either neighbor is
- * excluded rather than dragging in unrelated stretches of the recording.
- */
-export const ARGUMENT_RELEVANT_GAP_SECONDS = 120;
-
-/** Tags that always count as argument-relevant on their own — see
- * filterArgumentRelevant below. 'unrelated' and 'logistics_or_normal' are
- * deliberately excluded (logistics/normal chatter is common and not itself
- * argument-relevant; unrelated is explicitly out of scope even as context). */
+/** Tags that anchor an argument range on their own — 'unrelated' and
+ * 'logistics_or_normal' never anchor one, but DO get included when they fall
+ * inside another anchor's expanded range. */
 const CORE_ARGUMENT_TAGS = new Set<ArgumentTag>(['argument_conflict', 'repair_attempt', 'emotional_support']);
 
 /** Every ArgumentTag value, for zero-filling buildTagSummary's result — kept
@@ -40,16 +32,16 @@ const ALL_ARGUMENT_TAGS: ArgumentTag[] = [
 ];
 
 /**
- * Counts how many segments carry each ArgumentTag value. Zero-filled: every
- * tag value is present in the result even if it never occurred, so the UI
- * summary line and debug JSON always show the full set. Untagged segments
- * (tagging was off, or a segment somehow has no tag) are not counted toward
- * any bucket.
+ * Counts how many items carry each ArgumentTag value. Zero-filled: every tag
+ * value is present in the result even if it never occurred, so the UI
+ * summary line and debug JSON always show the full set. Untagged items are
+ * not counted toward any bucket. Works on anything tagged — turn blocks
+ * (the classification unit) or legacy tagged segments.
  */
-export function buildTagSummary(segments: TaggedTranscriptSegment[]): Record<ArgumentTag, number> {
+export function buildTagSummary<T extends { tag?: ArgumentTag }>(items: T[]): Record<ArgumentTag, number> {
   const summary = Object.fromEntries(ALL_ARGUMENT_TAGS.map((tag) => [tag, 0])) as Record<ArgumentTag, number>;
-  for (const segment of segments) {
-    if (segment.tag) summary[segment.tag] += 1;
+  for (const item of items) {
+    if (item.tag) summary[item.tag] += 1;
   }
   return summary;
 }
@@ -58,54 +50,73 @@ function isCoreArgumentBlock(block: TurnBlock): boolean {
   return block.tag !== undefined && CORE_ARGUMENT_TAGS.has(block.tag);
 }
 
+export interface ArgumentRangeOptions {
+  /** How far each core block's range extends before its start and after its end, in seconds. */
+  expandSeconds?: number;
+}
+
+/** One merged argument range: expanded time bounds plus every intervening
+ * block's ids (any tag) and their constituent segment ids, chronological. */
+export interface ArgumentRange {
+  start: number;
+  end: number;
+  blockIds: string[];
+  segmentIds: string[];
+}
+
 /**
- * Filters turn blocks down to the ones worth reviewing for an argument
- * export: every `argument_conflict` / `repair_attempt` / `emotional_support`
- * block, PLUS any `unclear`/untagged block that sits close enough (within
- * ARGUMENT_RELEVANT_GAP_SECONDS of BOTH its nearest core-tagged neighbor
- * before and after it) to read as lead-up/context for one. `unrelated` and
- * `logistics_or_normal` blocks are excluded even when they'd otherwise be
- * "sandwiched" — only an ambiguous/untagged block can count as context.
- * Order is preserved (blocks are expected already sorted by start time, as
- * mergeTurns/TurnBlock output is).
+ * Builds the argument ranges for a classified transcript:
+ * 1. Every conflict / repair / emotional-support block anchors a range.
+ * 2. Each range extends `expandSeconds` before the block's start and after its end.
+ * 3. Overlapping or adjacent ranges merge into one.
+ * 4. Every block intersecting a merged range is included, regardless of tag.
+ * Ranges and their block ids stay in chronological order; blocks outside
+ * every range (isolated unrelated/neutral stretches) are excluded. Returns
+ * [] when nothing anchors a range.
  */
-export function filterArgumentRelevant(blocks: TurnBlock[]): TurnBlock[] {
-  const keep = blocks.map(isCoreArgumentBlock);
+export function buildArgumentRanges(blocks: TurnBlock[], options: ArgumentRangeOptions = {}): ArgumentRange[] {
+  const expandSeconds = Math.max(0, options.expandSeconds ?? ARGUMENT_EXPAND_SECONDS_DEFAULT);
+  const sorted = [...blocks].sort((a, b) => a.start - b.start);
 
-  for (let i = 0; i < blocks.length; i++) {
-    if (keep[i]) continue;
+  const cores = sorted.filter(isCoreArgumentBlock);
+  if (cores.length === 0) return [];
 
-    const tag = blocks[i].tag;
-    const isSandwichCandidate = tag === undefined || tag === 'unclear';
-    if (!isSandwichCandidate) continue; // 'unrelated' / 'logistics_or_normal' never included as context
-
-    let prevCore: TurnBlock | null = null;
-    for (let j = i - 1; j >= 0; j--) {
-      if (isCoreArgumentBlock(blocks[j])) {
-        prevCore = blocks[j];
-        break;
-      }
-    }
-
-    let nextCore: TurnBlock | null = null;
-    for (let j = i + 1; j < blocks.length; j++) {
-      if (isCoreArgumentBlock(blocks[j])) {
-        nextCore = blocks[j];
-        break;
-      }
-    }
-
-    if (
-      prevCore &&
-      nextCore &&
-      blocks[i].start - prevCore.end < ARGUMENT_RELEVANT_GAP_SECONDS &&
-      nextCore.start - blocks[i].end < ARGUMENT_RELEVANT_GAP_SECONDS
-    ) {
-      keep[i] = true;
+  // Expand + merge (cores are sorted, so a single pass merges).
+  const merged: { start: number; end: number }[] = [];
+  for (const core of cores) {
+    const start = Math.max(0, core.start - expandSeconds);
+    const end = core.end + expandSeconds;
+    const last = merged[merged.length - 1];
+    if (last && start <= last.end) {
+      last.end = Math.max(last.end, end);
+    } else {
+      merged.push({ start, end });
     }
   }
 
-  return blocks.filter((_, i) => keep[i]);
+  const idByBlock = new Map<TurnBlock, string>(sorted.map((block, i) => [block, block.id ?? `b${i}`]));
+  return merged.map((range) => {
+    const inRange = sorted.filter((block) => block.start < range.end && block.end > range.start);
+    return {
+      start: range.start,
+      end: range.end,
+      blockIds: inRange.map((block) => idByBlock.get(block)!),
+      segmentIds: inRange.flatMap((block) => block.segmentIds ?? []),
+    };
+  });
+}
+
+/**
+ * Filters turn blocks down to the ones inside any argument range — every
+ * core block plus everything (any tag) within the expanded/merged ranges, in
+ * chronological order. Blocks outside every range are excluded.
+ */
+export function filterArgumentRelevant(blocks: TurnBlock[], options: ArgumentRangeOptions = {}): TurnBlock[] {
+  const ranges = buildArgumentRanges(blocks, options);
+  if (ranges.length === 0) return [];
+  return [...blocks]
+    .sort((a, b) => a.start - b.start)
+    .filter((block) => ranges.some((range) => block.start < range.end && block.end > range.start));
 }
 
 /**
@@ -114,6 +125,6 @@ export function filterArgumentRelevant(blocks: TurnBlock[]): TurnBlock[] {
  * like the full cleaned transcript (formatCleanTranscript) so the two
  * exports stay visually consistent.
  */
-export function formatArgumentRelevantTranscript(blocks: TurnBlock[]): string {
-  return formatCleanTranscript(filterArgumentRelevant(blocks));
+export function formatArgumentRelevantTranscript(blocks: TurnBlock[], options: ArgumentRangeOptions = {}): string {
+  return formatCleanTranscript(filterArgumentRelevant(blocks, options));
 }
