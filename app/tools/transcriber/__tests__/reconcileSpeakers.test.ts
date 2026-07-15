@@ -6,6 +6,7 @@ import {
   matchOverlapLinks,
   reconcileSpeakers,
   resolveOverlapDuplicates,
+  resolveWindowOverlaps,
 } from '../lib/reconcileSpeakers';
 import type { TranscriptSegment } from '../lib/types';
 
@@ -45,6 +46,24 @@ describe('reconcileSpeakers', () => {
     expect(report.candidateClusters).toBe(2);
     expect(report.unresolvedClusters).toBe(2);
     expect(report.conflictClusters).toBe(0);
+  });
+
+  it('preserves the original mappingSource for candidate/unresolved clusters instead of overwriting it to reconciliation', () => {
+    const segments = chunk(0, [
+      ['Kait', 0, 2, 'Hello.'], // provider-exact -> candidate
+      ['A', 2, 4, 'Mystery line one.'], // positional -> candidate (James unclaimed)
+      ['C', 4, 6, 'Third voice.'], // both names claimed -> unresolved
+    ]);
+    const { segments: out } = reconcileSpeakers(segments, { knownNames: NAMES });
+    // A candidate outcome is NOT reconciliation actually resolving an
+    // identity — the original evidence source must survive so later readers
+    // (e.g. speakerQuality.ts's mixed-label diagnostics, which look for
+    // 'provider-exact') see the truth, not a generic 'reconciliation' label.
+    expect(out[0].mappingSource).toBe('provider-exact');
+    expect(out[0].candidateSpeaker).toBe('Kait');
+    expect(out[1].mappingSource).toBe('positional');
+    expect(out[1].candidateSpeaker).toBe('James');
+    expect(out[2].mappingSource).toBe('unresolved');
   });
 
   it('never forces unresolved identities onto the two supplied names', () => {
@@ -266,13 +285,33 @@ describe('resolveOverlapDuplicates', () => {
     expect(result.hasPossibleDuplicate).toBe(true);
   });
 
-  it('always retains an identity-less duplicate (e.g. Whisper fallback) rather than losing speech', () => {
-    const owned = chunk(0, [['Kait', 100, 103, 'This exact sentence appears in both chunks.']]);
+  it('dedupes an identity-less duplicate (e.g. Whisper fallback) that reliably matches on text+time, without creating a link', () => {
+    // Whisper segments carry NO localSpeakerId at all — identity must not be
+    // required to dedupe, or every matching Whisper chunk overlap would
+    // survive twice.
+    const owned: TranscriptSegment[] = [
+      { start: 100, end: 103, text: 'This exact sentence appears in both chunks.', speaker: 'Unknown', chunkIndex: 0 },
+    ];
     const duplicates: TranscriptSegment[] = [
       { start: 100.5, end: 103, text: 'This exact sentence appears in both chunks.', speaker: 'Unknown', chunkIndex: 1 },
     ];
     const result = resolveOverlapDuplicates(owned, duplicates);
+    expect(result.retainedDuplicates).toEqual([]);
+    expect(result.owned).toHaveLength(1);
+    // No identity on either side — nothing to link.
+    expect(result.links).toEqual([]);
+  });
+
+  it('still retains an identity-less duplicate with no reliable text+time match, rather than losing speech', () => {
+    const owned: TranscriptSegment[] = [
+      { start: 100, end: 103, text: 'Something entirely different was said here.', speaker: 'Unknown', chunkIndex: 0 },
+    ];
+    const duplicates: TranscriptSegment[] = [
+      { start: 500, end: 503, text: 'A completely unrelated later sentence.', speaker: 'Unknown', chunkIndex: 1 },
+    ];
+    const result = resolveOverlapDuplicates(owned, duplicates);
     expect(result.retainedDuplicates).toEqual(duplicates);
+    expect(result.hasPossibleDuplicate).toBe(false);
   });
 });
 
@@ -343,5 +382,78 @@ describe('collectWindowOverlapLinks (Gemini windowed path)', () => {
       { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
     ]);
     expect(links).toEqual([]);
+  });
+});
+
+describe('resolveWindowOverlaps (Gemini windowed path, loss-safe)', () => {
+  it('drops a seam overlap segment that reliably matches its core-owning neighbor', () => {
+    const w0Segments = chunk(0, [
+      ['Kait', 0, 4, 'Anchored opening line.'],
+      ['A', 596, 599.5, 'This seam sentence appears in both windows.'],
+    ]);
+    const w1Segments = chunk(1, [
+      ['B', 596.4, 600.1, 'This seam sentence appears in both windows.'],
+      ['B', 601, 605, 'Fresh speech after the boundary.'],
+    ]);
+    const resolved = resolveWindowOverlaps([
+      { window: { index: 0, coreStart: 0, coreEnd: 600 }, segments: w0Segments },
+      { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
+    ]);
+    expect(resolved.links).toEqual([
+      { localSpeakerIdA: w1Segments[0].localSpeakerId, localSpeakerIdB: w0Segments[1].localSpeakerId },
+    ]);
+    // The duplicate seam copy is dropped — not lost, merged into the owned segment.
+    expect(resolved.segments.map((s) => s.text)).toEqual([
+      'Anchored opening line.',
+      'This seam sentence appears in both windows.',
+      'Fresh speech after the boundary.',
+    ]);
+    expect(resolved.hasPossibleDuplicate).toBe(false);
+  });
+
+  it('retains a seam segment instead of discarding it when no window reliably owns a matching copy', () => {
+    // Previously: stitchChunkResults unconditionally dropped anything
+    // starting outside a window's core, regardless of whether the
+    // neighboring window ever captured it — a segment spanning the seam
+    // with no matching neighbor copy was simply lost.
+    const w0Segments = chunk(0, [['Kait', 0, 4, 'Anchored opening line.']]);
+    const w1Segments = chunk(1, [
+      ['B', 598, 601, 'A segment that spans the seam with no neighbor match.'],
+      ['B', 601, 605, 'Fresh speech after the boundary.'],
+    ]);
+    const resolved = resolveWindowOverlaps([
+      { window: { index: 0, coreStart: 0, coreEnd: 600 }, segments: w0Segments },
+      { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
+    ]);
+    expect(resolved.segments.map((s) => s.text)).toContain('A segment that spans the seam with no neighbor match.');
+    expect(resolved.links).toEqual([]);
+  });
+
+  it('flags a possible duplicate when a retained overlap segment genuinely time-overlaps an owned one without a text match', () => {
+    const w0Segments = chunk(0, [
+      ['Kait', 0, 4, 'Anchored opening line.'],
+      ['A', 596, 599.5, 'This seam sentence appears in both windows.'],
+    ]);
+    const w1Segments = chunk(1, [
+      ['B', 596.4, 599.8, 'A completely different transcription of the same moment.'],
+    ]);
+    const resolved = resolveWindowOverlaps([
+      { window: { index: 0, coreStart: 0, coreEnd: 600 }, segments: w0Segments },
+      { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
+    ]);
+    expect(resolved.hasPossibleDuplicate).toBe(true);
+    expect(resolved.segments).toHaveLength(3);
+  });
+
+  it('returns owned segments sorted, unchanged, when there are no overlap duplicates at all', () => {
+    const w0Segments = chunk(0, [['Kait', 0, 4, 'Anchored opening line only.']]);
+    const w1Segments = chunk(1, [['B', 601, 605, 'Entirely fresh core speech.']]);
+    const resolved = resolveWindowOverlaps([
+      { window: { index: 0, coreStart: 0, coreEnd: 600 }, segments: w0Segments },
+      { window: { index: 1, coreStart: 600, coreEnd: 1200 }, segments: w1Segments },
+    ]);
+    expect(resolved.segments.map((s) => s.text)).toEqual(['Anchored opening line only.', 'Entirely fresh core speech.']);
+    expect(resolved.links).toEqual([]);
+    expect(resolved.hasPossibleDuplicate).toBe(false);
   });
 });

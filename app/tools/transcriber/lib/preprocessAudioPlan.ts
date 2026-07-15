@@ -18,7 +18,7 @@ import {
   SILENCE_EDGE_PAD_SECONDS,
   SILENCE_FRAME_SECONDS,
 } from './constants';
-import { resolveOverlapDuplicates, type OverlapLink } from './reconcileSpeakers';
+import { POSSIBLE_OVERLAP_DUPLICATE_WARNING, resolveOverlapDuplicates, type OverlapLink } from './reconcileSpeakers';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: local floors/minimums                          */
@@ -380,13 +380,6 @@ export interface CombinedTranscriptionResult {
 /** Warning appended when some chunks came back diarized and others fell back to Whisper — see combineChunkResponses. */
 export const MIXED_CHUNK_MODE_WARNING =
   'Some chunks fell back to Whisper (no diarization) — speaker labels may be inconsistent across the recording.';
-
-/** Warning appended when an overlap-region segment couldn't be confidently
- * matched to its neighboring chunk's version AND genuinely overlapped it in
- * time — retained rather than dropped (see combineChunkResponses), but
- * worth flagging since it may read as a duplicate line. */
-export const POSSIBLE_OVERLAP_DUPLICATE_WARNING =
-  'A chunk-boundary segment could not be confidently matched to its neighboring chunk — it was kept rather than discarded, so a line may appear duplicated near a chunk boundary.';
 
 export interface CombineChunkOptions {
   /** Per-chunk core offset in the chunk's OWN encoded audio, in final-time

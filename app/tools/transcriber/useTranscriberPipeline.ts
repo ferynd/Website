@@ -398,6 +398,10 @@ export function useTranscriberPipeline() {
       completedWindows: number;
       missingBlocks: number;
       classifiedBlocks: number;
+      /** Windows whose response carried the server's `warning` field — the
+       * model attempted output that included invalid/unknown/duplicate
+       * items on at least one retry attempt, distinct from a clean response. */
+      invalidResponseWindows: number;
     } | null> => {
       const user = auth.currentUser;
       if (!user) return null;
@@ -416,6 +420,7 @@ export function useTranscriberPipeline() {
       }
       const cache = classifyCacheRef.current;
 
+      let invalidResponseWindows = 0;
       const settled = await mapWithConcurrency(windows, 3, async (window): Promise<BlockClassification[]> => {
         const cached = cache.results.get(window.index);
         if (cached) return cached;
@@ -434,6 +439,7 @@ export function useTranscriberPipeline() {
         }
         const result = response.json as ClassifyApiResponse;
         if (result.usage) params.onUsage?.(result.usage);
+        if (result.warning) invalidResponseWindows += 1;
         const votes = Array.isArray(result.classifications) ? result.classifications : [];
         cache.results.set(window.index, votes);
         return votes;
@@ -458,6 +464,7 @@ export function useTranscriberPipeline() {
         completedWindows,
         missingBlocks: aggregated.missingBlockIds.length,
         classifiedBlocks: aggregated.byBlockId.size,
+        invalidResponseWindows,
       };
     },
     [],
@@ -1074,6 +1081,11 @@ export function useTranscriberPipeline() {
         // leaves the transcript exactly as reconciliation produced it. ---
         let repairsApplied = 0;
         let repairModelUsed: string | null = null;
+        // Batches (across base and escalation passes) whose response
+        // carried a `warning` — the model attempted output with
+        // invalid/unknown/duplicate items on at least one retry attempt,
+        // distinct from a clean response.
+        let repairInvalidResponseBatches = 0;
         if (settings.speakerRepairEnabled && quality.needsRepair) {
           setState((s) => ({ ...s, status: 'repairing' }));
           const repairKeyBase = buildRepairKeyBase({
@@ -1124,6 +1136,7 @@ export function useTranscriberPipeline() {
               }
               const result = response.json as SpeakerRepairApiResponse;
               recordUsage('speaker-repair', result.usage);
+              if (result.warning) repairInvalidResponseBatches += 1;
               const patches = Array.isArray(result.patches) ? result.patches : [];
               repairCache.results.set(batchKey, patches);
               return patches;
@@ -1175,6 +1188,12 @@ export function useTranscriberPipeline() {
           }
           appendDebugEvent(debugLog, { kind: 'quality', report: quality });
           setState((s) => ({ ...s, qualityReport: quality }));
+          if (repairInvalidResponseBatches > 0) {
+            runWarnings.push(
+              `Speaker repair returned some invalid items on ${repairInvalidResponseBatches} batch(es) — the valid subset was applied.`,
+            );
+            addWarningCode('speaker-repair-invalid-response');
+          }
         }
 
         const qualityWarning = buildQualityWarning(quality);
@@ -1288,6 +1307,12 @@ export function useTranscriberPipeline() {
                 );
                 addWarningCode('classification-coverage-gap');
               }
+              if (classified.invalidResponseWindows > 0) {
+                runWarnings.push(
+                  `The classifier returned some invalid items on ${classified.invalidResponseWindows} window(s) — the valid subset was applied.`,
+                );
+                addWarningCode('classification-invalid-response');
+              }
             } else {
               runWarnings.push('Argument classification failed — the cleaned transcript is unaffected, but tags are unavailable.');
               addWarningCode('classification-failed');
@@ -1374,6 +1399,10 @@ export function useTranscriberPipeline() {
         const attemptMode = attempt.mode;
         let completedWindows = 0;
         let reusedCleanupChunks = 0;
+        // Chunks whose correct-route response carried a `warning` — the
+        // model attempted output with invalid/unknown/duplicate items on at
+        // least one retry attempt, distinct from a clean response.
+        let cleanupInvalidResponseChunks = 0;
         setState((s) => ({ ...s, chunkProgress: { current: 0, total: windows.length } }));
 
         // Windows run in parallel (bounded by settings.cleanupParallelChunks,
@@ -1450,6 +1479,7 @@ export function useTranscriberPipeline() {
 
               const correctResult = correctData as CorrectApiResponse;
               recordUsage('correct', correctResult.usage);
+              if (correctResult.warning) cleanupInvalidResponseChunks += 1;
               if (typeof correctResult.revertedPatches === 'number' && correctResult.revertedPatches > 0) {
                 patchCounts.textPatchesReverted += correctResult.revertedPatches;
                 appendDebugEvent(debugLog, {
@@ -1484,6 +1514,13 @@ export function useTranscriberPipeline() {
             reusedChunks: reusedCleanupChunks,
             totalChunks: windows.length,
           });
+        }
+
+        if (cleanupInvalidResponseChunks > 0) {
+          runWarnings.push(
+            `The cleanup pass returned some invalid items on ${cleanupInvalidResponseChunks} chunk(s) — the valid subset was applied.`,
+          );
+          addWarningCode('cleanup-invalid-response');
         }
 
         const chunkFailures = settledWindows

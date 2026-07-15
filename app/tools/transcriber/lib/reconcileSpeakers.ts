@@ -173,6 +173,15 @@ export function matchOverlapLinks(owned: TranscriptSegment[], duplicates: Transc
   return links;
 }
 
+/** Warning appended when an overlap-region segment couldn't be confidently
+ * matched to its neighboring chunk/window's version AND genuinely overlapped
+ * it in time — retained rather than dropped (see resolveOverlapDuplicates),
+ * but worth flagging since it may read as a duplicate line. Shared by the
+ * OpenAI chunked path (lib/preprocessAudioPlan.ts) and the Gemini windowed
+ * path (lib/providers/geminiProvider.ts via resolveWindowOverlaps below). */
+export const POSSIBLE_OVERLAP_DUPLICATE_WARNING =
+  'A chunk-boundary segment could not be confidently matched to its neighboring chunk — it was kept rather than discarded, so a line may appear duplicated near a chunk boundary.';
+
 export interface ResolveOverlapDuplicatesResult {
   /** Owned segments, each possibly upgraded (text/span extended) when a
    * matching duplicate turned out to be the more complete version. */
@@ -230,14 +239,16 @@ export function resolveOverlapDuplicates(
       if (own.start < dup.end && own.end > dup.start) sawTemporalOverlap = true;
 
       // Unlike matchOverlapLinks (which exists to DISCOVER links between
-      // DIFFERENT identities), a shared identity here is not disqualifying —
-      // a known name's global identity (mapSpeakerLabels.ts's
-      // knownNameIdentity) is the SAME localSpeakerId in every chunk, so the
-      // most common true duplicate (a named speaker's utterance
-      // re-transcribed by both chunks) always has own.localSpeakerId ===
-      // dup.localSpeakerId. Excluding that case would make this dedup
-      // unreachable for named speakers.
-      if (!own.localSpeakerId || !dup.localSpeakerId) continue;
+      // DIFFERENT identities), identity is not required to match here at
+      // all — a known name's global identity (mapSpeakerLabels.ts's
+      // knownNameIdentity) is the SAME localSpeakerId in every chunk, so
+      // excluding a shared identity would make this dedup unreachable for
+      // named speakers, and Whisper-fallback segments carry NO
+      // localSpeakerId at all (whisper has no speaker concept), so
+      // requiring one would make this dedup unreachable for every Whisper
+      // chunk overlap too — reliable text+time matching alone is enough to
+      // safely drop a duplicate; identity only affects whether a link is
+      // also worth recording (see below).
       const delta = Math.abs(own.start - dup.start);
       if (delta > OVERLAP_MATCH_MAX_START_DELTA_SECONDS) continue;
       if (!textsMatch(normalizeForMatch(own.text), dupText)) continue;
@@ -286,16 +297,22 @@ export function resolveOverlapDuplicates(
   return { owned: ownedOut, retainedDuplicates, links, hasPossibleDuplicate };
 }
 
-/**
- * Recovers overlap identity links from windowed results BEFORE core-only
- * stitching discards the overlap segments (lib/stitchTranscript.ts keeps
- * only each window's core). Structural window type so this stays free of an
- * import cycle with stitchTranscript.ts. Timestamps here are absolute
- * recording time in both cores and overlaps (the Gemini windowed path).
- */
-export function collectWindowOverlapLinks(
-  results: { window: { index: number; coreStart: number; coreEnd: number }; segments: TranscriptSegment[] }[],
-): OverlapLink[] {
+/** One transcription window's result — structural type so this file stays
+ * free of an import cycle with the callers (geminiProvider.ts,
+ * stitchTranscript.ts). Timestamps are absolute recording time in both cores
+ * and overlaps (the Gemini windowed path). */
+export interface WindowedChunkResult {
+  window: { index: number; coreStart: number; coreEnd: number };
+  segments: TranscriptSegment[];
+}
+
+/** Splits windowed results into segments owned by their window's core vs.
+ * overlap duplicates belonging to a neighboring window's core — shared by
+ * collectWindowOverlapLinks (which only needs the resulting links) and
+ * resolveWindowOverlaps (which also needs the final loss-safe segment list). */
+function splitWindowedOwnedAndDuplicates(
+  results: WindowedChunkResult[],
+): { owned: TranscriptSegment[]; duplicates: TranscriptSegment[] } {
   const lastIndex = results.reduce((max, r) => Math.max(max, r.window.index), 0);
   const owned: TranscriptSegment[] = [];
   const duplicates: TranscriptSegment[] = [];
@@ -306,7 +323,49 @@ export function collectWindowOverlapLinks(
       (inCore ? owned : duplicates).push(seg);
     }
   }
+  return { owned, duplicates };
+}
+
+/**
+ * Recovers overlap identity links from windowed results BEFORE core-only
+ * stitching discards the overlap segments (lib/stitchTranscript.ts keeps
+ * only each window's core).
+ */
+export function collectWindowOverlapLinks(results: WindowedChunkResult[]): OverlapLink[] {
+  const { owned, duplicates } = splitWindowedOwnedAndDuplicates(results);
   return duplicates.length > 0 ? matchOverlapLinks(owned, duplicates) : [];
+}
+
+export interface ResolveWindowOverlapsResult {
+  /** Final, sorted, loss-safe segment list — the windowed-path replacement
+   * for lib/stitchTranscript.ts's unconditional core-only keep. */
+  segments: TranscriptSegment[];
+  links: OverlapLink[];
+  /** True when a retained overlap segment genuinely time-overlapped an owned
+   * segment without a confident text match — see POSSIBLE_OVERLAP_DUPLICATE_WARNING. */
+  hasPossibleDuplicate: boolean;
+}
+
+/**
+ * Loss-safe replacement for keeping only each window's [coreStart, coreEnd)
+ * region: an overlap segment is only ever DROPPED when it reliably matches
+ * an owned neighbor-window segment (lib/reconcileSpeakers.ts's
+ * resolveOverlapDuplicates — same rule the OpenAI chunked path uses in
+ * lib/preprocessAudioPlan.ts's combineChunkResponses); anything without a
+ * reliable match is retained rather than silently discarded, mirroring the
+ * OpenAI path's loss-safety for the Gemini windowed path.
+ */
+export function resolveWindowOverlaps(results: WindowedChunkResult[]): ResolveWindowOverlapsResult {
+  const { owned, duplicates } = splitWindowedOwnedAndDuplicates(results);
+  if (duplicates.length === 0) {
+    return { segments: [...owned].sort((a, b) => a.start - b.start), links: [], hasPossibleDuplicate: false };
+  }
+  const { owned: resolvedOwned, retainedDuplicates, links, hasPossibleDuplicate } = resolveOverlapDuplicates(
+    owned,
+    duplicates,
+  );
+  const segments = [...resolvedOwned, ...retainedDuplicates].sort((a, b) => a.start - b.start);
+  return { segments, links, hasPossibleDuplicate };
 }
 
 /* ------------------------------------------------------------ */
@@ -685,8 +744,16 @@ export function reconcileSpeakers<T extends TranscriptSegment>(
       return next;
     }
 
+    // Unlike the resolved branch above, a candidate/conflict/unresolved
+    // outcome is NOT reconciliation actually establishing an identity — it's
+    // still pending repair, corroboration, or a user confirmation. Overwriting
+    // mappingSource here would erase whether the original evidence was
+    // provider-exact, positional, or genuinely unresolved, and would corrupt
+    // any later reader that inspects mappingSource directly (e.g. the quality
+    // gate's mixed-label diagnostics, which look for 'provider-exact').
+    // mappingSource is deliberately left untouched (via the spread below).
     const display = displayByRoot.get(root)!;
-    const next = { ...seg, speaker: display, mappingSource: 'reconciliation' as const };
+    const next = { ...seg, speaker: display };
     delete next.resolvedSpeaker;
     if (status.kind === 'candidate' || status.kind === 'conflict') {
       next.candidateSpeaker = status.name;

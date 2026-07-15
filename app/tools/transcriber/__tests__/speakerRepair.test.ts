@@ -79,6 +79,36 @@ describe('buildRepairBatches', () => {
     expect(buildRepairBatches([confirmed])).toEqual([]);
   });
 
+  it('limits context to RESOLVED neighbors — never an unresolved segment split into an adjacent sub-batch of the same run', () => {
+    // One contiguous run of 6 unresolved targets, bracketed by a resolved
+    // segment on each side, split into two sub-batches of 3 by the cap.
+    const segments = [
+      resolved('r0', 0, 'Kait'),
+      unresolved('s0', 2),
+      unresolved('s1', 4),
+      unresolved('s2', 6),
+      unresolved('s3', 8),
+      unresolved('s4', 10),
+      unresolved('s5', 12),
+      resolved('r1', 14, 'James'),
+    ];
+    const batches = buildRepairBatches(segments, { maxTargetsPerBatch: 3, contextSegments: 2 });
+    expect(batches).toHaveLength(2);
+    expect(batches[0].targetIds).toEqual(['s0', 's1', 's2']);
+    expect(batches[1].targetIds).toEqual(['s3', 's4', 's5']);
+    // The split boundary (s2/s3) never leaks the OTHER sub-batch's unresolved
+    // targets in as if they were reliable context — only the genuinely
+    // resolved neighbors (r0, r1) are ever included beyond each batch's own targets.
+    expect(batches[0].segments.map((s) => s.id)).toEqual(['r0', 's0', 's1', 's2']);
+    expect(batches[1].segments.map((s) => s.id)).toEqual(['s3', 's4', 's5', 'r1']);
+    // Every non-target segment sent is unambiguously resolved.
+    for (const batch of batches) {
+      for (const seg of batch.segments) {
+        if (!seg.target) expect(['r0', 'r1']).toContain(seg.id);
+      }
+    }
+  });
+
   it('never combines two distant unresolved passages into one batch merely because both fit under the cap', () => {
     const segments = [
       unresolved('s0-0', 0),

@@ -63,10 +63,13 @@ function findContiguousRuns(targetIndices: number[]): number[][] {
  * two unresolved passages minutes apart always land in separate requests,
  * regardless of the per-batch target cap. A run larger than the cap is
  * split into consecutive sub-batches of at most `maxTargetsPerBatch`. Each
- * (sub-)batch carries up to `contextSegments` resolved neighbors on each
- * side. Only targets and their limited context are ever sent — never the
- * whole transcript. Segments without a stable id can't be patched and are
- * skipped.
+ * (sub-)batch carries up to `contextSegments` RESOLVED neighbors on each
+ * side — an unresolved neighbor (whether this run's own overflow into an
+ * adjacent sub-batch, or a different run entirely) is never included as
+ * context, since the prompt tells the model every non-target segment is
+ * reliable. Only targets and their limited context are ever sent — never
+ * the whole transcript. Segments without a stable id can't be patched and
+ * are skipped.
  */
 export function buildRepairBatches(
   segments: TranscriptSegment[],
@@ -91,15 +94,27 @@ export function buildRepairBatches(
     }
   }
 
+  // Every target anywhere in the transcript (not just this batch) — used
+  // below so a neighbor that is itself unresolved (whether this batch's own
+  // spillover, another sub-batch's split of the SAME oversized run, or an
+  // entirely different run) is never pulled in as context. The prompt tells
+  // the model every non-"target" segment is reliable context — an unresolved
+  // neighbor would violate that.
+  const allTargetIndices = new Set(targetIndices);
+
   return batchesOfIndices.map((indices) => {
     const include = new Set<number>();
     const targetSet = new Set(indices);
     for (const idx of indices) {
       include.add(idx);
-      // Nearby context on each side of every target (runs coalesce naturally).
+      // Nearby RESOLVED context on each side of every target — an
+      // unresolved neighbor (this batch's own overflow into the next
+      // sub-batch, or any other target) is skipped rather than included.
       for (let d = 1; d <= contextRadius; d++) {
-        if (idx - d >= 0) include.add(idx - d);
-        if (idx + d < sorted.length) include.add(idx + d);
+        const before = idx - d;
+        if (before >= 0 && !allTargetIndices.has(before)) include.add(before);
+        const after = idx + d;
+        if (after < sorted.length && !allTargetIndices.has(after)) include.add(after);
       }
     }
 

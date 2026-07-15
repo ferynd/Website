@@ -7,11 +7,15 @@
 //
 // A long recording can't go through one generateContent call (~65k
 // output-token ceiling, Edge wall-clock limits) — above
-// GEMINI_SINGLE_CALL_MAX_SECONDS this windows the recording the same way the
-// correction pass chunks a long transcript (createChunkWindows +
-// stitchChunkResults), just against a different endpoint. Unlike the
-// correction pass (which chunks already-transcribed text), each window here
-// is REAL sliced audio: the file is decoded once client-side
+// GEMINI_SINGLE_CALL_MAX_SECONDS this windows the recording using the same
+// createChunkWindows helper the correction pass chunks a long transcript
+// with, just against a different endpoint. Unlike the correction pass
+// (which stitches already-transcribed text back together core-only, safe
+// since chunking there can't invent or lose content), each window here is
+// REAL sliced audio whose overlap region can genuinely differ between two
+// windows' transcriptions — so overlap resolution goes through
+// resolveWindowOverlaps (lib/reconcileSpeakers.ts), not a core-only keep;
+// see that function's doc. The file is decoded once client-side
 // (decodeAudioMono16k.ts), each window's samples are cut out and re-encoded
 // as its own small WAV, and that slice — not the original full file — is
 // what gets uploaded to Gemini and transcribed for that window. This keeps
@@ -32,10 +36,10 @@ import {
 import { createChunkWindows, type ChunkWindowBounds } from '../chunkTranscript';
 import { decodeToMono16k, sliceMonoSamples, type DecodedMonoAudio } from '../decodeAudioMono16k';
 import { normalizeSegments } from '../formatTranscript';
-import { collectWindowOverlapLinks, type OverlapLink } from '../reconcileSpeakers';
+import { POSSIBLE_OVERLAP_DUPLICATE_WARNING, resolveWindowOverlaps, type OverlapLink } from '../reconcileSpeakers';
 import { sanitizeUpstreamError } from '../sanitizeUpstreamError';
 import { attachChunkProvenance } from '../segmentProvenance';
-import { stitchChunkResults, type ChunkResult } from '../stitchTranscript';
+import type { ChunkResult } from '../stitchTranscript';
 import type { TranscribeErrorInfo, TranscriptSegment } from '../types';
 import type { SpeakerReferenceClip, TranscriptionAttempt, TranscriptionAttemptError } from './types';
 
@@ -478,10 +482,18 @@ export async function transcribeWithGemini(options: TranscribeWithGeminiOptions)
       );
     }
 
-    // Overlap identity links must be recovered BEFORE stitching discards the
-    // overlap segments (stitchChunkResults keeps each window's core only).
-    overlapLinks = collectWindowOverlapLinks(chunkResults);
-    segments = stitchChunkResults(chunkResults);
+    // Loss-safe overlap resolution (mirrors the OpenAI chunked path): a
+    // window's overlap segment is only dropped when it reliably matches the
+    // neighboring window's owned version of the same speech — never merely
+    // because it starts outside this window's core — so a segment spanning
+    // the seam, or one whose neighbor mis-transcribed the timing, is
+    // retained rather than silently lost.
+    const resolved = resolveWindowOverlaps(chunkResults);
+    overlapLinks = resolved.links;
+    segments = resolved.segments;
+    if (resolved.hasPossibleDuplicate && !warnings.includes(POSSIBLE_OVERLAP_DUPLICATE_WARNING)) {
+      warnings.push(POSSIBLE_OVERLAP_DUPLICATE_WARNING);
+    }
   }
 
   return {
