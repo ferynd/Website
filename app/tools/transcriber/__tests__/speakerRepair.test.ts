@@ -78,6 +78,28 @@ describe('buildRepairBatches', () => {
     const confirmed = { ...unresolved('s0-0', 0), userConfirmed: true, speaker: 'Kait' };
     expect(buildRepairBatches([confirmed])).toEqual([]);
   });
+
+  it('never combines two distant unresolved passages into one batch merely because both fit under the cap', () => {
+    const segments = [
+      unresolved('s0-0', 0),
+      unresolved('s0-1', 2),
+      resolved('s0-2', 4, 'Kait'),
+      resolved('s0-3', 6, 'James'),
+      resolved('s0-4', 8, 'Kait'),
+      resolved('s0-5', 10, 'James'),
+      unresolved('s0-6', 12),
+      unresolved('s0-7', 14),
+    ];
+    // Both runs (2 targets each) comfortably fit under a cap of 10 — they
+    // must still land in separate batches since they are not adjacent.
+    const batches = buildRepairBatches(segments, { maxTargetsPerBatch: 10, contextSegments: 1 });
+    expect(batches).toHaveLength(2);
+    expect(batches[0].targetIds).toEqual(['s0-0', 's0-1']);
+    expect(batches[1].targetIds).toEqual(['s0-6', 's0-7']);
+    // Each batch only carries ITS OWN nearby context, never the other run's.
+    expect(batches[0].segments.map((s) => s.id)).toEqual(['s0-0', 's0-1', 's0-2']);
+    expect(batches[1].segments.map((s) => s.id)).toEqual(['s0-5', 's0-6', 's0-7']);
+  });
 });
 
 describe('buildSpeakerRepairPrompt / schema', () => {

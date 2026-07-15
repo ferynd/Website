@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { attachChunkProvenance } from '../lib/segmentProvenance';
 import { mapDiarizedSegments } from '../lib/mapSpeakerLabels';
-import { collectWindowOverlapLinks, matchOverlapLinks, reconcileSpeakers } from '../lib/reconcileSpeakers';
+import {
+  collectWindowOverlapLinks,
+  matchOverlapLinks,
+  reconcileSpeakers,
+  resolveOverlapDuplicates,
+} from '../lib/reconcileSpeakers';
 import type { TranscriptSegment } from '../lib/types';
 
 const NAMES = ['Kait', 'James'];
@@ -208,6 +213,66 @@ describe('reconcileSpeakers', () => {
     const b = reconcileSpeakers(segments, { knownNames: NAMES });
     expect(a.segments).toEqual(b.segments);
     expect(a.report).toEqual(b.report);
+  });
+});
+
+describe('resolveOverlapDuplicates', () => {
+  it('drops a duplicate that matches an owned segment sharing the SAME global identity (a known name in both chunks)', () => {
+    // A named speaker's global identity ('name:kait') is deliberately the
+    // SAME localSpeakerId in every chunk — this must not disqualify the
+    // most common, easiest-to-verify true duplicate from being matched.
+    const owned = chunk(0, [['Kait', 100, 103, 'This exact sentence appears in both chunks.']]);
+    const duplicates = chunk(1, [['Kait', 100.8, 103.5, 'This exact sentence appears in both chunks.']]);
+    expect(owned[0].localSpeakerId).toBe(duplicates[0].localSpeakerId);
+
+    const result = resolveOverlapDuplicates(owned, duplicates);
+    expect(result.retainedDuplicates).toEqual([]);
+    expect(result.owned).toHaveLength(1);
+    expect(result.hasPossibleDuplicate).toBe(false);
+    // No link is recorded for a self-identity match — nothing to union.
+    expect(result.links).toEqual([]);
+  });
+
+  it('extends the owned segment when the duplicate captured more of the utterance, even with a shared identity', () => {
+    const owned = chunk(0, [['Kait', 100, 102.5, 'This exact sentence appears']]);
+    const duplicates = chunk(1, [['Kait', 100.8, 103.5, 'This exact sentence appears in both chunks.']]);
+    const result = resolveOverlapDuplicates(owned, duplicates);
+    expect(result.retainedDuplicates).toEqual([]);
+    expect(result.owned[0].text).toBe('This exact sentence appears in both chunks.');
+    expect(result.owned[0].end).toBe(103.5);
+  });
+
+  it('still links two DIFFERENT identities that turn out to be the same speech', () => {
+    const owned = chunk(0, [['A', 100, 103, 'This exact sentence appears in both chunks.']]);
+    const duplicates = chunk(1, [['B', 100.8, 103.5, 'This exact sentence appears in both chunks.']]);
+    const result = resolveOverlapDuplicates(owned, duplicates);
+    expect(result.retainedDuplicates).toEqual([]);
+    expect(result.links).toEqual([{ localSpeakerIdA: duplicates[0].localSpeakerId, localSpeakerIdB: owned[0].localSpeakerId }]);
+  });
+
+  it('retains a duplicate with no reliable match instead of discarding it', () => {
+    const owned = chunk(0, [['Kait', 100, 103, 'Something entirely different was said here.']]);
+    const duplicates = chunk(1, [['Kait', 500, 503, 'A completely unrelated later sentence.']]);
+    const result = resolveOverlapDuplicates(owned, duplicates);
+    expect(result.retainedDuplicates).toEqual(duplicates);
+    expect(result.hasPossibleDuplicate).toBe(false);
+  });
+
+  it('flags a possible duplicate when segments time-overlap but text does not confidently match', () => {
+    const owned = chunk(0, [['Kait', 100, 103, 'This exact sentence appears in both chunks.']]);
+    const duplicates = chunk(1, [['Kait', 100.5, 103, 'A totally different transcription of the same moment.']]);
+    const result = resolveOverlapDuplicates(owned, duplicates);
+    expect(result.retainedDuplicates).toEqual(duplicates);
+    expect(result.hasPossibleDuplicate).toBe(true);
+  });
+
+  it('always retains an identity-less duplicate (e.g. Whisper fallback) rather than losing speech', () => {
+    const owned = chunk(0, [['Kait', 100, 103, 'This exact sentence appears in both chunks.']]);
+    const duplicates: TranscriptSegment[] = [
+      { start: 100.5, end: 103, text: 'This exact sentence appears in both chunks.', speaker: 'Unknown', chunkIndex: 1 },
+    ];
+    const result = resolveOverlapDuplicates(owned, duplicates);
+    expect(result.retainedDuplicates).toEqual(duplicates);
   });
 });
 

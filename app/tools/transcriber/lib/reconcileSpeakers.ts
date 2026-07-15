@@ -229,7 +229,15 @@ export function resolveOverlapDuplicates(
       // match can't be established.
       if (own.start < dup.end && own.end > dup.start) sawTemporalOverlap = true;
 
-      if (!own.localSpeakerId || !dup.localSpeakerId || own.localSpeakerId === dup.localSpeakerId) continue;
+      // Unlike matchOverlapLinks (which exists to DISCOVER links between
+      // DIFFERENT identities), a shared identity here is not disqualifying —
+      // a known name's global identity (mapSpeakerLabels.ts's
+      // knownNameIdentity) is the SAME localSpeakerId in every chunk, so the
+      // most common true duplicate (a named speaker's utterance
+      // re-transcribed by both chunks) always has own.localSpeakerId ===
+      // dup.localSpeakerId. Excluding that case would make this dedup
+      // unreachable for named speakers.
+      if (!own.localSpeakerId || !dup.localSpeakerId) continue;
       const delta = Math.abs(own.start - dup.start);
       if (delta > OVERLAP_MATCH_MAX_START_DELTA_SECONDS) continue;
       if (!textsMatch(normalizeForMatch(own.text), dupText)) continue;
@@ -241,7 +249,10 @@ export function resolveOverlapDuplicates(
 
     if (bestIndex >= 0) {
       const own = ownedOut[bestIndex];
-      if (own.localSpeakerId && dup.localSpeakerId) {
+      // Only a genuine link between two DIFFERENT identities is worth
+      // recording — a self-link (already the same global name identity)
+      // would be a no-op union that just inflates overlapLinksUsed.
+      if (own.localSpeakerId && dup.localSpeakerId && own.localSpeakerId !== dup.localSpeakerId) {
         const key = [own.localSpeakerId, dup.localSpeakerId].sort().join('|');
         if (!seenLinkKeys.has(key)) {
           seenLinkKeys.add(key);
