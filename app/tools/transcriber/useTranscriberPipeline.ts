@@ -52,6 +52,7 @@ import {
   buildClassifyKeyBase,
   buildCleanupKey,
   buildRepairKeyBase,
+  fingerprint,
   fingerprintContent,
 } from './lib/stageCacheKeys';
 import {
@@ -1089,10 +1090,20 @@ export function useTranscriberPipeline() {
           const runRepairPass = async (model: string, escalation: boolean): Promise<void> => {
             const batches = buildRepairBatches(workingSegments);
             if (batches.length === 0) return;
-            const passKey = `${model}:${escalation ? 'esc' : 'base'}:${batches.length}`;
+            const passKey = `${model}:${escalation ? 'esc' : 'base'}`;
 
-            const settledBatches = await mapWithConcurrency(batches, 2, async (batch, i): Promise<SpeakerRepairPatch[]> => {
-              const cached = repairCache.results.get(`${passKey}#${i}`);
+            const settledBatches = await mapWithConcurrency(batches, 2, async (batch): Promise<SpeakerRepairPatch[]> => {
+              // Keyed by the batch's ACTUAL request payload (ids, speakers,
+              // text, target flags, candidate hints) — not its positional
+              // index. buildRepairBatches is recomputed from workingSegments
+              // on every call (base pass, escalation pass, and any explicit
+              // retry that reuses this cache object), so the same index can
+              // hold a completely different batch across calls. Since
+              // patches apply globally by segment id, a stale index-keyed
+              // hit could silently apply a DIFFERENT batch's patches to
+              // today's segments.
+              const batchKey = `${passKey}:${fingerprint(batch.segments)}`;
+              const cached = repairCache.results.get(batchKey);
               if (cached) return cached;
               const idToken = await user.getIdToken();
               const response = await postJson(
@@ -1114,7 +1125,7 @@ export function useTranscriberPipeline() {
               const result = response.json as SpeakerRepairApiResponse;
               recordUsage('speaker-repair', result.usage);
               const patches = Array.isArray(result.patches) ? result.patches : [];
-              repairCache.results.set(`${passKey}#${i}`, patches);
+              repairCache.results.set(batchKey, patches);
               return patches;
             });
 
