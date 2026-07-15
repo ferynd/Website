@@ -199,20 +199,22 @@ export interface ResolveOverlapDuplicatesResult {
 /**
  * Resolves chunk-boundary overlap duplicates against the segments that own
  * that region: a duplicate is dropped ONLY when it reliably matches an
- * owned segment (same matching rule as matchOverlapLinks — timing tolerance
- * + normalized-text match, different chunks, both carrying a local
- * identity). When two segments match, whichever has the longer trimmed text
+ * owned segment — timing tolerance + normalized-text match, from different
+ * chunks. Unlike matchOverlapLinks, a local identity on either side is NOT
+ * required to match: reliable text+time matching alone is enough to safely
+ * drop a duplicate, so a Whisper-fallback segment (no local identity at
+ * all) can still be deduplicated instead of always surviving twice. Identity
+ * is only required to also record a link — see the link-creation comment
+ * below. When two segments match, whichever has the longer trimmed text
  * is treated as the more complete version and is what survives (extending
  * the owned segment's span to cover both, or replacing its text, as
  * needed); a match with equal-length text keeps the owned segment
  * unchanged. A duplicate with NO reliable match is RETAINED rather than
  * dropped — losing speech silently is worse than an occasional duplicate
- * line, and a duplicate that also has no stable local identity (e.g. a
- * Whisper fallback segment) can never be matched at all, so it is always
- * retained. `hasPossibleDuplicate` flags a retained duplicate that
- * genuinely overlaps an owned segment's time range without a confident
- * text match, so the caller can surface a warning instead of staying
- * silent about the ambiguity.
+ * line. `hasPossibleDuplicate` flags a retained duplicate that genuinely
+ * overlaps an owned segment's time range without a confident text match,
+ * so the caller can surface a warning instead of staying silent about the
+ * ambiguity.
  */
 export function resolveOverlapDuplicates(
   owned: TranscriptSegment[],
@@ -285,10 +287,13 @@ export function resolveOverlapDuplicates(
       // A confidently matched duplicate is dropped — its content survives
       // via the (possibly upgraded) owned segment above.
     } else {
-      // No reliable match — retain rather than silently lose speech. This
-      // also covers identity-less duplicates (e.g. Whisper fallback, which
-      // has no localSpeakerId to match on at all) and genuinely new content
-      // that merely started a little before the core boundary.
+      // No reliable text+time match — retain rather than silently lose
+      // speech. Identity-less duplicates (e.g. Whisper fallback, which has
+      // no localSpeakerId at all) land here too whenever they don't
+      // reliably match — reliable text+time alone is enough to dedupe them
+      // above (identity is never required to match, only to also record a
+      // link) — as does genuinely new content that merely started a little
+      // before the core boundary.
       retainedDuplicates.push(dup);
       if (sawTemporalOverlap) hasPossibleDuplicate = true;
     }

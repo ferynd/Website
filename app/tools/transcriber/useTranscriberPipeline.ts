@@ -55,6 +55,7 @@ import {
   fingerprint,
   fingerprintContent,
 } from './lib/stageCacheKeys';
+import { withStageResultCache, type CachedStageResult } from './lib/stageResultCache';
 import {
   appendDebugEvent,
   buildDebugJson,
@@ -285,11 +286,13 @@ interface AttemptCacheState {
  * legitimately differ between runs with the same cleanup key (the repair
  * stage is a model call), so a cache hit re-applies the text patches to the
  * CURRENT run's freshly-computed window segments — cached text, never
- * cached speakers. */
+ * cached speakers. Each entry also carries usage/warning state (see
+ * CachedStageResult) so a cache hit replays them exactly as a fresh
+ * request would. */
 interface CleanupChunkCacheState {
   key: string;
   windowCount: number;
-  results: Map<number, Map<string, string>>;
+  results: Map<number, CachedStageResult<Map<string, string>>>;
 }
 
 /** Successful speaker-repair batch responses. One cache object per upstream
@@ -297,19 +300,23 @@ interface CleanupChunkCacheState {
  * `<model>:<pass>:<batchCount>#<batchIndex>`, so the base and escalation
  * passes coexist instead of evicting each other on a retry. Independent of
  * the cleanup and classification caches: repairing speakers never
- * invalidates corrected text or classifications, and vice versa. */
+ * invalidates corrected text or classifications, and vice versa. Each entry
+ * also carries usage/warning state (see CachedStageResult) so a cache hit
+ * replays them exactly as a fresh request would. */
 interface SpeakerRepairCacheState {
   key: string;
-  results: Map<string, SpeakerRepairPatch[]>;
+  results: Map<string, CachedStageResult<SpeakerRepairPatch[]>>;
 }
 
 /** Successful classification-window responses, keyed by window index.
  * Deliberately EXCLUDES the range-expansion setting from its key — changing
- * the expansion only reruns the pure range construction, never the model. */
+ * the expansion only reruns the pure range construction, never the model.
+ * Each entry also carries usage/warning state (see CachedStageResult) so a
+ * cache hit replays them exactly as a fresh request would. */
 interface ClassifyCacheState {
   key: string;
   windowCount: number;
-  results: Map<number, BlockClassification[]>;
+  results: Map<number, CachedStageResult<BlockClassification[]>>;
 }
 
 /** What the last completed run's classification stage needs to rerun on its
@@ -421,29 +428,34 @@ export function useTranscriberPipeline() {
       const cache = classifyCacheRef.current;
 
       let invalidResponseWindows = 0;
-      const settled = await mapWithConcurrency(windows, 3, async (window): Promise<BlockClassification[]> => {
-        const cached = cache.results.get(window.index);
-        if (cached) return cached;
-        const idToken = await user.getIdToken();
-        const response = await postJson(
-          '/api/transcriber/classify',
-          {
-            blocks: windowToRequestBlocks(window),
-            contextNotes: params.contextNotes,
-            model: params.settings.argumentClassifierModel,
+      const settled = await mapWithConcurrency(windows, 3, async (window): Promise<BlockClassification[]> =>
+        withStageResultCache(
+          cache.results,
+          window.index,
+          async (): Promise<CachedStageResult<BlockClassification[]>> => {
+            const idToken = await user.getIdToken();
+            const response = await postJson(
+              '/api/transcriber/classify',
+              {
+                blocks: windowToRequestBlocks(window),
+                contextNotes: params.contextNotes,
+                model: params.settings.argumentClassifierModel,
+              },
+              idToken,
+            );
+            if (response.status < 200 || response.status >= 300) {
+              throw new Error(typeof response.json.error === 'string' ? response.json.error : 'Classification failed.');
+            }
+            const result = response.json as ClassifyApiResponse;
+            const votes = Array.isArray(result.classifications) ? result.classifications : [];
+            return { result: votes, usage: result.usage, hadWarning: Boolean(result.warning) };
           },
-          idToken,
-        );
-        if (response.status < 200 || response.status >= 300) {
-          throw new Error(typeof response.json.error === 'string' ? response.json.error : 'Classification failed.');
-        }
-        const result = response.json as ClassifyApiResponse;
-        if (result.usage) params.onUsage?.(result.usage);
-        if (result.warning) invalidResponseWindows += 1;
-        const votes = Array.isArray(result.classifications) ? result.classifications : [];
-        cache.results.set(window.index, votes);
-        return votes;
-      });
+          (usage) => params.onUsage?.(usage),
+          () => {
+            invalidResponseWindows += 1;
+          },
+        ),
+      );
 
       const votesPerWindow: BlockClassification[][] = [];
       let completedWindows = 0;
@@ -1115,31 +1127,36 @@ export function useTranscriberPipeline() {
               // hit could silently apply a DIFFERENT batch's patches to
               // today's segments.
               const batchKey = `${passKey}:${fingerprint(batch.segments)}`;
-              const cached = repairCache.results.get(batchKey);
-              if (cached) return cached;
-              const idToken = await user.getIdToken();
-              const response = await postJson(
-                '/api/transcriber/speaker-repair',
-                {
-                  segments: batch.segments,
-                  knownNames: speakerNames,
-                  speakerNotes,
-                  contextNotes,
-                  model,
+              return withStageResultCache(
+                repairCache.results,
+                batchKey,
+                async (): Promise<CachedStageResult<SpeakerRepairPatch[]>> => {
+                  const idToken = await user.getIdToken();
+                  const response = await postJson(
+                    '/api/transcriber/speaker-repair',
+                    {
+                      segments: batch.segments,
+                      knownNames: speakerNames,
+                      speakerNotes,
+                      contextNotes,
+                      model,
+                    },
+                    idToken,
+                  );
+                  if (response.status < 200 || response.status >= 300) {
+                    throw new Error(
+                      typeof response.json.error === 'string' ? response.json.error : 'Speaker repair failed.',
+                    );
+                  }
+                  const result = response.json as SpeakerRepairApiResponse;
+                  const patches = Array.isArray(result.patches) ? result.patches : [];
+                  return { result: patches, usage: result.usage, hadWarning: Boolean(result.warning) };
                 },
-                idToken,
+                (usage) => recordUsage('speaker-repair', usage),
+                () => {
+                  repairInvalidResponseBatches += 1;
+                },
               );
-              if (response.status < 200 || response.status >= 300) {
-                throw new Error(
-                  typeof response.json.error === 'string' ? response.json.error : 'Speaker repair failed.',
-                );
-              }
-              const result = response.json as SpeakerRepairApiResponse;
-              recordUsage('speaker-repair', result.usage);
-              if (result.warning) repairInvalidResponseBatches += 1;
-              const patches = Array.isArray(result.patches) ? result.patches : [];
-              repairCache.results.set(batchKey, patches);
-              return patches;
             });
 
             let failedBatches = 0;
@@ -1431,72 +1448,82 @@ export function useTranscriberPipeline() {
                 return { window, segments: [] };
               }
 
-              const cached = cleanupCache.results.get(window.index);
-              if (cached) {
-                reusedCleanupChunks += 1;
-                return { window, segments: applyTextPatches(windowSegments, cached) };
-              }
+              if (cleanupCache.results.has(window.index)) reusedCleanupChunks += 1;
 
-              let correctStatus: number;
-              let correctData: JsonRecord;
-              try {
-                const idToken = await user.getIdToken();
-                const response = await postJson(
-                  '/api/transcriber/correct',
-                  {
-                    // Sparse-correction request: stable id + current
-                    // speaker/text per segment; no more transcript context
-                    // than this window (core + overlap) is ever sent.
-                    segments: windowSegments.map((seg) => ({
-                      id: seg.id!,
-                      start: seg.start,
-                      end: seg.end,
-                      speaker: seg.speaker,
-                      text: seg.text,
-                    })),
-                    speakerNames,
-                    contextNotes,
-                    mode: attemptMode,
-                    model: settings.cleanupModel,
-                    temperature: settings.cleanupTemperature,
-                  },
-                  idToken,
-                );
-                correctStatus = response.status;
-                correctData = response.json;
-              } catch (err) {
-                const failure: CleanupChunkFailure = {
-                  status: null,
-                  json: { error: err instanceof Error ? err.message : 'Network error during the cleanup pass.' },
-                };
-                throw failure;
-              }
+              // Replays this window's usage/warning contribution exactly as
+              // a fresh request would on a cache hit — a resumed run must
+              // report the same usage totals and warning codes as the
+              // original. Each window is only ever read from cache OR
+              // fetched fresh within one run, never both, so this never
+              // double-counts.
+              const patchTextById = await withStageResultCache(
+                cleanupCache.results,
+                window.index,
+                async (): Promise<CachedStageResult<Map<string, string>>> => {
+                  let correctStatus: number;
+                  let correctData: JsonRecord;
+                  try {
+                    const idToken = await user.getIdToken();
+                    const response = await postJson(
+                      '/api/transcriber/correct',
+                      {
+                        // Sparse-correction request: stable id + current
+                        // speaker/text per segment; no more transcript context
+                        // than this window (core + overlap) is ever sent.
+                        segments: windowSegments.map((seg) => ({
+                          id: seg.id!,
+                          start: seg.start,
+                          end: seg.end,
+                          speaker: seg.speaker,
+                          text: seg.text,
+                        })),
+                        speakerNames,
+                        contextNotes,
+                        mode: attemptMode,
+                        model: settings.cleanupModel,
+                        temperature: settings.cleanupTemperature,
+                      },
+                      idToken,
+                    );
+                    correctStatus = response.status;
+                    correctData = response.json;
+                  } catch (err) {
+                    const failure: CleanupChunkFailure = {
+                      status: null,
+                      json: { error: err instanceof Error ? err.message : 'Network error during the cleanup pass.' },
+                    };
+                    throw failure;
+                  }
 
-              if (correctStatus < 200 || correctStatus >= 300) {
-                const failure: CleanupChunkFailure = { status: correctStatus, json: correctData };
-                throw failure;
-              }
+                  if (correctStatus < 200 || correctStatus >= 300) {
+                    const failure: CleanupChunkFailure = { status: correctStatus, json: correctData };
+                    throw failure;
+                  }
 
-              const correctResult = correctData as CorrectApiResponse;
-              recordUsage('correct', correctResult.usage);
-              if (correctResult.warning) cleanupInvalidResponseChunks += 1;
-              if (typeof correctResult.revertedPatches === 'number' && correctResult.revertedPatches > 0) {
-                patchCounts.textPatchesReverted += correctResult.revertedPatches;
-                appendDebugEvent(debugLog, {
-                  kind: 'correction-guardrail',
-                  chunkIndex: window.index,
-                  revertedSegments: correctResult.revertedPatches,
-                });
-              }
-              // Apply the sparse text patches locally — omitted segments are
-              // unchanged by definition, and every provenance field survives
-              // untouched. Only this window's segments can match (ids are
-              // validated server-side against the request). The cache stores
-              // the PATCHES, not the patched segments — see
-              // CleanupChunkCacheState.
-              const patchTextById = new Map((correctResult.patches ?? []).map((p) => [p.segmentId, p.text]));
-              patchCounts.textPatchesApplied += patchTextById.size;
-              cleanupCache.results.set(window.index, patchTextById);
+                  const correctResult = correctData as CorrectApiResponse;
+                  if (typeof correctResult.revertedPatches === 'number' && correctResult.revertedPatches > 0) {
+                    patchCounts.textPatchesReverted += correctResult.revertedPatches;
+                    appendDebugEvent(debugLog, {
+                      kind: 'correction-guardrail',
+                      chunkIndex: window.index,
+                      revertedSegments: correctResult.revertedPatches,
+                    });
+                  }
+                  // Apply the sparse text patches locally — omitted segments
+                  // are unchanged by definition, and every provenance field
+                  // survives untouched. Only this window's segments can
+                  // match (ids are validated server-side against the
+                  // request). The cache stores the PATCHES, not the patched
+                  // segments — see CleanupChunkCacheState.
+                  const patchTextById = new Map((correctResult.patches ?? []).map((p) => [p.segmentId, p.text]));
+                  patchCounts.textPatchesApplied += patchTextById.size;
+                  return { result: patchTextById, usage: correctResult.usage, hadWarning: Boolean(correctResult.warning) };
+                },
+                (usage) => recordUsage('correct', usage),
+                () => {
+                  cleanupInvalidResponseChunks += 1;
+                },
+              );
               return { window, segments: applyTextPatches(windowSegments, patchTextById) };
             } finally {
               completedWindows += 1;

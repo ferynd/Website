@@ -386,8 +386,10 @@ export interface CombineChunkOptions {
    * seconds: `finalStart - encodeStart` (0 for the first chunk / no
    * overlap). A segment starting before its chunk's core offset is an
    * overlap duplicate — the previous chunk owns that region — and is
-   * deterministically dropped, after being matched against the owner's
-   * segments to recover a cross-chunk speaker-identity link. */
+   * dropped ONLY when it reliably time+text-matches one of the owner's
+   * segments (no local identity required for that match); a match between
+   * two DIFFERENT identities additionally recovers a cross-chunk
+   * speaker-identity link. */
   coreOffsets?: number[];
 }
 
