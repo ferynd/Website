@@ -112,8 +112,11 @@ describe('parseGeminiTranscription', () => {
       { start: 0, end: 5, speaker: 'Kait', text: 'Hello there.' },
       { start: 5, end: 8, speaker: 'James', text: 'Hi.' },
     ]);
-    // Exact known-name matches carry resolved provenance.
-    expect(result[0]).toMatchObject({ resolvedSpeaker: 'Kait', mappingSource: 'provider-exact', localSpeakerId: 'name:kait' });
+    // Exact known-name matches are provider-inferred, not acoustically
+    // verified — Gemini has zero real acoustic verification even with
+    // reference clips, so this is a CANDIDATE, never resolvedSpeaker.
+    expect(result[0]).toMatchObject({ candidateSpeaker: 'Kait', mappingSource: 'provider-exact', localSpeakerId: 'name:kait' });
+    expect(result[0].resolvedSpeaker).toBeUndefined();
   });
 
   it('accepts a bare array (no {segments} wrapper) defensively', () => {
@@ -242,7 +245,10 @@ describe('parseGeminiTranscription', () => {
     // Positional labels resolve into the supplied names; an unrecognized
     // label is preserved as its own stable unresolved identity, not Unknown.
     expect(result.map((s) => s.speaker)).toEqual(['Kait', 'James', 'Speaker 3']);
-    expect(result[0]).toMatchObject({ resolvedSpeaker: 'Kait', mappingSource: 'positional' });
+    // Positional is always a candidate — a first-appearance guess is never
+    // corroborating evidence by itself, regardless of which chunk it's in.
+    expect(result[0]).toMatchObject({ candidateSpeaker: 'Kait', mappingSource: 'positional' });
+    expect(result[0].resolvedSpeaker).toBeUndefined();
     expect(result[2]).toMatchObject({ mappingSource: 'unresolved', localSpeakerId: 'label:someone else' });
     expect(result[2].resolvedSpeaker).toBeUndefined();
   });

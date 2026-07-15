@@ -159,17 +159,30 @@ export const SPEAKER_ASSIGN_MIN_CONFIDENCE = 0.9;
  * offered to the repair stage) but the segment displays unresolved. */
 export const SPEAKER_CANDIDATE_MIN_CONFIDENCE = 0.7;
 
-/** Confidence of a provider label that exactly matched a known name, with /
- * without acoustic reference clips attached to the request. Clips anchor the
- * name acoustically; without them the name came from the model's own labeling. */
+/** Confidence of a provider label that exactly matched a known name.
+ * EXACT_NAME_CONFIDENCE_WITH_CLIPS applies only when acoustic reference
+ * clips were ACCEPTED for the request (mappingSource 'acoustic') — a real
+ * acoustic anchor that resolves a segment immediately on its own.
+ * EXACT_NAME_CONFIDENCE applies to every other exact match (no accepted
+ * clips for OpenAI, or any Gemini match — Gemini has no acoustic
+ * verification at all): the model's own labeling, not a verified identity
+ * (mappingSource 'provider-exact'). Never resolves a segment by itself —
+ * see lib/reconcileSpeakers.ts, which only lets ANCHOR-tier evidence
+ * (acoustic, repair, user, or a prior reconciliation) cross the auto-assign
+ * threshold; a 'provider-exact' candidate needs independent corroboration
+ * (an overlap/continuity link to an acoustic anchor, a user confirmation,
+ * or the repair stage) to actually resolve. */
 export const EXACT_NAME_CONFIDENCE_WITH_CLIPS = 0.98;
 export const EXACT_NAME_CONFIDENCE = 0.95;
 /** Confidence of a first-appearance positional mapping (anonymous label ->
- * supplied name). At the assign threshold for a recording's FIRST chunk;
- * reconciliation demotes positional assignments in later chunks to
- * POSITIONAL_LATER_CHUNK_CONFIDENCE, since per-chunk first-appearance order
- * is exactly what swaps speakers at chunk boundaries. */
+ * supplied name) — a guess, never an anchor, regardless of which chunk it
+ * came from. Same PRIOR-tier treatment as EXACT_NAME_CONFIDENCE without
+ * clips in lib/reconcileSpeakers.ts: never resolves a segment alone. */
 export const POSITIONAL_CONFIDENCE = 0.9;
+/** Reconciliation further discounts a LATER chunk's positional guess versus
+ * the first chunk's — first-appearance order in a later chunk is exactly
+ * the signal that swaps speakers at chunk boundaries, so it contributes
+ * even weaker prior evidence than a first-chunk guess. */
 export const POSITIONAL_LATER_CHUNK_CONFIDENCE = 0.75;
 
 /** Cross-chunk continuity evidence scores (candidate band by design — never
@@ -226,6 +239,12 @@ export const CLASSIFY_WINDOW_OVERLAP_BLOCKS = 6;
  * characters for classification input only — the tag still applies to the
  * whole block (parts share the block id and aggregate deterministically). */
 export const CLASSIFY_MAX_BLOCK_CHARS = 1500;
+/** A core tag (argument_conflict / repair_attempt / emotional_support) on
+ * any PART of a split long turn at or above this confidence makes the whole
+ * parent block conflict-relevant — a neutral part at even higher confidence
+ * must never erase it (lib/argumentClassify.ts's conflict-sensitive parent
+ * aggregation). */
+export const CLASSIFY_CORE_TAG_MIN_CONFIDENCE = 0.6;
 /** Version of the classification prompt/response schema — folds into its cache key. */
 export const CLASSIFY_PROMPT_VERSION = 1;
 

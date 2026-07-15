@@ -3,8 +3,9 @@
 // Pure: no fetch, no model calls, no randomness. Evidence sources, strongest
 // first:
 //
-//   1. Exact provider-known names (already resolved by the chunk-local
-//      mapper — they seed cluster evidence).
+//   1. Acoustically anchored exact names (mappingSource 'acoustic' — an
+//      OpenAI exact match with ACCEPTED reference clips) — the only
+//      per-segment source trusted enough to resolve a cluster on its own.
 //   2. Stable local identity inside each chunk (identities are the unit of
 //      clustering; every segment sharing one moves together).
 //   3. Matching overlap segments — the same speech transcribed by two
@@ -13,17 +14,32 @@
 //      within a small gap (candidate-level evidence only).
 //   5. Short-gap continuity — a slightly larger boundary gap (weaker
 //      candidate-level evidence).
-//   6. Reference-clip attachment status (raises exact-name confidence in the
-//      chunk-local mapper; recorded here).
+//   6. Reference-clip ACCEPTANCE status (not mere attachment — a rejected
+//      clip must never be treated as an acoustic anchor; see
+//      mappingSource 'acoustic' vs 'provider-exact').
 //   7. Speaker notes — supporting evidence only, recorded in the report and
 //      passed to the repair stage, never used to assign a name here.
 //
+// Unverified exact-name guesses (mappingSource 'provider-exact' — no
+// accepted clips for OpenAI, or ANY Gemini match) and first-appearance
+// positional guesses (mappingSource 'positional', regardless of chunk index)
+// are never anchor-grade on their own: they contribute PRIOR-tier evidence
+// only, and a cluster can auto-resolve ONLY when its top name's ANCHOR
+// evidence (acoustic clip match, a prior repair, an earlier reconciliation
+// pass, or a user confirmation) clears SPEAKER_ASSIGN_MIN_CONFIDENCE. This is
+// what keeps an unanchored guess from becoming a high-confidence assignment
+// without independent corroboration — see lib/constants.ts and the
+// per-segment provenance doc in lib/types.ts.
+//
 // Confidence policy is centralized in lib/constants.ts:
-//   >= SPEAKER_ASSIGN_MIN_CONFIDENCE (0.9): assign automatically.
-//   [SPEAKER_CANDIDATE_MIN_CONFIDENCE, assign): retain candidate, display
-//   unresolved. Below: unresolved. Two candidates within
-//   SPEAKER_CONFLICT_MARGIN of each other (both in/above the candidate band)
-//   are conflicting evidence — the cluster stays unresolved and is recorded.
+//   >= SPEAKER_ASSIGN_MIN_CONFIDENCE (0.9) of ANCHOR evidence: assign
+//   automatically. [SPEAKER_CANDIDATE_MIN_CONFIDENCE, assign) of combined
+//   (anchor+prior) evidence: retain candidate, display unresolved — also
+//   the state a purely provider-exact/positional recording (no clips) stays
+//   in until repair, user confirmation, or a genuine overlap/continuity link
+//   to an anchor resolves it. Below: unresolved. Two anchors within
+//   SPEAKER_CONFLICT_MARGIN of each other are conflicting evidence — the
+//   cluster stays unresolved and is recorded.
 //
 // The interfaces here (evidence maps keyed by speaker, OverlapLink) are the
 // intended attachment point for future acoustic-embedding evidence — an
@@ -155,6 +171,108 @@ export function matchOverlapLinks(owned: TranscriptSegment[], duplicates: Transc
   }
 
   return links;
+}
+
+export interface ResolveOverlapDuplicatesResult {
+  /** Owned segments, each possibly upgraded (text/span extended) when a
+   * matching duplicate turned out to be the more complete version. */
+  owned: TranscriptSegment[];
+  /** Duplicates that could NOT be reliably matched to an owned segment —
+   * retained as their own segments rather than silently discarded. */
+  retainedDuplicates: TranscriptSegment[];
+  links: OverlapLink[];
+  /** True when at least one duplicate temporally overlapped an owned
+   * segment but didn't reliably text-match — retained, but worth flagging
+   * as a possible (unconfirmed) duplicate line. */
+  hasPossibleDuplicate: boolean;
+}
+
+/**
+ * Resolves chunk-boundary overlap duplicates against the segments that own
+ * that region: a duplicate is dropped ONLY when it reliably matches an
+ * owned segment (same matching rule as matchOverlapLinks — timing tolerance
+ * + normalized-text match, different chunks, both carrying a local
+ * identity). When two segments match, whichever has the longer trimmed text
+ * is treated as the more complete version and is what survives (extending
+ * the owned segment's span to cover both, or replacing its text, as
+ * needed); a match with equal-length text keeps the owned segment
+ * unchanged. A duplicate with NO reliable match is RETAINED rather than
+ * dropped — losing speech silently is worse than an occasional duplicate
+ * line, and a duplicate that also has no stable local identity (e.g. a
+ * Whisper fallback segment) can never be matched at all, so it is always
+ * retained. `hasPossibleDuplicate` flags a retained duplicate that
+ * genuinely overlaps an owned segment's time range without a confident
+ * text match, so the caller can surface a warning instead of staying
+ * silent about the ambiguity.
+ */
+export function resolveOverlapDuplicates(
+  owned: TranscriptSegment[],
+  duplicates: TranscriptSegment[],
+): ResolveOverlapDuplicatesResult {
+  const ownedOut = owned.slice();
+  const retainedDuplicates: TranscriptSegment[] = [];
+  const links: OverlapLink[] = [];
+  const seenLinkKeys = new Set<string>();
+  let hasPossibleDuplicate = false;
+
+  for (const dup of duplicates) {
+    const dupText = normalizeForMatch(dup.text);
+    let bestIndex = -1;
+    let bestDelta = Infinity;
+    let sawTemporalOverlap = false;
+
+    for (let i = 0; i < ownedOut.length; i++) {
+      const own = ownedOut[i];
+      if (own.chunkIndex === dup.chunkIndex) continue;
+      // Temporal overlap is tracked independently of identity/text matching
+      // — it drives the "possible duplicate" warning even when a confident
+      // match can't be established.
+      if (own.start < dup.end && own.end > dup.start) sawTemporalOverlap = true;
+
+      if (!own.localSpeakerId || !dup.localSpeakerId || own.localSpeakerId === dup.localSpeakerId) continue;
+      const delta = Math.abs(own.start - dup.start);
+      if (delta > OVERLAP_MATCH_MAX_START_DELTA_SECONDS) continue;
+      if (!textsMatch(normalizeForMatch(own.text), dupText)) continue;
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        bestIndex = i;
+      }
+    }
+
+    if (bestIndex >= 0) {
+      const own = ownedOut[bestIndex];
+      if (own.localSpeakerId && dup.localSpeakerId) {
+        const key = [own.localSpeakerId, dup.localSpeakerId].sort().join('|');
+        if (!seenLinkKeys.has(key)) {
+          seenLinkKeys.add(key);
+          links.push({ localSpeakerIdA: dup.localSpeakerId, localSpeakerIdB: own.localSpeakerId });
+        }
+      }
+      // Deterministically choose the more complete version: strictly
+      // longer trimmed text wins (a truncated chunk-boundary segment loses
+      // to the neighbor's fuller capture of the same utterance); ties keep
+      // the owned segment as-is.
+      if (dup.text.trim().length > own.text.trim().length) {
+        ownedOut[bestIndex] = {
+          ...own,
+          text: dup.text,
+          start: Math.min(own.start, dup.start),
+          end: Math.max(own.end, dup.end),
+        };
+      }
+      // A confidently matched duplicate is dropped — its content survives
+      // via the (possibly upgraded) owned segment above.
+    } else {
+      // No reliable match — retain rather than silently lose speech. This
+      // also covers identity-less duplicates (e.g. Whisper fallback, which
+      // has no localSpeakerId to match on at all) and genuinely new content
+      // that merely started a little before the core boundary.
+      retainedDuplicates.push(dup);
+      if (sawTemporalOverlap) hasPossibleDuplicate = true;
+    }
+  }
+
+  return { owned: ownedOut, retainedDuplicates, links, hasPossibleDuplicate };
 }
 
 /**
@@ -304,24 +422,45 @@ export function reconcileSpeakers<T extends TranscriptSegment>(
     if (seg.userConfirmed && knownNameSet.has(seg.speaker)) {
       info.userNames.add(seg.speaker);
       addEvidence(info.evidence, seg.speaker, 1, true);
+      return;
     }
-    if (seg.resolvedSpeaker && knownNameSet.has(seg.resolvedSpeaker) && typeof seg.speakerConfidence === 'number') {
-      if (seg.mappingSource === 'positional' && (seg.chunkIndex ?? 0) > 0) {
-        // First-appearance order inside a later chunk is exactly the signal
-        // that swaps speakers at chunk boundaries — demote to a weak prior
-        // unless corroborated by overlap/continuity evidence.
-        addEvidence(
-          info.evidence,
-          seg.resolvedSpeaker,
-          Math.min(seg.speakerConfidence, POSITIONAL_LATER_CHUNK_CONFIDENCE),
-          false,
-        );
-        if (!info.demotedPositional) {
-          info.demotedPositional = true;
-          demotedPositional += 1;
-        }
-      } else {
-        addEvidence(info.evidence, seg.resolvedSpeaker, seg.speakerConfidence, true);
+
+    // ANCHOR-grade: a genuinely resolved per-segment source — a clip-
+    // verified exact match, a prior repair, or an earlier reconciliation
+    // pass (defensive: reconcileSpeakers runs once per pipeline run today,
+    // but this keeps the function correct if ever re-invoked on already-
+    // reconciled data). Contributes full anchor evidence.
+    if (
+      seg.resolvedSpeaker &&
+      knownNameSet.has(seg.resolvedSpeaker) &&
+      typeof seg.speakerConfidence === 'number' &&
+      (seg.mappingSource === 'acoustic' || seg.mappingSource === 'repair' || seg.mappingSource === 'reconciliation')
+    ) {
+      addEvidence(info.evidence, seg.resolvedSpeaker, seg.speakerConfidence, true);
+      return;
+    }
+
+    // PRIOR-grade: a real signal, but never sufficient on its own — an
+    // unverified exact-name guess (no accepted clips for OpenAI, or any
+    // Gemini match) or a first-appearance positional guess. Neither
+    // auto-resolves without independent corroboration (an overlap/
+    // continuity link to an anchor-bearing identity, a user confirmation,
+    // or the repair stage) — see the module header.
+    const candidateName = seg.candidateSpeaker ?? seg.resolvedSpeaker;
+    if (
+      candidateName &&
+      knownNameSet.has(candidateName) &&
+      typeof seg.speakerConfidence === 'number' &&
+      (seg.mappingSource === 'provider-exact' || seg.mappingSource === 'positional')
+    ) {
+      const score =
+        seg.mappingSource === 'positional' && (seg.chunkIndex ?? 0) > 0
+          ? Math.min(seg.speakerConfidence, POSITIONAL_LATER_CHUNK_CONFIDENCE)
+          : seg.speakerConfidence;
+      addEvidence(info.evidence, candidateName, score, false);
+      if (seg.mappingSource === 'positional' && !info.demotedPositional) {
+        info.demotedPositional = true;
+        demotedPositional += 1;
       }
     }
   });
@@ -442,14 +581,28 @@ export function reconcileSpeakers<T extends TranscriptSegment>(
     const top = ranked[0];
     const topScore = top ? effectiveScore(top[1]) : 0;
 
-    // Conflict detection considers ANCHOR evidence only: two assignment-grade
+    // Conflict detection prefers ANCHOR evidence: two assignment-grade
     // signals for different names within the margin are irreconcilable; a
-    // weak prior disagreeing with a solid anchor is not.
+    // weak prior disagreeing with a solid anchor is not (the anchor simply
+    // wins below). But when NEITHER name has any anchor at all, two
+    // prior-only claims within the margin are just as irreconcilable — see
+    // hasPriorOnlyConflict below.
     const anchorRanked = [...cluster.evidence.entries()]
       .filter(([, entry]) => entry.anchor >= SPEAKER_CANDIDATE_MIN_CONFIDENCE)
       .sort((a, b) => b[1].anchor - a[1].anchor || (a[0] < b[0] ? -1 : 1));
     const hasAnchorConflict =
       anchorRanked.length >= 2 && anchorRanked[0][1].anchor - anchorRanked[1][1].anchor < SPEAKER_CONFLICT_MARGIN;
+
+    // When NO name in the cluster has any anchor-grade evidence at all,
+    // there is nothing to arbitrate between two disagreeing prior-tier
+    // claims (e.g. two different chunks' unverified exact-name matches for
+    // the same overlap-linked speech) — that is just as much a genuine,
+    // unresolved conflict as two anchors disagreeing.
+    const hasPriorOnlyConflict =
+      anchorRanked.length === 0 &&
+      ranked.length >= 2 &&
+      topScore >= SPEAKER_CANDIDATE_MIN_CONFIDENCE &&
+      topScore - effectiveScore(ranked[1][1]) < SPEAKER_CONFLICT_MARGIN;
 
     if (cluster.userNames.size === 1) {
       // A user confirmation is the ultimate evidence tier — it resolves the
@@ -466,12 +619,17 @@ export function reconcileSpeakers<T extends TranscriptSegment>(
     } else if (!top || topScore < SPEAKER_CANDIDATE_MIN_CONFIDENCE) {
       statusByRoot.set(root, { kind: 'unresolved' });
       unresolvedClusters += 1;
-    } else if (hasAnchorConflict) {
+    } else if (hasAnchorConflict || hasPriorOnlyConflict) {
       // Directly conflicting evidence — stays unresolved and is recorded.
       statusByRoot.set(root, { kind: 'conflict', name: top[0], score: topScore });
       conflictClusters += 1;
-    } else if (topScore >= SPEAKER_ASSIGN_MIN_CONFIDENCE) {
-      statusByRoot.set(root, { kind: 'resolved', name: top[0], score: topScore });
+    } else if (anchorRanked.length > 0 && anchorRanked[0][1].anchor >= SPEAKER_ASSIGN_MIN_CONFIDENCE) {
+      // Only ANCHOR-grade evidence resolves a cluster automatically — an
+      // unverified provider-exact/positional guess can reach this combined
+      // (anchor+prior) threshold on its own, but that alone must never
+      // auto-resolve (see the module header); it falls to 'candidate' below
+      // instead, pending repair, user confirmation, or genuine corroboration.
+      statusByRoot.set(root, { kind: 'resolved', name: anchorRanked[0][0], score: anchorRanked[0][1].anchor });
       resolvedClusters += 1;
     } else {
       statusByRoot.set(root, { kind: 'candidate', name: top[0], score: topScore });
@@ -496,18 +654,23 @@ export function reconcileSpeakers<T extends TranscriptSegment>(
     if (!status) return seg;
 
     if (status.kind === 'resolved') {
-      const unchanged =
-        seg.speaker === status.name && seg.resolvedSpeaker === status.name && seg.mappingConflict !== true;
+      // Only a segment whose OWN mapping source was already trustworthy
+      // enough to anchor a cluster by itself (acoustic, or — defensively —
+      // an earlier repair/reconciliation pass) keeps that source when it
+      // resolves to the same name; a provider-exact/positional segment
+      // that resolves here did so through reconciliation's corroboration
+      // (its own repeated evidence or a union with an anchor elsewhere in
+      // the cluster), so its source becomes 'reconciliation'.
+      const alreadyTrusted =
+        (seg.mappingSource === 'acoustic' || seg.mappingSource === 'repair' || seg.mappingSource === 'reconciliation') &&
+        seg.resolvedSpeaker === status.name;
+      const unchanged = alreadyTrusted && seg.speaker === status.name && seg.mappingConflict !== true;
       if (unchanged && seg.speakerConfidence === status.score) return seg;
       segmentsChanged += 1;
       const next = { ...seg, speaker: status.name, resolvedSpeaker: status.name, speakerConfidence: status.score };
       delete next.candidateSpeaker;
       delete next.mappingConflict;
-      // Provider-exact segments already carrying this name keep their source
-      // — everything else was decided here.
-      if (!(seg.mappingSource === 'provider-exact' && seg.resolvedSpeaker === status.name)) {
-        next.mappingSource = 'reconciliation';
-      }
+      if (!alreadyTrusted) next.mappingSource = 'reconciliation';
       return next;
     }
 

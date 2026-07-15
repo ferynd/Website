@@ -6,21 +6,34 @@ import type { TranscriptionProviderId } from './providers/types';
 /**
  * How a segment's current speaker assignment was decided — recorded per
  * segment so every later stage (reconciliation, repair, merging, exports)
- * can distinguish a deterministic exact-name match from a positional guess
- * or a language-model repair:
- * - 'provider-exact': the provider's raw label case-insensitively matched a
- *   supplied known name.
+ * can distinguish a genuinely verified identity from an unverified guess:
+ * - 'acoustic': the provider's raw label exactly matched a supplied known
+ *   name AND the request carried ACCEPTED acoustic reference clips for that
+ *   name — a real acoustic anchor. The only chunk-local mapping outcome
+ *   that resolves a segment immediately (`resolvedSpeaker` set).
+ * - 'provider-exact': the raw label case-insensitively matched a supplied
+ *   known name, but with NO accepted acoustic reference (no clips
+ *   attached/accepted for OpenAI, or any Gemini match — Gemini has no
+ *   acoustic verification at all). This is the model's own inference, not
+ *   a verified identity: it never resolves a segment by itself
+ *   (`candidateSpeaker` only) — only independent corroboration (an
+ *   overlap/continuity link to an acoustic anchor, a user confirmation, or
+ *   the repair stage) can turn it into a resolved assignment.
  * - 'positional': an anonymous provider label (A/B/…) was mapped to a
- *   supplied name by first-appearance order — a guess, not an anchor.
+ *   supplied name by first-appearance order — a guess, never an anchor, and
+ *   never resolves a segment alone (`candidateSpeaker` only), regardless of
+ *   which chunk it came from.
  * - 'unresolved': the label was preserved as a chunk-local identity with no
- *   known-name assignment.
+ *   known-name assignment (or, for Whisper, no identity at all).
  * - 'reconciliation': assigned by the deterministic global reconciliation
- *   stage (lib/reconcileSpeakers.ts).
+ *   stage (lib/reconcileSpeakers.ts) once corroborating evidence clears the
+ *   auto-assign threshold.
  * - 'repair': assigned by the targeted language-model speaker-repair stage.
  * - 'user': manually confirmed by the user — never overwritten by any
  *   automatic stage.
  */
 export type SpeakerMappingSource =
+  | 'acoustic'
   | 'provider-exact'
   | 'positional'
   | 'unresolved'
@@ -164,6 +177,10 @@ export interface TranscribeApiResponse {
   error?: string;
   /** Non-fatal notices from this run (e.g. a rejected speaker reference in Phase 4). Present (possibly empty) on success. */
   warnings?: string[];
+  /** True when reference clips were attached to this request at all (OpenAI diarized only). */
+  clipsSupplied?: boolean;
+  /** True when OpenAI actually accepted the attached clips — false after a successful known-speaker-rejection retry that dropped them. An exact-name match is only acoustically anchored when this is true. */
+  clipsAccepted?: boolean;
   /** Provider token usage for this request, only when the provider reported it. */
   usage?: StageUsage;
   /** Present alongside `error` on failure responses — see classifyTranscriptionError. */
@@ -223,6 +240,8 @@ export interface CorrectApiResponse {
    * (lib/correctionGuards.ts). Present (possibly 0) on success. */
   revertedPatches?: number;
   usage?: StageUsage;
+  /** Set when the model attempted output that included invalid/unknown/duplicate items on at least one attempt — distinct from a genuinely empty {patches: []} response. The valid subset is still applied; this is a diagnostic signal only. */
+  warning?: string;
   error?: string;
 }
 
@@ -263,6 +282,8 @@ export interface SpeakerRepairApiResponse {
    * server-side against the request. */
   patches: SpeakerRepairPatch[];
   usage?: StageUsage;
+  /** Set when the model attempted output that included invalid/unknown/duplicate items on at least one attempt — distinct from a genuinely empty {patches: []} response. */
+  warning?: string;
   error?: string;
 }
 
@@ -291,5 +312,7 @@ export interface ClassifyApiResponse {
    * validated server-side; no block text is ever echoed back. */
   classifications: BlockClassification[];
   usage?: StageUsage;
+  /** Set when the model attempted output that included invalid/unknown/duplicate items on at least one attempt — distinct from a genuinely empty {classifications: []} response. */
+  warning?: string;
   error?: string;
 }

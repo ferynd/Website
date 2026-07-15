@@ -7,11 +7,17 @@
 // IDENTITY provably matches, not merely their display string —
 //   - both resolved to the same global speaker (or user-confirmed to it), or
 //   - both unresolved AND sharing the same stable chunk-local identity, or
-//   - neither carrying any identity metadata at all (legacy/Whisper
-//     segments), where the display speaker string is all there is.
+//   - neither carrying ANY provenance at all — genuinely bare/legacy shapes
+//     (no mappingSource, predating this pipeline's provenance system) —
+//     where the display speaker string is all there is.
 // Never merged: different unresolved local identities, a resolved segment
-// with an unresolved one, or different user-confirmed speakers — even when
-// their display strings happen to coincide.
+// with an unresolved one, different user-confirmed speakers, or — this is
+// the key Whisper-fallback case — two PROVENANCE-TRACKED segments that both
+// ended up with no local identity at all (mapFallbackSegments' Whisper
+// output: mappingSource 'unresolved', no localSpeakerId). Both display
+// "Unknown", but that's coincidence, not evidence they're the same speaker
+// — each such segment gets its own per-position identity key so it never
+// merges with a sibling until repair actually assigns it a name.
 //
 // Relative imports here deliberately (see note at top of ./settings.ts) —
 // this module is imported directly by vitest.
@@ -33,12 +39,24 @@ function hasBoundaryBetween(prevEnd: number, nextStart: number, boundaryTimes: n
 /**
  * The comparable identity of one segment for merge purposes — see the merge
  * safety rules in the module header. Different kinds never merge with each
- * other.
+ * other. `uniqueIndex` is used ONLY for the "provenance-tracked but
+ * genuinely identity-less" case (Whisper fallback and similar) — it makes
+ * that segment's key unique so it never merges with any other segment,
+ * including another one that also displays "Unknown".
  */
-export function mergeIdentityKey(seg: TranscriptSegment): string {
+export function mergeIdentityKey(seg: TranscriptSegment, uniqueIndex: number): string {
   if (seg.userConfirmed) return `resolved:${seg.speaker}`;
   if (seg.resolvedSpeaker !== undefined) return `resolved:${seg.resolvedSpeaker}`;
   if (seg.localSpeakerId !== undefined) return `local:${seg.localSpeakerId}`;
+  if (seg.mappingSource !== undefined) {
+    // This pipeline processed the segment and still couldn't anchor ANY
+    // local identity for it (Whisper has no diarization concept at all) —
+    // never merge it with a sibling merely because both display "Unknown".
+    return `unresolved-no-identity:${uniqueIndex}`;
+  }
+  // No provenance at all — a genuinely bare/legacy shape (predates this
+  // pipeline, e.g. a hand-built test object or old cached data). Merging by
+  // display string is the best available signal for these.
   return `legacy:${seg.speaker}`;
 }
 
@@ -120,8 +138,8 @@ export function mergeTurns(segments: TaggedTranscriptSegment[], options: MergeTu
 
   const working: WorkingBlock[] = [];
 
-  for (const segment of sorted) {
-    const identityKey = mergeIdentityKey(segment);
+  sorted.forEach((segment, index) => {
+    const identityKey = mergeIdentityKey(segment, index);
     const last = working[working.length - 1];
     const canMerge =
       last !== undefined &&
@@ -150,7 +168,7 @@ export function mergeTurns(segments: TaggedTranscriptSegment[], options: MergeTu
       addTag(block, segment.tag);
       working.push(block);
     }
-  }
+  });
 
   return working.map(finishBlock);
 }

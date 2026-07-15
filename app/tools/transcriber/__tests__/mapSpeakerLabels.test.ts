@@ -84,9 +84,13 @@ describe('mapDiarizedSegments', () => {
     // The anonymous labels are unresolved — never forced onto Kait or James.
     expect(mapped[1].resolvedSpeaker).toBeUndefined();
     expect(mapped[5].resolvedSpeaker).toBeUndefined();
-    // The exact names are preserved untouched.
-    expect(mapped[0]).toMatchObject({ resolvedSpeaker: 'Kait', mappingSource: 'provider-exact' });
-    expect(mapped[3]).toMatchObject({ resolvedSpeaker: 'James', mappingSource: 'provider-exact' });
+    // The exact names are preserved untouched — but without accepted
+    // reference clips, an exact-name match is provider-inferred, not
+    // acoustically verified, so it stays a CANDIDATE, never resolvedSpeaker.
+    expect(mapped[0]).toMatchObject({ candidateSpeaker: 'Kait', mappingSource: 'provider-exact' });
+    expect(mapped[0].resolvedSpeaker).toBeUndefined();
+    expect(mapped[3]).toMatchObject({ candidateSpeaker: 'James', mappingSource: 'provider-exact' });
+    expect(mapped[3].resolvedSpeaker).toBeUndefined();
   });
 
   it('permits several provider labels to resolve to the same known speaker via exact matches', () => {
@@ -120,6 +124,18 @@ describe('mapDiarizedSegments', () => {
     const withClips = mapDiarizedSegments(rawSegs, ['Kait'], { clipsAttached: true })[0];
     expect(withoutClips.speakerConfidence).toBe(EXACT_NAME_CONFIDENCE);
     expect(withClips.speakerConfidence).toBe(EXACT_NAME_CONFIDENCE_WITH_CLIPS);
+  });
+
+  it('only trusts an exact name as acoustically anchored (resolvedSpeaker) when clips were actually accepted', () => {
+    const rawSegs = [raw('Kait', 0, 1)];
+    const withoutClips = mapDiarizedSegments(rawSegs, ['Kait'])[0];
+    expect(withoutClips.mappingSource).toBe('provider-exact');
+    expect(withoutClips.candidateSpeaker).toBe('Kait');
+    expect(withoutClips.resolvedSpeaker).toBeUndefined();
+
+    const withClips = mapDiarizedSegments(rawSegs, ['Kait'], { clipsAttached: true })[0];
+    expect(withClips.mappingSource).toBe('acoustic');
+    expect(withClips.resolvedSpeaker).toBe('Kait');
   });
 
   it('preserves the original provider label on every segment', () => {

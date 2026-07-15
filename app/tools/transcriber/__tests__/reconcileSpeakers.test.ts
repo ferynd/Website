@@ -16,7 +16,7 @@ function chunk(chunkIndex: number, rows: [string, number, number, string][]): Tr
 }
 
 describe('reconcileSpeakers', () => {
-  it('keeps exact-name assignments and gives anonymous extras stable global labels', () => {
+  it('treats unclipped exact-name assignments as candidates and gives anonymous extras stable global labels', () => {
     const segments = chunk(0, [
       ['Kait', 0, 2, 'Hello.'],
       ['A', 2, 4, 'Mystery line one.'],
@@ -26,12 +26,18 @@ describe('reconcileSpeakers', () => {
     ]);
     const { segments: out, report } = reconcileSpeakers(segments, { knownNames: NAMES });
 
-    expect(out.map((s) => s.speaker)).toEqual(['Kait', 'Speaker A', 'James', 'Speaker A', 'Speaker B']);
-    expect(out[0].resolvedSpeaker).toBe('Kait');
-    expect(out[2].resolvedSpeaker).toBe('James');
+    // Without accepted reference clips, nothing here is ANCHOR-tier evidence
+    // — every cluster displays as an anonymous "Speaker X" pending repair or
+    // corroboration, even the exact-name ones.
+    expect(out.map((s) => s.speaker)).toEqual(['Speaker A', 'Speaker B', 'Speaker C', 'Speaker B', 'Speaker D']);
+    expect(out[0].resolvedSpeaker).toBeUndefined();
+    expect(out[0].candidateSpeaker).toBe('Kait');
+    expect(out[2].resolvedSpeaker).toBeUndefined();
+    expect(out[2].candidateSpeaker).toBe('James');
     expect(out[1].resolvedSpeaker).toBeUndefined();
     expect(out[4].resolvedSpeaker).toBeUndefined();
-    expect(report.resolvedClusters).toBe(2);
+    expect(report.resolvedClusters).toBe(0);
+    expect(report.candidateClusters).toBe(2);
     expect(report.unresolvedClusters).toBe(2);
     expect(report.conflictClusters).toBe(0);
   });
@@ -52,14 +58,20 @@ describe('reconcileSpeakers', () => {
     expect(out[2].speaker).not.toBe(out[3].speaker);
   });
 
-  it('keeps chunk-0 positional assignments assigned', () => {
+  it('keeps chunk-0 positional assignments as candidates, never automatic', () => {
     const segments = chunk(0, [
       ['A', 0, 2, 'First voice.'],
       ['B', 2, 4, 'Second voice.'],
     ]);
-    const { segments: out } = reconcileSpeakers(segments, { knownNames: NAMES });
-    expect(out.map((s) => s.speaker)).toEqual(['Kait', 'James']);
-    expect(out[0].resolvedSpeaker).toBe('Kait');
+    const { segments: out, report } = reconcileSpeakers(segments, { knownNames: NAMES });
+    // A first-appearance guess is never an anchor, regardless of chunk index
+    // — the old "chunk 0 positional is an anchor" special case is gone.
+    expect(out.map((s) => s.speaker)).toEqual(['Speaker A', 'Speaker B']);
+    expect(out[0].resolvedSpeaker).toBeUndefined();
+    expect(out[0].candidateSpeaker).toBe('Kait');
+    expect(out[1].candidateSpeaker).toBe('James');
+    expect(report.resolvedClusters).toBe(0);
+    expect(report.candidateClusters).toBe(2);
   });
 
   it('demotes positional assignments in later chunks to unresolved-with-candidate', () => {
@@ -80,10 +92,13 @@ describe('reconcileSpeakers', () => {
     expect(out[2].candidateSpeaker).toBe('Kait');
     expect(out[2].speaker).toMatch(/^Speaker /);
     expect(report.demotedPositionalIdentities).toBe(2);
-    expect(report.candidateClusters).toBe(2);
+    // 2 demoted-positional clusters (chunk 1's A/B) plus 2 unclipped
+    // exact-name clusters (chunk 0's Kait/James) — none of the four has any
+    // anchor-tier evidence, so all four land in the candidate band.
+    expect(report.candidateClusters).toBe(4);
   });
 
-  it('resolves a later chunk via an overlap link to an anchored identity', () => {
+  it('links a later chunk via overlap to an unanchored identity, but the merged cluster still needs corroboration', () => {
     const chunk0 = chunk(0, [
       ['Kait', 0, 2, 'Anchored line.'],
       ['A', 598, 600, 'This sentence spans the chunk boundary overlap.'],
@@ -92,7 +107,8 @@ describe('reconcileSpeakers', () => {
       ['B', 598.4, 600.2, 'This sentence spans the chunk boundary overlap.'],
       ['B', 601, 603, 'Continuing after the boundary.'],
     ]);
-    // Chunk 0's 'A' resolved positionally to James (Kait claimed exactly).
+    // Chunk 0's 'A' resolved positionally to James (Kait claimed exactly) —
+    // a candidate-only guess, not an anchor (no accepted clips).
     const overlapLinks = matchOverlapLinks([chunk0[1]], [chunk1[0]]);
     expect(overlapLinks).toHaveLength(1);
 
@@ -100,11 +116,18 @@ describe('reconcileSpeakers', () => {
       knownNames: NAMES,
       overlapLinks,
     });
-    // The union makes chunk 1's 'B' the same cluster as chunk 0's 'A' —
-    // which carries a full-strength chunk-0 positional assignment to James.
-    expect(out[2].speaker).toBe('James');
-    expect(out[3].speaker).toBe('James');
+    // The union makes chunk 1's 'B' the same cluster as chunk 0's 'A'. Both
+    // sides are merely PRIOR evidence for two DIFFERENT names (James from
+    // chunk 0's positional guess, Kait from chunk 1's demoted positional
+    // guess) with nothing to arbitrate between them — a genuine conflict,
+    // not a silent resolution.
+    expect(out[2].speaker).toMatch(/^Speaker /);
+    expect(out[2].mappingConflict).toBe(true);
+    expect(out[2].candidateSpeaker).toBe('James');
+    expect(out[2].resolvedSpeaker).toBeUndefined();
+    expect(out[3].mappingConflict).toBe(true);
     expect(report.overlapLinksUsed).toBe(1);
+    expect(report.conflictClusters).toBe(1);
   });
 
   it('records directly conflicting evidence and leaves the cluster unresolved', () => {
@@ -142,7 +165,10 @@ describe('reconcileSpeakers', () => {
     // a candidate, not an automatic assignment.
     expect(boundarySeg.resolvedSpeaker).toBeUndefined();
     expect(boundarySeg.candidateSpeaker).toBe('Kait');
-    expect(report.resolvedClusters).toBe(1); // only the exact-name chunk-0 cluster
+    // Chunk 0's exact-name match is ALSO merely a candidate without accepted
+    // clips — nothing here is anchor-tier, so nothing auto-resolves.
+    expect(report.resolvedClusters).toBe(0);
+    expect(report.candidateClusters).toBe(2);
   });
 
   it('never modifies user-confirmed segments', () => {

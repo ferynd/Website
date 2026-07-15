@@ -13,6 +13,7 @@ import {
   ARGUMENT_CLASSIFIER_GEMINI_MODEL,
   CORRECTION_TEMPERATURE,
 } from '@/app/tools/transcriber/lib/constants';
+import { accumulateStageUsage } from '@/app/tools/transcriber/lib/stageUsage';
 import type {
   BlockClassification,
   ClassifyApiRequestBody,
@@ -84,10 +85,11 @@ export async function POST(req: NextRequest) {
   const allowedIds = blocks.map((b) => b.id);
 
   let classifications: BlockClassification[] | null = null;
+  let invalidCount = 0;
   let usage: StageUsage | undefined;
   let requests = 0;
   let lastError = 'Argument classification failed.';
-  for (let attempt = 0; attempt < CLASSIFY_MODEL_ATTEMPTS && classifications === null; attempt++) {
+  for (let attempt = 0; attempt < CLASSIFY_MODEL_ATTEMPTS; attempt++) {
     let raw: string;
     try {
       // NOTE: never log `prompt` or `raw` — the prompt contains transcript contents.
@@ -98,32 +100,52 @@ export async function POST(req: NextRequest) {
         responseSchema,
       });
       raw = result.text;
-      if (result.usage) {
-        usage = {
-          model: result.usage.model,
-          requests,
-          ...(result.usage.inputTokens !== undefined ? { inputTokens: result.usage.inputTokens } : {}),
-          ...(result.usage.outputTokens !== undefined ? { outputTokens: result.usage.outputTokens } : {}),
-          ...(result.usage.cachedTokens !== undefined ? { cachedTokens: result.usage.cachedTokens } : {}),
-        };
-      }
+      // Accumulate tokens from every successful provider response — even one
+      // whose output later fails local validation below and triggers a
+      // retry — never just the final winning attempt's tokens.
+      if (result.usage) usage = accumulateStageUsage(usage, result.usage, requests);
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'Argument classification failed.';
       continue;
     }
 
+    let parsed;
     try {
       // Server-side validation: unknown ids and invalid tags never reach the client.
-      classifications = parseClassifyResponse(raw, allowedIds);
+      parsed = parseClassifyResponse(raw, allowedIds);
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'Classifier returned an unexpected response.';
       continue;
     }
+
+    if (parsed.invalidCount > 0) {
+      // The model attempted output but some of it didn't validate — distinct
+      // from a genuinely empty response. Keep the valid subset as a
+      // fallback and retry once for a cleaner sample; if this was the last
+      // attempt, the valid subset ships with a warning rather than silently
+      // looking like a clean no-op.
+      classifications = parsed.classifications;
+      invalidCount = parsed.invalidCount;
+      lastError = `Classifier returned ${parsed.invalidCount} invalid item(s).`;
+      continue;
+    }
+
+    classifications = parsed.classifications;
+    invalidCount = 0;
+    break;
   }
 
   if (classifications === null) {
     return NextResponse.json({ error: lastError }, { status: 502 });
   }
 
-  return NextResponse.json({ classifications, ...(usage ? { usage } : {}) });
+  return NextResponse.json({
+    classifications,
+    ...(invalidCount > 0
+      ? {
+          warning: `Classifier returned ${invalidCount} invalid item(s) after ${requests} attempt(s); applying the valid subset.`,
+        }
+      : {}),
+    ...(usage ? { usage } : {}),
+  });
 }

@@ -110,12 +110,13 @@ describe('parseSpeakerRepairPatches', () => {
 
   it('parses valid patches and canonicalizes speaker casing', () => {
     const raw = JSON.stringify({ patches: [{ segmentId: 's1-0', speaker: 'kait', confidence: 0.94 }] });
-    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual([
-      { segmentId: 's1-0', speaker: 'Kait', confidence: 0.94 },
-    ]);
+    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual({
+      patches: [{ segmentId: 's1-0', speaker: 'Kait', confidence: 0.94 }],
+      invalidCount: 0,
+    });
   });
 
-  it('rejects unknown ids and non-target (context) ids', () => {
+  it('rejects unknown ids and non-target (context) ids, counting them invalid', () => {
     const raw = JSON.stringify({
       patches: [
         { segmentId: 's0-0', speaker: 'Kait', confidence: 0.99 }, // context id
@@ -123,30 +124,35 @@ describe('parseSpeakerRepairPatches', () => {
         { segmentId: 's1-1', speaker: 'James', confidence: 0.92 },
       ],
     });
-    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual([
-      { segmentId: 's1-1', speaker: 'James', confidence: 0.92 },
-    ]);
+    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual({
+      patches: [{ segmentId: 's1-1', speaker: 'James', confidence: 0.92 }],
+      invalidCount: 2,
+    });
   });
 
-  it('rejects unapproved speaker names', () => {
+  it('rejects unapproved speaker names, counting them invalid', () => {
     const raw = JSON.stringify({ patches: [{ segmentId: 's1-0', speaker: 'Bob', confidence: 0.99 }] });
-    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual([]);
+    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual({ patches: [], invalidCount: 1 });
   });
 
-  it('clamps confidence into [0, 1] and drops non-numeric confidence', () => {
+  it('clamps confidence into [0, 1] and drops non-numeric confidence (counted invalid)', () => {
     const raw = JSON.stringify({
       patches: [
         { segmentId: 's1-0', speaker: 'Kait', confidence: 1.7 },
         { segmentId: 's1-1', speaker: 'James', confidence: 'high' },
       ],
     });
-    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual([
-      { segmentId: 's1-0', speaker: 'Kait', confidence: 1 },
-    ]);
+    expect(parseSpeakerRepairPatches(raw, TARGETS, NAMES)).toEqual({
+      patches: [{ segmentId: 's1-0', speaker: 'Kait', confidence: 1 }],
+      invalidCount: 1,
+    });
   });
 
   it('treats an empty patches array as valid', () => {
-    expect(parseSpeakerRepairPatches(JSON.stringify({ patches: [] }), TARGETS, NAMES)).toEqual([]);
+    expect(parseSpeakerRepairPatches(JSON.stringify({ patches: [] }), TARGETS, NAMES)).toEqual({
+      patches: [],
+      invalidCount: 0,
+    });
   });
 
   it('throws on invalid JSON or wrong shape', () => {

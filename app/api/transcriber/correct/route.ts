@@ -12,6 +12,7 @@ import { CORRECTION_GEMINI_MODEL, CORRECTION_TEMPERATURE } from '@/app/tools/tra
 import { shouldRevertCorrection } from '@/app/tools/transcriber/lib/correctionGuards';
 import { parseCorrectionPatches } from '@/app/tools/transcriber/lib/parseCorrectionResponse';
 import { CLEANUP_TEMPERATURE_MAX, CLEANUP_TEMPERATURE_MIN } from '@/app/tools/transcriber/lib/settings';
+import { accumulateStageUsage } from '@/app/tools/transcriber/lib/stageUsage';
 import type {
   CorrectApiRequestBody,
   CorrectionPatch,
@@ -109,10 +110,11 @@ export async function POST(req: NextRequest) {
   const allowedIds = segments.map((s) => s.id);
 
   let patches: CorrectionPatch[] | null = null;
+  let invalidCount = 0;
   let usage: StageUsage | undefined;
   let requests = 0;
   let lastError = 'Correction pass failed.';
-  for (let attempt = 0; attempt < CORRECTION_MODEL_ATTEMPTS && patches === null; attempt++) {
+  for (let attempt = 0; attempt < CORRECTION_MODEL_ATTEMPTS; attempt++) {
     let raw: string;
     try {
       // NOTE: never log `prompt` or `raw` — both contain transcript contents.
@@ -123,26 +125,39 @@ export async function POST(req: NextRequest) {
         responseSchema,
       });
       raw = result.text;
-      if (result.usage) {
-        usage = {
-          model: result.usage.model,
-          requests,
-          ...(result.usage.inputTokens !== undefined ? { inputTokens: result.usage.inputTokens } : {}),
-          ...(result.usage.outputTokens !== undefined ? { outputTokens: result.usage.outputTokens } : {}),
-          ...(result.usage.cachedTokens !== undefined ? { cachedTokens: result.usage.cachedTokens } : {}),
-        };
-      }
+      // Accumulate tokens from every successful provider response — even
+      // one whose output later fails local validation below and triggers a
+      // retry — never just the final winning attempt's tokens.
+      if (result.usage) usage = accumulateStageUsage(usage, result.usage, requests);
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'Correction pass failed.';
       continue;
     }
 
+    let parsed;
     try {
-      patches = parseCorrectionPatches(raw, allowedIds);
+      parsed = parseCorrectionPatches(raw, allowedIds);
     } catch (err) {
       lastError = err instanceof Error ? err.message : 'Correction model returned an unexpected response.';
       continue;
     }
+
+    if (parsed.invalidCount > 0) {
+      // The model attempted output but some of it didn't validate (wrong
+      // shape, unknown/duplicate id) — distinct from a genuinely empty
+      // response. Keep the valid subset as a fallback and retry once for a
+      // cleaner sample; if this was the last attempt, the valid subset
+      // ships with a warning rather than silently looking like a clean
+      // no-op.
+      patches = parsed.patches;
+      invalidCount = parsed.invalidCount;
+      lastError = `Correction model returned ${parsed.invalidCount} invalid patch item(s).`;
+      continue;
+    }
+
+    patches = parsed.patches;
+    invalidCount = 0;
+    break;
   }
 
   if (patches === null) {
@@ -168,5 +183,14 @@ export async function POST(req: NextRequest) {
     applied.push({ segmentId: patch.segmentId, text: correctedText });
   }
 
-  return NextResponse.json({ patches: applied, revertedPatches, ...(usage ? { usage } : {}) });
+  return NextResponse.json({
+    patches: applied,
+    revertedPatches,
+    ...(invalidCount > 0
+      ? {
+          warning: `Correction model returned ${invalidCount} invalid patch item(s) after ${requests} attempt(s); applying the valid subset.`,
+        }
+      : {}),
+    ...(usage ? { usage } : {}),
+  });
 }

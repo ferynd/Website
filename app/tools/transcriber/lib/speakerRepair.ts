@@ -36,11 +36,37 @@ export interface BuildRepairBatchesOptions {
 }
 
 /**
- * Groups the transcript's repair targets into request batches: contiguous
- * target runs stay together (up to the per-batch cap), and each run carries
- * up to `contextSegments` resolved neighbors on each side. Only targets and
- * their limited context are ever sent — never the whole transcript.
- * Segments without a stable id can't be patched and are skipped.
+ * Splits a sorted list of target indices into maximal CONTIGUOUS runs —
+ * indices that are directly adjacent in the full segment list (no resolved
+ * segment in between). This is what keeps distant unresolved passages from
+ * ever sharing a batch merely because both fit under the target-count cap.
+ */
+function findContiguousRuns(targetIndices: number[]): number[][] {
+  const runs: number[][] = [];
+  let current: number[] = [];
+  for (const idx of targetIndices) {
+    if (current.length > 0 && idx === current[current.length - 1] + 1) {
+      current.push(idx);
+    } else {
+      if (current.length > 0) runs.push(current);
+      current = [idx];
+    }
+  }
+  if (current.length > 0) runs.push(current);
+  return runs;
+}
+
+/**
+ * Groups the transcript's repair targets into request batches: only
+ * CONTIGUOUS runs of target segments (physically adjacent in the
+ * transcript, no resolved segment between them) are ever batched together —
+ * two unresolved passages minutes apart always land in separate requests,
+ * regardless of the per-batch target cap. A run larger than the cap is
+ * split into consecutive sub-batches of at most `maxTargetsPerBatch`. Each
+ * (sub-)batch carries up to `contextSegments` resolved neighbors on each
+ * side. Only targets and their limited context are ever sent — never the
+ * whole transcript. Segments without a stable id can't be patched and are
+ * skipped.
  */
 export function buildRepairBatches(
   segments: TranscriptSegment[],
@@ -56,10 +82,13 @@ export function buildRepairBatches(
     .map(({ i }) => i);
   if (targetIndices.length === 0) return [];
 
-  // Split target indices into batches of at most maxTargets.
+  // Split each contiguous run into batches of at most maxTargets — runs
+  // never combine with each other regardless of size.
   const batchesOfIndices: number[][] = [];
-  for (let i = 0; i < targetIndices.length; i += maxTargets) {
-    batchesOfIndices.push(targetIndices.slice(i, i + maxTargets));
+  for (const run of findContiguousRuns(targetIndices)) {
+    for (let i = 0; i < run.length; i += maxTargets) {
+      batchesOfIndices.push(run.slice(i, i + maxTargets));
+    }
   }
 
   return batchesOfIndices.map((indices) => {
@@ -192,6 +221,16 @@ function stripFences(raw: string): string {
   return raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
 }
 
+export interface ParsedSpeakerRepairPatches {
+  patches: SpeakerRepairPatch[];
+  /** Items present in the raw response that were dropped: unknown/non-target
+   * id, unapproved speaker name, missing/invalid confidence, or a duplicate
+   * of an id already seen. A non-zero count means the model ATTEMPTED
+   * output that wasn't fully valid — distinct from a genuinely empty/clean
+   * response. */
+  invalidCount: number;
+}
+
 /**
  * Parses + validates the repair model's response: ids must be in
  * `targetIds` (context/unknown ids are rejected), the speaker must
@@ -203,7 +242,7 @@ export function parseSpeakerRepairPatches(
   raw: string,
   targetIds: string[],
   knownNames: string[],
-): SpeakerRepairPatch[] {
+): ParsedSpeakerRepairPatches {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripFences(raw));
@@ -224,21 +263,34 @@ export function parseSpeakerRepairPatches(
   const nameByLower = new Map(knownNames.map((name) => [name.toLowerCase(), name]));
   const seen = new Set<string>();
   const patches: SpeakerRepairPatch[] = [];
+  let invalidCount = 0;
 
   for (const item of items) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object') {
+      invalidCount += 1;
+      continue;
+    }
     const record = item as Record<string, unknown>;
     const id = typeof record.segmentId === 'string' ? record.segmentId : typeof record.id === 'string' ? record.id : null;
-    if (id === null || !allowed.has(id) || seen.has(id)) continue;
+    if (id === null || !allowed.has(id) || seen.has(id)) {
+      invalidCount += 1;
+      continue;
+    }
     const name = typeof record.speaker === 'string' ? nameByLower.get(record.speaker.trim().toLowerCase()) : undefined;
-    if (!name) continue;
+    if (!name) {
+      invalidCount += 1;
+      continue;
+    }
     const confidenceRaw = record.confidence;
-    if (typeof confidenceRaw !== 'number' || !Number.isFinite(confidenceRaw)) continue;
+    if (typeof confidenceRaw !== 'number' || !Number.isFinite(confidenceRaw)) {
+      invalidCount += 1;
+      continue;
+    }
     seen.add(id);
     patches.push({ segmentId: id, speaker: name, confidence: Math.min(1, Math.max(0, confidenceRaw)) });
   }
 
-  return patches;
+  return { patches, invalidCount };
 }
 
 export interface ApplyRepairPatchesOptions {

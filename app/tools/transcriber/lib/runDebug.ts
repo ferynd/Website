@@ -24,13 +24,22 @@ export interface DebugFileMeta {
 /**
  * Per-speaker outcome for one OpenAI diarized run's known-speaker
  * references (Phase 4) — 'attached' means this run's request included that
- * speaker's clip; `validationStatus` mirrors lib/clipAnalysis.ts's
- * ClipValidationStatus but is kept as a plain string here (not imported)
- * since debug events must stay JSON-serializable labels/counts only.
+ * speaker's clip; `accepted` is the ACTUAL server-reported acceptance
+ * status (false when OpenAI rejected the known-speaker fields and the run
+ * fell back to a no-clip retry — an exact-name match in that case is never
+ * acoustically anchored, whatever `attached` says). For a chunked run this
+ * reflects whether ANY chunk saw a rejection, since chunks are independent
+ * requests that can each accept or reject clips separately —
+ * lib/mapSpeakerLabels.ts's per-segment `mappingSource` is the precise,
+ * per-chunk source of truth; this is a run-level summary only.
+ * `validationStatus` mirrors lib/clipAnalysis.ts's ClipValidationStatus but
+ * is kept as a plain string here (not imported) since debug events must
+ * stay JSON-serializable labels/counts only.
  */
 export interface SpeakerReferenceEntry {
   name: string;
   attached: boolean;
+  accepted: boolean;
   validationStatus: string;
 }
 
@@ -175,8 +184,10 @@ export interface StageManifest {
     cleanup: { expected: number; completed: number } | null;
     classification: { expected: number; completed: number } | null;
   };
-  /** Reference-clip attachment status: per-speaker attached flag + SHA-256 content hash. */
-  referenceClips: { name: string; attached: boolean; sha256: string | null }[];
+  /** Reference-clip status: per-speaker attached flag, ACTUAL acceptance
+   * (false when the run fell back to a no-clip retry after rejection —
+   * see the transcribe route's clipsAccepted), and SHA-256 content hash. */
+  referenceClips: { name: string; attached: boolean; accepted: boolean; sha256: string | null }[];
   quality: SpeakerQualityReport | null;
   /** Sparse patch counts per stage. */
   patches: {

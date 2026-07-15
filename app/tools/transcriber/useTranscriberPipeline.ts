@@ -52,6 +52,7 @@ import {
   buildClassifyKeyBase,
   buildCleanupKey,
   buildRepairKeyBase,
+  fingerprintContent,
 } from './lib/stageCacheKeys';
 import {
   appendDebugEvent,
@@ -582,6 +583,9 @@ export function useTranscriberPipeline() {
         // SHA-256 content hashes of the reference clips attached to the
         // FINAL attempt — recorded in the debug manifest.
         let referenceClipHashes: { name: string; sha256: string }[] = [];
+        // Actual acceptance (not mere attachment) of those clips — false
+        // once any chunk's clips were rejected and retried without them.
+        let referenceClipsAccepted = true;
 
         /** Assembles the text-free stage manifest (lib/runDebug.ts's
          * StageManifest) from everything this run accumulated — versions,
@@ -618,7 +622,12 @@ export function useTranscriberPipeline() {
           },
           referenceClips: speakerNames.map((name) => {
             const hit = referenceClipHashes.find((c) => c.name === name);
-            return { name, attached: hit !== undefined, sha256: hit?.sha256 ?? null };
+            return {
+              name,
+              attached: hit !== undefined,
+              accepted: hit !== undefined && referenceClipsAccepted,
+              sha256: hit?.sha256 ?? null,
+            };
           }),
           quality: params.quality,
           patches: { ...patchCounts },
@@ -884,18 +893,25 @@ export function useTranscriberPipeline() {
                 });
               }
 
+              // Actual acceptance, not mere attachment — false whenever ANY
+              // chunk's clips were rejected and silently retried without
+              // them (see the transcribe route's clipsAccepted tracking).
+              const anyClipsRejected = attempt.warnings.includes('speaker-references-rejected');
               if (wantsOpenAiClips) {
                 const entries: SpeakerReferenceEntry[] = speakerNames.map((name) => {
                   const clip = speakerClips.find((c) => c.name === name);
                   return clip
-                    ? { name, attached: true, validationStatus: clip.validationStatus }
-                    : { name, attached: false, validationStatus: clipsLoadFailed ? 'unavailable' : 'missing' };
+                    ? { name, attached: true, accepted: !anyClipsRejected, validationStatus: clip.validationStatus }
+                    : { name, attached: false, accepted: false, validationStatus: clipsLoadFailed ? 'unavailable' : 'missing' };
                 });
                 appendDebugEvent(debugLog, { kind: 'speaker-reference', status: entries });
               }
 
-              if (attempt.warnings.includes('speaker-references-rejected') && !runWarnings.includes(SPEAKER_REFERENCES_REJECTED_WARNING)) {
-                runWarnings.push(SPEAKER_REFERENCES_REJECTED_WARNING);
+              if (anyClipsRejected) {
+                referenceClipsAccepted = false;
+                if (!runWarnings.includes(SPEAKER_REFERENCES_REJECTED_WARNING)) {
+                  runWarnings.push(SPEAKER_REFERENCES_REJECTED_WARNING);
+                }
               }
             }
           } catch (err) {
@@ -1216,7 +1232,7 @@ export function useTranscriberPipeline() {
           const classifyKeyBase = buildClassifyKeyBase({
             attemptKey: currentAttemptKey ?? buildFileKey(file),
             settings,
-            repairsApplied,
+            blocksFingerprint: fingerprintContent(turnBlocks),
             contextNotes,
           });
           classificationInputRef.current = { blocks: turnBlocks, contextNotes, cacheKeyBase: classifyKeyBase };
@@ -1330,7 +1346,7 @@ export function useTranscriberPipeline() {
         const cleanupKey = buildCleanupKey({
           attemptKey: currentAttemptKey ?? buildFileKey(file),
           settings,
-          repairsApplied,
+          segmentsFingerprint: fingerprintContent(segmentsForCleanup),
           contextNotes,
         });
         if (

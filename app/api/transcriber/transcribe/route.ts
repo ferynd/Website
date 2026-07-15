@@ -176,6 +176,14 @@ export async function POST(req: NextRequest) {
   let data: any = null;
   const warnings: string[] = [];
 
+  // Tracks ACTUAL acceptance, not mere attachment: starts true whenever
+  // clips were supplied, but flips to false the moment a known-speaker-
+  // rejection retry succeeds without them — from that point on, an exact
+  // name match in the response is the model's own inference, not an
+  // acoustically verified identity (see mapDiarizedSegments' clipsAttached).
+  const clipsSupplied = clipReferences.length > 0;
+  let clipsAccepted = clipsSupplied;
+
   let primaryRes = await fetch(OPENAI_TRANSCRIPTIONS_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${apiKey}` },
@@ -210,6 +218,10 @@ export async function POST(req: NextRequest) {
       if (retryRes.ok) {
         data = await retryRes.json();
         warnings.push('speaker-references-rejected');
+        // The retry never sent known_speaker_names[]/known_speaker_references[]
+        // (see buildOpenAiTranscriptionEntries above) — any exact-name match
+        // in this response is unverified, never acoustically anchored.
+        clipsAccepted = false;
       } else {
         const retryErrText = await retryRes.text().catch(() => '');
         const sanitizedRetryBody = sanitizeUpstreamError(retryErrText);
@@ -282,7 +294,7 @@ export async function POST(req: NextRequest) {
 
   const segments =
     mode === 'diarized'
-      ? mapDiarizedSegments(data.segments ?? [], speakerNames, { clipsAttached: clipReferences.length > 0 })
+      ? mapDiarizedSegments(data.segments ?? [], speakerNames, { clipsAttached: clipsAccepted })
       : mapFallbackSegments(data.segments ?? []);
 
   // Token-usage passthrough — only when OpenAI actually reported token
@@ -304,6 +316,12 @@ export async function POST(req: NextRequest) {
     segments,
     primaryError: mode === 'fallback' ? primaryError : null,
     warnings,
+    // True acceptance status (not mere attachment) — propagated so the
+    // client's provenance/debug/manifest never treat a rejected-then-retried
+    // clip as acoustically anchoring anything. Only meaningful for the
+    // diarized mode; a fallback run never had known-speaker fields at all.
+    clipsSupplied: mode === 'diarized' ? clipsSupplied : false,
+    clipsAccepted: mode === 'diarized' ? clipsAccepted : false,
     ...(usage ? { usage } : {}),
   });
 }

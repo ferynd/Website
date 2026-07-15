@@ -108,13 +108,23 @@ export interface MappedGeminiSpeaker {
 /**
  * Maps one Gemini-returned speaker label against the known `speakerNames`
  * list, with full provenance: an exact (case-insensitive, trimmed) match
- * returns the canonical name (mappingSource 'provider-exact'); a generic
- * diarization-style label ("Speaker 1", "Speaker A", "S1", "SPEAKER_00",
- * ...) maps positionally into `speakerNames` (mappingSource 'positional');
- * any other label — including a position beyond the supplied names — is
- * preserved as a distinct unresolved local identity with a stable display
- * name, never a shared generic "Unknown". A blank label has no identity to
- * anchor, so it alone stays "Unknown" with the shared 'blank' identity.
+ * returns the canonical name as a CANDIDATE only (mappingSource
+ * 'provider-exact', `candidateSpeaker` — never `resolvedSpeaker`) — Gemini
+ * has no acoustic speaker-reference verification at all (even the
+ * experimental `geminiReferenceClips` signal is prompt-based, not a real
+ * acoustic match), so an exact name here is always the model's own
+ * inference from conversational context, never a verified identity; a
+ * generic diarization-style label ("Speaker 1", "Speaker A", "S1",
+ * "SPEAKER_00", ...) maps positionally into `speakerNames` (mappingSource
+ * 'positional', also candidate-only — a first-appearance guess is never an
+ * anchor); any other label — including a position beyond the supplied
+ * names — is preserved as a distinct unresolved local identity with a
+ * stable display name, never a shared generic "Unknown". A blank label has
+ * no identity to anchor, so it alone stays "Unknown" with the shared
+ * 'blank' identity. Only lib/reconcileSpeakers.ts's corroboration (an
+ * overlap/continuity link to a genuinely anchored identity, a user
+ * confirmation, or the repair stage) can turn either candidate into a
+ * resolved assignment.
  *
  * `weirdLabelSequence` mirrors mapSpeakerLabels.ts's numbering for labels
  * that don't keep their own letter — pass the per-window count of such
@@ -134,7 +144,7 @@ export function mapGeminiSpeaker(
       provenance: {
         providerLabel: trimmed,
         localSpeakerId: knownNameIdentity(exact),
-        resolvedSpeaker: exact,
+        candidateSpeaker: exact,
         speakerConfidence: EXACT_NAME_CONFIDENCE,
         mappingSource: 'provider-exact',
       },
@@ -149,7 +159,7 @@ export function mapGeminiSpeaker(
       provenance: {
         providerLabel: trimmed,
         localSpeakerId: anonymousLabelIdentity(trimmed),
-        resolvedSpeaker: positional,
+        candidateSpeaker: positional,
         speakerConfidence: POSITIONAL_CONFIDENCE,
         mappingSource: 'positional',
       },

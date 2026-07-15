@@ -82,7 +82,7 @@ describe('prompt + schema + response validation', () => {
     expect(schema.properties.classifications.items.properties.tag.enum).toHaveLength(6);
   });
 
-  it('parse drops unknown ids, invalid tags, and bad confidence; clamps valid ones', () => {
+  it('parse drops unknown ids, invalid tags, and bad confidence (counted invalid); clamps valid ones', () => {
     const raw = JSON.stringify({
       classifications: [
         { blockId: 't0', tag: 'argument_conflict', confidence: 0.91 },
@@ -91,10 +91,13 @@ describe('prompt + schema + response validation', () => {
         { blockId: 't2', tag: 'repair_attempt', confidence: 3 },
       ],
     });
-    expect(parseClassifyResponse(raw, ['t0', 't1', 't2'])).toEqual([
-      { blockId: 't0', tag: 'argument_conflict', confidence: 0.91 },
-      { blockId: 't2', tag: 'repair_attempt', confidence: 1 },
-    ]);
+    expect(parseClassifyResponse(raw, ['t0', 't1', 't2'])).toEqual({
+      classifications: [
+        { blockId: 't0', tag: 'argument_conflict', confidence: 0.91 },
+        { blockId: 't2', tag: 'repair_attempt', confidence: 1 },
+      ],
+      invalidCount: 2,
+    });
   });
 
   it('parse throws on invalid JSON or wrong shape', () => {
@@ -134,6 +137,44 @@ describe('aggregateClassifications', () => {
     const aggregated = aggregateClassifications(units, [votes]);
     expect(aggregated.byBlockId.size).toBe(1);
     expect(aggregated.byBlockId.get('t0')).toEqual({ tag: 'argument_conflict', confidence: 0.92 });
+  });
+
+  it('preserves a confident argument_conflict part even when a neutral part scores higher (Fix 8)', () => {
+    const longText = Array(60).fill('A pretty long sentence about logistics and feelings.').join(' ');
+    const units = buildClassifyUnits([block('t0', 0, longText)], 500);
+    expect(units.length).toBeGreaterThan(1);
+    const votes: BlockClassification[] = units.map((u, i) => ({
+      blockId: u.unitId,
+      tag: i === 0 ? 'logistics_or_normal' : 'argument_conflict',
+      confidence: i === 0 ? 0.99 : 0.65,
+    }));
+    const aggregated = aggregateClassifications(units, [votes]);
+    expect(aggregated.byBlockId.get('t0')).toEqual({ tag: 'argument_conflict', confidence: 0.65 });
+    expect(aggregated.partVotesByBlockId.get('t0')).toHaveLength(units.length);
+  });
+
+  it('falls back to a confident repair_attempt/emotional_support part when no conflict part qualifies', () => {
+    const longText = Array(60).fill('A pretty long sentence about logistics and feelings.').join(' ');
+    const units = buildClassifyUnits([block('t0', 0, longText)], 500);
+    const votes: BlockClassification[] = units.map((u, i) => ({
+      blockId: u.unitId,
+      tag: i === 0 ? 'logistics_or_normal' : 'emotional_support',
+      confidence: i === 0 ? 0.99 : 0.7,
+    }));
+    const aggregated = aggregateClassifications(units, [votes]);
+    expect(aggregated.byBlockId.get('t0')).toEqual({ tag: 'emotional_support', confidence: 0.7 });
+  });
+
+  it('falls back to the highest-confidence part when no part clears the core-tag threshold', () => {
+    const longText = Array(60).fill('A pretty long sentence about logistics and feelings.').join(' ');
+    const units = buildClassifyUnits([block('t0', 0, longText)], 500);
+    const votes: BlockClassification[] = units.map((u, i) => ({
+      blockId: u.unitId,
+      tag: i === 0 ? 'logistics_or_normal' : 'argument_conflict',
+      confidence: i === 0 ? 0.8 : 0.4, // below CLASSIFY_CORE_TAG_MIN_CONFIDENCE — doesn't qualify as a rescue
+    }));
+    const aggregated = aggregateClassifications(units, [votes]);
+    expect(aggregated.byBlockId.get('t0')).toEqual({ tag: 'logistics_or_normal', confidence: 0.8 });
   });
 
   it('ties break by tag priority (conflict over neutral), deterministically', () => {

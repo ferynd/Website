@@ -27,9 +27,13 @@ export interface RawFallbackSegment {
 }
 
 export interface MapDiarizedOptions {
-  /** True when known-speaker reference clips were attached to the provider
-   * request — an exact-name label is then acoustically anchored, not just
-   * the model's own guess, so it carries higher confidence. */
+  /** True when known-speaker reference clips were attached to AND ACCEPTED
+   * by the provider request (never true after a successful known-speaker-
+   * rejection retry that dropped them) — an exact-name label is then
+   * acoustically anchored (mappingSource 'acoustic', resolved immediately).
+   * False (including "clips were supplied but rejected") means an exact
+   * match is the model's own unverified inference (mappingSource
+   * 'provider-exact') — a candidate only; see lib/reconcileSpeakers.ts. */
   clipsAttached?: boolean;
 }
 
@@ -64,10 +68,20 @@ export function unresolvedDisplayName(rawLabel: string, weirdLabelSequence: numb
  * chunk-local identities:
  *
  * - A raw label that case-insensitively matches a provided name is kept as
- *   that canonical name (mappingSource 'provider-exact').
+ *   that canonical name. When `options.clipsAttached` is true (accepted
+ *   acoustic reference clips), this is a real acoustic anchor
+ *   (mappingSource 'acoustic') and resolves the segment immediately
+ *   (`resolvedSpeaker` set). Otherwise it's the model's own unverified
+ *   inference (mappingSource 'provider-exact') — a candidate only
+ *   (`candidateSpeaker`); only independent corroboration in
+ *   lib/reconcileSpeakers.ts (an overlap/continuity link to an acoustic
+ *   anchor, a user confirmation, or the repair stage) can resolve it.
  * - Anonymous labels (A/B/C…) map to the still-unclaimed provided names in
  *   first-appearance order (mappingSource 'positional') — a claimed name is
- *   never handed out twice positionally.
+ *   never handed out twice positionally, and this NEVER resolves a segment
+ *   by itself either (`candidateSpeaker` only) — a first-appearance guess
+ *   alone is never corroborating evidence, regardless of which chunk it
+ *   came from.
  * - Every anonymous label beyond the available names stays a DISTINCT
  *   unresolved local identity with a stable display name ("Speaker C"),
  *   never a shared generic "Unknown". In particular, a response mixing exact
@@ -87,7 +101,7 @@ export function mapDiarizedSegments(
   options: MapDiarizedOptions = {},
 ): TranscriptSegment[] {
   const nameByLower = new Map(speakerNames.map((name) => [name.toLowerCase(), name]));
-  const exactConfidence = options.clipsAttached ? EXACT_NAME_CONFIDENCE_WITH_CLIPS : EXACT_NAME_CONFIDENCE;
+  const acousticallyAnchored = options.clipsAttached === true;
 
   // Pre-scan so positional assignment never hands out a name a later (or
   // earlier) segment already claimed via an exact match.
@@ -115,6 +129,19 @@ export function mapDiarizedSegments(
     const rawLabel = seg.speaker || '';
     const exact = nameByLower.get(rawLabel.toLowerCase());
     if (exact) {
+      if (acousticallyAnchored) {
+        return {
+          start: seg.start,
+          end: seg.end,
+          speaker: exact,
+          text: seg.text,
+          providerLabel: rawLabel,
+          localSpeakerId: knownNameIdentity(exact),
+          resolvedSpeaker: exact,
+          speakerConfidence: EXACT_NAME_CONFIDENCE_WITH_CLIPS,
+          mappingSource: 'acoustic' as const,
+        };
+      }
       return {
         start: seg.start,
         end: seg.end,
@@ -122,8 +149,8 @@ export function mapDiarizedSegments(
         text: seg.text,
         providerLabel: rawLabel,
         localSpeakerId: knownNameIdentity(exact),
-        resolvedSpeaker: exact,
-        speakerConfidence: exactConfidence,
+        candidateSpeaker: exact,
+        speakerConfidence: EXACT_NAME_CONFIDENCE,
         mappingSource: 'provider-exact' as const,
       };
     }
@@ -147,11 +174,14 @@ export function mapDiarizedSegments(
       return {
         start: seg.start,
         end: seg.end,
+        // Display the positional guess (better than a bare local-identity
+        // label), but it stays a CANDIDATE — never resolvedSpeaker — until
+        // reconciliation/repair corroborates it.
         speaker: positionalName,
         text: seg.text,
         providerLabel: rawLabel,
         localSpeakerId: anonymousLabelIdentity(rawLabel),
-        resolvedSpeaker: positionalName,
+        candidateSpeaker: positionalName,
         speakerConfidence: POSITIONAL_CONFIDENCE,
         mappingSource: 'positional' as const,
       };

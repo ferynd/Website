@@ -22,6 +22,70 @@ import {
 } from './constants';
 import type { TranscriberSettings } from './settings';
 
+/* ------------------------------------------------------------ */
+/* Canonical, deterministic content fingerprinting                */
+/* ------------------------------------------------------------ */
+
+/**
+ * Deterministic, platform-compatible (synchronous, no WebCrypto) string hash
+ * for cache-key fingerprints — FNV-1a, 32-bit, hex-encoded. This is a cache
+ * key, not a security boundary: collision-resistance only needs to be "good
+ * enough to distinguish different stage inputs" (it's also combined with
+ * the rest of the key, e.g. the attempt key and settings), so a fast
+ * non-cryptographic hash is the right tool — it avoids making every cache
+ * key computation async the way lib/contentHash.ts's SHA-256 (used for
+ * reference-clip identity, where the async cost is paid once per run) would.
+ */
+function fnv1aHex(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+/** Canonical JSON serialization: object keys sorted recursively, so two
+ * logically-equal inputs built in a different key order still fingerprint
+ * identically. */
+function canonicalize(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalize(record[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** Deterministic fingerprint of an arbitrary JSON-serializable value. */
+export function fingerprint(value: unknown): string {
+  return fnv1aHex(canonicalize(value));
+}
+
+/** One item's cache-relevant content: its stable id (position-based
+ * fallback when absent), current display speaker, and current text — the
+ * exact fields a downstream stage's OUTPUT can depend on. Used for both
+ * segments (cleanup) and turn blocks (classification): the shape is
+ * identical, so one fingerprint function covers both. */
+export interface FingerprintableItem {
+  id?: string;
+  speaker: string;
+  text: string;
+}
+
+/**
+ * Fingerprints the ACTUAL content feeding a downstream stage — ids,
+ * speakers, and text, in order — so two runs whose upstream stage (e.g.
+ * speaker repair) produced a different result never share a cache entry
+ * merely because they applied the same NUMBER of patches. This is the
+ * "canonical serialization and a deterministic hash" the cleanup/
+ * classification cache keys are built from instead of a bare patch count.
+ */
+export function fingerprintContent(items: FingerprintableItem[]): string {
+  return fingerprint(items.map((item, i) => [item.id ?? `#${i}`, item.speaker, item.text]));
+}
+
 export interface AttemptKeyParams {
   fileKey: string;
   providerId: string;
@@ -75,8 +139,11 @@ export interface CleanupKeyParams {
     | 'cleanupOverlapSeconds'
     | 'speakerRepairEnabled'
   >;
-  /** Applied repair-patch count — repairs change the segments being corrected. */
-  repairsApplied: number;
+  /** Fingerprint (fingerprintContent) of the ACTUAL post-repair segments
+   * feeding cleanup — ids, speakers, text. NOT a mere applied-patch count:
+   * two repair outcomes with the same patch count but different
+   * assignments/text must never collide on this key. */
+  segmentsFingerprint: string;
   contextNotes: string;
 }
 
@@ -90,7 +157,7 @@ export function buildCleanupKey(params: CleanupKeyParams): string {
     `v:${PIPELINE_SCHEMA_VERSION}:${CORRECTION_PROMPT_VERSION}`,
     `sup:${settings.suppressionEnabled ? settings.suppressionSensitivity : 'off'}`,
     `clean:${settings.cleanupModel}:${settings.cleanupTemperature}:${settings.cleanupChunkSeconds}:${settings.cleanupOverlapSeconds}`,
-    `repair:${settings.speakerRepairEnabled ? 1 : 0}:${params.repairsApplied}`,
+    `repair:${settings.speakerRepairEnabled ? 1 : 0}:${params.segmentsFingerprint}`,
     `ctx:${params.contextNotes}`,
   ].join('||');
 }
@@ -107,7 +174,10 @@ export interface ClassifyKeyParams {
     | 'mergeTurnsEnabled'
     | 'mergeGapSeconds'
   >;
-  repairsApplied: number;
+  /** Fingerprint (fingerprintContent) of the ACTUAL cleaned turn blocks
+   * feeding classification — ids, speakers, text. NOT a mere applied-patch
+   * count — see CleanupKeyParams.segmentsFingerprint for why. */
+  blocksFingerprint: string;
   contextNotes: string;
 }
 
@@ -122,7 +192,7 @@ export function buildClassifyKeyBase(params: ClassifyKeyParams): string {
     `v:${PIPELINE_SCHEMA_VERSION}`,
     `sup:${settings.suppressionEnabled ? settings.suppressionSensitivity : 'off'}`,
     `clean:${settings.cleanupEnabled ? `${settings.cleanupModel}:${settings.cleanupChunkSeconds}` : 'off'}`,
-    `repair:${params.repairsApplied}`,
+    `content:${params.blocksFingerprint}`,
     `merge:${settings.mergeTurnsEnabled ? settings.mergeGapSeconds : 'off'}`,
     `ctx:${params.contextNotes}`,
   ].join('||');

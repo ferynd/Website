@@ -12,6 +12,7 @@
 
 import {
   CLASSIFY_BLOCKS_PER_WINDOW,
+  CLASSIFY_CORE_TAG_MIN_CONFIDENCE,
   CLASSIFY_MAX_BLOCK_CHARS,
   CLASSIFY_WINDOW_OVERLAP_BLOCKS,
 } from './constants';
@@ -189,13 +190,22 @@ function stripFences(raw: string): string {
   return raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
 }
 
+export interface ParsedClassifyResponse {
+  classifications: BlockClassification[];
+  /** Items present in the raw response that were dropped: unknown id,
+   * invalid tag, missing/invalid confidence, or a duplicate of an id
+   * already seen. A non-zero count means the model ATTEMPTED output that
+   * wasn't fully valid — distinct from a genuinely empty/clean response. */
+  invalidCount: number;
+}
+
 /**
  * Parses + validates one window's classification response: ids must belong
  * to the request, tags must be valid, confidence must be a finite number
  * (clamped to [0, 1]); duplicates keep the first occurrence. Throws on
  * invalid JSON or a shape that isn't {classifications: [...]}.
  */
-export function parseClassifyResponse(raw: string, allowedIds: string[]): BlockClassification[] {
+export function parseClassifyResponse(raw: string, allowedIds: string[]): ParsedClassifyResponse {
   let parsed: unknown;
   try {
     parsed = JSON.parse(stripFences(raw));
@@ -219,14 +229,27 @@ export function parseClassifyResponse(raw: string, allowedIds: string[]): BlockC
   const allowed = new Set(allowedIds);
   const seen = new Set<string>();
   const out: BlockClassification[] = [];
+  let invalidCount = 0;
   for (const item of items) {
-    if (!item || typeof item !== 'object') continue;
+    if (!item || typeof item !== 'object') {
+      invalidCount += 1;
+      continue;
+    }
     const record = item as Record<string, unknown>;
     const id =
       typeof record.blockId === 'string' ? record.blockId : typeof record.id === 'string' ? record.id : null;
-    if (id === null || !allowed.has(id) || seen.has(id)) continue;
-    if (typeof record.tag !== 'string' || !VALID_TAGS.has(record.tag as ArgumentTag)) continue;
-    if (typeof record.confidence !== 'number' || !Number.isFinite(record.confidence)) continue;
+    if (id === null || !allowed.has(id) || seen.has(id)) {
+      invalidCount += 1;
+      continue;
+    }
+    if (typeof record.tag !== 'string' || !VALID_TAGS.has(record.tag as ArgumentTag)) {
+      invalidCount += 1;
+      continue;
+    }
+    if (typeof record.confidence !== 'number' || !Number.isFinite(record.confidence)) {
+      invalidCount += 1;
+      continue;
+    }
     seen.add(id);
     out.push({
       blockId: id,
@@ -234,7 +257,7 @@ export function parseClassifyResponse(raw: string, allowedIds: string[]): BlockC
       confidence: Math.min(1, Math.max(0, record.confidence)),
     });
   }
-  return out;
+  return { classifications: out, invalidCount };
 }
 
 /* ------------------------------------------------------------ */
@@ -252,19 +275,41 @@ const TAG_PRIORITY: Record<ArgumentTag, number> = {
   unclear: 5,
 };
 
+/** One part's (unit's) resolved winning vote, kept for diagnostics. */
+export interface PartVote {
+  unitId: string;
+  tag: ArgumentTag;
+  confidence: number;
+}
+
 export interface AggregatedClassifications {
   /** Winning tag + confidence per block id. */
   byBlockId: Map<string, { tag: ArgumentTag; confidence: number }>;
   /** Expected block ids that received no vote from any window — coverage gap. */
   missingBlockIds: string[];
+  /** Per block, the resolved winning vote of every part (unit) that
+   * contributed to it, in unit order — retained for diagnostics even though
+   * a long turn's parts collapse onto one block-level tag. A block whose
+   * turn was never split has exactly one entry here. */
+  partVotesByBlockId: Map<string, PartVote[]>;
 }
 
 /**
- * Aggregates every window's votes deterministically: votes are mapped from
- * wire unit ids back to block ids (long-turn parts collapse onto their
- * block), deduplicated, and resolved per block by highest confidence, then
- * tag priority, then earliest vote. EVERY window contributes — never only
- * the final one. Blocks with no vote are reported as coverage gaps.
+ * Aggregates every window's votes deterministically in two passes:
+ *
+ * 1. Resolve the winning vote per UNIT (wire id) across every window —
+ *    highest confidence, then tag priority, then earliest vote. EVERY
+ *    window contributes — never only the final one.
+ * 2. Roll unit winners up to their block with CONFLICT-SENSITIVE
+ *    aggregation: a long turn is split into parts purely to fit request
+ *    windows, so a neutral part scoring higher than a confident
+ *    argument_conflict/repair_attempt/emotional_support part elsewhere in
+ *    the SAME block must never erase it. Any part tagged 'argument_conflict'
+ *    at or above CLASSIFY_CORE_TAG_MIN_CONFIDENCE wins the block outright;
+ *    otherwise the highest-confidence 'repair_attempt'/'emotional_support'
+ *    part at or above that threshold wins; otherwise the block falls back
+ *    to its highest-confidence part (tag-priority tie-break), same as
+ *    before. Blocks with no vote are reported as coverage gaps.
  */
 export function aggregateClassifications(
   units: ClassifyUnit[],
@@ -272,23 +317,59 @@ export function aggregateClassifications(
 ): AggregatedClassifications {
   const blockIdByUnitId = new Map(units.map((u) => [u.unitId, u.blockId]));
   const expectedBlockIds = [...new Set(units.map((u) => u.blockId))];
+  const unitOrder = new Map(units.map((u, i) => [u.unitId, i]));
 
-  const byBlockId = new Map<string, { tag: ArgumentTag; confidence: number }>();
+  const byUnitId = new Map<string, { tag: ArgumentTag; confidence: number }>();
   for (const votes of votesPerWindow) {
     for (const vote of votes) {
-      const blockId = blockIdByUnitId.get(vote.blockId);
-      if (!blockId) continue;
-      const current = byBlockId.get(blockId);
+      if (!blockIdByUnitId.has(vote.blockId)) continue;
+      const current = byUnitId.get(vote.blockId);
       const wins =
         !current ||
         vote.confidence > current.confidence ||
         (vote.confidence === current.confidence && TAG_PRIORITY[vote.tag] < TAG_PRIORITY[current.tag]);
-      if (wins) byBlockId.set(blockId, { tag: vote.tag, confidence: vote.confidence });
+      if (wins) byUnitId.set(vote.blockId, { tag: vote.tag, confidence: vote.confidence });
     }
   }
 
+  const partVotesByBlockId = new Map<string, PartVote[]>();
+  for (const [unitId, vote] of byUnitId) {
+    const blockId = blockIdByUnitId.get(unitId)!;
+    const list = partVotesByBlockId.get(blockId) ?? [];
+    list.push({ unitId, ...vote });
+    partVotesByBlockId.set(blockId, list);
+  }
+  for (const list of partVotesByBlockId.values()) {
+    list.sort((a, b) => (unitOrder.get(a.unitId) ?? 0) - (unitOrder.get(b.unitId) ?? 0));
+  }
+
+  const byBlockId = new Map<string, { tag: ArgumentTag; confidence: number }>();
+  for (const [blockId, parts] of partVotesByBlockId) {
+    const conflictParts = parts.filter(
+      (p) => p.tag === 'argument_conflict' && p.confidence >= CLASSIFY_CORE_TAG_MIN_CONFIDENCE,
+    );
+    if (conflictParts.length > 0) {
+      const winner = conflictParts.reduce((best, p) => (p.confidence > best.confidence ? p : best));
+      byBlockId.set(blockId, { tag: winner.tag, confidence: winner.confidence });
+      continue;
+    }
+    const coreParts = parts.filter(
+      (p) => (p.tag === 'repair_attempt' || p.tag === 'emotional_support') && p.confidence >= CLASSIFY_CORE_TAG_MIN_CONFIDENCE,
+    );
+    if (coreParts.length > 0) {
+      const winner = coreParts.reduce((best, p) => (p.confidence > best.confidence ? p : best));
+      byBlockId.set(blockId, { tag: winner.tag, confidence: winner.confidence });
+      continue;
+    }
+    const winner = parts.reduce((best, p) => {
+      const wins = p.confidence > best.confidence || (p.confidence === best.confidence && TAG_PRIORITY[p.tag] < TAG_PRIORITY[best.tag]);
+      return wins ? p : best;
+    });
+    byBlockId.set(blockId, { tag: winner.tag, confidence: winner.confidence });
+  }
+
   const missingBlockIds = expectedBlockIds.filter((id) => !byBlockId.has(id));
-  return { byBlockId, missingBlockIds };
+  return { byBlockId, missingBlockIds, partVotesByBlockId };
 }
 
 /**

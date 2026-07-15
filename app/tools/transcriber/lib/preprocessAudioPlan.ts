@@ -18,7 +18,7 @@ import {
   SILENCE_EDGE_PAD_SECONDS,
   SILENCE_FRAME_SECONDS,
 } from './constants';
-import { matchOverlapLinks, type OverlapLink } from './reconcileSpeakers';
+import { resolveOverlapDuplicates, type OverlapLink } from './reconcileSpeakers';
 
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: local floors/minimums                          */
@@ -381,6 +381,13 @@ export interface CombinedTranscriptionResult {
 export const MIXED_CHUNK_MODE_WARNING =
   'Some chunks fell back to Whisper (no diarization) — speaker labels may be inconsistent across the recording.';
 
+/** Warning appended when an overlap-region segment couldn't be confidently
+ * matched to its neighboring chunk's version AND genuinely overlapped it in
+ * time — retained rather than dropped (see combineChunkResponses), but
+ * worth flagging since it may read as a duplicate line. */
+export const POSSIBLE_OVERLAP_DUPLICATE_WARNING =
+  'A chunk-boundary segment could not be confidently matched to its neighboring chunk — it was kept rather than discarded, so a line may appear duplicated near a chunk boundary.';
+
 export interface CombineChunkOptions {
   /** Per-chunk core offset in the chunk's OWN encoded audio, in final-time
    * seconds: `finalStart - encodeStart` (0 for the first chunk / no
@@ -396,14 +403,20 @@ export interface CombineChunkOptions {
  * every segment's start/end is remapped from chunk-local final time back to
  * ORIGINAL-recording time via `mapTime`, all segments are concatenated and
  * sorted by (remapped) start. Overlap regions (see CombineChunkOptions) are
- * deduplicated by core ownership — a segment belongs to the chunk whose core
- * contains its start, mirroring lib/stitchTranscript.ts's rule — and the
- * dropped duplicates contribute speaker-identity links instead of text.
- * `mode` is 'diarized' only if every chunk came back diarized; otherwise
- * 'fallback' — and if the chunks were a genuine mix (at least one diarized,
- * at least one not), MIXED_CHUNK_MODE_WARNING is appended. `primaryError` is
- * the first non-null one seen; `warnings` is the de-duplicated union of
- * every chunk's warnings (plus the mixed-mode notice when applicable).
+ * resolved by core ownership — a segment belongs to the chunk whose core
+ * contains its start, mirroring lib/stitchTranscript.ts's rule — but a
+ * duplicate is only ever DROPPED when it reliably matches the owning
+ * chunk's version of the same speech (lib/reconcileSpeakers.ts's
+ * resolveOverlapDuplicates); an unmatched duplicate is RETAINED instead of
+ * silently lost, and whichever of a matched pair is more complete survives.
+ * Matched duplicates also contribute speaker-identity links; an unmatched
+ * one that genuinely overlapped an owned segment in time appends
+ * POSSIBLE_OVERLAP_DUPLICATE_WARNING. `mode` is 'diarized' only if every
+ * chunk came back diarized; otherwise 'fallback' — and if the chunks were a
+ * genuine mix (at least one diarized, at least one not),
+ * MIXED_CHUNK_MODE_WARNING is appended. `primaryError` is the first
+ * non-null one seen; `warnings` is the de-duplicated union of every
+ * chunk's warnings plus the notices above.
  */
 export function combineChunkResponses(
   perChunk: ChunkTranscriptionResult[],
@@ -411,7 +424,7 @@ export function combineChunkResponses(
   options: CombineChunkOptions = {},
 ): CombinedTranscriptionResult {
   const coreOffsets = options.coreOffsets ?? [];
-  const segments: TranscriptSegment[] = [];
+  const owned: TranscriptSegment[] = [];
   const overlapDuplicates: TranscriptSegment[] = [];
   const warnings: string[] = [];
   let primaryError: string | null = null;
@@ -437,22 +450,27 @@ export function combineChunkResponses(
       const end = Math.max(start, mapTime(i, seg.end, 'end'));
       const remapped = { ...seg, start, end };
       if (seg.start >= coreOffset - EPSILON) {
-        segments.push(remapped);
+        owned.push(remapped);
       } else {
         overlapDuplicates.push(remapped);
       }
     }
   });
 
-  segments.sort((a, b) => a.start - b.start);
+  const { owned: resolvedOwned, retainedDuplicates, links, hasPossibleDuplicate } = resolveOverlapDuplicates(
+    owned,
+    overlapDuplicates,
+  );
+  const segments = [...resolvedOwned, ...retainedDuplicates].sort((a, b) => a.start - b.start);
 
   const mode: TranscriptionMode = perChunk.length > 0 && sawDiarized && !sawNonDiarized ? 'diarized' : 'fallback';
 
   if (sawDiarized && sawNonDiarized && !warnings.includes(MIXED_CHUNK_MODE_WARNING)) {
     warnings.push(MIXED_CHUNK_MODE_WARNING);
   }
+  if (hasPossibleDuplicate && !warnings.includes(POSSIBLE_OVERLAP_DUPLICATE_WARNING)) {
+    warnings.push(POSSIBLE_OVERLAP_DUPLICATE_WARNING);
+  }
 
-  const overlapLinks = overlapDuplicates.length > 0 ? matchOverlapLinks(segments, overlapDuplicates) : [];
-
-  return { mode, segments, primaryError, warnings, overlapLinks };
+  return { mode, segments, primaryError, warnings, overlapLinks: links };
 }

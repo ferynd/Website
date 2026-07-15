@@ -107,8 +107,8 @@ describe('runDebug', () => {
   it('an OpenAI diarized speaker-reference event carries a per-speaker attached/validationStatus array', () => {
     const log = createDebugLog(FILE_META);
     const entries = [
-      { name: 'Kait', attached: true, validationStatus: 'ok' },
-      { name: 'James', attached: false, validationStatus: 'missing' },
+      { name: 'Kait', attached: true, accepted: true, validationStatus: 'ok' },
+      { name: 'James', attached: false, accepted: false, validationStatus: 'missing' },
     ];
     appendDebugEvent(log, { kind: 'speaker-reference', status: entries });
     expect(JSON.parse(buildDebugJson(log)).speakerReferenceStatus).toEqual(entries);
@@ -162,7 +162,7 @@ describe('runDebug', () => {
           cleanup: { expected: 3, completed: 3 },
           classification: null,
         },
-        referenceClips: [{ name: 'Kait', attached: true, sha256: 'ab'.repeat(32) }],
+        referenceClips: [{ name: 'Kait', attached: true, accepted: true, sha256: 'ab'.repeat(32) }],
         quality: null,
         patches: {
           speakerRepairApplied: 2,
