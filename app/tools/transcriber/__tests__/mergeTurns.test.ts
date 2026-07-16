@@ -114,4 +114,76 @@ describe('mergeTurns', () => {
       expect(result[0].text).toBe('Hello there. How are you?');
     });
   });
+
+  describe('identity-safe merging', () => {
+    function idSeg(
+      overrides: Partial<TaggedTranscriptSegment> & { start: number; end: number; speaker: string; text: string },
+    ): TaggedTranscriptSegment {
+      return { ...overrides };
+    }
+
+    it('merges two resolved segments with the same global speaker', () => {
+      const segments = [
+        idSeg({ start: 0, end: 2, speaker: 'Kait', text: 'One.', id: 's0-0', resolvedSpeaker: 'Kait', localSpeakerId: 'c0:label:a' }),
+        idSeg({ start: 2.5, end: 4, speaker: 'Kait', text: 'Two.', id: 's0-1', resolvedSpeaker: 'Kait', localSpeakerId: 'c0:label:a' }),
+      ];
+      const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
+      expect(result).toHaveLength(1);
+      expect(result[0].segmentIds).toEqual(['s0-0', 's0-1']);
+      expect(result[0].id).toBe('s0-0');
+    });
+
+    it('merges two unresolved segments sharing the same stable local identity', () => {
+      const segments = [
+        idSeg({ start: 0, end: 2, speaker: 'Speaker A', text: 'One.', id: 's0-0', localSpeakerId: 'c0:label:a' }),
+        idSeg({ start: 2.5, end: 4, speaker: 'Speaker A', text: 'Two.', id: 's0-1', localSpeakerId: 'c0:label:a' }),
+      ];
+      expect(mergeTurns(segments, { maxGapSeconds: 2.5 })).toHaveLength(1);
+    });
+
+    it('never merges different unresolved local identities, even with identical display strings', () => {
+      const segments = [
+        idSeg({ start: 0, end: 2, speaker: 'Speaker A', text: 'One.', localSpeakerId: 'c0:label:a' }),
+        idSeg({ start: 2.5, end: 4, speaker: 'Speaker A', text: 'Two.', localSpeakerId: 'c1:label:a' }),
+      ];
+      expect(mergeTurns(segments, { maxGapSeconds: 2.5 })).toHaveLength(2);
+    });
+
+    it('never merges a resolved segment with an unresolved one, even with identical display strings', () => {
+      const segments = [
+        idSeg({ start: 0, end: 2, speaker: 'Kait', text: 'One.', resolvedSpeaker: 'Kait', localSpeakerId: 'c0:label:a' }),
+        idSeg({ start: 2.5, end: 4, speaker: 'Kait', text: 'Two.', localSpeakerId: 'c0:label:b' }),
+      ];
+      expect(mergeTurns(segments, { maxGapSeconds: 2.5 })).toHaveLength(2);
+    });
+
+    it('never merges different user-confirmed speakers', () => {
+      const segments = [
+        idSeg({ start: 0, end: 2, speaker: 'Kait', text: 'One.', userConfirmed: true, localSpeakerId: 'c0:label:a' }),
+        idSeg({ start: 2.5, end: 4, speaker: 'James', text: 'Two.', userConfirmed: true, localSpeakerId: 'c0:label:a' }),
+      ];
+      expect(mergeTurns(segments, { maxGapSeconds: 2.5 })).toHaveLength(2);
+    });
+
+    it('merges a user-confirmed segment with a resolved segment of the same speaker', () => {
+      const segments = [
+        idSeg({ start: 0, end: 2, speaker: 'Kait', text: 'One.', userConfirmed: true, localSpeakerId: 'c0:label:a' }),
+        idSeg({ start: 2.5, end: 4, speaker: 'Kait', text: 'Two.', resolvedSpeaker: 'Kait', localSpeakerId: 'c0:label:b' }),
+      ];
+      expect(mergeTurns(segments, { maxGapSeconds: 2.5 })).toHaveLength(1);
+    });
+
+    it('every turn retains its constituent segment ids in order', () => {
+      const segments = [
+        idSeg({ start: 0, end: 1, speaker: 'Kait', text: 'One.', id: 's0-0', resolvedSpeaker: 'Kait' }),
+        idSeg({ start: 1.2, end: 2, speaker: 'Kait', text: 'Two.', id: 's0-1', resolvedSpeaker: 'Kait' }),
+        idSeg({ start: 2.3, end: 3, speaker: 'James', text: 'Three.', id: 's0-2', resolvedSpeaker: 'James' }),
+      ];
+      const result = mergeTurns(segments, { maxGapSeconds: 2.5 });
+      expect(result).toHaveLength(2);
+      expect(result[0].segmentIds).toEqual(['s0-0', 's0-1']);
+      expect(result[1].segmentIds).toEqual(['s0-2']);
+      expect(result[1].id).toBe('s0-2');
+    });
+  });
 });

@@ -1,0 +1,15 @@
+{
+  "knownNames": ["Kait", "James"],
+  "segments": [
+    { "id": "s0-0", "chunkIndex": 0, "start": 0, "end": 4, "speaker": "Kait", "text": "Synthetic fixture line one, spoken by the first speaker.", "providerLabel": "Kait", "localSpeakerId": "name:kait", "resolvedSpeaker": "Kait", "speakerConfidence": 0.95, "mappingSource": "provider-exact" },
+    { "id": "s0-1", "chunkIndex": 0, "start": 4.5, "end": 9, "speaker": "James", "text": "Synthetic fixture line two, a reply from the second speaker.", "providerLabel": "James", "localSpeakerId": "name:james", "resolvedSpeaker": "James", "speakerConfidence": 0.95, "mappingSource": "provider-exact" },
+    { "id": "s0-2", "chunkIndex": 0, "start": 9.5, "end": 14, "speaker": "Speaker A", "text": "Synthetic anonymous line the provider could not attribute.", "providerLabel": "A", "localSpeakerId": "c0:label:a", "speakerConfidence": 0, "mappingSource": "unresolved" },
+    { "id": "s1-0", "chunkIndex": 1, "start": 600, "end": 605, "speaker": "Kait", "text": "Second chunk opens with a positional guess for the first name.", "providerLabel": "A", "localSpeakerId": "c1:label:a", "resolvedSpeaker": "Kait", "speakerConfidence": 0.9, "mappingSource": "positional" },
+    { "id": "s1-1", "chunkIndex": 1, "start": 605.5, "end": 645, "speaker": "James", "text": "A long synthetic stretch that keeps the conversation going for a while so the run metrics have something to measure across the second chunk.", "providerLabel": "B", "localSpeakerId": "c1:label:b", "resolvedSpeaker": "James", "speakerConfidence": 0.9, "mappingSource": "positional" }
+  ],
+  "blocks": [
+    { "id": "s0-0", "start": 0, "end": 9, "speaker": "Kait", "text": "Synthetic fixture line one and two merged.", "segmentCount": 2, "segmentIds": ["s0-0", "s0-1"], "tag": "argument_conflict" },
+    { "id": "s0-2", "start": 9.5, "end": 14, "speaker": "Speaker A", "text": "Synthetic anonymous line.", "segmentCount": 1, "segmentIds": ["s0-2"], "tag": "unclear" },
+    { "id": "s1-0", "start": 600, "end": 645, "speaker": "Kait", "text": "Second chunk conversation.", "segmentCount": 2, "segmentIds": ["s1-0", "s1-1"] }
+  ]
+}

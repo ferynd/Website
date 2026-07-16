@@ -1,91 +1,79 @@
-import type { ArgumentTag } from './types';
+// Parses + validates the sparse text-correction response: a JSON object of
+// shape {"patches": [{"id", "text"}]}. Only ids that belong to the request
+// survive; duplicates keep the FIRST occurrence; anything else malformed
+// (wrong shape, unknown id) is dropped but COUNTED as an invalid item — the
+// caller uses that count to distinguish a genuinely empty {patches: []}
+// response from one where the model attempted output that just didn't
+// validate.
+//
+// Relative imports here deliberately (see note at top of ./settings.ts) —
+// this module is imported directly by vitest.
 
-const VALID_ARGUMENT_TAGS = new Set<ArgumentTag>([
-  'argument_conflict',
-  'repair_attempt',
-  'emotional_support',
-  'logistics_or_normal',
-  'unrelated',
-  'unclear',
-]);
+import type { CorrectionPatch } from './types';
 
-export interface CorrectionResultItem {
-  index: number;
-  speaker: string;
-  text: string;
-  /** Only ever set when the caller passed `argumentTagging: true` — see parseCorrectionResponse's third parameter. */
-  tag?: ArgumentTag;
+export interface ParsedCorrectionPatches {
+  patches: CorrectionPatch[];
+  /** Items present in the raw response that were dropped: wrong shape,
+   * unknown id, or a duplicate of an id already seen. A non-zero count
+   * (even alongside valid patches) means the model ATTEMPTED output that
+   * wasn't fully valid — distinct from a genuinely empty/clean response. */
+  invalidCount: number;
+}
+
+/** Strips markdown code fences a model sometimes wraps JSON output in. */
+function stripFences(raw: string): string {
+  return raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
 }
 
 /**
- * Parses and validates the correction model's JSON-array response. Items
- * missing required fields, with the wrong types, or referencing an index
- * outside the chunk that was sent are silently dropped. Callers should pair
- * this with `findMissingIndices` and reject the whole chunk (rather than
- * quietly filling gaps with uncorrected text) so a partial/malformed
- * response is treated as a correction failure — see the correct API route.
- *
- * `argumentTagging` (Phase 5, default false) controls the optional per-item
- * `tag` field: when true, a valid ArgumentTag value passes through as-is and
- * a missing/invalid one falls back to `'unclear'` — a bad tag NEVER causes
- * the item itself to be dropped/rejected, unlike a missing/malformed
- * index/speaker/text above. When false, any `tag` present in the raw
- * response is ignored/stripped — the returned item never carries one.
+ * Parses the correction model's sparse-patch response. Throws on invalid
+ * JSON or a shape that isn't `{patches: [...]}` (a bare array is accepted
+ * defensively) — those are unparseable, not merely invalid. Otherwise
+ * returns every valid patch plus a count of items dropped for being
+ * malformed, referencing an id outside `allowedIds`, or repeating an id
+ * already seen.
  */
-export function parseCorrectionResponse(
-  raw: string,
-  expectedIndices: number[],
-  argumentTagging = false,
-): CorrectionResultItem[] {
-  const cleaned = raw.replace(/```[a-z]*\n?/gi, '').replace(/```/g, '').trim();
-
+export function parseCorrectionPatches(raw: string, allowedIds: string[]): ParsedCorrectionPatches {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(cleaned);
+    parsed = JSON.parse(stripFences(raw));
   } catch {
     throw new Error('Correction model returned invalid JSON.');
   }
 
-  if (!Array.isArray(parsed)) {
-    throw new Error('Correction model did not return a JSON array.');
+  let items: unknown[];
+  if (Array.isArray(parsed)) {
+    items = parsed;
+  } else if (parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).patches)) {
+    items = (parsed as Record<string, unknown>).patches as unknown[];
+  } else {
+    throw new Error('Correction model did not return a {patches: [...]} object.');
   }
 
-  const expected = new Set(expectedIndices);
-  const results: CorrectionResultItem[] = [];
+  const allowed = new Set(allowedIds);
+  const seen = new Set<string>();
+  const patches: CorrectionPatch[] = [];
+  let invalidCount = 0;
 
-  for (const item of parsed) {
-    if (
-      item &&
-      typeof item === 'object' &&
-      typeof (item as Record<string, unknown>).index === 'number' &&
-      typeof (item as Record<string, unknown>).speaker === 'string' &&
-      typeof (item as Record<string, unknown>).text === 'string' &&
-      expected.has((item as { index: number }).index)
-    ) {
-      const record = item as { index: number; speaker: string; text: string };
-      const result: CorrectionResultItem = { index: record.index, speaker: record.speaker, text: record.text };
-      if (argumentTagging) {
-        const rawTag = (item as Record<string, unknown>).tag;
-        result.tag =
-          typeof rawTag === 'string' && VALID_ARGUMENT_TAGS.has(rawTag as ArgumentTag)
-            ? (rawTag as ArgumentTag)
-            : 'unclear';
-      }
-      results.push(result);
+  for (const item of items) {
+    if (!item || typeof item !== 'object') {
+      invalidCount += 1;
+      continue;
     }
+    const record = item as Record<string, unknown>;
+    // Accept both the documented `id` key and a defensive `segmentId`.
+    const id = typeof record.id === 'string' ? record.id : typeof record.segmentId === 'string' ? record.segmentId : null;
+    if (id === null || typeof record.text !== 'string') {
+      invalidCount += 1;
+      continue;
+    }
+    if (!allowed.has(id) || seen.has(id)) {
+      invalidCount += 1;
+      continue;
+    }
+    seen.add(id);
+    patches.push({ segmentId: id, text: record.text });
   }
 
-  return results;
-}
-
-/**
- * Returns which of `expectedIndices` have no corresponding correction.
- * A non-empty result means the correction response was incomplete (the
- * model dropped a line, or `parseCorrectionResponse` rejected a malformed
- * item) and the whole chunk should be treated as failed rather than
- * silently patched with uncorrected text for just the missing lines.
- */
-export function findMissingIndices(expectedIndices: number[], corrections: CorrectionResultItem[]): number[] {
-  const covered = new Set(corrections.map((c) => c.index));
-  return expectedIndices.filter((index) => !covered.has(index));
+  return { patches, invalidCount };
 }

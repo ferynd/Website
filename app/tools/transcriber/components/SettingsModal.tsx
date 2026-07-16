@@ -9,6 +9,8 @@ import { ADMIN_EMAIL } from '../../trip-cost/firebaseConfig';
 import type { TranscriptionProviderId } from '../lib/providers/types';
 import { OPENAI_SPEED_FACTOR_MAX, OPENAI_SPEED_FACTOR_MIN } from '../lib/constants';
 import {
+  ARGUMENT_EXPAND_SECONDS_MAX,
+  ARGUMENT_EXPAND_SECONDS_MIN,
   CLEANUP_CHUNK_SECONDS_MAX,
   CLEANUP_CHUNK_SECONDS_MIN,
   CLEANUP_OVERLAP_SECONDS_MAX,
@@ -378,7 +380,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
             />
             <NumberField
               label="Speed-up factor"
-              description="Speeds up the whole recording before chunking, shrinking both duration and upload size further — but raises the pitch slightly. Set to 1.0 if transcription accuracy suffers."
+              description="Speeds up the whole recording before chunking, shrinking both duration and upload size — but raises the pitch and measurably hurts diarization/word accuracy, so the recommended default is 1.0 (no speed-up)."
               value={settings.openaiSpeedFactor}
               min={OPENAI_SPEED_FACTOR_MIN}
               max={OPENAI_SPEED_FACTOR_MAX}
@@ -411,6 +413,36 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               checked={settings.showCleanedOutput}
               onChange={(checked) => updateSettings({ showCleanedOutput: checked })}
             />
+            <ToggleField
+              label="Show speaker-quality details"
+              description="Show the detailed (text-free) speaker-quality metrics on the transcript view, not just the one-line warning."
+              checked={settings.showQualityDetails}
+              onChange={(checked) => updateSettings({ showQualityDetails: checked })}
+            />
+          </Section>
+
+          <Section title="Speaker repair">
+            <ToggleField
+              label="Targeted speaker repair"
+              description="When too many turns have no confident speaker (or evidence conflicts), send just those turns — with a little surrounding context — to a cheap Gemini model that returns only speaker assignments. Never overwrites a manually confirmed speaker; still-unresolved turns escalate once to the stronger Flash model."
+              checked={settings.speakerRepairEnabled}
+              onChange={(checked) => updateSettings({ speakerRepairEnabled: checked })}
+            />
+            <Field label="Repair model" htmlFor="settings-repair-model" description="Gemini model for the repair pass — the cheapest Flash-Lite is the recommended default.">
+              <select
+                id="settings-repair-model"
+                value={settings.speakerRepairModel}
+                disabled={!settings.speakerRepairEnabled}
+                onChange={(e) => updateSettings({ speakerRepairModel: e.target.value as TranscriberSettings['speakerRepairModel'] })}
+                className={SELECT_CLASSES}
+              >
+                {AVAILABLE_GEMINI_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {geminiModelOptionLabel(model)}
+                  </option>
+                ))}
+              </select>
+            </Field>
           </Section>
 
           <Section title="Artifact suppression">
@@ -531,11 +563,35 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
           <Section title="Argument tagging" defaultOpen={false}>
             <ToggleField
-              label="Tag turns during cleanup"
-              description="Tags each turn during cleanup — no extra AI pass; enables the argument-relevant export (a filtered transcript of just the conflict/repair/support turns, plus short lead-up context) on the transcript output."
+              label="Classify argument content"
+              description="After the transcript is built, classify each turn (conflict / repair / support / logistics / unrelated) in a separate cheap pass that returns only tags — enabling the argument-relevant export. Changing anything in this section never re-transcribes or re-cleans the recording."
               checked={settings.argumentTagging}
-              disabled={!settings.cleanupEnabled}
               onChange={(checked) => updateSettings({ argumentTagging: checked })}
+            />
+            <Field label="Classifier model" htmlFor="settings-classifier-model" description="Gemini model for the classification pass — the cheapest Flash-Lite is the recommended default.">
+              <select
+                id="settings-classifier-model"
+                value={settings.argumentClassifierModel}
+                disabled={!settings.argumentTagging}
+                onChange={(e) => updateSettings({ argumentClassifierModel: e.target.value as TranscriberSettings['argumentClassifierModel'] })}
+                className={SELECT_CLASSES}
+              >
+                {AVAILABLE_GEMINI_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {geminiModelOptionLabel(model)}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <NumberField
+              label="Context expansion (seconds)"
+              description="How much conversation before and after each conflict/repair/support turn the argument-relevant export keeps. Everything inside an expanded range is included, whatever its tag."
+              value={settings.argumentExpandSeconds}
+              min={ARGUMENT_EXPAND_SECONDS_MIN}
+              max={ARGUMENT_EXPAND_SECONDS_MAX}
+              step={15}
+              disabled={!settings.argumentTagging}
+              onCommit={(value) => updateSettings({ argumentExpandSeconds: value })}
             />
           </Section>
 

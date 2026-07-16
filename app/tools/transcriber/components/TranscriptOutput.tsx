@@ -130,7 +130,18 @@ function TranscriptSection({
  * settings.showRawOutput/showCleanedOutput gate whether each section is
  * shown at all — Raw is never fully hidden when it's the only output.
  */
-export default function TranscriptOutput({ state, onReset }: { state: TranscriberState; onReset: () => void }) {
+export default function TranscriptOutput({
+  state,
+  onReset,
+  onReclassify,
+}: {
+  state: TranscriberState;
+  onReset: () => void;
+  /** Reruns ONLY the argument-classification stage with the current settings
+   * (cached classifications are reused when the model is unchanged) — never
+   * re-transcribes or re-cleans. */
+  onReclassify?: () => void;
+}) {
   // Lazy init only — this component only ever mounts client-side (after a
   // run completes), so there's no SSR/hydration mismatch to guard against.
   const [settings] = useState(() => readTranscriberSettings());
@@ -196,6 +207,33 @@ export default function TranscriptOutput({ state, onReset }: { state: Transcribe
         </p>
       )}
 
+      {settings.showQualityDetails && state.qualityReport && (
+        <div className="text-xs text-text-3 bg-surface-2 border border-border rounded-lg px-4 py-3 space-y-1">
+          <p className="text-sm text-text-2 font-medium">Speaker-quality details (no transcript text)</p>
+          <p>
+            Words: {state.qualityReport.totalWords} total · {state.qualityReport.namedWords} named ·{' '}
+            {state.qualityReport.unresolvedWords} unresolved ({state.qualityReport.unresolvedPercent.toFixed(1)}%)
+          </p>
+          <p>
+            Worst {Math.round(state.qualityReport.windowSeconds / 60)}-minute window:{' '}
+            {state.qualityReport.maxWindowUnresolvedPercent.toFixed(1)}% unresolved · longest unresolved run:{' '}
+            {Math.round(state.qualityReport.longestUnresolvedRunSeconds)}s /{' '}
+            {state.qualityReport.longestUnresolvedRunWords} words
+          </p>
+          <p>
+            Identities: {state.qualityReport.localIdentityCount} local · resolved speakers:{' '}
+            {state.qualityReport.resolvedSpeakers.join(', ') || 'none'} · mapping conflicts:{' '}
+            {state.qualityReport.mappingConflicts} · boundary identity changes:{' '}
+            {state.qualityReport.chunkBoundaryIdentityChanges}
+          </p>
+          <p>
+            Confidence bands (segments): high {state.qualityReport.confidenceDistribution.high} · medium{' '}
+            {state.qualityReport.confidenceDistribution.medium} · low {state.qualityReport.confidenceDistribution.low} ·
+            repairs applied: {state.qualityReport.repairsApplied}
+          </p>
+        </div>
+      )}
+
       {totalRemoved > 0 && state.suppressionReport && (
         <div className="text-sm text-text-2 bg-surface-2 border border-border rounded-lg px-4 py-3 space-y-1">
           <p>
@@ -228,6 +266,17 @@ export default function TranscriptOutput({ state, onReset }: { state: Transcribe
             </label>
           </div>
           <TagSummaryLine summary={state.tagSummary} />
+          {onReclassify && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={onReclassify}
+              className="inline-flex items-center gap-2"
+            >
+              Re-run tagging with current settings
+            </Button>
+          )}
         </div>
       )}
 

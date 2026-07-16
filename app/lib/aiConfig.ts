@@ -64,14 +64,28 @@ export function buildGeminiRequest(prompt: string, options: GeminiRequestOptions
   };
 }
 
-// Extracts the text response from a Gemini API result.
-// Throws with the actual error body if Gemini returned an error,
-// so the calling route can surface it instead of a generic 502.
-export async function callGemini(
+/** Token usage reported by one Gemini call — fields only present when the
+ * API's usageMetadata actually reported them; nothing is ever invented. */
+export interface GeminiUsage {
+  model: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  cachedTokens?: number;
+}
+
+export interface GeminiCallResult {
+  text: string;
+  usage: GeminiUsage | null;
+}
+
+// Extracts the text response (plus usage metadata, when reported) from a
+// Gemini API result. Throws with the actual error body if Gemini returned an
+// error, so the calling route can surface it instead of a generic 502.
+export async function callGeminiWithUsage(
   prompt: string,
   apiKey: string,
   options: GeminiRequestOptions = {},
-): Promise<string> {
+): Promise<GeminiCallResult> {
   const modelId = resolveGeminiModelId(options.modelId, DEFAULT_RECOMMEND_GEMINI_MODEL);
   const res = await fetch(geminiEndpoint(apiKey, modelId), {
     method: 'POST',
@@ -89,5 +103,25 @@ export async function callGemini(
   if (!text) {
     throw new Error(`Gemini returned no text. Full response: ${JSON.stringify(data)}`);
   }
-  return text;
+
+  const meta = data?.usageMetadata;
+  let usage: GeminiUsage | null = null;
+  if (meta && typeof meta === 'object') {
+    usage = { model: modelId };
+    if (typeof meta.promptTokenCount === 'number') usage.inputTokens = meta.promptTokenCount;
+    if (typeof meta.candidatesTokenCount === 'number') usage.outputTokens = meta.candidatesTokenCount;
+    if (typeof meta.cachedContentTokenCount === 'number') usage.cachedTokens = meta.cachedContentTokenCount;
+  }
+
+  return { text, usage };
+}
+
+// Text-only wrapper kept for the existing call sites that don't need usage.
+export async function callGemini(
+  prompt: string,
+  apiKey: string,
+  options: GeminiRequestOptions = {},
+): Promise<string> {
+  const result = await callGeminiWithUsage(prompt, apiKey, options);
+  return result.text;
 }

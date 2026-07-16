@@ -108,22 +108,27 @@ describe('parseGeminiTranscription', () => {
       ],
     });
     const result = parseGeminiTranscription(raw, windowOptions());
-    expect(result).toEqual([
+    expect(result).toMatchObject([
       { start: 0, end: 5, speaker: 'Kait', text: 'Hello there.' },
       { start: 5, end: 8, speaker: 'James', text: 'Hi.' },
     ]);
+    // Exact known-name matches are provider-inferred, not acoustically
+    // verified — Gemini has zero real acoustic verification even with
+    // reference clips, so this is a CANDIDATE, never resolvedSpeaker.
+    expect(result[0]).toMatchObject({ candidateSpeaker: 'Kait', mappingSource: 'provider-exact', localSpeakerId: 'name:kait' });
+    expect(result[0].resolvedSpeaker).toBeUndefined();
   });
 
   it('accepts a bare array (no {segments} wrapper) defensively', () => {
     const raw = JSON.stringify([{ start: '0:00:00', end: '0:00:02', speaker: 'Kait', text: 'Hi.' }]);
     const result = parseGeminiTranscription(raw, windowOptions());
-    expect(result).toEqual([{ start: 0, end: 2, speaker: 'Kait', text: 'Hi.' }]);
+    expect(result).toMatchObject([{ start: 0, end: 2, speaker: 'Kait', text: 'Hi.' }]);
   });
 
   it('strips markdown code fences before parsing', () => {
     const raw = '```json\n' + JSON.stringify({ segments: [{ start: '0', end: '2', speaker: 'Kait', text: 'Hi.' }] }) + '\n```';
     const result = parseGeminiTranscription(raw, windowOptions());
-    expect(result).toEqual([{ start: 0, end: 2, speaker: 'Kait', text: 'Hi.' }]);
+    expect(result).toMatchObject([{ start: 0, end: 2, speaker: 'Kait', text: 'Hi.' }]);
   });
 
   it('drops items with unparseable timestamps', () => {
@@ -134,7 +139,7 @@ describe('parseGeminiTranscription', () => {
       ],
     });
     const result = parseGeminiTranscription(raw, windowOptions());
-    expect(result).toEqual([{ start: 0, end: 5, speaker: 'Kait', text: 'Good.' }]);
+    expect(result).toMatchObject([{ start: 0, end: 5, speaker: 'Kait', text: 'Good.' }]);
   });
 
   it('drops items with empty text', () => {
@@ -145,7 +150,7 @@ describe('parseGeminiTranscription', () => {
       ],
     });
     const result = parseGeminiTranscription(raw, windowOptions());
-    expect(result).toEqual([{ start: 5, end: 8, speaker: 'James', text: 'Real line.' }]);
+    expect(result).toMatchObject([{ start: 5, end: 8, speaker: 'James', text: 'Real line.' }]);
   });
 
   it('returns [] for empty input', () => {
@@ -228,7 +233,7 @@ describe('parseGeminiTranscription', () => {
     expect(result).toHaveLength(1);
   });
 
-  it('normalizes speaker labels through normalizeGeminiSpeaker (positional + unknown fallback)', () => {
+  it('maps speaker labels with provenance (positional + stable unresolved identity)', () => {
     const raw = JSON.stringify({
       segments: [
         { start: '0', end: '2', speaker: 'Speaker 1', text: 'First speaker.' },
@@ -237,7 +242,15 @@ describe('parseGeminiTranscription', () => {
       ],
     });
     const result = parseGeminiTranscription(raw, windowOptions());
-    expect(result.map((s) => s.speaker)).toEqual(['Kait', 'James', 'Unknown']);
+    // Positional labels resolve into the supplied names; an unrecognized
+    // label is preserved as its own stable unresolved identity, not Unknown.
+    expect(result.map((s) => s.speaker)).toEqual(['Kait', 'James', 'Speaker 3']);
+    // Positional is always a candidate — a first-appearance guess is never
+    // corroborating evidence by itself, regardless of which chunk it's in.
+    expect(result[0]).toMatchObject({ candidateSpeaker: 'Kait', mappingSource: 'positional' });
+    expect(result[0].resolvedSpeaker).toBeUndefined();
+    expect(result[2]).toMatchObject({ mappingSource: 'unresolved', localSpeakerId: 'label:someone else' });
+    expect(result[2].resolvedSpeaker).toBeUndefined();
   });
 });
 

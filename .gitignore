@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# transcriber eval: private transcript/segment exports passed to
+# `npm run transcriber:eval -- <path>` — never committed
+/eval-data/

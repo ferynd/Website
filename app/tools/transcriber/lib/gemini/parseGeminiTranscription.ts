@@ -5,8 +5,13 @@
 // Relative imports here deliberately (see note at top of ../../settings.ts)
 // — this module is imported directly by vitest.
 
+import {
+  EXACT_NAME_CONFIDENCE,
+  POSITIONAL_CONFIDENCE,
+} from '../constants';
 import { normalizeSegments } from '../formatTranscript';
-import type { TranscriptSegment } from '../types';
+import { anonymousLabelIdentity, knownNameIdentity, unresolvedDisplayName } from '../mapSpeakerLabels';
+import type { SegmentProvenance, TranscriptSegment } from '../types';
 
 export interface ParseGeminiTranscriptionOptions {
   /** Absolute seconds from the start of the recording — the window this call actually covered. */
@@ -94,28 +99,104 @@ function positionalIndexFromLabel(label: string): number | null {
   return null;
 }
 
+/** Display speaker + provenance for one Gemini-returned label — see mapGeminiSpeaker. */
+export interface MappedGeminiSpeaker {
+  speaker: string;
+  provenance: SegmentProvenance;
+}
+
 /**
- * Normalizes one Gemini-returned speaker label against the known
- * `speakerNames` list: an exact (case-insensitive, trimmed) match returns
- * the canonical name; a generic diarization-style label ("Speaker 1",
- * "Speaker A", "S1", "SPEAKER_00", ...) maps positionally into
- * `speakerNames` (same first-appearance-by-position convention as
- * mapDiarizedSegments.ts), with an out-of-range position falling back to
- * "Unknown"; anything else is "Unknown" rather than guessed.
+ * Maps one Gemini-returned speaker label against the known `speakerNames`
+ * list, with full provenance: an exact (case-insensitive, trimmed) match
+ * returns the canonical name as a CANDIDATE only (mappingSource
+ * 'provider-exact', `candidateSpeaker` — never `resolvedSpeaker`) — Gemini
+ * has no acoustic speaker-reference verification at all (even the
+ * experimental `geminiReferenceClips` signal is prompt-based, not a real
+ * acoustic match), so an exact name here is always the model's own
+ * inference from conversational context, never a verified identity; a
+ * generic diarization-style label ("Speaker 1", "Speaker A", "S1",
+ * "SPEAKER_00", ...) maps positionally into `speakerNames` (mappingSource
+ * 'positional', also candidate-only — a first-appearance guess is never an
+ * anchor); any other label — including a position beyond the supplied
+ * names — is preserved as a distinct unresolved local identity with a
+ * stable display name, never a shared generic "Unknown". A blank label has
+ * no identity to anchor, so it alone stays "Unknown" with the shared
+ * 'blank' identity. Only lib/reconcileSpeakers.ts's corroboration (an
+ * overlap/continuity link to a genuinely anchored identity, a user
+ * confirmation, or the repair stage) can turn either candidate into a
+ * resolved assignment.
+ *
+ * `weirdLabelSequence` mirrors mapSpeakerLabels.ts's numbering for labels
+ * that don't keep their own letter — pass the per-window count of such
+ * labels seen so far.
  */
-export function normalizeGeminiSpeaker(name: string, speakerNames: string[]): string {
+export function mapGeminiSpeaker(
+  name: string,
+  speakerNames: string[],
+  weirdLabelSequence = 1,
+): MappedGeminiSpeaker {
   const trimmed = (name ?? '').toString().trim();
-  if (trimmed.length === 0) return 'Unknown';
 
-  const exact = speakerNames.find((n) => n.trim().toLowerCase() === trimmed.toLowerCase());
-  if (exact) return exact;
-
-  const index = positionalIndexFromLabel(trimmed);
-  if (index !== null && index >= 0 && index < speakerNames.length) {
-    return speakerNames[index];
+  const exact = trimmed.length > 0 ? speakerNames.find((n) => n.trim().toLowerCase() === trimmed.toLowerCase()) : undefined;
+  if (exact) {
+    return {
+      speaker: exact,
+      provenance: {
+        providerLabel: trimmed,
+        localSpeakerId: knownNameIdentity(exact),
+        candidateSpeaker: exact,
+        speakerConfidence: EXACT_NAME_CONFIDENCE,
+        mappingSource: 'provider-exact',
+      },
+    };
   }
 
-  return 'Unknown';
+  const index = trimmed.length > 0 ? positionalIndexFromLabel(trimmed) : null;
+  if (index !== null && index >= 0 && index < speakerNames.length) {
+    const positional = speakerNames[index];
+    return {
+      speaker: positional,
+      provenance: {
+        providerLabel: trimmed,
+        localSpeakerId: anonymousLabelIdentity(trimmed),
+        candidateSpeaker: positional,
+        speakerConfidence: POSITIONAL_CONFIDENCE,
+        mappingSource: 'positional',
+      },
+    };
+  }
+
+  if (trimmed.length === 0) {
+    return {
+      speaker: 'Unknown',
+      provenance: {
+        providerLabel: '',
+        localSpeakerId: anonymousLabelIdentity(''),
+        speakerConfidence: 0,
+        mappingSource: 'unresolved',
+      },
+    };
+  }
+
+  return {
+    speaker: unresolvedDisplayName(trimmed, weirdLabelSequence),
+    provenance: {
+      providerLabel: trimmed,
+      localSpeakerId: anonymousLabelIdentity(trimmed),
+      speakerConfidence: 0,
+      mappingSource: 'unresolved',
+    },
+  };
+}
+
+/**
+ * Display-name-only wrapper around mapGeminiSpeaker, kept for callers that
+ * only need the label resolution (an out-of-scope/unknown label reports
+ * "Unknown" here — the full mapper preserves it as a local identity instead).
+ */
+export function normalizeGeminiSpeaker(name: string, speakerNames: string[]): string {
+  const mapped = mapGeminiSpeaker(name, speakerNames);
+  return mapped.provenance.mappingSource === 'unresolved' ? 'Unknown' : mapped.speaker;
 }
 
 /* ------------------------------------------------------------ */
@@ -230,12 +311,25 @@ export function parseGeminiTranscription(
     .map((it) => ({ ...it, end: Math.max(it.start, it.end) }))
     .sort((a, b) => a.start - b.start);
 
-  const segments: TranscriptSegment[] = clamped.map((it) => ({
-    start: it.start,
-    end: it.end,
-    speaker: normalizeGeminiSpeaker(it.speaker, speakerNames),
-    text: it.text,
-  }));
+  // Stable per-window numbering for labels that need a sequential display
+  // name — mirrors mapDiarizedSegments' weird-label counter.
+  const weirdLabelSequenceByLabel = new Map<string, number>();
+  const segments: TranscriptSegment[] = clamped.map((it) => {
+    const labelKey = it.speaker.trim();
+    let sequence = weirdLabelSequenceByLabel.get(labelKey);
+    if (sequence === undefined) {
+      sequence = weirdLabelSequenceByLabel.size + 1;
+      weirdLabelSequenceByLabel.set(labelKey, sequence);
+    }
+    const mapped = mapGeminiSpeaker(it.speaker, speakerNames, sequence);
+    return {
+      start: it.start,
+      end: it.end,
+      speaker: mapped.speaker,
+      text: it.text,
+      ...mapped.provenance,
+    };
+  });
 
   return normalizeSegments(segments);
 }

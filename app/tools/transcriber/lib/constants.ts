@@ -4,6 +4,17 @@ import type { GeminiModelId } from '@/app/lib/aiModels';
 /* CONFIGURATION: Transcriber pipeline tuning constants          */
 /* ------------------------------------------------------------ */
 
+/** Version of the pipeline's data shapes + stage semantics — participates in
+ * every stage cache key and the debug manifest so results produced by an
+ * older pipeline are never reused by a newer one. Bump on any change to
+ * segment provenance, stage ordering, or patch semantics. */
+export const PIPELINE_SCHEMA_VERSION = 2;
+
+/** Version of the deterministic speaker mapping + reconciliation algorithm
+ * (lib/mapSpeakerLabels.ts + lib/reconcileSpeakers.ts) — recorded in the
+ * debug manifest and folded into speaker-stage cache keys. */
+export const MAPPING_ALGORITHM_VERSION = 'map-v2/reconcile-v1';
+
 /** OpenAI's hard limit for direct multipart uploads to /v1/audio/transcriptions. */
 export const MAX_OPENAI_UPLOAD_BYTES = 25 * 1024 * 1024;
 
@@ -102,11 +113,25 @@ export const MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES = MAX_GEMINI_UPLOAD_BYTES;
 
 /** Playback-rate speed-up applied to the whole (silence-trimmed) buffer
  * before chunking, shrinking both duration and per-chunk byte size at the
- * cost of a pitch shift (accepted and documented) — default/min/max for
- * settings.openaiSpeedFactor. */
-export const OPENAI_SPEED_FACTOR_DEFAULT = 1.2;
+ * cost of a pitch shift — default/min/max for settings.openaiSpeedFactor.
+ * Default is 1.0 (no speed-up): the pitch shift measurably hurts diarization
+ * and word accuracy on long recordings, so speed-up is now opt-in. A user's
+ * previously saved value (including an explicit 1.2) is preserved by the
+ * settings store — only the default for fresh settings changed. */
+export const OPENAI_SPEED_FACTOR_DEFAULT = 1.0;
 export const OPENAI_SPEED_FACTOR_MIN = 1.0;
 export const OPENAI_SPEED_FACTOR_MAX = 1.5;
+
+/** Audio overlap carried into the START of every OpenAI chunk after the
+ * first, in FINAL-time seconds (post-silence-removal, post-speed-up). The
+ * overlap region is transcribed by BOTH neighboring chunks: the earlier
+ * chunk's core owns the text; the later chunk's duplicate transcription of
+ * the same speech is matched against it to link chunk-local speaker
+ * identities across the boundary (lib/reconcileSpeakers.ts's overlap
+ * evidence), then deterministically dropped so no duplicate text survives
+ * (lib/preprocessAudioPlan.ts's combineChunkResponses). ~10s sits in the
+ * task's 8-12s target band while costing <1% extra audio per 20-minute chunk. */
+export const OPENAI_CHUNK_OVERLAP_SECONDS = 10;
 
 /** Frame size used to measure per-frame loudness when detecting removable
  * silence (lib/preprocessAudioPlan.ts's detectKeptIntervals). */
@@ -123,6 +148,113 @@ export const MIN_REMOVABLE_SILENCE_SECONDS = 1.0;
 export const SILENCE_EDGE_PAD_SECONDS = 0.25;
 
 export const DEFAULT_SPEAKER_NAMES = ['Kait', 'James'];
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: speaker confidence policy (centralized)        */
+/* ------------------------------------------------------------ */
+
+/** At or above this confidence a speaker assignment applies automatically. */
+export const SPEAKER_ASSIGN_MIN_CONFIDENCE = 0.9;
+/** In [candidate, assign) the best known-name candidate is retained (and
+ * offered to the repair stage) but the segment displays unresolved. */
+export const SPEAKER_CANDIDATE_MIN_CONFIDENCE = 0.7;
+
+/** Confidence of a provider label that exactly matched a known name.
+ * EXACT_NAME_CONFIDENCE_WITH_CLIPS applies only when acoustic reference
+ * clips were ACCEPTED for the request (mappingSource 'acoustic') — a real
+ * acoustic anchor that resolves a segment immediately on its own.
+ * EXACT_NAME_CONFIDENCE applies to every other exact match (no accepted
+ * clips for OpenAI, or any Gemini match — Gemini has no acoustic
+ * verification at all): the model's own labeling, not a verified identity
+ * (mappingSource 'provider-exact'). Never resolves a segment by itself —
+ * see lib/reconcileSpeakers.ts, which only lets ANCHOR-tier evidence
+ * (acoustic, repair, user, or a prior reconciliation) cross the auto-assign
+ * threshold; a 'provider-exact' candidate needs independent corroboration
+ * (an overlap/continuity link to an acoustic anchor, a user confirmation,
+ * or the repair stage) to actually resolve. */
+export const EXACT_NAME_CONFIDENCE_WITH_CLIPS = 0.98;
+export const EXACT_NAME_CONFIDENCE = 0.95;
+/** Confidence of a first-appearance positional mapping (anonymous label ->
+ * supplied name) — a guess, never an anchor, regardless of which chunk it
+ * came from. Same PRIOR-tier treatment as EXACT_NAME_CONFIDENCE without
+ * clips in lib/reconcileSpeakers.ts: never resolves a segment alone. */
+export const POSITIONAL_CONFIDENCE = 0.9;
+/** Reconciliation further discounts a LATER chunk's positional guess versus
+ * the first chunk's — first-appearance order in a later chunk is exactly
+ * the signal that swaps speakers at chunk boundaries, so it contributes
+ * even weaker prior evidence than a first-chunk guess. */
+export const POSITIONAL_LATER_CHUNK_CONFIDENCE = 0.75;
+
+/** Cross-chunk continuity evidence scores (candidate band by design — never
+ * enough for an automatic assignment on their own). */
+export const OVERLAP_MATCH_CONFIDENCE = 0.95;
+export const ADJACENT_CONTINUITY_CONFIDENCE = 0.75;
+export const SHORT_GAP_CONTINUITY_CONFIDENCE = 0.7;
+/** Gap thresholds (ORIGINAL-time seconds) for the two continuity signals. */
+export const ADJACENT_CONTINUITY_MAX_GAP_SECONDS = 2;
+export const SHORT_GAP_CONTINUITY_MAX_GAP_SECONDS = 10;
+/** Two candidates both at/above the candidate threshold and closer than
+ * this margin are conflicting evidence — the identity stays unresolved. */
+export const SPEAKER_CONFLICT_MARGIN = 0.2;
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: speaker quality gate + targeted repair         */
+/* ------------------------------------------------------------ */
+
+/** Quality-gate windows (lib/speakerQuality.ts) are this long. */
+export const QUALITY_WINDOW_SECONDS = 300;
+/** Repair triggers: overall unresolved words %, any single window's
+ * unresolved %, any contiguous unresolved run's duration. */
+export const REPAIR_TRIGGER_OVERALL_UNRESOLVED_PERCENT = 2;
+export const REPAIR_TRIGGER_WINDOW_UNRESOLVED_PERCENT = 10;
+export const REPAIR_TRIGGER_UNRESOLVED_RUN_SECONDS = 30;
+
+/** Default Gemini model for the targeted speaker-repair stage — the cheapest
+ * registered Flash-Lite model; escalation for still-unresolved segments uses
+ * SPEAKER_REPAIR_ESCALATION_MODEL. Both must be members of
+ * AVAILABLE_GEMINI_MODELS (app/lib/aiModels.ts). */
+export const SPEAKER_REPAIR_GEMINI_MODEL: GeminiModelId = 'gemini-2.5-flash-lite';
+export const SPEAKER_REPAIR_ESCALATION_MODEL: GeminiModelId = 'gemini-2.5-flash';
+/** Repair patches below this confidence are not applied. */
+export const SPEAKER_REPAIR_APPLY_MIN_CONFIDENCE = 0.9;
+/** Caps for one repair request: how many target segments, and how many
+ * resolved context segments are included on each side of a target run. */
+export const SPEAKER_REPAIR_MAX_TARGETS_PER_REQUEST = 80;
+export const SPEAKER_REPAIR_CONTEXT_SEGMENTS = 3;
+/** Version of the repair prompt/response schema — folds into its cache key. */
+export const SPEAKER_REPAIR_PROMPT_VERSION = 1;
+
+/* ------------------------------------------------------------ */
+/* CONFIGURATION: argument classification + range export         */
+/* ------------------------------------------------------------ */
+
+/** Default Gemini model for the argument-classification stage — the cheapest
+ * registered Flash-Lite model. Must be a member of AVAILABLE_GEMINI_MODELS. */
+export const ARGUMENT_CLASSIFIER_GEMINI_MODEL: GeminiModelId = 'gemini-2.5-flash-lite';
+/** Classification windows: blocks per request window and how many trailing
+ * blocks repeat at the start of the next window as shared context. */
+export const CLASSIFY_BLOCKS_PER_WINDOW = 40;
+export const CLASSIFY_WINDOW_OVERLAP_BLOCKS = 6;
+/** An exceptionally long turn is split into parts of at most this many
+ * characters for classification input only — the tag still applies to the
+ * whole block (parts share the block id and aggregate deterministically). */
+export const CLASSIFY_MAX_BLOCK_CHARS = 1500;
+/** A core tag (argument_conflict / repair_attempt / emotional_support) on
+ * any PART of a split long turn at or above this confidence makes the whole
+ * parent block conflict-relevant — a neutral part at even higher confidence
+ * must never erase it (lib/argumentClassify.ts's conflict-sensitive parent
+ * aggregation). */
+export const CLASSIFY_CORE_TAG_MIN_CONFIDENCE = 0.6;
+/** Version of the classification prompt/response schema — folds into its cache key. */
+export const CLASSIFY_PROMPT_VERSION = 1;
+
+/** How far an argument range extends before/after each core-tagged block,
+ * in seconds — default for settings.argumentExpandSeconds. */
+export const ARGUMENT_EXPAND_SECONDS_DEFAULT = 90;
+
+/** Version of the sparse text-correction prompt/response schema — folds into
+ * the cleanup cache key. */
+export const CORRECTION_PROMPT_VERSION = 2;
 
 /** Per-clip and per-run caps for OpenAI known-speaker reference clips
  * (Phase 4) — re-validated server-side in the transcribe route regardless of

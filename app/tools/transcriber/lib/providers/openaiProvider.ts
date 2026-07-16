@@ -36,7 +36,8 @@ import { normalizeSegments } from '../formatTranscript';
 import { applySpeedFactorToClip, preprocessForOpenAi, type PreprocessReport } from '../preprocessOpenAiAudio';
 import { combineChunkResponses, type ChunkTranscriptionResult } from '../preprocessAudioPlan';
 import { sanitizeUpstreamError } from '../sanitizeUpstreamError';
-import type { TranscribeApiResponse, TranscribeErrorInfo, TranscriptionMode } from '../types';
+import { attachChunkProvenance } from '../segmentProvenance';
+import type { StageUsage, TranscribeApiResponse, TranscribeErrorInfo, TranscriptionMode } from '../types';
 import type { SpeakerReferenceClip, TranscriptionAttempt, TranscriptionAttemptError, TranscriptionProviderId } from './types';
 
 /**
@@ -165,6 +166,8 @@ export interface OneRequestResult {
   segments: ChunkTranscriptionResult['segments'];
   primaryError: string | null;
   warnings: string[];
+  /** Token usage for this request, only when OpenAI reported it. */
+  usage?: StageUsage;
 }
 
 /**
@@ -227,14 +230,16 @@ async function transcribeOneRequest(
     segments: result.segments ?? [],
     primaryError: result.primaryError ?? null,
     warnings: result.warnings ?? [],
+    ...(result.usage ? { usage: result.usage } : {}),
   };
 }
 
 /** Builds the final TranscriptionAttempt from a single combined/parsed result — shared by both the single-request and chunked paths so the "used Whisper" provider/model/warning derivation stays identical. */
 function finalizeAttempt(
-  result: OneRequestResult,
+  result: OneRequestResult & { overlapLinks?: TranscriptionAttempt['overlapLinks'] },
   model: string,
   preprocessReport?: PreprocessReport,
+  usage?: StageUsage[],
 ): TranscriptionAttempt {
   const usedWhisperFallback = result.mode === 'fallback';
   const fallbackWarning =
@@ -249,6 +254,8 @@ function finalizeAttempt(
     segments: normalizeSegments(result.segments ?? []),
     warnings: [...(fallbackWarning ? [fallbackWarning] : []), ...(result.warnings ?? [])],
     ...(preprocessReport ? { preprocessReport } : {}),
+    ...(result.overlapLinks && result.overlapLinks.length > 0 ? { overlapLinks: result.overlapLinks } : {}),
+    ...(usage && usage.length > 0 ? { usage } : {}),
   };
 }
 
@@ -290,7 +297,8 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
 
   if (!needsChunking) {
     const result = await transcribeOneRequest(file, speakerNames, model, allowWhisperFallback, clips, idToken, onUploadProgress);
-    return finalizeAttempt(result, model);
+    const withProvenance = { ...result, segments: attachChunkProvenance(result.segments, 0) };
+    return finalizeAttempt(withProvenance, model, undefined, result.usage ? [result.usage] : undefined);
   }
 
   onPreparing?.();
@@ -387,9 +395,12 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
             reportUploadProgress();
           },
         );
-        chunkCache?.set(total, i, chunkResult);
+        // Stable ids + chunk-qualified local identities attach here, BEFORE
+        // caching, so cached and fresh chunks carry identical provenance.
+        const withProvenance = { ...chunkResult, segments: attachChunkProvenance(chunkResult.segments, i) };
+        chunkCache?.set(total, i, withProvenance);
         reportChunkDone();
-        return chunkResult;
+        return withProvenance;
       } catch (err) {
         throw prefixChunkError(err as TranscriptionAttemptError, i + 1, total);
       }
@@ -409,19 +420,24 @@ export async function transcribeWithOpenAi(options: TranscribeWithOpenAiOptions)
     } satisfies TranscriptionAttemptError;
   }
 
-  const perChunk = settled.map((r) => (r as { status: 'fulfilled'; value: ChunkTranscriptionResult }).value);
+  const perChunk = settled.map((r) => (r as { status: 'fulfilled'; value: OneRequestResult }).value);
 
-  const combined = combineChunkResponses(perChunk, preprocessed.mapTime);
+  const combined = combineChunkResponses(perChunk, preprocessed.mapTime, { coreOffsets: preprocessed.coreOffsets });
   // Diarized chunks are mapped to speaker names independently per request
   // (lib/mapSpeakerLabels.ts): with reference clips attached, OpenAI returns
   // the actual known-speaker names, anchoring identity acoustically across
   // chunks — but without clips, the anonymous A/B labels get first-appearance
   // positional mapping per chunk, so a later chunk that opens with the other
-  // speaker can silently swap names at the boundary. No API mechanism exists
-  // to anchor identity without clips (the Gemini cleanup pass partially
-  // corrects flips from context), so surface it as a run warning instead.
+  // speaker can swap names at the boundary. The deterministic reconciliation
+  // stage (lib/reconcileSpeakers.ts) demotes those later-chunk guesses and
+  // re-links identities via the audio-overlap matches captured above; what
+  // it can't resolve goes to the targeted repair stage. Keep the warning for
+  // clip-less multi-chunk runs — clips remain the strongest anchor.
   if (combined.mode === 'diarized' && total > 1 && effectiveClips.length === 0) {
     combined.warnings.push(CHUNKED_DIARIZATION_NO_CLIPS_WARNING);
   }
-  return finalizeAttempt(combined, model, preprocessed.report);
+  const usage = perChunk
+    .map((chunk) => chunk.usage)
+    .filter((entry): entry is StageUsage => entry !== undefined);
+  return finalizeAttempt(combined, model, preprocessed.report, usage);
 }

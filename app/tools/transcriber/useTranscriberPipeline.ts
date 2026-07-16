@@ -3,6 +3,13 @@
 import { useCallback, useRef, useState } from 'react';
 import { auth } from './lib/firebase';
 import { probeAudioDuration } from './lib/audioDuration';
+import {
+  aggregateClassifications,
+  applyBlockClassifications,
+  buildClassifyUnits,
+  buildClassifyWindows,
+  windowToRequestBlocks,
+} from './lib/argumentClassify';
 import { buildTagSummary, formatArgumentRelevantTranscript } from './lib/argumentTags';
 import { createChunkWindows, segmentsInWindow, type ChunkWindowBounds } from './lib/chunkTranscript';
 import type { ClassifiedError } from './lib/classifyError';
@@ -11,10 +18,15 @@ import { mapWithConcurrency } from './lib/concurrency';
 import {
   ACCEPTED_FILE_EXTENSIONS,
   FALLBACK_TRANSCRIBE_MODEL,
+  MAPPING_ALGORITHM_VERSION,
   MAX_GEMINI_UPLOAD_BYTES,
   MAX_OPENAI_PREPROCESSED_UPLOAD_BYTES,
   MAX_OPENAI_UPLOAD_BYTES,
+  PIPELINE_SCHEMA_VERSION,
+  SPEAKER_REPAIR_APPLY_MIN_CONFIDENCE,
+  SPEAKER_REPAIR_ESCALATION_MODEL,
 } from './lib/constants';
+import { sha256HexOfBlob } from './lib/contentHash';
 import { buildCorrectionWarning } from './lib/correctionSummary';
 import { buildManualCleanupPrompt } from './lib/buildManualCleanupPrompt';
 import { formatCleanTranscript } from './lib/formatCleanTranscript';
@@ -32,15 +44,42 @@ import type {
   TranscriptionAttemptError,
   TranscriptionProviderId,
 } from './lib/providers/types';
-import { appendDebugEvent, buildDebugJson, createDebugLog, type DebugLog, type SpeakerReferenceEntry } from './lib/runDebug';
+import { reconcileSpeakers } from './lib/reconcileSpeakers';
+import { ensureSegmentIds } from './lib/segmentProvenance';
+import {
+  buildAttemptKey,
+  buildClassifyKey,
+  buildClassifyKeyBase,
+  buildCleanupKey,
+  buildRepairKeyBase,
+  fingerprint,
+  fingerprintContent,
+} from './lib/stageCacheKeys';
+import { withStageResultCache, type CachedStageResult } from './lib/stageResultCache';
+import {
+  appendDebugEvent,
+  buildDebugJson,
+  createDebugLog,
+  setDebugManifest,
+  type DebugLog,
+  type SpeakerReferenceEntry,
+  type StageManifest,
+} from './lib/runDebug';
 import { sanitizeUpstreamError } from './lib/sanitizeUpstreamError';
-import { readTranscriberSettings } from './lib/settings';
+import { readTranscriberSettings, type TranscriberSettings } from './lib/settings';
+import { analyzeSpeakerQuality, buildQualityWarning, type SpeakerQualityReport } from './lib/speakerQuality';
+import { applySpeakerRepairPatches, buildRepairBatches } from './lib/speakerRepair';
 import { stitchChunkResults, type ChunkResult } from './lib/stitchTranscript';
 import { suppressArtifacts } from './lib/suppressArtifacts';
 import type {
   ArgumentTag,
+  BlockClassification,
+  ClassifyApiResponse,
   CorrectApiResponse,
   PipelineStatus,
+  SpeakerRepairApiResponse,
+  SpeakerRepairPatch,
+  StageUsage,
   SuppressionReport,
   TaggedTranscriptSegment,
   TranscriptionMode,
@@ -123,10 +162,12 @@ export interface TranscriberState {
   cleanedText: string | null;
   turnBlocks: TurnBlock[];
   suppressionReport: SuppressionReport | null;
-  /** Zero-filled per-ArgumentTag counts (lib/argumentTags.ts's buildTagSummary) — null unless this run had settings.argumentTagging on AND cleanup actually produced output (no separate AI pass; tags come from the same cleanup call). */
+  /** Zero-filled per-ArgumentTag counts over turn blocks (lib/argumentTags.ts's buildTagSummary) — null unless this run's separate classification stage ran and succeeded. */
   tagSummary: Record<ArgumentTag, number> | null;
   /** The argument-relevant filtered transcript (lib/argumentTags.ts's formatArgumentRelevantTranscript) — same null conditions as tagSummary. */
   argumentRelevantText: string | null;
+  /** Text-free speaker-quality metrics for this run (lib/speakerQuality.ts) — null until the quality gate has run. */
+  qualityReport: SpeakerQualityReport | null;
   recovery: RecoveryInfo | null;
   /** Serialized only on failure, or always when settings.debugMode is 'always'. Never contains transcript text. */
   debugJson: string | null;
@@ -155,6 +196,7 @@ const initialState: TranscriberState = {
   suppressionReport: null,
   tagSummary: null,
   argumentRelevantText: null,
+  qualityReport: null,
   recovery: null,
   debugJson: null,
   uploadProgress: null,
@@ -195,6 +237,14 @@ interface CleanupChunkFailure {
   json: JsonRecord;
 }
 
+/** Settings snapshot for the debug manifest — every field is a boolean,
+ * number, or model/provider id (fallbackOrder joins to one string). Nothing
+ * personal: notes and context text never live in settings. */
+function buildSafeSettingsSnapshot(settings: TranscriberSettings): Record<string, boolean | number | string> {
+  const { fallbackOrder, ...rest } = settings;
+  return { ...rest, fallbackOrder: fallbackOrder.join(',') };
+}
+
 /* ------------------------------------------------------------ */
 /* Resume caches: per-run saved work reused by an explicit retry */
 /* ------------------------------------------------------------ */
@@ -231,11 +281,52 @@ interface AttemptCacheState {
   attempt: TranscriptionAttempt;
 }
 
-/** Successfully corrected cleanup chunks, keyed by window index. */
+/** Successful cleanup-chunk TEXT PATCHES (segment id -> corrected text),
+ * keyed by window index. Deliberately NOT whole segments: speakers can
+ * legitimately differ between runs with the same cleanup key (the repair
+ * stage is a model call), so a cache hit re-applies the text patches to the
+ * CURRENT run's freshly-computed window segments — cached text, never
+ * cached speakers. Each entry also carries usage/warning state (see
+ * CachedStageResult) so a cache hit replays them exactly as a fresh
+ * request would. */
 interface CleanupChunkCacheState {
   key: string;
   windowCount: number;
-  results: Map<number, TaggedTranscriptSegment[]>;
+  results: Map<number, CachedStageResult<Map<string, string>>>;
+}
+
+/** Successful speaker-repair batch responses. One cache object per upstream
+ * identity (repair key base); entries are keyed
+ * `<model>:<pass>:<batchCount>#<batchIndex>`, so the base and escalation
+ * passes coexist instead of evicting each other on a retry. Independent of
+ * the cleanup and classification caches: repairing speakers never
+ * invalidates corrected text or classifications, and vice versa. Each entry
+ * also carries usage/warning state (see CachedStageResult) so a cache hit
+ * replays them exactly as a fresh request would. */
+interface SpeakerRepairCacheState {
+  key: string;
+  results: Map<string, CachedStageResult<SpeakerRepairPatch[]>>;
+}
+
+/** Successful classification-window responses, keyed by window index.
+ * Deliberately EXCLUDES the range-expansion setting from its key — changing
+ * the expansion only reruns the pure range construction, never the model.
+ * Each entry also carries usage/warning state (see CachedStageResult) so a
+ * cache hit replays them exactly as a fresh request would. */
+interface ClassifyCacheState {
+  key: string;
+  windowCount: number;
+  results: Map<number, CachedStageResult<BlockClassification[]>>;
+}
+
+/** What the last completed run's classification stage needs to rerun on its
+ * own (reclassify()) without touching transcription or cleanup: the
+ * UNTAGGED turn blocks, that run's context notes, and the cache key base
+ * that identifies the upstream state those blocks came from. */
+interface ClassificationInput {
+  blocks: TurnBlock[];
+  contextNotes: string;
+  cacheKeyBase: string;
 }
 
 /** Constructed (not thrown as a real Error) when a Gemini attempt can't even
@@ -278,6 +369,11 @@ export function useTranscriberPipeline() {
   const geminiWindowCacheRef = useRef<GeminiWindowCacheState | null>(null);
   const attemptCacheRef = useRef<AttemptCacheState | null>(null);
   const cleanupCacheRef = useRef<CleanupChunkCacheState | null>(null);
+  const speakerRepairCacheRef = useRef<SpeakerRepairCacheState | null>(null);
+  const classifyCacheRef = useRef<ClassifyCacheState | null>(null);
+  /** The last completed run's untagged blocks — reclassify() reruns ONLY the
+   * classification stage from these (never transcription or cleanup). */
+  const classificationInputRef = useRef<ClassificationInput | null>(null);
 
   const startTimer = useCallback(() => {
     startRef.current = Date.now();
@@ -285,6 +381,106 @@ export function useTranscriberPipeline() {
       setState((s) => ({ ...s, elapsedMs: Date.now() - startRef.current }));
     }, 1000);
   }, []);
+
+  /**
+   * Runs the standalone argument-classification stage over turn blocks:
+   * contextual overlapping windows, id/tag/confidence responses only,
+   * per-window caching, deterministic aggregation + coverage validation.
+   * Returns null when classification failed entirely (every window failed)
+   * — the caller degrades to untagged output; the cleaned transcript is
+   * never invalidated. Shared by performRun and reclassify().
+   */
+  const runClassificationStage = useCallback(
+    async (params: {
+      blocks: TurnBlock[];
+      contextNotes: string;
+      settings: TranscriberSettings;
+      cacheKeyBase: string;
+      allowCacheRead: boolean;
+      onUsage?: (usage: StageUsage) => void;
+    }): Promise<{
+      blocks: TurnBlock[];
+      tagSummary: Record<ArgumentTag, number>;
+      expectedWindows: number;
+      completedWindows: number;
+      missingBlocks: number;
+      classifiedBlocks: number;
+      /** Windows whose response carried the server's `warning` field — the
+       * model attempted output that included invalid/unknown/duplicate
+       * items on at least one retry attempt, distinct from a clean response. */
+      invalidResponseWindows: number;
+    } | null> => {
+      const user = auth.currentUser;
+      if (!user) return null;
+
+      const units = buildClassifyUnits(params.blocks);
+      const windows = buildClassifyWindows(units);
+      if (windows.length === 0) return null;
+
+      const cacheKey = buildClassifyKey(params.cacheKeyBase, params.settings.argumentClassifierModel);
+      if (
+        !params.allowCacheRead ||
+        classifyCacheRef.current?.key !== cacheKey ||
+        classifyCacheRef.current?.windowCount !== windows.length
+      ) {
+        classifyCacheRef.current = { key: cacheKey, windowCount: windows.length, results: new Map() };
+      }
+      const cache = classifyCacheRef.current;
+
+      let invalidResponseWindows = 0;
+      const settled = await mapWithConcurrency(windows, 3, async (window): Promise<BlockClassification[]> =>
+        withStageResultCache(
+          cache.results,
+          window.index,
+          async (): Promise<CachedStageResult<BlockClassification[]>> => {
+            const idToken = await user.getIdToken();
+            const response = await postJson(
+              '/api/transcriber/classify',
+              {
+                blocks: windowToRequestBlocks(window),
+                contextNotes: params.contextNotes,
+                model: params.settings.argumentClassifierModel,
+              },
+              idToken,
+            );
+            if (response.status < 200 || response.status >= 300) {
+              throw new Error(typeof response.json.error === 'string' ? response.json.error : 'Classification failed.');
+            }
+            const result = response.json as ClassifyApiResponse;
+            const votes = Array.isArray(result.classifications) ? result.classifications : [];
+            return { result: votes, usage: result.usage, hadWarning: Boolean(result.warning) };
+          },
+          (usage) => params.onUsage?.(usage),
+          () => {
+            invalidResponseWindows += 1;
+          },
+        ),
+      );
+
+      const votesPerWindow: BlockClassification[][] = [];
+      let completedWindows = 0;
+      for (const result of settled) {
+        if (result.status === 'fulfilled') {
+          votesPerWindow.push(result.value);
+          completedWindows += 1;
+        }
+      }
+      if (completedWindows === 0) return null;
+
+      const aggregated = aggregateClassifications(units, votesPerWindow);
+      const tagged = applyBlockClassifications(params.blocks, aggregated);
+      return {
+        blocks: tagged,
+        tagSummary: buildTagSummary(tagged),
+        expectedWindows: windows.length,
+        completedWindows,
+        missingBlocks: aggregated.missingBlockIds.length,
+        classifiedBlocks: aggregated.byBlockId.size,
+        invalidResponseWindows,
+      };
+    },
+    [],
+  );
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -306,6 +502,23 @@ export function useTranscriberPipeline() {
       });
       debugLogRef.current = debugLog;
       const settings = readTranscriberSettings();
+
+      // Provider-reported token usage per stage (never invented — see
+      // StageUsage) and sparse patch counts, accumulated for the debug
+      // manifest.
+      const usageEntries: { stage: string; usage: StageUsage }[] = [];
+      const recordUsage = (stage: 'transcribe' | 'speaker-repair' | 'correct' | 'classify', usage?: StageUsage) => {
+        if (!usage) return;
+        usageEntries.push({ stage, usage });
+        appendDebugEvent(debugLog, { kind: 'usage', stage, usage });
+      };
+      const patchCounts = {
+        speakerRepairApplied: 0,
+        speakerRepairRejected: 0,
+        textPatchesApplied: 0,
+        textPatchesReverted: 0,
+        classificationsApplied: 0,
+      };
 
       const finalizeFailed = (recovery: RecoveryInfo, errorMessage: string) => {
         appendDebugEvent(debugLog, {
@@ -338,6 +551,8 @@ export function useTranscriberPipeline() {
           geminiWindowCacheRef.current = null;
           attemptCacheRef.current = null;
           cleanupCacheRef.current = null;
+          speakerRepairCacheRef.current = null;
+          classifyCacheRef.current = null;
         }
 
         // Provider-aware size cap: Gemini's Files API accepts much larger
@@ -380,6 +595,66 @@ export function useTranscriberPipeline() {
         // accumulated across the provider-attempt loop below and merged into
         // the final `warning` state alongside any cleanup warning.
         const runWarnings: string[] = [];
+        // Symbolic (text-free) warning codes for the debug manifest.
+        const warningCodes: string[] = [];
+        const addWarningCode = (code: string) => {
+          if (!warningCodes.includes(code)) warningCodes.push(code);
+        };
+        // SHA-256 content hashes of the reference clips attached to the
+        // FINAL attempt — recorded in the debug manifest.
+        let referenceClipHashes: { name: string; sha256: string }[] = [];
+        // Actual acceptance (not mere attachment) of those clips — false
+        // once any chunk's clips were rejected and retried without them.
+        let referenceClipsAccepted = true;
+
+        /** Assembles the text-free stage manifest (lib/runDebug.ts's
+         * StageManifest) from everything this run accumulated — versions,
+         * models, counts, hashes, and a safe settings snapshot. Never
+         * transcript text, prompts, audio, or personal notes. */
+        const buildManifest = (params: {
+          attempt: TranscriptionAttempt | null;
+          quality: SpeakerQualityReport | null;
+          repairModel: string | null;
+          correctionRan: boolean;
+          classificationModel: string | null;
+          cleanupChunks: { expected: number; completed: number } | null;
+          classificationChunks: { expected: number; completed: number } | null;
+        }): StageManifest => ({
+          pipelineSchemaVersion: PIPELINE_SCHEMA_VERSION,
+          mappingAlgorithmVersion: MAPPING_ALGORITHM_VERSION,
+          gitCommit: process.env.NEXT_PUBLIC_GIT_COMMIT ?? null,
+          models: {
+            transcribe: params.attempt ? { provider: params.attempt.provider, model: params.attempt.model } : null,
+            speakerRepair: params.repairModel,
+            correction: params.correctionRan ? settings.cleanupModel : null,
+            classification: params.classificationModel,
+          },
+          settings: buildSafeSettingsSnapshot(settings),
+          chunks: {
+            transcription: params.attempt?.preprocessReport
+              ? {
+                  expected: params.attempt.preprocessReport.chunkCount,
+                  completed: params.attempt.preprocessReport.chunkCount,
+                }
+              : null,
+            cleanup: params.cleanupChunks,
+            classification: params.classificationChunks,
+          },
+          referenceClips: speakerNames.map((name) => {
+            const hit = referenceClipHashes.find((c) => c.name === name);
+            return {
+              name,
+              attached: hit !== undefined,
+              accepted: hit !== undefined && referenceClipsAccepted,
+              sha256: hit?.sha256 ?? null,
+            };
+          }),
+          quality: params.quality,
+          patches: { ...patchCounts },
+          usage: [...usageEntries],
+          fallbackPath: [...attemptedProviders],
+          warningCodes: [...warningCodes],
+        });
 
         while (!attempt) {
           attemptedProviders.push(providerId);
@@ -424,23 +699,29 @@ export function useTranscriberPipeline() {
           // resurrected by a retry that promises no silent fallback.
           const allowWhisperFallback = !isExplicitRetry && settings.autoFallback;
 
-          // Name + byte size per attached clip — cheap fingerprint that
-          // changes whenever a clip is added, removed, or re-recorded.
-          const clipsFingerprint =
+          // SHA-256 content hash per attached clip — changes whenever a
+          // clip's AUDIO changes (re-recorded, re-trimmed), which the old
+          // name+size fingerprint could miss. Clips are ~256 KB, so hashing
+          // is effectively free; also recorded in the debug manifest.
+          const clipHashes: { name: string; sha256: string }[] =
             wantsOpenAiClips || wantsGeminiReferences
-              ? speakerClips.map((clip) => `${clip.name}:${clip.blob.size}`).join(',')
-              : 'off';
+              ? await Promise.all(
+                  speakerClips.map(async (clip) => ({ name: clip.name, sha256: await sha256HexOfBlob(clip.blob) })),
+                )
+              : [];
+          referenceClipHashes = clipHashes;
+          const clipsFingerprint = clipHashes.length > 0 ? clipHashes.map((c) => `${c.name}:${c.sha256}`).join(',') : 'off';
 
-          const attemptKey = [
-            buildFileKey(file),
+          const attemptKey = buildAttemptKey({
+            fileKey: buildFileKey(file),
             providerId,
             model,
-            `pre:${settings.openaiPreprocessing ? 1 : 0}${settings.openaiSilenceRemoval ? 1 : 0}:${settings.openaiSpeedFactor}`,
-            `names:${speakerNames.join(',')}`,
-            `notes:${(speakerNotes ?? []).join('|')}`,
-            `clips:${clipsFingerprint}`,
-            providerId === 'gemini' ? `ctx:${contextNotes}` : '',
-          ].join('||');
+            settings,
+            speakerNames,
+            speakerNotes: speakerNotes ?? [],
+            clipsFingerprint,
+            contextNotes,
+          });
           currentAttemptKey = attemptKey;
           lastProviderRef.current = providerId;
           appendDebugEvent(debugLog, { kind: 'provider-attempt', provider: providerId, model });
@@ -632,18 +913,25 @@ export function useTranscriberPipeline() {
                 });
               }
 
+              // Actual acceptance, not mere attachment — false whenever ANY
+              // chunk's clips were rejected and silently retried without
+              // them (see the transcribe route's clipsAccepted tracking).
+              const anyClipsRejected = attempt.warnings.includes('speaker-references-rejected');
               if (wantsOpenAiClips) {
                 const entries: SpeakerReferenceEntry[] = speakerNames.map((name) => {
                   const clip = speakerClips.find((c) => c.name === name);
                   return clip
-                    ? { name, attached: true, validationStatus: clip.validationStatus }
-                    : { name, attached: false, validationStatus: clipsLoadFailed ? 'unavailable' : 'missing' };
+                    ? { name, attached: true, accepted: !anyClipsRejected, validationStatus: clip.validationStatus }
+                    : { name, attached: false, accepted: false, validationStatus: clipsLoadFailed ? 'unavailable' : 'missing' };
                 });
                 appendDebugEvent(debugLog, { kind: 'speaker-reference', status: entries });
               }
 
-              if (attempt.warnings.includes('speaker-references-rejected') && !runWarnings.includes(SPEAKER_REFERENCES_REJECTED_WARNING)) {
-                runWarnings.push(SPEAKER_REFERENCES_REJECTED_WARNING);
+              if (anyClipsRejected) {
+                referenceClipsAccepted = false;
+                if (!runWarnings.includes(SPEAKER_REFERENCES_REJECTED_WARNING)) {
+                  runWarnings.push(SPEAKER_REFERENCES_REJECTED_WARNING);
+                }
               }
             }
           } catch (err) {
@@ -720,13 +1008,16 @@ export function useTranscriberPipeline() {
         }
         if (!attempt) return; // unreachable — the loop only exits once attempt is set
 
-        // --- Capture raw (before suppression) — free, no model call. ---
-        const rawSegments = normalizeSegments(attempt.segments);
+        // --- Capture raw (before suppression) — free, no model call. The raw
+        // transcript preserves the provider's per-chunk mapping output as-is;
+        // reconciliation/repair only ever affect the cleaned path. ---
+        const rawSegments = ensureSegmentIds(normalizeSegments(attempt.segments));
         if (rawSegments.length === 0) {
           throw new Error('Transcription returned no speech segments.');
         }
         const rawText = buildTranscriptText(rawSegments);
         appendDebugEvent(debugLog, { kind: 'raw-captured', segmentCount: rawSegments.length });
+        for (const usage of attempt.usage ?? []) recordUsage('transcribe', usage);
 
         // Transcription succeeded — save the whole attempt so a later
         // failure (e.g. in the cleanup pass) never forces re-transcribing
@@ -740,9 +1031,27 @@ export function useTranscriberPipeline() {
         const fallbackNotice = attempt.warnings.find((w) => w.startsWith('Diarized model unavailable')) ?? null;
         setState((s) => ({ ...s, mode: attempt!.mode, primaryError: fallbackNotice, rawSegments, rawText }));
 
+        // --- Deterministic global speaker reconciliation (pure, no model
+        // call) — links chunk-local identities via overlap/continuity
+        // evidence, demotes later-chunk positional guesses, and records
+        // conflicts, BEFORE any language-model stage. ---
+        const reconcileResult = reconcileSpeakers(rawSegments, {
+          knownNames: speakerNames,
+          overlapLinks: attempt.overlapLinks,
+          speakerNotes,
+        });
+        appendDebugEvent(debugLog, { kind: 'reconciliation', report: reconcileResult.report });
+        let workingSegments: TranscriptSegment[] = reconcileResult.segments;
+
+        // --- Speaker quality gate (pure). ---
+        let quality = analyzeSpeakerQuality(workingSegments, { knownNames: speakerNames });
+        appendDebugEvent(debugLog, { kind: 'quality', report: quality });
+        setState((s) => ({ ...s, qualityReport: quality }));
+
         if (skipCleanup) {
-          // --- Skip the Gemini cleanup pass: return the raw transcript with a
-          // manual cleanup prompt prepended, for pasting into a browser AI chat. ---
+          // --- Skip every language-model pass: return the raw transcript
+          // with a manual cleanup prompt prepended, for pasting into a
+          // browser AI chat. ---
           setState((s) => ({ ...s, status: 'building', cleanupSkipped: true }));
           const promptHeader = buildManualCleanupPrompt({
             speakerNames,
@@ -752,6 +1061,18 @@ export function useTranscriberPipeline() {
           });
           const rawTextWithPrompt = `${promptHeader}\n${rawText}`;
 
+          setDebugManifest(
+            debugLog,
+            buildManifest({
+              attempt,
+              quality,
+              repairModel: null,
+              correctionRan: false,
+              classificationModel: null,
+              cleanupChunks: null,
+              classificationChunks: null,
+            }),
+          );
           setState((s) => ({
             ...s,
             status: 'complete',
@@ -766,13 +1087,145 @@ export function useTranscriberPipeline() {
           return;
         }
 
+        // --- Targeted speaker repair: only when the quality gate triggers,
+        // only the unresolved/low-confidence segments (plus limited
+        // context), sparse id->name patches back. Best-effort: any failure
+        // leaves the transcript exactly as reconciliation produced it. ---
+        let repairsApplied = 0;
+        let repairModelUsed: string | null = null;
+        // Batches (across base and escalation passes) whose response
+        // carried a `warning` — the model attempted output with
+        // invalid/unknown/duplicate items on at least one retry attempt,
+        // distinct from a clean response.
+        let repairInvalidResponseBatches = 0;
+        if (settings.speakerRepairEnabled && quality.needsRepair) {
+          setState((s) => ({ ...s, status: 'repairing' }));
+          const repairKeyBase = buildRepairKeyBase({
+            attemptKey: currentAttemptKey ?? buildFileKey(file),
+            contextNotes,
+          });
+          // One cache object for BOTH passes — entries are pass-qualified, so
+          // an explicit retry reuses the base and escalation batches alike.
+          if (!isExplicitRetry || speakerRepairCacheRef.current?.key !== repairKeyBase) {
+            speakerRepairCacheRef.current = { key: repairKeyBase, results: new Map() };
+          }
+          const repairCache = speakerRepairCacheRef.current;
+
+          const runRepairPass = async (model: string, escalation: boolean): Promise<void> => {
+            const batches = buildRepairBatches(workingSegments);
+            if (batches.length === 0) return;
+            const passKey = `${model}:${escalation ? 'esc' : 'base'}`;
+
+            const settledBatches = await mapWithConcurrency(batches, 2, async (batch): Promise<SpeakerRepairPatch[]> => {
+              // Keyed by the batch's ACTUAL request payload (ids, speakers,
+              // text, target flags, candidate hints) — not its positional
+              // index. buildRepairBatches is recomputed from workingSegments
+              // on every call (base pass, escalation pass, and any explicit
+              // retry that reuses this cache object), so the same index can
+              // hold a completely different batch across calls. Since
+              // patches apply globally by segment id, a stale index-keyed
+              // hit could silently apply a DIFFERENT batch's patches to
+              // today's segments.
+              const batchKey = `${passKey}:${fingerprint(batch.segments)}`;
+              return withStageResultCache(
+                repairCache.results,
+                batchKey,
+                async (): Promise<CachedStageResult<SpeakerRepairPatch[]>> => {
+                  const idToken = await user.getIdToken();
+                  const response = await postJson(
+                    '/api/transcriber/speaker-repair',
+                    {
+                      segments: batch.segments,
+                      knownNames: speakerNames,
+                      speakerNotes,
+                      contextNotes,
+                      model,
+                    },
+                    idToken,
+                  );
+                  if (response.status < 200 || response.status >= 300) {
+                    throw new Error(
+                      typeof response.json.error === 'string' ? response.json.error : 'Speaker repair failed.',
+                    );
+                  }
+                  const result = response.json as SpeakerRepairApiResponse;
+                  const patches = Array.isArray(result.patches) ? result.patches : [];
+                  return { result: patches, usage: result.usage, hadWarning: Boolean(result.warning) };
+                },
+                (usage) => recordUsage('speaker-repair', usage),
+                () => {
+                  repairInvalidResponseBatches += 1;
+                },
+              );
+            });
+
+            let failedBatches = 0;
+            const allPatches: SpeakerRepairPatch[] = [];
+            for (const result of settledBatches) {
+              if (result.status === 'fulfilled') allPatches.push(...result.value);
+              else failedBatches += 1;
+            }
+
+            const targets = batches.reduce((sum, b) => sum + b.targetIds.length, 0);
+            const applyResult = applySpeakerRepairPatches(workingSegments, allPatches, {
+              knownNames: speakerNames,
+              minConfidence: SPEAKER_REPAIR_APPLY_MIN_CONFIDENCE,
+            });
+            workingSegments = applyResult.segments;
+            repairsApplied += applyResult.applied;
+            patchCounts.speakerRepairApplied += applyResult.applied;
+            patchCounts.speakerRepairRejected += applyResult.rejected;
+            repairModelUsed = model;
+            appendDebugEvent(debugLog, {
+              kind: 'speaker-repair',
+              model,
+              batches: batches.length,
+              failedBatches,
+              targets,
+              applied: applyResult.applied,
+              rejected: applyResult.rejected,
+              belowConfidence: applyResult.belowConfidence,
+              escalation,
+            });
+            if (failedBatches > 0) addWarningCode('speaker-repair-batch-failed');
+          };
+
+          try {
+            await runRepairPass(settings.speakerRepairModel, false);
+            quality = analyzeSpeakerQuality(workingSegments, { knownNames: speakerNames, repairsApplied });
+            // Escalate ONLY the still-unresolved segments to the stronger
+            // Flash model, once, when the cheap pass wasn't enough.
+            if (quality.needsRepair && SPEAKER_REPAIR_ESCALATION_MODEL !== settings.speakerRepairModel) {
+              await runRepairPass(SPEAKER_REPAIR_ESCALATION_MODEL, true);
+              quality = analyzeSpeakerQuality(workingSegments, { knownNames: speakerNames, repairsApplied });
+            }
+          } catch {
+            // Repair is best-effort — a failure never invalidates the transcript.
+            addWarningCode('speaker-repair-failed');
+          }
+          appendDebugEvent(debugLog, { kind: 'quality', report: quality });
+          setState((s) => ({ ...s, qualityReport: quality }));
+          if (repairInvalidResponseBatches > 0) {
+            runWarnings.push(
+              `Speaker repair returned some invalid items on ${repairInvalidResponseBatches} batch(es) — the valid subset was applied.`,
+            );
+            addWarningCode('speaker-repair-invalid-response');
+          }
+        }
+
+        const qualityWarning = buildQualityWarning(quality);
+        if (qualityWarning) {
+          runWarnings.push(qualityWarning);
+          addWarningCode('speaker-quality-low');
+        }
+
         // --- Suppress hallucinated filler (if enabled); raw above already captured everything. ---
         setState((s) => ({ ...s, status: 'correcting' }));
-        let segmentsForCleanup = rawSegments;
+        let segmentsForCleanup = workingSegments;
         let boundaryTimes: number[] = [];
 
         if (settings.suppressionEnabled) {
-          const suppressed = suppressArtifacts(rawSegments, settings.suppressionSensitivity);
+          const suppressed = suppressArtifacts(workingSegments, settings.suppressionSensitivity);
           segmentsForCleanup = suppressed.segments;
           boundaryTimes = suppressed.report.boundaryTimes;
           if (suppressed.report.removed.length > 0) {
@@ -786,19 +1239,17 @@ export function useTranscriberPipeline() {
           setState((s) => ({ ...s, suppressionReport: suppressed.report }));
         }
 
-        // `tagged` is true only for the call after a real cleanup pass that
-        // actually had settings.argumentTagging on — the two early-exit
-        // calls below (nothing to clean up / cleanup disabled) never ran the
-        // Gemini pass at all, so tagSummary/argumentRelevantText stay null
-        // for them regardless of the setting (no separate AI pass, per the
-        // "no extra AI pass" rule — there's nothing to derive tags from).
-        const finalizeComplete = (
+        // Builds turn blocks, runs the separate argument-classification
+        // stage when enabled (id/tag responses only — a failure degrades to
+        // untagged output, never invalidates the cleaned transcript),
+        // attaches the stage manifest, and completes the run.
+        const finalizeComplete = async (
           cleanedSegments: TaggedTranscriptSegment[],
           warning: string | null,
           failedChunks: number,
           totalChunks: number,
-          tagged: boolean,
-        ) => {
+          correctionRan: boolean,
+        ): Promise<void> => {
           setState((s) => ({ ...s, status: 'building' }));
           let turnBlocks: TurnBlock[];
           let cleanedText: string;
@@ -809,6 +1260,7 @@ export function useTranscriberPipeline() {
             // Merging is a display/export transform only — with it disabled,
             // still shape a 1:1 TurnBlock per segment so the cleaned view stays uniform.
             turnBlocks = cleanedSegments.map((seg) => ({
+              ...(seg.id ? { id: seg.id, segmentIds: [seg.id] } : {}),
               start: seg.start,
               end: seg.end,
               speaker: seg.speaker,
@@ -819,25 +1271,98 @@ export function useTranscriberPipeline() {
             cleanedText = buildTranscriptText(cleanedSegments);
           }
 
-          const tagSummary = tagged ? buildTagSummary(cleanedSegments) : null;
-          const argumentRelevantText = tagged ? formatArgumentRelevantTranscript(turnBlocks) : null;
-          if (tagged && tagSummary) {
-            appendDebugEvent(debugLog, { kind: 'argument-tagging', tagSummary });
+          // Classification-stage cache key: chains the upstream identity
+          // (attempt + suppression + cleanup + repair + merge parameters) so
+          // any upstream change invalidates it, while argument-only settings
+          // (expansion) stay OUT of it — changing those never reruns
+          // transcription, cleanup, or classification. See lib/stageCacheKeys.ts.
+          const classifyKeyBase = buildClassifyKeyBase({
+            attemptKey: currentAttemptKey ?? buildFileKey(file),
+            settings,
+            blocksFingerprint: fingerprintContent(turnBlocks),
+            contextNotes,
+          });
+          classificationInputRef.current = { blocks: turnBlocks, contextNotes, cacheKeyBase: classifyKeyBase };
+
+          let finalBlocks = turnBlocks;
+          let tagSummary: Record<ArgumentTag, number> | null = null;
+          let argumentRelevantText: string | null = null;
+          let classificationModelUsed: string | null = null;
+          let classificationChunks: { expected: number; completed: number } | null = null;
+
+          if (settings.argumentTagging && turnBlocks.length > 0) {
+            setState((s) => ({ ...s, status: 'classifying' }));
+            const classified = await runClassificationStage({
+              blocks: turnBlocks,
+              contextNotes,
+              settings,
+              cacheKeyBase: classifyKeyBase,
+              allowCacheRead: isExplicitRetry,
+              onUsage: (usage) => recordUsage('classify', usage),
+            });
+            if (classified) {
+              finalBlocks = classified.blocks;
+              tagSummary = classified.tagSummary;
+              argumentRelevantText = formatArgumentRelevantTranscript(finalBlocks, {
+                expandSeconds: settings.argumentExpandSeconds,
+              });
+              classificationModelUsed = settings.argumentClassifierModel;
+              classificationChunks = { expected: classified.expectedWindows, completed: classified.completedWindows };
+              patchCounts.classificationsApplied += classified.classifiedBlocks;
+              appendDebugEvent(debugLog, {
+                kind: 'classification',
+                model: settings.argumentClassifierModel,
+                windows: classified.expectedWindows,
+                failedWindows: classified.expectedWindows - classified.completedWindows,
+                blocks: turnBlocks.length,
+                missingBlocks: classified.missingBlocks,
+                tagSummary,
+              });
+              if (classified.missingBlocks > 0) {
+                runWarnings.push(
+                  `Argument tagging covered ${turnBlocks.length - classified.missingBlocks} of ${turnBlocks.length} turns — uncovered turns default to "unclear".`,
+                );
+                addWarningCode('classification-coverage-gap');
+              }
+              if (classified.invalidResponseWindows > 0) {
+                runWarnings.push(
+                  `The classifier returned some invalid items on ${classified.invalidResponseWindows} window(s) — the valid subset was applied.`,
+                );
+                addWarningCode('classification-invalid-response');
+              }
+            } else {
+              runWarnings.push('Argument classification failed — the cleaned transcript is unaffected, but tags are unavailable.');
+              addWarningCode('classification-failed');
+            }
           }
 
           // Merge the provider-attempt-level warnings (rejected/unloadable
-          // speaker reference clips) with this run's cleanup warning, if any
-          // — both are surfaced through the same TranscriberState.warning.
+          // speaker reference clips, quality gate) with this run's cleanup
+          // warning, if any — both surface through TranscriberState.warning.
           const combinedWarning = [...runWarnings, warning].filter((w): w is string => !!w).join(' ') || null;
+
+          setDebugManifest(
+            debugLog,
+            buildManifest({
+              attempt,
+              quality,
+              repairModel: repairModelUsed,
+              correctionRan,
+              classificationModel: classificationModelUsed,
+              cleanupChunks: correctionRan ? { expected: totalChunks, completed: totalChunks - failedChunks } : null,
+              classificationChunks,
+            }),
+          );
 
           setState((s) => ({
             ...s,
             status: 'complete',
             cleanedSegments,
-            turnBlocks,
+            turnBlocks: finalBlocks,
             cleanedText,
             tagSummary,
             argumentRelevantText,
+            qualityReport: quality,
             warning: combinedWarning,
             correctionFailedChunks: failedChunks,
             correctionTotalChunks: totalChunks,
@@ -847,12 +1372,12 @@ export function useTranscriberPipeline() {
 
         if (segmentsForCleanup.length === 0) {
           // Suppression removed everything (pathological/tiny input) — nothing left to clean up.
-          finalizeComplete([], null, 0, 0, false);
+          await finalizeComplete([], null, 0, 0, false);
           return;
         }
 
         if (!settings.cleanupEnabled) {
-          finalizeComplete(segmentsForCleanup, null, 0, 0, false);
+          await finalizeComplete(segmentsForCleanup, null, 0, 0, false);
           return;
         }
 
@@ -867,12 +1392,16 @@ export function useTranscriberPipeline() {
         // explicit retry with identical parameters) the same way completed
         // transcription chunks are — a cleanup failure never costs the
         // chunks that already corrected cleanly.
-        const cleanupKey = [
-          currentAttemptKey ?? buildFileKey(file),
-          `sup:${settings.suppressionEnabled ? settings.suppressionSensitivity : 'off'}`,
-          `clean:${settings.cleanupModel}:${settings.cleanupTemperature}:${settings.cleanupChunkSeconds}:${settings.cleanupOverlapSeconds}:${settings.argumentTagging ? 1 : 0}`,
-          `ctx:${contextNotes}`,
-        ].join('||');
+        // Argument-classification settings deliberately do NOT participate —
+        // changing them must never invalidate corrected text. Repair output
+        // (applied-patch count) does, since it changes the segments being
+        // corrected. See lib/stageCacheKeys.ts for the invariants.
+        const cleanupKey = buildCleanupKey({
+          attemptKey: currentAttemptKey ?? buildFileKey(file),
+          settings,
+          segmentsFingerprint: fingerprintContent(segmentsForCleanup),
+          contextNotes,
+        });
         if (
           !isExplicitRetry ||
           cleanupCacheRef.current?.key !== cleanupKey ||
@@ -887,6 +1416,10 @@ export function useTranscriberPipeline() {
         const attemptMode = attempt.mode;
         let completedWindows = 0;
         let reusedCleanupChunks = 0;
+        // Chunks whose correct-route response carried a `warning` — the
+        // model attempted output with invalid/unknown/duplicate items on at
+        // least one retry attempt, distinct from a clean response.
+        let cleanupInvalidResponseChunks = 0;
         setState((s) => ({ ...s, chunkProgress: { current: 0, total: windows.length } }));
 
         // Windows run in parallel (bounded by settings.cleanupParallelChunks,
@@ -894,6 +1427,17 @@ export function useTranscriberPipeline() {
         // windows from starting after the first failure; windows already in
         // flight finish (and cache their result), so even an aborted pass
         // saves completed work for a resume.
+        /** Applies cached/fresh text patches to this run's CURRENT window
+         * segments — cached text never resurrects a prior run's speakers. */
+        const applyTextPatches = (
+          windowSegments: TaggedTranscriptSegment[],
+          patchTextById: Map<string, string>,
+        ): TaggedTranscriptSegment[] =>
+          windowSegments.map((seg) => {
+            const text = seg.id !== undefined ? patchTextById.get(seg.id) : undefined;
+            return text !== undefined ? { ...seg, text } : seg;
+          });
+
         const settledWindows = await mapWithConcurrency(
           windows,
           settings.cleanupParallelChunks,
@@ -904,58 +1448,83 @@ export function useTranscriberPipeline() {
                 return { window, segments: [] };
               }
 
-              const cached = cleanupCache.results.get(window.index);
-              if (cached) {
-                reusedCleanupChunks += 1;
-                return { window, segments: cached };
-              }
+              if (cleanupCache.results.has(window.index)) reusedCleanupChunks += 1;
 
-              let correctStatus: number;
-              let correctData: JsonRecord;
-              try {
-                const idToken = await user.getIdToken();
-                const response = await postJson(
-                  '/api/transcriber/correct',
-                  {
-                    segments: windowSegments,
-                    speakerNames,
-                    contextNotes,
-                    mode: attemptMode,
-                    model: settings.cleanupModel,
-                    // Temperature is sent on every cleanup request so the Settings
-                    // modal's Temperature slider affects normal runs too, not just
-                    // argument-tagging ones — the route clamps it independently of
-                    // argumentTagging (see app/api/transcriber/correct/route.ts).
-                    temperature: settings.cleanupTemperature,
-                    ...(settings.argumentTagging ? { argumentTagging: true } : {}),
-                  },
-                  idToken,
-                );
-                correctStatus = response.status;
-                correctData = response.json;
-              } catch (err) {
-                const failure: CleanupChunkFailure = {
-                  status: null,
-                  json: { error: err instanceof Error ? err.message : 'Network error during the cleanup pass.' },
-                };
-                throw failure;
-              }
+              // Replays this window's usage/warning contribution exactly as
+              // a fresh request would on a cache hit — a resumed run must
+              // report the same usage totals and warning codes as the
+              // original. Each window is only ever read from cache OR
+              // fetched fresh within one run, never both, so this never
+              // double-counts.
+              const patchTextById = await withStageResultCache(
+                cleanupCache.results,
+                window.index,
+                async (): Promise<CachedStageResult<Map<string, string>>> => {
+                  let correctStatus: number;
+                  let correctData: JsonRecord;
+                  try {
+                    const idToken = await user.getIdToken();
+                    const response = await postJson(
+                      '/api/transcriber/correct',
+                      {
+                        // Sparse-correction request: stable id + current
+                        // speaker/text per segment; no more transcript context
+                        // than this window (core + overlap) is ever sent.
+                        segments: windowSegments.map((seg) => ({
+                          id: seg.id!,
+                          start: seg.start,
+                          end: seg.end,
+                          speaker: seg.speaker,
+                          text: seg.text,
+                        })),
+                        speakerNames,
+                        contextNotes,
+                        mode: attemptMode,
+                        model: settings.cleanupModel,
+                        temperature: settings.cleanupTemperature,
+                      },
+                      idToken,
+                    );
+                    correctStatus = response.status;
+                    correctData = response.json;
+                  } catch (err) {
+                    const failure: CleanupChunkFailure = {
+                      status: null,
+                      json: { error: err instanceof Error ? err.message : 'Network error during the cleanup pass.' },
+                    };
+                    throw failure;
+                  }
 
-              if (correctStatus < 200 || correctStatus >= 300) {
-                const failure: CleanupChunkFailure = { status: correctStatus, json: correctData };
-                throw failure;
-              }
+                  if (correctStatus < 200 || correctStatus >= 300) {
+                    const failure: CleanupChunkFailure = { status: correctStatus, json: correctData };
+                    throw failure;
+                  }
 
-              const correctResult = correctData as CorrectApiResponse;
-              if (typeof correctResult.revertedSegments === 'number' && correctResult.revertedSegments > 0) {
-                appendDebugEvent(debugLog, {
-                  kind: 'correction-guardrail',
-                  chunkIndex: window.index,
-                  revertedSegments: correctResult.revertedSegments,
-                });
-              }
-              cleanupCache.results.set(window.index, correctResult.segments);
-              return { window, segments: correctResult.segments };
+                  const correctResult = correctData as CorrectApiResponse;
+                  if (typeof correctResult.revertedPatches === 'number' && correctResult.revertedPatches > 0) {
+                    patchCounts.textPatchesReverted += correctResult.revertedPatches;
+                    appendDebugEvent(debugLog, {
+                      kind: 'correction-guardrail',
+                      chunkIndex: window.index,
+                      revertedSegments: correctResult.revertedPatches,
+                    });
+                  }
+                  // Apply the sparse text patches locally — omitted segments
+                  // are unchanged by definition, and every provenance field
+                  // survives untouched. Only this window's segments can
+                  // match (ids are validated server-side against the
+                  // request). The cache stores the PATCHES, not the patched
+                  // segments — see CleanupChunkCacheState.
+                  const patchTextById = new Map((correctResult.patches ?? []).map((p) => [p.segmentId, p.text]));
+                  patchCounts.textPatchesApplied += patchTextById.size;
+                  return { result: patchTextById, usage: correctResult.usage, hadWarning: Boolean(correctResult.warning) };
+                },
+                (usage) => recordUsage('correct', usage),
+                () => {
+                  cleanupInvalidResponseChunks += 1;
+                },
+              );
+              return { window, segments: applyTextPatches(windowSegments, patchTextById) };
             } finally {
               completedWindows += 1;
               const done = completedWindows;
@@ -972,6 +1541,13 @@ export function useTranscriberPipeline() {
             reusedChunks: reusedCleanupChunks,
             totalChunks: windows.length,
           });
+        }
+
+        if (cleanupInvalidResponseChunks > 0) {
+          runWarnings.push(
+            `The cleanup pass returned some invalid items on ${cleanupInvalidResponseChunks} chunk(s) — the valid subset was applied.`,
+          );
+          addWarningCode('cleanup-invalid-response');
         }
 
         const chunkFailures = settledWindows
@@ -1017,6 +1593,18 @@ export function useTranscriberPipeline() {
             upstreamStatus: httpStatus,
             upstreamBody: bodyText,
           });
+          setDebugManifest(
+            debugLog,
+            buildManifest({
+              attempt,
+              quality,
+              repairModel: repairModelUsed,
+              correctionRan: true,
+              classificationModel: null,
+              cleanupChunks: { expected: windows.length, completed: cleanupCache.results.size },
+              classificationChunks: null,
+            }),
+          );
           setState((s) => ({
             ...s,
             status: 'failed',
@@ -1054,7 +1642,7 @@ export function useTranscriberPipeline() {
           });
         }
 
-        finalizeComplete(cleanedSegments, warning, correctionFailedChunks, windows.length, settings.argumentTagging);
+        await finalizeComplete(cleanedSegments, warning, correctionFailedChunks, windows.length, true);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Something went wrong.';
         setState((s) => ({
@@ -1085,7 +1673,7 @@ export function useTranscriberPipeline() {
         stopTimer();
       }
     },
-    [startTimer, stopTimer],
+    [runClassificationStage, startTimer, stopTimer],
   );
 
   const run = useCallback((opts: TranscriberRunOptions) => performRun(opts), [performRun]);
@@ -1122,6 +1710,49 @@ export function useTranscriberPipeline() {
     setState((s) => (s.rawText ? { ...s, status: 'complete', cleanedText: null, recovery: null, error: null } : s));
   }, []);
 
+  /**
+   * Reruns ONLY the argument-classification stage (plus the pure range
+   * construction) over the last completed run's turn blocks, with the
+   * CURRENT settings — after changing the classifier model or range
+   * expansion in Settings. Never re-transcribes or re-corrects anything:
+   * an unchanged classifier model reuses the cached window classifications
+   * outright, so an expansion-only change costs zero model calls.
+   */
+  const reclassify = useCallback(async () => {
+    const input = classificationInputRef.current;
+    if (!input || input.blocks.length === 0) return;
+    const settings = readTranscriberSettings();
+
+    setState((s) => ({ ...s, status: 'classifying' }));
+    const classified = await runClassificationStage({
+      blocks: input.blocks,
+      contextNotes: input.contextNotes,
+      settings,
+      cacheKeyBase: input.cacheKeyBase,
+      allowCacheRead: true,
+    });
+
+    if (!classified) {
+      setState((s) => ({
+        ...s,
+        status: 'complete',
+        warning: 'Argument classification failed — the cleaned transcript is unaffected, but tags are unavailable.',
+      }));
+      return;
+    }
+
+    const argumentRelevantText = formatArgumentRelevantTranscript(classified.blocks, {
+      expandSeconds: settings.argumentExpandSeconds,
+    });
+    setState((s) => ({
+      ...s,
+      status: 'complete',
+      turnBlocks: classified.blocks,
+      tagSummary: classified.tagSummary,
+      argumentRelevantText,
+    }));
+  }, [runClassificationStage]);
+
   const reset = useCallback(() => {
     stopTimer();
     lastRunOptionsRef.current = null;
@@ -1131,8 +1762,11 @@ export function useTranscriberPipeline() {
     geminiWindowCacheRef.current = null;
     attemptCacheRef.current = null;
     cleanupCacheRef.current = null;
+    speakerRepairCacheRef.current = null;
+    classifyCacheRef.current = null;
+    classificationInputRef.current = null;
     setState(initialState);
   }, [stopTimer]);
 
-  return { state, run, retryWith, resume, completeWithRawOnly, reset };
+  return { state, run, retryWith, resume, completeWithRawOnly, reclassify, reset };
 }
