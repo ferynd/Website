@@ -63,7 +63,7 @@ export default function StepTextReviewModal({
           {items.map((item, i) => (
             <li key={`${item.list}-${item.stepId}`} className="rounded-lg border border-border bg-surface-2 p-3 space-y-2">
               <p className="text-xs text-text-3">
-                {item.list === 'prepSteps' ? 'Prep' : 'Cook'} · {sectionName(item.sectionId)}
+                {item.list === 'prepSteps' ? 'Prep' : 'Execution'} · {sectionName(item.sectionId)}
                 {item.suggestedText === null && (
                   <span className="ml-2 text-warning">
                     “{oldName}” not found verbatim — edit manually if this step needs it.

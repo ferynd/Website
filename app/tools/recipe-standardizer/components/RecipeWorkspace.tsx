@@ -3,14 +3,14 @@
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: accordion panel registry                       */
 /* ------------------------------------------------------------ */
-const PANEL_KEYS = ['overview', 'ingredients', 'prep', 'cook', 'scaling', 'json'] as const;
+const PANEL_KEYS = ['overview', 'ingredients', 'prep', 'execution', 'scaling', 'json'] as const;
 type PanelKey = (typeof PANEL_KEYS)[number];
 
 const PANEL_LABELS: Record<PanelKey, string> = {
   overview: 'Overview',
   ingredients: 'Ingredients',
   prep: 'Prep',
-  cook: 'Cook',
+  execution: 'Execution',
   scaling: 'Scaling',
   json: 'JSON',
 };
@@ -42,21 +42,25 @@ import {
   type AffectedStep,
   type StepTextUpdate,
 } from '../lib/stepTextUpdate';
+import { resolveTechnique, type Technique } from '../lib/techniques';
 import type { Recipe, RecipeIngredient } from '../lib/types';
+import { groupAnchor, normalizeRecipeWorkflow, stepAnchor } from '../lib/workflow';
 import AccordionSection from './AccordionSection';
+import ExecutionSectionCard from './ExecutionSectionCard';
 import ImportPanel from './ImportPanel';
 import IngredientsView from './IngredientsView';
+import PrepGroupCard from './PrepGroupCard';
 import RecipeLibrary from './RecipeLibrary';
 import SaveChoiceModal from './SaveChoiceModal';
 import ScalingPanel from './ScalingPanel';
-import SectionCard from './SectionCard';
 import StepTextReviewModal from './StepTextReviewModal';
+import WorkflowTimeline from './WorkflowTimeline';
 
 const PANEL_ICONS: Record<PanelKey, React.ReactNode> = {
   overview: <Info size={18} />,
   ingredients: <ListChecks size={18} />,
   prep: <ClipboardList size={18} />,
-  cook: <ChefHat size={18} />,
+  execution: <ChefHat size={18} />,
   scaling: <Scale size={18} />,
   json: <FileJson size={18} />,
 };
@@ -91,8 +95,10 @@ export default function RecipeWorkspace() {
   const [stepReview, setStepReview] = useState<StepReviewState | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [jsonCopied, setJsonCopied] = useState(false);
+  // Only Overview (and its timeline) starts open — the working panels are a
+  // tap away via the sticky nav, keeping the default view phone-concise.
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
-    overview: true, ingredients: true, prep: true, cook: true, scaling: false, json: false,
+    overview: true, ingredients: false, prep: false, execution: false, scaling: false, json: false,
   });
   const panelRefs = useRef<Partial<Record<PanelKey, HTMLElement | null>>>({});
   // Latest committed draft, for async flows that must not act on a stale closure.
@@ -319,27 +325,20 @@ export default function RecipeWorkspace() {
     }
   };
 
-  const orderedSections = useMemo(
-    () => (draft ? [...draft.sections].sort((a, b) => a.order - b.order) : []),
-    [draft],
-  );
-  const prepStepsBySection = useMemo(() => {
-    const map = new Map<string, Recipe['prepSteps']>();
-    draft?.prepSteps.forEach((step) => {
-      map.set(step.sectionId, [...(map.get(step.sectionId) ?? []), step]);
+  // One normalized workflow view model drives the Timeline, Prep,
+  // Execution, and Ingredients displays for both v1 and v2 recipes.
+  const workflow = useMemo(() => (draft ? normalizeRecipeWorkflow(draft) : null), [draft]);
+  const techniquesByAnchor = useMemo(() => {
+    const map = new Map<string, Technique[]>();
+    if (!draft || !workflow) return map;
+    workflow.techniqueAnchors.forEach((ids, anchor) => {
+      const resolved = ids
+        .map((id) => resolveTechnique(id, draft.techniqueOverrides))
+        .filter((t): t is Technique => t !== null);
+      if (resolved.length > 0) map.set(anchor, resolved);
     });
     return map;
-  }, [draft]);
-  const activeStepsBySection = useMemo(() => {
-    const map = new Map<string, Recipe['activeSteps']>();
-    draft?.activeSteps.forEach((step) => {
-      map.set(step.sectionId, [...(map.get(step.sectionId) ?? []), step]);
-    });
-    return map;
-  }, [draft]);
-
-  const prepSections = orderedSections.filter((s) => s.type === 'prep' || (prepStepsBySection.get(s.id)?.length ?? 0) > 0);
-  const cookSections = orderedSections.filter((s) => s.type !== 'prep' || (activeStepsBySection.get(s.id)?.length ?? 0) > 0);
+  }, [draft, workflow]);
 
   return (
     <div className="space-y-6">
@@ -372,20 +371,23 @@ export default function RecipeWorkspace() {
 
       {draft && (
         <>
-          {/* Sticky jump bar */}
+          {/* Sticky jump bar — nav stays one line and scrolls horizontally
+              on narrow screens; save/close never scroll out of reach. */}
           <div className="sticky top-0 z-30 -mx-1 px-1 py-2 bg-bg/95 backdrop-blur border-b border-border">
-            <div className="flex flex-wrap items-center gap-1.5">
-              {PANEL_KEYS.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => jumpTo(key)}
-                  className="rounded-lg px-3 py-1.5 text-sm font-medium text-text-2 hover:text-text hover:bg-surface-2 focus-ring"
-                >
-                  {PANEL_LABELS[key]}
-                </button>
-              ))}
-              <span className="ml-auto flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
+              <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
+                {PANEL_KEYS.map((key) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => jumpTo(key)}
+                    className="flex-shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium whitespace-nowrap text-text-2 hover:text-text hover:bg-surface-2 focus-ring"
+                  >
+                    {PANEL_LABELS[key]}
+                  </button>
+                ))}
+              </div>
+              <span className="flex flex-shrink-0 items-center gap-2">
                 {dirty && <span className="text-xs text-warning" title="Unsaved changes">● unsaved</span>}
                 <Button size="sm" onClick={handleSaveClick} className="inline-flex items-center gap-1.5">
                   <Save size={14} /> Save
@@ -444,18 +446,8 @@ export default function RecipeWorkspace() {
                   </div>
                 </div>
                 <div>
-                  <p className="mb-2 text-sm font-semibold uppercase tracking-wide text-text-3">Workflow at a glance</p>
-                  <ol className="space-y-1 text-sm">
-                    {orderedSections.map((section) => (
-                      <li key={section.id} className="flex items-baseline gap-2">
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${section.type === 'prep' ? 'bg-info/10 text-info' : section.type === 'execution' ? 'bg-warning/10 text-warning' : 'bg-accent/10 text-accent'}`}>
-                          {section.type}
-                        </span>
-                        <span className="font-medium text-text">{section.name}</span>
-                        {section.purpose && <span className="text-text-3">— {section.purpose}</span>}
-                      </li>
-                    ))}
-                  </ol>
+                  <p className="mb-3 text-sm font-semibold uppercase tracking-wide text-text-3">Timeline</p>
+                  {workflow && <WorkflowTimeline timeline={workflow.timeline} />}
                 </div>
                 {draft.notes.length > 0 && (
                   <div>
@@ -476,55 +468,74 @@ export default function RecipeWorkspace() {
               open={open.ingredients}
               onToggle={() => togglePanel('ingredients')}
             >
-              <IngredientsView
-                recipe={draft}
-                factor={scale.factor}
-                onIngredientChange={handleIngredientChange}
-                onRunNutritionMatch={runNutritionMatch}
-              />
+              {workflow && (
+                <IngredientsView
+                  recipe={draft}
+                  workflow={workflow}
+                  factor={scale.factor}
+                  onIngredientChange={handleIngredientChange}
+                  onRunNutritionMatch={runNutritionMatch}
+                />
+              )}
             </AccordionSection>
 
             <AccordionSection
               ref={(el) => { panelRefs.current.prep = el; }}
               title={PANEL_LABELS.prep}
               icon={PANEL_ICONS.prep}
-              subtitle="Mise en place — every prep step in recommended order"
+              subtitle="Named prepared inputs — what to stage, when, and how to hold it"
               open={open.prep}
               onToggle={() => togglePanel('prep')}
             >
               <div className="space-y-3">
-                {prepSections.length === 0 && <p className="text-sm text-text-3">This recipe has no prep steps.</p>}
-                {prepSections.map((section) => (
-                  <SectionCard
-                    key={section.id}
-                    section={section}
-                    recipe={draft}
-                    steps={prepStepsBySection.get(section.id) ?? []}
-                    mode="prep"
+                {workflow && workflow.prepGroups.length === 0 && workflow.residualPrepSections.length === 0 && (
+                  <p className="text-sm text-text-3">This recipe has no prep groups.</p>
+                )}
+                {workflow?.prepGroups.map((group) => (
+                  <PrepGroupCard
+                    key={group.id}
+                    group={group}
                     factor={scale.factor}
+                    techniques={techniquesByAnchor.get(groupAnchor(group.id)) ?? []}
                   />
+                ))}
+                {/* v2 prep steps not owned by a group still render — imported
+                    data is never silently hidden. */}
+                {workflow?.residualPrepSections.map(({ section, steps }) => (
+                  <div key={section.id} className="rounded-lg border border-border bg-surface-2 p-4 space-y-2">
+                    <h3 className="font-semibold text-text">{section.name}</h3>
+                    <ol className="space-y-1.5">
+                      {steps.map((step, i) => (
+                        <li key={step.id} className="flex gap-2 text-sm text-text">
+                          <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}.</span>
+                          <p>{step.text}</p>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
                 ))}
               </div>
             </AccordionSection>
 
             <AccordionSection
-              ref={(el) => { panelRefs.current.cook = el; }}
-              title={PANEL_LABELS.cook}
-              icon={PANEL_ICONS.cook}
-              subtitle="Active steps in cooking order"
-              open={open.cook}
-              onToggle={() => togglePanel('cook')}
+              ref={(el) => { panelRefs.current.execution = el; }}
+              title={PANEL_LABELS.execution}
+              icon={PANEL_ICONS.execution}
+              subtitle="Steps that consume named prepared inputs and prior results"
+              open={open.execution}
+              onToggle={() => togglePanel('execution')}
             >
               <div className="space-y-3">
-                {cookSections.length === 0 && <p className="text-sm text-text-3">This recipe has no active steps.</p>}
-                {cookSections.map((section) => (
-                  <SectionCard
-                    key={section.id}
-                    section={section}
+                {workflow && workflow.executionSections.length === 0 && (
+                  <p className="text-sm text-text-3">This recipe has no execution steps.</p>
+                )}
+                {workflow?.executionSections.map((data) => (
+                  <ExecutionSectionCard
+                    key={data.section.id}
+                    data={data}
                     recipe={draft}
-                    steps={activeStepsBySection.get(section.id) ?? []}
-                    mode="active"
                     factor={scale.factor}
+                    techniquesForStep={(stepId) => techniquesByAnchor.get(stepAnchor(stepId)) ?? []}
                   />
                 ))}
               </div>

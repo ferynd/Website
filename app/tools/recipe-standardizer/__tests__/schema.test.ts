@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseRecipeJson } from '../lib/schema';
-import { validRecipeJson } from './fixtures';
+import { UNLINKED_NUTRITION } from '../lib/types';
+import { validRecipeJson, validV2RecipeJson } from './fixtures';
 
 const parseObject = (obj: unknown) => parseRecipeJson(JSON.stringify(obj));
 
@@ -177,5 +178,119 @@ describe('parseRecipeJson', () => {
     raw.shoppingList = [{ ingredientId: 'bogus', displayName: 'bogus' }] as never[];
     const result = parseObject(raw);
     expect(result.ok).toBe(true);
+  });
+});
+
+describe('parseRecipeJson — schema versions and the v2 workflow model', () => {
+  it('parses a saved v1 recipe silently through the compatibility path', () => {
+    const result = parseObject(validRecipeJson());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // No per-load warning for the known v1 path.
+    expect(result.warnings).toEqual([]);
+    // Normalized into the in-memory v2 shape with safe defaults.
+    expect(result.recipe.schemaVersion).toBe(2);
+    expect(result.recipe.prepGroups).toEqual([]);
+    expect(result.recipe.timeline).toEqual([]);
+    expect(result.recipe.techniqueOverrides).toEqual([]);
+    result.recipe.activeSteps.forEach((step) => {
+      expect(step.usesPrepGroupIds).toEqual([]);
+      expect(step.usesResultIds).toEqual([]);
+      expect(step.result).toBeNull();
+      expect(step.techniqueIds).toEqual([]);
+    });
+  });
+
+  it('parses the v2 fixture cleanly', () => {
+    const result = parseObject(validV2RecipeJson());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings).toEqual([]);
+    expect(result.recipe.prepGroups).toHaveLength(8);
+    expect(result.recipe.timeline).toHaveLength(7);
+  });
+
+  it('warns on an unknown future schema version instead of silently accepting it', () => {
+    const raw = validV2RecipeJson() as Record<string, unknown>;
+    raw.schemaVersion = 3;
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings.some((w) => w.includes('newer than this tool supports'))).toBe(true);
+  });
+
+  it('defaults a missing nutritionLink so the v2 prompt need not emit it', () => {
+    const result = parseObject(validV2RecipeJson());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    result.recipe.ingredients.forEach((ing) => {
+      expect(ing.nutritionLink).toEqual(UNLINKED_NUTRITION);
+    });
+  });
+
+  it('warns on technique ids outside the glossary and overrides', () => {
+    const raw = validV2RecipeJson();
+    raw.prepGroups[0].techniqueIds = ['mystery-move'];
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings.some((w) => w.includes('mystery-move'))).toBe(true);
+  });
+
+  it('accepts a technique override and does not warn for it', () => {
+    const raw = validV2RecipeJson();
+    raw.prepGroups[0].techniqueIds = ['special-crumble'];
+    (raw.techniqueOverrides as unknown[]).push({ id: 'special-crumble', name: 'Special crumble', help: 'Press gently.' });
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('rejects during-wait timing without a waitEntryId, naming the path', () => {
+    const raw = validV2RecipeJson();
+    raw.prepGroups[2].timing = { when: 'during-wait', note: '' } as never;
+    const result = parseObject(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.includes('prepGroups[2].timing.waitEntryId'))).toBe(true);
+  });
+
+  it('treats an unknown timing.when as "start" with a warning', () => {
+    const raw = validV2RecipeJson();
+    raw.prepGroups[0].timing = { when: 'whenever', note: 'soon' } as never;
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recipe.prepGroups[0].timing).toEqual({ when: 'start', note: 'soon' });
+    expect(result.warnings.some((w) => w.includes('prepGroups[0].timing.when'))).toBe(true);
+  });
+
+  it('rejects a step result missing its name', () => {
+    const raw = validV2RecipeJson();
+    raw.activeSteps[0].result = { id: 'res-x' } as never;
+    const result = parseObject(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.includes('activeSteps[0].result'))).toBe(true);
+  });
+
+  it('rejects a timeline reference with an invalid kind', () => {
+    const raw = validV2RecipeJson();
+    raw.timeline[0].references = [{ kind: 'bowl', id: 'sec-crust' }] as never[];
+    const result = parseObject(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.includes('timeline[0].references[0].kind'))).toBe(true);
+  });
+
+  it('surfaces workflow chronology violations as import errors', () => {
+    const raw = validV2RecipeJson();
+    // The mix step consuming the sealed crust puts a consumer before its producer.
+    raw.activeSteps[0].usesResultIds = ['res-sealed-crust'];
+    const result = parseObject(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.errors.some((e) => e.includes('before its producing step'))).toBe(true);
   });
 });
