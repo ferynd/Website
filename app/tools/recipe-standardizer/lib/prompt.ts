@@ -7,187 +7,69 @@
  * the user pastes this prompt plus their recipe into ChatGPT manually, then
  * pastes the strict-JSON result back into the Import panel.
  *
- * Keep the JSON shape here in sync with lib/types.ts and lib/schema.ts.
- * There is deliberately no `shoppingList` in the shape — the tool always
- * derives the shopping/grocery views from ingredients, so the prompt spends
- * the model's effort on accurate section/grocery/reference metadata instead.
- * (The importer still tolerates and ignores a pasted `shoppingList`.)
+ * Keep the JSON shape in sync with lib/types.ts and lib/schema.ts. The shape
+ * deliberately omits `shoppingList` (always derived from ingredients),
+ * `nutritionLink` (the importer initializes it), and `equipment` arrays
+ * (generic equipment inventories are noise — a prep group's `destination`
+ * carries the useful part). Technique help is site-owned (lib/techniques.ts):
+ * recipes emit ids from the supported list instead of repeating explanations.
  */
 export const CHATGPT_CONVERSION_PROMPT = `Convert the recipe I provide into strict JSON for my Recipe Standardizer tool.
 
-Output valid JSON only. Do not include markdown, commentary, explanations, or text outside the JSON.
+Output one valid JSON object only — no markdown, commentary, or text outside it.
 
-Goal:
-Reorganize the recipe into a workflow-first format that makes it easier to prep, stage, cook, and scale.
+Model:
+- Grams are primary; common secondary measures (cups, tbsp, pieces) go in "equivalent". Estimate missing grams and "estimatedFinalWeightG" when reasonable; flag uncertainty in "notes". No nutrition, no shopping list.
+- A prep group is a NAMED INPUT that exists before an execution step and can wait until first use: ingredients measured into one container ("crust ingredients in mixer bowl"); washing/peeling/chopping/zesting/juicing; a strained infusion for later use; gelatin bloomed just before dissolving; chocolate melted just before brushing.
+- NOT prep: actions that create or transform the dish — mixing, creaming, folding, cooking, pressing, filling, baking. Those are execution steps ("activeSteps"). "Let the mixer break down the cereal" is execution, never a prep note.
+- Steps consume named things: list consumed prep groups in "usesPrepGroupIds" and prior results in "usesResultIds". When a later step needs a step's product, set "result" to {"id","name"} with a stable id and short name ("crust mixture"). Step text says "Mix the crust ingredients in the mixer bowl" or "Transfer the crust mixture" — never re-list ingredients in prose. Still fill "ingredientRefs" accurately (the tool builds verify lists from ids).
 
-General rules:
-- Use grams as the primary measurement wherever possible.
-- Include common equivalent measurements as secondary display values, such as cups, tablespoons, teaspoons, pieces, cloves, etc.
-- Preserve important source details, but reorganize the recipe for practical kitchen workflow.
-- Estimate missing gram weights when reasonable and note uncertainty.
-- Estimate final recipe yield weight in grams when possible and note uncertainty.
-- Separate prep steps from active cooking/baking steps.
-- Group ingredients and steps by actual kitchen workflow, not grocery category.
-- Include ingredient IDs and reference those IDs in steps where useful.
-- Flag assumptions, uncertain conversions, or missing details in notes.
-- Do not calculate nutrition.
-- Do not output a shopping list — the tool derives shopping and grocery views from the ingredients, so ingredient metadata must be accurate instead.
+Each prep group:
+- "timing.when": "start" | "during-wait" (+ "waitEntryId": a wait timeline entry id) | "after-section" (+ "sectionId") | "just-in-time" (+ "beforeStepId": the step it immediately precedes). Put realistic work inside waits; use just-in-time for anything that must not sit (melted chocolate, bloomed gelatin, freshly whipped dairy).
+- "firstUseStepId": the exact first consuming step.
+- "holdNote": how to hold until use — required for perishable/temperature-sensitive groups ("keep refrigerated until the tea base is almost ready").
+- "destination" only when it says where staged ingredients go ("mixer bowl"). Never produce equipment inventories.
 
-Ingredient metadata accuracy (important — the tool builds every view from these fields):
-- Give each ingredient a clean, specific displayName (e.g. "unsalted butter", not "butter (unsalted, softened)") — put preparation details in prepNote instead.
-- Set sectionIds to every section where the ingredient is actually used, and primarySectionId to the section where it is first measured or staged.
-- Set groceryCategory on every ingredient using common store sections (e.g. Produce, Dairy, Meat, Baking, Pantry, Spices, Frozen).
-- Write a useful prepNote whenever the ingredient needs preparation (softened, chopped, room temperature, divided, etc.).
-- In every prep and active step, list the ids of the ingredients that step uses in ingredientRefs — the tool renders live quantities from these references.
+Timeline (one recommended path):
+- Kinds "prep"|"execution"|"wait"|"serve"; relative "phaseLabel" ("Day before", "While the tart thaws") — never invented clock times or durations.
+- Typed "references" drive each entry's title; use "titleOverride" only when no referenced name fits.
+- "activeTime" = hands-on work; "passiveTime" = waiting/elapsed — keep them separate.
+- Work done during a wait sets "duringEntryId" to that wait's id.
+- Alternate paths (refrigerator vs room-temperature thaw) go in "alternatives"; the recommended path stays primary.
 
-Workflow grouping rules:
-Use a hybrid prep + execution structure.
+Techniques: where one materially affects success, put its id on the group/step where it first matters, ONLY from: bloom-powdered-gelatin, bloom-sheet-gelatin, fold, medium-soft-peaks, stiff-peaks, emulsify, temper-eggs, water-bath, blind-bake, ribbon-stage. The tool owns the explanations; add a "techniqueOverrides" {"id","name","help"} entry only for unusual source-mandated handling. Distinguish powdered vs sheet gelatin when stated; when the source or a package determines an amount, say so — never invent values.
 
-A workflow section is a group of ingredients and steps that belong together because they are:
-- Measured into the same bowl/container
-- Chopped, whisked, beaten, melted, cooked, chilled, or rested together
-- Needed before another step can happen
-- Added to the recipe at the same time
-- Part of a distinct component, such as dough, sauce, filling, topping, glaze, marinade, dressing, garnish, or final assembly
+Fidelity: preserve every source ingredient, quantity, order dependency, waiting period, and make-ahead instruction. Sections = one component each (crust, filling, assembly); record order needs in "dependsOn". Every ingredient: clean "displayName" (prep details in "prepNote"), correct "sectionIds"/"primarySectionId", a common-store "groceryCategory" (Produce, Dairy, Baking, Pantry…).
 
-Do not group ingredients only by broad ingredient type. For example, "Dry Mix" is useful only when those dry ingredients are actually combined together. "Wet Base" is useful only when those ingredients are actually mixed or staged together.
-
-Preferred structure:
-- Prep sections first
-- Execution sections second
-
-For each section, include:
-- Section name
-- Section purpose
-- Ingredients used
-- Prep steps
-- Active/execution steps
-- Equipment or container notes where useful
-- Timing, temperature, texture, and visual cues where useful
-- Dependency notes where useful, such as "do this early because it needs to chill"
-
-Example sectioning for a cookie recipe:
-Prep Mix-Ins:
-- Chop chocolate and nuts.
-- Chill while preparing dough.
-
-Prep Dry Bowl:
-- Measure dry ingredients into one bowl.
-- Whisk and set aside.
-
-Prep Wet Ingredients:
-- Soften butter.
-- Measure sugars into mixer bowl.
-- Crack eggs separately.
-- Measure vanilla.
-
-Prep Baking Setup:
-- Preheat oven.
-- Line baking sheets.
-- Prepare scoop or scale.
-
-Make Wet Base:
-- Cream butter and sugars.
-- Add eggs and vanilla.
-
-Build Dough:
-- Add dry mix.
-- Fold in chilled mix-ins.
-
-Portion, Bake, and Finish:
-- Portion dough.
-- Bake.
-- Cool.
-- Store.
-
-This example shows the intended organization, not the full level of detail. The actual output should include more specific prep methods, quantities, equipment, timing, visual cues, temperatures, and dependency notes when the source recipe supports them.
-
-Use this JSON shape. Add fields if necessary, but keep it predictable. Every section id, ingredient id, and step id must be unique. Every sectionId, sectionIds entry, primarySectionId, dependsOn entry, and ingredientRefs entry must exactly match one of the declared ids:
+Use exactly this shape — no extra fields; every id unique; every reference must match a declared id:
 
 {
-  "schemaVersion": 1,
-  "recipeId": null,
-  "name": "",
-  "source": {
-    "type": "",
-    "url": "",
-    "notes": ""
-  },
-  "servings": {
-    "baselineServings": null,
-    "currentServings": null,
-    "portionCount": null,
-    "portionSizeG": null
-  },
-  "yield": {
-    "estimatedFinalWeightG": null,
-    "actualFinalWeightG": null,
-    "yieldNotes": ""
-  },
-  "sections": [
-    {
-      "id": "",
-      "name": "",
-      "type": "prep|execution|combined",
-      "purpose": "",
-      "order": 1,
-      "dependsOn": [],
-      "equipment": [],
-      "notes": ""
-    }
-  ],
-  "ingredients": [
-    {
-      "id": "",
-      "displayName": "",
-      "quantityG": null,
-      "equivalent": "",
-      "prepNote": "",
-      "sectionIds": [],
-      "primarySectionId": "",
-      "groceryCategory": "",
-      "optional": false,
-      "substitutionNotes": "",
-      "conversionNotes": "",
-      "nutritionLink": {
-        "status": "unlinked",
-        "foodItemId": null,
-        "matchedName": null,
-        "matchConfidence": null,
-        "needsUserReview": true
-      }
-    }
-  ],
-  "prepSteps": [
-    {
-      "id": "",
-      "sectionId": "",
-      "text": "",
-      "ingredientRefs": [],
-      "equipment": [],
-      "timing": "",
-      "temperature": "",
-      "visualCue": "",
-      "dependencyNote": "",
-      "order": 1
-    }
-  ],
-  "activeSteps": [
-    {
-      "id": "",
-      "sectionId": "",
-      "text": "",
-      "ingredientRefs": [],
-      "equipment": [],
-      "timing": "",
-      "temperature": "",
-      "visualCue": "",
-      "dependencyNote": "",
-      "order": 1
-    }
-  ],
-  "notes": []
+ "schemaVersion":2,
+ "name":"",
+ "source":{"type":"","url":"","notes":""},
+ "servings":{"baselineServings":null,"portionCount":null,"portionSizeG":null},
+ "yield":{"estimatedFinalWeightG":null,"yieldNotes":""},
+ "sections":[{"id":"","name":"","type":"prep|execution|combined","purpose":"","order":1,"dependsOn":[],"notes":""}],
+ "ingredients":[{"id":"","displayName":"","quantityG":null,"equivalent":"","prepNote":"","sectionIds":[],"primarySectionId":"","groceryCategory":"","optional":false,"substitutionNotes":"","conversionNotes":""}],
+ "prepGroups":[{"id":"","name":"","ingredientIds":[],"destination":"","instruction":"","timing":{"when":"start","note":""},"firstUseStepId":"","holdNote":"","details":"","techniqueIds":[]}],
+ "prepSteps":[],
+ "activeSteps":[{"id":"","sectionId":"","text":"","ingredientRefs":[],"timing":"","temperature":"","visualCue":"","dependencyNote":"","order":1,"usesPrepGroupIds":[],"usesResultIds":[],"result":null,"techniqueIds":[]}],
+ "timeline":[{"id":"","kind":"prep|execution|wait|serve","phaseLabel":"","references":[{"kind":"section|step|prepGroup","id":""}],"titleOverride":"","activeTime":"","passiveTime":"","duringEntryId":"","alternatives":[{"label":"","activeTime":"","passiveTime":"","note":""}],"order":1}],
+ "techniqueOverrides":[],
+ "notes":[]
 }
+
+Final audit — do internally; output only the JSON:
+1. Reconstruct the recipe from first prep through serving using your JSON alone.
+2. Every prep group has a correct firstUseStepId and a consuming step.
+3. No execution transformation is labeled prep.
+4. Perishable or temperature-sensitive groups have suitable holdNote values.
+5. Just-in-time items are not staged earlier than needed.
+6. Every step references its prep groups or prior results where applicable.
+7. Section dependencies are acyclic and chronologically valid.
+8. The timeline overlaps work with passive waits sensibly.
+9. Every ingredient, quantity, and required method matches the source.
+10. Output is one valid JSON object with nothing outside it.
 
 Now convert the following recipe:
 [PASTE RECIPE HERE]`;
