@@ -31,14 +31,19 @@ interface StepInfo {
   path: string;
 }
 
-const buildStepInfos = (recipe: Recipe): Map<string, StepInfo> => {
+const buildStepInfos = (recipe: Recipe, errors: string[]): Map<string, StepInfo> => {
   const infos = new Map<string, StepInfo>();
   let index = 0;
   (['prepSteps', 'activeSteps'] as const).forEach((list) => {
     [...recipe[list]]
       .sort((a, b) => a.order - b.order)
       .forEach((step, sortedPos) => {
-        infos.set(step.id, { step, index, path: `${list}[${sortedPos}]` });
+        const path = `${list}[${sortedPos}]`;
+        if (infos.has(step.id)) {
+          errors.push(`${path}.id "${step.id}" is a duplicate step id — step ids must be globally unique across prepSteps and activeSteps.`);
+        } else {
+          infos.set(step.id, { step, index, path });
+        }
         index += 1;
       });
   });
@@ -81,7 +86,7 @@ export const validateWorkflow = (recipe: Recipe): WorkflowValidation => {
 
   const sectionById = new Map(recipe.sections.map((s) => [s.id, s]));
   const ingredientIds = new Set(recipe.ingredients.map((ing) => ing.id));
-  const stepInfos = buildStepInfos(recipe);
+  const stepInfos = buildStepInfos(recipe, errors);
   const timelineById = new Map<string, TimelineEntry>(recipe.timeline.map((t) => [t.id, t]));
 
   /* ---- prep group ids and ingredient references ---- */
@@ -135,6 +140,38 @@ export const validateWorkflow = (recipe: Recipe): WorkflowValidation => {
     });
   });
 
+  /* ---- timeline order lookup, including equivalent section/step refs ---- */
+  const sectionMinOrder = new Map<string, number>();
+  const stepMinOrder = new Map<string, number>();
+  const stepDirectMinOrder = new Map<string, number>();
+  const recordMinOrder = (map: Map<string, number>, id: string, order: number) => {
+    const existing = map.get(id);
+    if (existing === undefined || order < existing) map.set(id, order);
+  };
+
+  recipe.timeline.forEach((entry) => {
+    entry.references.forEach((ref) => {
+      if (ref.kind === 'section') {
+        recordMinOrder(sectionMinOrder, ref.id, entry.order);
+        stepInfos.forEach((info) => {
+          if (info.step.sectionId === ref.id) recordMinOrder(stepMinOrder, info.step.id, entry.order);
+        });
+      } else if (ref.kind === 'step') {
+        recordMinOrder(stepMinOrder, ref.id, entry.order);
+        recordMinOrder(stepDirectMinOrder, ref.id, entry.order);
+        const sectionId = stepInfos.get(ref.id)?.step.sectionId;
+        if (sectionId) recordMinOrder(sectionMinOrder, sectionId, entry.order);
+      }
+    });
+  });
+
+  const timelineOrderForStep = (stepId: string): number | undefined => {
+    const directOrder = stepMinOrder.get(stepId);
+    if (directOrder !== undefined) return directOrder;
+    const sectionId = stepInfos.get(stepId)?.step.sectionId;
+    return sectionId ? sectionMinOrder.get(sectionId) : undefined;
+  };
+
   /* ---- prep group timing, first use, and availability ---- */
   recipe.prepGroups.forEach((group, i) => {
     const path = `prepGroups[${i}]`;
@@ -175,30 +212,45 @@ export const validateWorkflow = (recipe: Recipe): WorkflowValidation => {
         );
       }
 
+      if (timing.when === 'during-wait') {
+        const waitOrder = timelineById.get(timing.waitEntryId)?.order;
+        const firstUseOrder = timelineOrderForStep(earliest.step.id);
+        if (waitOrder !== undefined && firstUseOrder !== undefined && waitOrder > firstUseOrder) {
+          errors.push(
+            `${path}.timing.waitEntryId "${timing.waitEntryId}" schedules prep group "${group.name}" after its first use (${earliest.path}).`,
+          );
+        }
+      }
+
       // Availability: just-in-time prep happens immediately before
       // timing.beforeStepId — a consumer earlier in the sequence would use
       // the group before it exists.
       if (timing.when === 'just-in-time' && stepInfos.has(timing.beforeStepId)) {
-        const availableAt = stepInfos.get(timing.beforeStepId)!.index;
+        const availableAt = stepInfos.get(timing.beforeStepId)!;
+        if (availableAt.step.id !== earliest.step.id) {
+          errors.push(
+            `${path}.timing.beforeStepId "${timing.beforeStepId}" must be the prep group's first consuming step (${earliest.path}).`,
+          );
+        }
         consumers.forEach((consumer) => {
-          if (consumer.index < availableAt) {
+          if (consumer.index < availableAt.index) {
             errors.push(
-              `${consumer.path} uses prep group "${group.name}" before it is prepared (just-in-time before ${stepInfos.get(timing.beforeStepId)!.path}).`,
+              `${consumer.path} uses prep group "${group.name}" before it is prepared (just-in-time before ${availableAt.path}).`,
             );
           }
         });
       }
 
       // Availability: after-section prep happens once the referenced section
-      // completes — a consumer in an earlier section would use it too soon.
+      // completes — a consumer in that section or an earlier section would use it too soon.
       if (timing.when === 'after-section') {
         const afterSection = sectionById.get(timing.sectionId);
         if (afterSection) {
           consumers.forEach((consumer) => {
             const consumerSection = sectionById.get(consumer.step.sectionId);
-            if (consumerSection && consumerSection.order < afterSection.order) {
+            if (consumerSection && consumerSection.order <= afterSection.order) {
               errors.push(
-                `${consumer.path} uses prep group "${group.name}" but the group is scheduled after section "${afterSection.name}", which comes later.`,
+                `${consumer.path} uses prep group "${group.name}" but the group is scheduled after section "${afterSection.name}", which has not completed yet.`,
               );
             }
           });
@@ -240,18 +292,7 @@ export const validateWorkflow = (recipe: Recipe): WorkflowValidation => {
   });
 
   /* ---- timeline order vs section/result dependencies ---- */
-  // Min timeline order per referenced section/step; sparse references are
-  // fine — the check only fires when both sides appear in the timeline.
-  const sectionMinOrder = new Map<string, number>();
-  const stepMinOrder = new Map<string, number>();
-  recipe.timeline.forEach((entry) => {
-    entry.references.forEach((ref) => {
-      const map = ref.kind === 'section' ? sectionMinOrder : ref.kind === 'step' ? stepMinOrder : null;
-      if (!map) return;
-      const existing = map.get(ref.id);
-      if (existing === undefined || entry.order < existing) map.set(ref.id, entry.order);
-    });
-  });
+  // Sparse references are fine — checks only fire when both sides appear in the timeline.
   recipe.sections.forEach((section) => {
     const dependentOrder = sectionMinOrder.get(section.id);
     if (dependentOrder === undefined) return;
@@ -270,7 +311,7 @@ export const validateWorkflow = (recipe: Recipe): WorkflowValidation => {
     info.step.usesResultIds.forEach((resultId) => {
       const producer = resultProducer.get(resultId);
       if (!producer) return;
-      const producerOrder = stepMinOrder.get(producer.step.id);
+      const producerOrder = stepDirectMinOrder.get(producer.step.id) ?? stepMinOrder.get(producer.step.id);
       if (producerOrder !== undefined && consumerOrder < producerOrder) {
         errors.push(
           `Timeline schedules a step before the step that produces its input "${producer.step.result?.name ?? resultId}".`,
@@ -279,7 +320,16 @@ export const validateWorkflow = (recipe: Recipe): WorkflowValidation => {
     });
   });
 
-  /* ---- cycles: section dependencies, and result production/consumption ---- */
+  /* ---- cycles: timeline overlaps, section dependencies, and result production/consumption ---- */
+  const timelineOverlapEdges = new Map<string, string[]>();
+  recipe.timeline.forEach((entry) => {
+    timelineOverlapEdges.set(entry.id, entry.duringEntryId ? [entry.duringEntryId] : []);
+  });
+  const timelineOverlapCycle = findCycle(recipe.timeline.map((entry) => entry.id), timelineOverlapEdges);
+  if (timelineOverlapCycle) {
+    errors.push(`timeline duringEntryId contains a cycle: ${timelineOverlapCycle.join(' → ')}.`);
+  }
+
   const sectionCycle = findCycle(
     recipe.sections.map((s) => s.id),
     new Map(recipe.sections.map((s) => [s.id, s.dependsOn])),

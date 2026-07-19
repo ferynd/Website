@@ -32,6 +32,13 @@ describe('validateWorkflow', () => {
     expect(errors.some((e) => e.includes('ing-ghost'))).toBe(true);
   });
 
+  it('errors on duplicate step ids across prep and active lists', () => {
+    const recipe = parsedTart();
+    recipe.prepSteps.push(structuredClone(recipe.activeSteps[0]));
+    const { errors } = validateWorkflow(recipe);
+    expect(errors.some((e) => e.includes('duplicate step id'))).toBe(true);
+  });
+
   it('errors on duplicate result ids (a result must have exactly one producer)', () => {
     const recipe = parsedTart();
     recipe.activeSteps[1].result = { id: 'res-crust-mixture', name: 'dupe' };
@@ -113,12 +120,29 @@ describe('validateWorkflow', () => {
     expect(errors.some((e) => e.includes('tl-nope'))).toBe(true);
   });
 
+  it('errors when during-wait prep is scheduled after its first use', () => {
+    const recipe = parsedTart();
+    const crust = recipe.prepGroups.find((g) => g.id === 'g-crust')!;
+    crust.timing = { when: 'during-wait', waitEntryId: 'tl-thaw', note: '' };
+    const { errors } = validateWorkflow(recipe);
+    expect(errors.some((e) => e.includes('after its first use'))).toBe(true);
+  });
+
   it('errors when just-in-time timing names a missing step', () => {
     const recipe = parsedTart();
     const choc = recipe.prepGroups.find((g) => g.id === 'g-white-choc')!;
     choc.timing = { when: 'just-in-time', beforeStepId: 'step-nope', note: '' };
     const { errors } = validateWorkflow(recipe);
     expect(errors.some((e) => e.includes('just-in-time') && e.includes('step-nope'))).toBe(true);
+  });
+
+  it('errors when just-in-time timing does not name the first consumer', () => {
+    const recipe = parsedTart();
+    const choc = recipe.prepGroups.find((g) => g.id === 'g-white-choc')!;
+    recipe.activeSteps[3].usesPrepGroupIds.push('g-white-choc');
+    choc.timing = { when: 'just-in-time', beforeStepId: recipe.activeSteps[3].id, note: '' };
+    const { errors } = validateWorkflow(recipe);
+    expect(errors.some((e) => e.includes('must be the prep group'))).toBe(true);
   });
 
   it('errors when a step uses a just-in-time group before it is prepared', () => {
@@ -134,6 +158,14 @@ describe('validateWorkflow', () => {
     const recipe = parsedTart();
     const cold = recipe.prepGroups.find((g) => g.id === 'g-mascarpone-cold')!;
     cold.timing = { when: 'after-section', sectionId: 'sec-serve', note: '' };
+    const { errors } = validateWorkflow(recipe);
+    expect(errors.some((e) => e.includes('scheduled after section'))).toBe(true);
+  });
+
+  it('errors when an after-section group is consumed in the same section', () => {
+    const recipe = parsedTart();
+    const cold = recipe.prepGroups.find((g) => g.id === 'g-infusion')!;
+    cold.timing = { when: 'after-section', sectionId: 'sec-filling', note: '' };
     const { errors } = validateWorkflow(recipe);
     expect(errors.some((e) => e.includes('scheduled after section'))).toBe(true);
   });
@@ -161,6 +193,19 @@ describe('validateWorkflow', () => {
     expect(errors.some((e) => e.includes('points at itself'))).toBe(true);
   });
 
+  it('errors on multi-entry duringEntryId cycles', () => {
+    const recipe = parsedTart();
+    const thaw = recipe.timeline.find((t) => t.id === 'tl-thaw')!;
+    const wait = structuredClone(thaw);
+    wait.id = 'tl-other-wait';
+    wait.order = thaw.order + 1;
+    thaw.duringEntryId = wait.id;
+    wait.duringEntryId = thaw.id;
+    recipe.timeline.push(wait);
+    const { errors } = validateWorkflow(recipe);
+    expect(errors.some((e) => e.includes('duringEntryId contains a cycle'))).toBe(true);
+  });
+
   it('errors when timeline order contradicts section dependencies', () => {
     const recipe = parsedTart();
     const filling = recipe.timeline.find((t) => t.id === 'tl-filling')!;
@@ -174,6 +219,22 @@ describe('validateWorkflow', () => {
     // The freeze step (timeline order 2) consumes the sealed crust; placing
     // its producer step in a later timeline entry contradicts chronology.
     recipe.timeline.find((t) => t.id === 'tl-serve')!.references.push({ kind: 'step', id: 'step-brush' });
+    const { errors } = validateWorkflow(recipe);
+    expect(errors.some((e) => e.includes('before the step that produces'))).toBe(true);
+  });
+
+  it('uses step references when checking section timeline dependencies', () => {
+    const recipe = parsedTart();
+    recipe.timeline.find((t) => t.id === 'tl-crust')!.references = [{ kind: 'step', id: 'step-mix-crust' }];
+    recipe.timeline.find((t) => t.id === 'tl-filling')!.order = 0;
+    const { errors } = validateWorkflow(recipe);
+    expect(errors.some((e) => e.includes('before its dependency'))).toBe(true);
+  });
+
+  it('uses section references when checking result dependency timeline order', () => {
+    const recipe = parsedTart();
+    recipe.timeline.find((t) => t.id === 'tl-crust')!.references = [{ kind: 'section', id: 'sec-crust' }];
+    recipe.timeline.find((t) => t.id === 'tl-filling')!.order = 0;
     const { errors } = validateWorkflow(recipe);
     expect(errors.some((e) => e.includes('before the step that produces'))).toBe(true);
   });
