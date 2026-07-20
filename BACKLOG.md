@@ -12,7 +12,7 @@ Backlogs live under `backlogs/`. Use `backlogs/AGENTS.md` to create and maintain
 
 ## Active feature backlogs — default order
 
-1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. Work P0–P5 in order; P6/P7 require explicit approval.
+1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. P0 is a user-assisted, non-blocking deployment check; default coding continues with P1, then P2–P5. P6/P7 require explicit approval.
 
 `backlogs/calorie-tracker.md` currently has no actionable items and is dormant until new work is added.
 
@@ -31,5 +31,5 @@ Backlogs live under `backlogs/`. Use `backlogs/AGENTS.md` to create and maintain
 1. Select the workstream from the user’s wording and current conversation context.
 2. Read `backlogs/AGENTS.md`, `backlogs/protocol.md`, and only the selected active backlog.
 3. Reconcile that backlog’s `[p]` items against `main`.
-4. Resume `[p] needs follow-up` first; otherwise take the first unblocked `[ ]` item whose dependencies are met.
+4. Resume `[p] needs follow-up` first; otherwise take the first unblocked `[ ]` item whose dependencies are met. `[p] blocked` user-assisted items remain visible but do not block unrelated dependency-ready coding work.
 5. Do not read unrelated backlogs, completed archives, or full audit reports.
