@@ -33,9 +33,9 @@ For “continue implementing fixes,” “continue audit remediation,” or “c
   - **Depends:** AR-01 for final release automation; emulator work may start immediately. **Evidence:** T09, T24–T27.
   - **Accept:** email alone grants no admin access; role grant/revocation tests pass; full rules/storage matrix passes; app/rules releases and rollback are traceable.
 
-- [ ] **AR-03 Enforce Conflict Tracker privacy and identity boundaries.** Findings F-036, F-069, F-071–F-074. Reflections must be rules-unreadable before the intended reveal; invitation claim, side/author ownership, submission state, shared editing, resolution, and deletion must be actor-bound and transaction-safe.
+- [ ] **AR-03 Enforce Conflict Tracker privacy, identity, and trend correctness.** Findings F-036, F-069–F-074. Reflections must be rules-unreadable before the intended reveal; invitation claim, side/author ownership, submission state, shared editing, resolution, and deletion must be actor-bound and transaction-safe; trend metrics must be correctly scoped and labeled rather than presenting one-conflict data as tracker-wide.
   - **Depends:** AR-02. **Evidence:** T14, T24.
-  - **Accept:** emulator tests prove pre-reveal isolation and immutable authorship; drafts cannot unlock shared data; concurrent submit/resolve/delete behavior is deterministic; copy matches enforced behavior.
+  - **Accept:** emulator tests prove pre-reveal isolation and immutable authorship; drafts cannot unlock shared data; concurrent submit/resolve/delete behavior is deterministic; trend queries and labels distinguish conflict-specific from tracker-wide results; copy matches enforced behavior.
 
 - [ ] **AR-04 Correct Trip Cost conservation, ownership, and participant lifecycle.** Findings F-031, F-087–F-092 and related concurrency/integration findings. Reject infeasible caps; require balances to conserve spend and net to zero; enforce payer/creator ownership; prevent participant deletion from stranding references; honor Planner deep links.
   - **Depends:** AR-02 for authorization tests. **Evidence:** T17, T24.
