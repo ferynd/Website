@@ -54,7 +54,7 @@ The active remediation backlog groups these findings into 18 root-cause initiati
 
 ## Priority state
 
-- Default feature work: Recipe Standardizer P0, then P1–P5.
+- Default feature coding: Recipe Standardizer P1, then P2–P5. P0 remains open in parallel as a user-assisted, non-blocking rules deployment and smoke-test check.
 - Default remediation work: AR-00, then wave/dependency order.
 - CalorieTracker: dormant; #57/#58 reconciled and archived as merged `649bf26`.
 - Transcriber: PR #152 closures archived; remaining fidelity/recovery work is AR-12.
