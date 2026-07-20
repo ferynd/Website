@@ -13,7 +13,7 @@ The highest risks are concentrated rather than random:
 1. public sensitive travel content and static injection;
 2. framework/deployment lifecycle and missing release gates;
 3. Firebase role/rules blast radius;
-4. Conflict Tracker confidentiality/state boundaries;
+4. Conflict Tracker confidentiality/state boundaries and misleading trend scope;
 5. Trip Cost financial conservation and actor attribution;
 6. Social Security model accuracy and presentation;
 7. destructive whole-document collaboration writes;
@@ -37,6 +37,8 @@ Finding counts describe audit observations, not 147 independent backlog tickets.
 
 Use a feature-specific backlog with ordered phases and a matching completed archive. A new feature request creates that hierarchy when none exists. Root `BACKLOG.md` is the routing/priority layer; it does not duplicate task detail.
 
+User-assisted deployment checks may remain open in parallel when explicitly marked non-blocking. They stay visible for reminder and evidence capture but do not prevent selection of the next dependency-ready coding phase.
+
 ### Remediation track
 
 Use `backlogs/audit-remediation.md`. Vague fix requests select the first actionable initiative by wave/dependency. The queue is organized around architectural outcomes, not finding-number order.
@@ -56,7 +58,7 @@ A backlog item is not complete when code is merely pushed. It becomes complete o
 - AR-00 remove/invalidate the public Japan operational itinerary;
 - AR-01 patch Next/RSC and replace the deprecated Cloudflare adapter path;
 - AR-02 establish verified Firebase roles, complete rules/storage tests, and controlled deployment;
-- AR-03 enforce Conflict Tracker privacy and identity/state invariants;
+- AR-03 enforce Conflict Tracker privacy, identity/state invariants, and correctly scoped/labeled trend metrics;
 - AR-04 correct Trip Cost financial conservation/ownership/lifecycle;
 - AR-05 contain and rebuild Social Security outputs.
 
@@ -118,4 +120,4 @@ The final process uses layered, low-token instructions:
 
 ## Final disposition
 
-The investigation is complete. Future work should proceed through feature phases or remediation initiatives, with targeted revalidation whenever `main` changes a reviewed subsystem. The first default feature item is Recipe Standardizer P0. The first default fix item is AR-00.
+The investigation is complete. Future work should proceed through feature phases or remediation initiatives, with targeted revalidation whenever `main` changes a reviewed subsystem. The first default feature coding item is Recipe Standardizer P1; P0 remains open in parallel as a user-assisted, non-blocking deployment check. The first default fix item is AR-00.
