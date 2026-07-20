@@ -40,9 +40,10 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 
 ## Active phases
 
-### P0 — Rules deployment and production smoke test
+### P0 — Rules deployment and production smoke test (user-assisted, non-blocking)
 
-- [ ] **Deploy current `firestore.rules` and verify the baseline flow.** No code unless deployment evidence reveals a defect.
+- [p] **Deploy current `firestore.rules` and verify the baseline flow.** No code unless deployment evidence reveals a defect.
+  > blocked — requires user or deployment automation access; P1–P5 may proceed while this evidence remains pending.
   - Import a schema-v2 recipe, save, reload, and run food matching.
   - Record environment, deployed rules version/date, test account role, and outcome.
   - Keep this open until the user or automation confirms production/non-production deployment.
