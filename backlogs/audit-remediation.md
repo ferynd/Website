@@ -21,9 +21,10 @@ For “continue implementing fixes,” “continue audit remediation,” or “c
 
 ## WAVE 0 — Immediate containment and release blockers
 
-- [ ] **AR-00 Remove and invalidate the public Japan operational itinerary.** Findings F-009, F-128–F-136, F-150. Remove public access and sensitive shipped content; assess repository/cache/history exposure; rotate still-sensitive references; decide whether to rebuild a sanitized archive.
+- [p] **AR-00 Remove and invalidate the public Japan operational itinerary.** Findings F-009, F-128–F-136, F-150. Remove public access and sensitive shipped content; assess repository/cache/history exposure; rotate still-sensitive references; decide whether to rebuild a sanitized archive.
   - **Depends:** none. **Evidence:** T23, T25, T26.
   - **Accept:** sensitive page is not publicly retrievable; cache/history/rotation actions are recorded; any replacement uses an allowlisted safe dataset and passes mobile/accessibility/static-injection checks.
+  > needs follow-up — `public/trips/JapanTrip.html` deleted and delisted from the Trips catalogue and homepage (no code path serves it going forward); checks: lint, build, `npm test` all pass. Not closable yet: (1) content is still recoverable from git history — closing requires a maintainer-authorized history rewrite (`git filter-repo` + coordinated force-push + re-clone) that this session will not perform unilaterally; (2) cache/search-engine exposure can't be assessed without a known production URL/deployed SHA (blocked, same gap as F-152/T26); (3) rotating the still-live booking/vendor references (JTB, GetYourGuide, MO-MO Paradise, phone numbers) requires contacting those vendors, outside code scope; (4) no sanitized public replacement was built — deferred decision, not required by Accept criteria unless a replacement ships. Decision needed from the user on 1–3 before this item can reach `[x]`.
 
 - [ ] **AR-01 Patch framework security and replace the deprecated Cloudflare path.** Findings F-003, F-004, F-005, F-008, F-147, F-152. Upgrade Next/RSC and migrate from `next-on-pages` to a supported deployment; pin Node/package manager; publish exact environment/build/rollback/smoke instructions.
   - **Depends:** none. **Evidence:** T02, T25, T26.

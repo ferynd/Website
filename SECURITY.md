@@ -54,6 +54,13 @@ To keep one source of truth, do not duplicate or partially copy rules in docs; r
 - Store only what is necessary for features (e.g., trip participants/emails, expenses, payments). 
 - If you add analytics or additional PII, document the fields and update this SECURITY.md.
 
+## Known Limitations
+
+### Public Trips content (AR-00, F-009)
+- `public/trips/JapanTrip.html` was a publicly served static page containing a real home address, a real workplace address, traveler names, exact travel dates, booking/reservation codes, prepaid amounts, and vendor phone numbers. It has been removed from `public/` and delisted from the Trips catalogue and homepage; it is no longer served by the app going forward.
+- **Residual exposure not yet closed:** the file's content remains recoverable from this repository's git history (it was never force-removed from past commits), and any external cache, search index, or archive that already crawled the deployed page may still hold a copy. Neither of those can be resolved by an in-repo code change — closing them requires a maintainer decision to run a history rewrite (e.g. `git filter-repo`, coordinated force-push, and re-clone of any existing checkouts) and to check/request removal from external caches (search engine cache, Wayback Machine) against the actual production URL, plus rotating any booking references that are still active. See `backlogs/audit-remediation.md` AR-00 for tracking.
+- No sanitized public replacement has been built. Rebuilding a safe travel retrospective (allowlisted fields only, no raw addresses/contacts/booking codes) is a separate, deferred decision.
+
 ## When to Update this Document
 - Any change to auth flows, Firestore structure, **rules**, data retention, or external scripts.
 - Any new tool that persists user data or reads sensitive data.

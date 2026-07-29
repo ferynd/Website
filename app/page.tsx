@@ -10,13 +10,7 @@ const ctaLinks = [
   { href: '/trips', label: 'Trips' },
 ];
 
-const featuredLinks = [
-  {
-    href: '/trips/JapanTrip.html',
-    label: 'Open Japan Trip',
-    description: 'Drop your file in /public/trips/JapanTrip.html and launch it from here.',
-  },
-];
+const featuredLinks: { href: string; label: string; description: string }[] = [];
 
 export default function Home() {
   return (
