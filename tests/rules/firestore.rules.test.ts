@@ -16,7 +16,7 @@ import { setDoc, doc, getDoc } from 'firebase/firestore';
 // which build on this harness rather than duplicating it here.
 
 const ADMIN_EMAIL = 'arkkahdarkkahd@gmail.com';
-const PROJECT_ID = 'demo-website-rules-test';
+const PROJECT_ID = 'demo-website-rules-test-firestore';
 
 let testEnv: RulesTestEnvironment;
 

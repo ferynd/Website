@@ -55,8 +55,25 @@ service cloud.firestore {
       let tracker = get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data;
       return isSignedIn() && (
         request.auth.uid in tracker.memberUids ||
-        (tracker.memberEmails != null && request.auth.token.email in tracker.memberEmails)
+        (tracker.memberEmails != null && request.auth.token.get('email', '').lower() in tracker.memberEmails)
       );
+    }
+
+    // Conflict Tracker: creator or Person A (the roles the UI already treats
+    // as the shared-section/deletion authority — now rules-enforced, AR-03/F-037).
+    function isConflictCreatorOrPersonA(trackerId) {
+      let tracker = get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data;
+      return isSignedIn() && (request.auth.uid == tracker.createdBy || request.auth.uid == tracker.personAUid);
+    }
+
+    // Conflict Tracker: true once both sides have a genuinely *submitted*
+    // (not draft) reflection, per the conflict doc's server-validated mirror
+    // fields (see the conflicts match block below) — the only signal the
+    // pre-reveal reflection read rule and the SharedSection UI gate trust
+    // (AR-03/F-036/F-069).
+    function conflictBothSubmitted(trackerId, conflictId) {
+      let c = get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)).data;
+      return c.personASubmittedAt != null && c.personBSubmittedAt != null;
     }
 
 		// Show Tracker: member of a list
@@ -199,39 +216,135 @@ service cloud.firestore {
       allow read: if isAdmin() || (
         isSignedIn() && (
           request.auth.uid in resource.data.memberUids ||
-          (resource.data.memberEmails != null && request.auth.token.email in resource.data.memberEmails)
+          (resource.data.memberEmails != null && request.auth.token.get('email', '').lower() in resource.data.memberEmails)
         )
       );
 
       allow create: if isSignedIn()
         && request.resource.data.personAUid == request.auth.uid
         && request.auth.uid in request.resource.data.memberUids
-        && request.resource.data.createdBy == request.auth.uid;
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.personBUid == null;
 
-      // Update directly evaluates resource.data 
-      allow update: if isAdmin() || (
-        isSignedIn() && (
-          request.auth.uid in resource.data.memberUids ||
-          (resource.data.memberEmails != null && request.auth.token.email in resource.data.memberEmails)
-        )
-      );
+      // Was: any member could rewrite every field (membership, side UIDs,
+      // creator) with no restriction (F-037). Now split into two narrow,
+      // non-overlapping transitions:
+      allow update: if isAdmin()
+        // (1) Person A may rename the tracker / edit custom tags — never
+        //     membership or side-identity fields.
+        || (isSignedIn()
+            && request.auth.uid == resource.data.personAUid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'customTags', 'updatedAt']))
+        // (2) Person B claim: a one-time personBUid null -> caller transition,
+        //     gated on the caller's email matching the invitation (F-071).
+        //     No email_verified requirement yet — this app has no
+        //     verification-email flow for ordinary (non-admin) users; see
+        //     AR-03 follow-up in backlogs/audit-remediation.md.
+        || (isSignedIn()
+            && resource.data.personBUid == null
+            && request.resource.data.personBUid == request.auth.uid
+            && resource.data.personBEmail != null
+            && request.auth.token.get('email', '').lower() == resource.data.personBEmail
+            && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['personBUid', 'memberUids', 'updatedAt']));
 
-      allow delete: if isAdmin();
+      // Was: any member. Deletion is a Person A/admin action in the UI
+      // already (F-074) — now rules-enforced to match.
+      allow delete: if isAdmin() || isConflictCreatorOrPersonA(trackerId);
     }
 
     match /artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId} {
       allow read: if isAdmin() || isConflictTrackerMember(trackerId);
+
       allow create: if isConflictTrackerMember(trackerId)
-        && request.resource.data.createdBy == request.auth.uid;
-      allow update: if isAdmin() || isConflictTrackerMember(trackerId);
-      allow delete: if isAdmin() || isConflictTrackerMember(trackerId);
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.personASubmittedAt == null
+        && request.resource.data.personBSubmittedAt == null;
+
+      // Every update path is field-scoped; there is no general "member can
+      // edit everything" fallback (F-037/F-072).
+      allow update: if isAdmin() || (isConflictTrackerMember(trackerId) && (
+        // (1) Ordinary content edits — creator/Person A only (matches the
+        //     existing edit-conflict UI, now enforced).
+        (isConflictCreatorOrPersonA(trackerId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'date', 'severity', 'tags', 'summary', 'updatedAt']))
+        // (2) Shared section — creator/Person A only (matches
+        //     assertSharedSectionEditor in ConflictContext.tsx), and only
+        //     once both sides have genuinely submitted (F-069: this was
+        //     previously gated on client-only hasReflectionA/B draft flags).
+        || (isConflictCreatorOrPersonA(trackerId)
+          && resource.data.personASubmittedAt != null && resource.data.personBSubmittedAt != null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'personARealMeaning', 'personBRealMeaning', 'sharedClarification',
+              'sharedOwnershipNotes', 'sharedNextSteps', 'sharedUpdatedBy', 'sharedUpdatedAt', 'updatedAt'
+            ]))
+        // (3) Draft-exists flag and/or submitted mirror, together or
+        //     separately, for the acting side's own author only:
+        //       - hasReflectionX can only be set true, never reset false
+        //         (matches saveReflectionDraft/submitReflection);
+        //       - personXSubmittedAt can only go null -> the exact value
+        //         already present on that side's own reflection document,
+        //         never reset (no unsubmitting — F-036/F-069/F-073). This
+        //         can't be forged independent of an actual submission
+        //         because the value must match the reflection doc exactly.
+        || (request.auth.uid == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data.personAUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasReflectionA', 'personASubmittedAt', 'updatedAt'])
+          && (!('hasReflectionA' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.hasReflectionA == true)
+          && (!('personASubmittedAt' in request.resource.data.diff(resource.data).affectedKeys())
+              || (resource.data.personASubmittedAt == null
+                  && request.resource.data.personASubmittedAt == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)/reflections/personA).data.submittedAt)))
+        || (request.auth.uid == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data.personBUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasReflectionB', 'personBSubmittedAt', 'updatedAt'])
+          && (!('hasReflectionB' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.hasReflectionB == true)
+          && (!('personBSubmittedAt' in request.resource.data.diff(resource.data).affectedKeys())
+              || (resource.data.personBSubmittedAt == null
+                  && request.resource.data.personBSubmittedAt == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)/reflections/personB).data.submittedAt)))
+        // (4) Resolution — each side may only set their own resolved flag;
+        //     status must be the value that flag combination derives to
+        //     (F-072: previously any member could flip either side).
+        || (request.auth.uid == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data.personAUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['personAResolved', 'status', 'updatedAt'])
+          && request.resource.data.status == (
+              request.resource.data.personAResolved && resource.data.personBResolved ? 'resolved'
+              : (request.resource.data.personAResolved || resource.data.personBResolved ? 'partially_resolved' : 'open')))
+        || (request.auth.uid == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data.personBUid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['personBResolved', 'status', 'updatedAt'])
+          && request.resource.data.status == (
+              resource.data.personAResolved && request.resource.data.personBResolved ? 'resolved'
+              : (resource.data.personAResolved || request.resource.data.personBResolved ? 'partially_resolved' : 'open')))
+      ));
+
+      // Was: any member. Matches Person A/admin deletion authority (F-074).
+      allow delete: if isAdmin() || isConflictCreatorOrPersonA(trackerId);
     }
 
-    match /artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{reflectionId} {
-      allow read: if isAdmin() || isConflictTrackerMember(trackerId);
-      allow create, update: if isConflictTrackerMember(trackerId)
-        && request.resource.data.authorUid == request.auth.uid;
-      allow delete: if isAdmin();
+    match /artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{conflictId}/reflections/{side} {
+      // Own draft/submission is always visible to its author; a partner's
+      // reflection is only visible once BOTH sides have genuinely submitted
+      // (F-036: previously any tracker member could read both reflections
+      // at any time, including unsubmitted drafts).
+      allow read: if isAdmin()
+        || (isConflictTrackerMember(trackerId) && request.auth.uid == resource.data.authorUid)
+        || (isConflictTrackerMember(trackerId) && conflictBothSubmitted(trackerId, conflictId));
+
+      allow create: if isConflictTrackerMember(trackerId)
+        && side in ['personA', 'personB']
+        && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.conflictId == conflictId;
+
+      // Was: only request.resource.data.authorUid was checked, so a member
+      // could overwrite the OTHER side's existing reflection and reassign
+      // authorUid to themselves (F-036/F-037). Now the *existing* document's
+      // authorUid must already be the caller. Once submitted, submittedAt
+      // can only stay set (no unsubmitting back to a hidden draft — F-073).
+      allow update: if isConflictTrackerMember(trackerId)
+        && resource.data.authorUid == request.auth.uid
+        && request.resource.data.authorUid == request.auth.uid
+        && (resource.data.submittedAt == null || request.resource.data.submittedAt != null);
+
+      // Matches conflict-level deletion authority (F-074) so deleteConflict's
+      // batch can remove reflections and the conflict together.
+      allow delete: if isAdmin() || isConflictCreatorOrPersonA(trackerId);
     }
 
     /* ==================================================================================

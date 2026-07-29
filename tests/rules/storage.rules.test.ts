@@ -13,7 +13,7 @@ import { ref, uploadBytes } from 'firebase/storage';
 // Trip Planner had no Storage rule source at all) with participant scoping
 // plus a server-side size/content-type ceiling.
 
-const PROJECT_ID = 'demo-website-rules-test';
+const PROJECT_ID = 'demo-website-rules-test-storage';
 const SMALL_JPEG = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x01, 0x02]);
 const OVERSIZED = new Uint8Array(9 * 1024 * 1024); // over the 8 MB ceiling
 

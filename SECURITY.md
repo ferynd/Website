@@ -67,6 +67,16 @@ To keep one source of truth, do not duplicate or partially copy rules in docs; r
 
 
 
+### Conflict Tracker
+
+- Firestore paths: `artifacts/conflict-tracker/trackers/{trackerId}`, `.../conflicts/{conflictId}`, and `.../conflicts/{conflictId}/reflections/{personA|personB}`.
+- **Enforced (AR-03/F-036):** before both sides have genuinely *submitted* (not merely drafted) a reflection, each person can read only their own reflection document — Firestore rules deny the other side's document outright, not just hide it in the UI. The reveal signal is `personASubmittedAt`/`personBSubmittedAt` on the conflict document, which rules only allow to transition null → the exact `submittedAt` already present on that side's own reflection document (so it can't be set independent of a real submission), and never back to null once set.
+- **Enforced:** a member can only create/update their own side's reflection document (`authorUid` must already equal the caller on both the existing and incoming document) — a partner cannot overwrite or reassign authorship of the other side's reflection.
+- **Enforced:** ordinary conflict fields (title/date/severity/tags/summary) and the shared-understanding section are editable only by the tracker creator, Person A, or admin; the shared section additionally requires both sides to have submitted. Each side may only set their own `person{A,B}Resolved` flag, and the derived `status` must match.
+- **Enforced:** the Person B invitation claim (`personBUid` null → caller) is a one-time rules-enforced transition gated on the caller's email matching the stored (lowercased) invitation — a member cannot otherwise rewrite tracker membership or side-identity fields. **Known limitation:** this does not yet require `email_verified`, because this app has no email-verification UI for ordinary (non-admin) users; see AR-03 in `backlogs/audit-remediation.md`.
+- **Enforced:** conflict/reflection deletion is restricted to the tracker creator, Person A, or admin, and `deleteConflict` uses a Firestore batch so a reflection can never be orphaned by a partial failure.
+- **Known limitation (F-070, not yet fixed):** the trend dashboard aggregates only the currently-selected conflict's reflections while its labels can read as tracker-wide.
+
 ### Date Night Roulette
 
 - Firestore paths: `artifacts/date-night/**` for `couples/main`, `settings/global`, `dates`, `modifiers`, and `rolls`.

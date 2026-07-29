@@ -6,7 +6,6 @@ export const APP_ID = 'conflict-tracker';
 import {
   arrayUnion,
   collection,
-  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -18,6 +17,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   type CollectionReference,
   type DocumentReference,
   type FirestoreError,
@@ -255,6 +255,8 @@ export const createConflict = async (
     status: 'open' as Conflict['status'],
     hasReflectionA: false,
     hasReflectionB: false,
+    personASubmittedAt: null,
+    personBSubmittedAt: null,
     createdBy: input.createdBy,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -309,11 +311,15 @@ export const deleteConflict = async (
   trackerId: string,
   conflictId: string,
 ): Promise<void> => {
+  // Batched so a failure never leaves reflections orphaned without their
+  // parent conflict, or vice versa (F-074).
   const refsSnap = await getDocs(reflectionsCol(trackerId, conflictId));
+  const batch = writeBatch(db);
   for (const r of refsSnap.docs) {
-    await deleteDoc(r.ref);
+    batch.delete(r.ref);
   }
-  await deleteDoc(conflictDoc(trackerId, conflictId));
+  batch.delete(conflictDoc(trackerId, conflictId));
+  await batch.commit();
 };
 
 export const watchConflicts = (
@@ -389,9 +395,17 @@ export const submitReflection = async (
     }),
     { merge: true },
   );
+  // Rules require the conflict doc's mirror field to match this
+  // reflection's own committed submittedAt exactly (F-036/F-069), so read
+  // it back rather than writing a second, independently-resolved
+  // serverTimestamp() sentinel.
+  const committed = await getDoc(ref);
+  const submittedAt = committed.data()?.submittedAt ?? null;
   const flag = side === 'personA' ? 'hasReflectionA' : 'hasReflectionB';
+  const mirror = side === 'personA' ? 'personASubmittedAt' : 'personBSubmittedAt';
   await updateDoc(conflictDoc(trackerId, conflictId), {
     [flag]: true,
+    [mirror]: submittedAt,
     updatedAt: serverTimestamp(),
   });
 };

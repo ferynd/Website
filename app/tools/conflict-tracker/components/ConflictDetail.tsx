@@ -63,11 +63,11 @@ export default function ConflictDetail({
   const reflectionB = reflections.find((r) => r.person === 'personB');
 
   const myReflectionSubmitted = !!myReflection?.submittedAt;
-  const bothSubmitted =
-    conflict.hasReflectionA &&
-    conflict.hasReflectionB &&
-    !!reflectionA?.submittedAt &&
-    !!reflectionB?.submittedAt;
+  // Authoritative reveal signal — see the comment on SharedSection's
+  // identical derivation (F-069). Before this is true, the partner's
+  // reflection document isn't even readable, so reflectionA/reflectionB
+  // above may be genuinely absent from `reflections` for one side.
+  const bothSubmitted = Boolean(conflict.personASubmittedAt) && Boolean(conflict.personBSubmittedAt);
 
   const canEditConflict = isPersonA || isAdmin;
   const canDelete = isPersonA || isAdmin;
@@ -250,25 +250,32 @@ export default function ConflictDetail({
         <div className="rounded-xl border border-border bg-surface-1/60 p-5">
           <h3 className="font-medium text-text mb-3">Reflection status</h3>
           <div className="flex gap-4 text-sm">
+            {/*
+              Uses conflict.personXSubmittedAt (always readable, content-free)
+              rather than reflectionX?.submittedAt — the partner's reflection
+              document itself isn't readable pre-reveal, so that field would
+              stay undefined forever and this badge could never reach
+              "submitted" from the other person's point of view (F-069).
+            */}
             <span className={`rounded-full px-3 py-1 border text-xs ${
-              conflict.hasReflectionA && reflectionA?.submittedAt
+              conflict.personASubmittedAt
                 ? 'bg-green-900/30 text-green-300 border-green-700/40'
                 : 'bg-surface-2 text-text-3 border-border'
             }`}>
               {aName}{' '}
-              {conflict.hasReflectionA && reflectionA?.submittedAt
+              {conflict.personASubmittedAt
                 ? '✓ submitted'
                 : conflict.hasReflectionA
                 ? '◑ draft'
                 : '○ not started'}
             </span>
             <span className={`rounded-full px-3 py-1 border text-xs ${
-              conflict.hasReflectionB && reflectionB?.submittedAt
+              conflict.personBSubmittedAt
                 ? 'bg-green-900/30 text-green-300 border-green-700/40'
                 : 'bg-surface-2 text-text-3 border-border'
             }`}>
               {bName}{' '}
-              {conflict.hasReflectionB && reflectionB?.submittedAt
+              {conflict.personBSubmittedAt
                 ? '✓ submitted'
                 : conflict.hasReflectionB
                 ? '◑ draft'
