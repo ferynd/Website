@@ -77,6 +77,16 @@ To keep one source of truth, do not duplicate or partially copy rules in docs; r
 - **Enforced:** conflict/reflection deletion is restricted to the tracker creator, Person A, or admin, and `deleteConflict` uses a Firestore batch so a reflection can never be orphaned by a partial failure.
 - **Known limitation (F-070, not yet fixed):** the trend dashboard aggregates only the currently-selected conflict's reflections while its labels can read as tracker-wide.
 
+### Trip Cost
+
+- Firestore path: `artifacts/trip-cost/trips/{tripId}`; participants, expenses, and payments are stored as arrays on the trip document (not subcollections) and rewritten wholesale on every mutation — a known structural risk for concurrent edits, tracked separately under AR-09 (`backlogs/audit-remediation.md`), not fixed here.
+- **Enforced (AR-04/F-087):** `applySpendCaps` now reports `unallocatedOverage` instead of silently discarding overage it can't redistribute (e.g. every other participant is already capped) — `shouldHavePaid` no longer conserves the trip total without that being visible. `calculateSettlements` refuses to produce any advice unless balances sum to ~0, and never treats a positive balance as a debtor or a negative one as a creditor regardless of sort order. The Settlement Suggestions panel shows an explicit warning instead of "All balances are settled!" when caps are infeasible.
+- **Enforced (F-090):** a blank payer on a new/edited expense only auto-defaults to the current user when their participant record is uniquely linked via `userId`; otherwise the save is blocked and an explicit payer selection is required (previously could silently credit the wrong person, e.g. a manually-added participant that also matches `addedBy`).
+- **Enforced (F-089):** deleting a participant is blocked while any expense or payment still references them (as a payer, payee, or split participant), instead of silently orphaning those references and making paid amounts disappear from totals.
+- **Enforced (F-092):** opening `/tools/trip-cost?tripId=...` (Trip Planner's deep link) now opens that trip once it's confirmed accessible, or shows an explicit unavailable/unauthorized notice — previously the parameter was ignored entirely.
+- **Known limitation, not fixed here (F-088):** because participants/expenses/payments are plain arrays on one document, rules cannot cheaply verify that a new payment's `payerId` is actually the caller — any trip participant can still record a payment attributed to any payer/payee. Client code binds `createdBy` to the caller, but that's not a security boundary against a modified client. Real enforcement needs the AR-09 subcollection migration.
+- **Known limitation, not fixed here (F-091):** participant/expense/payment/settings mutations don't create audit-log entries, despite the UI implying an audit trail exists.
+
 ### Date Night Roulette
 
 - Firestore paths: `artifacts/date-night/**` for `couples/main`, `settings/global`, `dates`, `modifiers`, and `rolls`.

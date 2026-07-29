@@ -61,6 +61,33 @@ export default function TripCostPage() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [newTripName, setNewTripName] = useState('');
+  const [deepLinkTripId, setDeepLinkTripId] = useState<string | null>(null);
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
+
+  // Capture Trip Planner's `?tripId=` deep link once, before trips finish
+  // loading (F-092: this page previously ignored it entirely and always
+  // landed on the trip list).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tripId = params.get('tripId');
+    if (tripId) setDeepLinkTripId(tripId);
+  }, []);
+
+  // Consume the deep link once the user's accessible trips have loaded:
+  // open it if found, otherwise surface a precise unavailable/unauthorized
+  // notice rather than silently falling through to the trip list.
+  useEffect(() => {
+    if (!deepLinkTripId || !userProfile) return;
+    if (trips.some((t) => t.id === deepLinkTripId)) {
+      setSelectedTripId(deepLinkTripId);
+      setDeepLinkTripId(null);
+    } else {
+      setDeepLinkError(
+        "The linked trip isn't available — it may not exist, or you may not have access to it.",
+      );
+      setDeepLinkTripId(null);
+    }
+  }, [deepLinkTripId, trips, userProfile]);
 
   // load auth
   useEffect(() => {
@@ -202,6 +229,11 @@ export default function TripCostPage() {
 
   return (
     <>
+      {deepLinkError && (
+        <div className="max-w-2xl mx-auto mt-4 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+          {deepLinkError}
+        </div>
+      )}
       <TripList
         userProfile={userProfile}
         trips={trips}
