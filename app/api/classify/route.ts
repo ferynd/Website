@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { resolveTitle } from '@/app/tools/shows/lib/titleResolver';
 import { getTmdbConfig } from '@/app/tools/shows/lib/tmdbConfig';

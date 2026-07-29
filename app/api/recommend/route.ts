@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import type { MoodEntry, ViewerPreferenceProfile } from '@/app/tools/shows/lib/recommendationContext';
 import type { Show } from '@/app/tools/shows/types';

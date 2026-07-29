@@ -1,5 +1,3 @@
-export const runtime = 'edge';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';
 import { modelSupportsDiarization, resolveTranscribeModelId } from '@/app/lib/transcribeModels';

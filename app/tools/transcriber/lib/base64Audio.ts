@@ -2,9 +2,9 @@
 // server-side (app/api/transcriber/transcribe/route.ts: OpenAI's
 // known_speaker_references[] data-URL fields) and client-side
 // (lib/providers/geminiProvider.ts: Gemini's experimental inlineData.data
-// base64 field). Works in both the Edge runtime and the browser since both
-// expose the standard `btoa` global — no Node `Buffer` dependency (the Edge
-// runtime this app deploys to does not reliably provide one).
+// base64 field). Works in both the deployed Worker and the browser since
+// both expose the standard `btoa` global — no Node `Buffer` dependency
+// needed, even though the Worker's `nodejs_compat` flag does provide one.
 //
 // NEVER log the output of these functions or the Blob/ArrayBuffer passed in
 // — this is audio content.

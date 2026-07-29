@@ -23,7 +23,7 @@ app/
     __tests__/ # Vitest coverage for decay/stacking/rarity behavior
   tools/shows/       # Movie/TV tracker (Auth + Firestore + Gemini classify/recommend routes)
   tools/transcriber/ # Private audio transcriber (Auth-gated to admin only; OpenAI + Gemini transcription providers, Gemini cleanup routes; no Firestore persistence)
-    lib/ # Pure segment/chunk/stitch/prompt/settings/suppression/merge/classifyError/providers helpers; api/transcriber/** Edge routes call the same lib
+    lib/ # Pure segment/chunk/stitch/prompt/settings/suppression/merge/classifyError/providers helpers; api/transcriber/** API routes call the same lib
     __tests__/ # Vitest coverage for formatting, chunking, stitching, speaker mapping, correction parsing, settings, suppression, merging, Gemini request/parse, clip analysis, argument tags, debug log
   tools/recipe-standardizer/ # Workflow-first recipe viewer (Auth + Firestore; strict-JSON import from a copyable ChatGPT prompt — no AI API calls)
     lib/ # Pure schema/scaling/shoppingList/nutritionMatch/stepTextUpdate/naming/display helpers + firebase/db wrappers
@@ -77,7 +77,7 @@ public/
 
 ## Movie/TV Show Tracker: AI Model Selection
 - **Shared model metadata:** `app/lib/aiModels.ts` is client-safe and holds available Gemini model IDs, display labels, defaults, validation helpers, and localStorage keys.
-- **Gemini request utility:** `app/lib/aiConfig.ts` builds plain JSON Gemini requests for Edge routes without tools, grounding, URL context, code execution, file search, or function calling.
+- **Gemini request utility:** `app/lib/aiConfig.ts` builds plain JSON Gemini requests for API routes without tools, grounding, URL context, code execution, file search, or function calling.
 - **Defaults:** Classification/title expansion defaults to `gemini-3.1-flash-lite`; recommendations default to `gemini-2.5-flash`.
 - **Recommendation eligibility:** `candidateShows` includes Watching, Planned, On Hold, and Completed shows only when relevant viewers marked `wouldRewatch` as `yes` or `maybe`, before applying watcher preference tiers.
 - **Recommendation quick toggles:** `mood/page.tsx` applies client-side filters (No rewatches / Watching only / Animation only / Exclude animation) on top of `candidateShows` before building the prompt — deliberately kept to the highest-value filters rather than a full facet UI.

@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // NOTE: rename to match the actual Cloudflare Workers project this site
+  // deploys to. This placeholder was chosen during the next-on-pages ->
+  // OpenNext migration (AR-01) and has not been confirmed against a real
+  // Cloudflare account.
+  "name": "ferynd-website",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-02",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "ferynd-website"
+    }
+  ]
+  // Secrets (GEMINI_API_KEY, GPT_API_KEY, TMDB_API_KEY or
+  // TMDB_READ_ACCESS_TOKEN) are set via `wrangler secret put <NAME>` against
+  // the deployed Worker, never committed here. See README.md "Deployment"
+  // for the full runbook.
+}
