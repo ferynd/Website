@@ -22,6 +22,10 @@
 /.wrangler/
 .dev.vars*
 
+# firebase emulators
+*-debug.log
+/.firebase/
+
 # production
 /build
 

@@ -29,7 +29,7 @@ Trip Cost data lives under `artifacts/trip-cost/**` (see **ARCHITECTURE.md**). C
 - **Participants**: Only authenticated participants listed in `participantUids` (plus the admin account) can read or modify a planner, its events, and activity ideas.
 - **Changelog**: Audit entries under `planners/{plannerId}/changelog/{logId}` are **readable by admin only**. Participants may append entries that reference their own UID; no edits or deletions are allowed client-side.
 - **Linked data**: `costTrackerId` maintains the 1:1 link to Trip Cost trips. All participant mutations must keep the two tools synchronized.
-- **Uploads**: Images land in Storage under `artifacts/trip-planner/uploads/{plannerId}/**` and should be compressed client-side (see `PlanContext` image helpers) before upload.
+- **Uploads**: Images land in Storage under `artifacts/trip-planner/uploads/{plannerId}/**`, compressed client-side (see `PlanContext` image helpers) before upload. `storage.rules` enforces planner-participant scoping plus a server-side size/content-type ceiling (`isAllowedImageUpload()`) as the actual security boundary — client-side compression is UX, not enforcement.
 
 ### Recipe Standardizer
 
@@ -71,8 +71,8 @@ To keep one source of truth, do not duplicate or partially copy rules in docs; r
 
 - Firestore paths: `artifacts/date-night/**` for `couples/main`, `settings/global`, `dates`, `modifiers`, and `rolls`.
 - Access model: only `participantUids` from `couples/main` plus admin email may read/write tool data.
-- Uploads: Storage path `artifacts/date-night/uploads/**` is participant/admin scoped (see `storage.date-night.rules`).
-- Firestore rules for Date Night and Trip Planner are now consolidated into the single root `firestore.rules` file.
+- Uploads: Storage path `artifacts/date-night/uploads/**` is participant/admin scoped, with the same server-side size/content-type ceiling as Trip Planner (see `storage.rules`).
+- Firestore rules for Date Night and Trip Planner are now consolidated into the single root `firestore.rules` file. Storage rules for both are consolidated into the single root `storage.rules` file (previously Date Night had its own `storage.date-night.rules` and Trip Planner had no Storage rule source at all — see AR-02/F-038).
 
 - State-machine note: vetoes increment source counters without creating roll docs; only accepted outcomes create `rolls` entries.
 

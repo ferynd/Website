@@ -10,8 +10,19 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Email is a public, mutable identifier — this is a known limitation
+    // (AR-02/F-137) until admin authority moves to a Firebase custom claim
+    // or allowlisted-UID role document administered by trusted server-side
+    // tooling. Requiring email_verified at least prevents an unverified
+    // account from claiming admin authority by setting an unconfirmed email.
     function isAdmin() {
-      return isSignedIn() && request.auth.token.email == 'arkkahdarkkahd@gmail.com';
+      // .get() with a default avoids relying on absent-claim behavior for a
+      // caller whose token has no `email` field at all (see the same
+      // isAdmin() in storage.rules, where the equivalent bare-property
+      // access throws instead of evaluating to false).
+      return isSignedIn()
+        && request.auth.token.get('email', null) == 'arkkahdarkkahd@gmail.com'
+        && request.auth.token.get('email_verified', false) == true;
     }
 
     // Trip Cost
@@ -65,7 +76,12 @@ service cloud.firestore {
        CALORIE TRACKER (LEGACY)
        ================================================================================== */
 
-    match /artifacts/{appId}/users/{userId}/{document=**} {
+    // Pinned to the literal `default-app-id` namespace (the actual runtime
+    // fallback CalorieTracker uses — see F-141) instead of a wildcard
+    // `{appId}` segment, so a future per-user tool placed under
+    // /artifacts/{anything}/users/{uid}/** does not become writable before
+    // its own validation rules are designed (AR-02/F-138).
+    match /artifacts/default-app-id/users/{userId}/{document=**} {
       allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 

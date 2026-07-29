@@ -12,6 +12,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
+    "test:rules": "firebase emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260702.1",
     "@eslint/eslintrc": "^3",
+    "@firebase/rules-unit-testing": "^5.0.1",
     "@opennextjs/cloudflare": "1.20.2",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",
@@ -39,6 +41,7 @@
     "autoprefixer": "^10.4.17",
     "eslint": "^9",
     "eslint-config-next": "15.5.22",
+    "firebase-tools": "^15.24.0",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
     "typescript": "5.9.3",

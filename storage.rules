@@ -1,0 +1,54 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // Storage Rules (unlike Firestore Rules) throws rather than
+      // returning false when a token claim is entirely absent, so a
+      // non-admin caller whose token has no `email` field (e.g. some
+      // non-password auth methods) would otherwise fail this whole
+      // expression instead of just evaluating isAdmin() to false —
+      // .get() with a default avoids that.
+      return isSignedIn()
+        && request.auth.token.get('email', null) == 'arkkahdarkkahd@gmail.com'
+        && request.auth.token.get('email_verified', false) == true;
+    }
+
+    function isCoupleParticipant() {
+      return isSignedIn() &&
+        request.auth.uid in
+        firestore.get(/databases/(default)/documents/artifacts/date-night/couples/main).data.participantUids;
+    }
+
+    function isTripPlannerParticipant(plannerId) {
+      return isSignedIn() &&
+        request.auth.uid in
+        firestore.get(/databases/(default)/documents/artifacts/trip-planner/planners/$(plannerId)).data.participantUids;
+    }
+
+    // Compressed client-side output is always image/jpeg or image/webp (see
+    // app/tools/trip-planner/lib/image.ts, DateNightContext.tsx); allow a
+    // generous ceiling above the client's compression target as a backstop
+    // against a modified client rather than an exact match.
+    function isAllowedImageUpload() {
+      return request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+    }
+
+    match /artifacts/date-night/uploads/{allPaths=**} {
+      allow read: if isAdmin() || isCoupleParticipant();
+      allow write: if (isAdmin() || isCoupleParticipant()) && isAllowedImageUpload();
+    }
+
+    match /artifacts/trip-planner/uploads/{plannerId}/{allPaths=**} {
+      allow read: if isAdmin() || isTripPlannerParticipant(plannerId);
+      allow write: if (isAdmin() || isTripPlannerParticipant(plannerId)) && isAllowedImageUpload();
+    }
+
+    // Everything else is denied by default (no catch-all allow rule).
+  }
+}
