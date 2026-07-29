@@ -78,6 +78,18 @@
       <p class="mt-2 text-lg text-gray-600">Visualize the financial impact of different claiming strategies and assumptions.</p>
     </header>
 
+    <!-- AR-05/F-114,F-115,F-116,F-117,F-120 containment -->
+    <div class="max-w-3xl mx-auto mb-8 rounded-lg border-2 border-amber-400 bg-amber-50 p-4 text-sm text-gray-800" role="note">
+      <p class="font-semibold text-amber-800">Before you rely on this comparison</p>
+      <ul class="mt-2 list-disc list-inside space-y-1">
+        <li>This is a narrow comparison of claiming at <span class="font-semibold">65, 66, or 67 only</span> — it doesn't ask your birth year or full retirement age (FRA), so it can't tell you your FRA or compare ages 62–64 or 68–70.</li>
+        <li>Enter all three monthly benefit amounts on the <span class="font-semibold">same dollar basis</span> (e.g. all from one SSA estimate screen, in today's dollars). The model applies annual COLA starting only once each strategy begins paying, so mixing bases (e.g. one already-inflated future amount with two today's-dollar amounts) will skew the comparison.</li>
+        <li>"Other Income" here is treated as unconditional cash — it does <span class="font-semibold">not</span> model Social Security's retirement earnings test, which can withhold benefits from wage/self-employment income before your FRA. If you plan to work while claiming before FRA, this comparison can overstate the early-claiming strategy.</li>
+        <li>Break-even ages are shown to the month, but the model only computes one balance per year and interpolates — treat the month figure as an approximate range, not a precise date.</li>
+        <li>This isn't tax, Medicare, spousal/survivor, or investment advice, and inputs aren't validated beyond basic slider bounds — double-check anything you type or paste in.</li>
+      </ul>
+    </div>
+
     <main class="grid grid-cols-1 lg:grid-cols-3 gap-8">
       <!-- Input Controls Column -->
       <div class="lg:col-span-1 space-y-6">
@@ -237,19 +249,30 @@
       <!-- Charts Column -->
       <div class="lg:col-span-2 space-y-8">
         <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-          <h2 class="text-2xl font-semibold text-gray-800 mb-1">Chart 1: Total Account Balance (Nominal)</h2>
-          <p class="text-gray-600 mb-4">Shows the projected account balance over time in future dollars.</p>
+          <!-- F-118: this is a cumulative modeled surplus/shortfall starting
+               from $0 at age 65 (benefits + other income − spending,
+               compounded), not a real account balance — it has no opening
+               savings/assets and a negative value has no defined financing
+               assumption (see F-119 fix above). -->
+          <h2 class="text-2xl font-semibold text-gray-800 mb-1">Chart 1: Cumulative Modeled Surplus/Shortfall (Nominal)</h2>
+          <p class="text-gray-600 mb-4">Shows projected cumulative surplus (or shortfall) vs. a $0 starting point at age 65, in future dollars — not a real account or net-worth balance. See the notes below the results for what this can and can't tell you.</p>
           <!-- 2.4-b: Add accessible label for screen readers -->
-          <div class="relative h-96"><canvas id="nominalChart" aria-label="Projected nominal balance line chart"></canvas></div>
+          <div class="relative h-96"><canvas id="nominalChart" aria-label="Projected nominal cumulative surplus/shortfall line chart"></canvas></div>
           <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div id="nominalCrossover66" class="summary-box"></div>
             <div id="nominalCrossover67" class="summary-box"></div>
           </div>
         </div>
         <div class="bg-white p-6 rounded-xl shadow-lg border border-gray-200">
-          <h2 class="text-2xl font-semibold text-gray-800 mb-1">Chart 2: Account Balance (Inflation-Adjusted)</h2>
-          <p class="text-gray-600 mb-2">Shows the purchasing power of the account balance in today's dollars (age 65 dollars).</p>
-          <p class="text-sm text-gray-500 mb-4 italic">Note: Break-even points differ from nominal when investment returns or spending/income are enabled.</p>
+          <h2 class="text-2xl font-semibold text-gray-800 mb-1">Chart 2: Cumulative Surplus/Shortfall (Inflation-Adjusted)</h2>
+          <p class="text-gray-600 mb-2">Shows the purchasing power of the cumulative surplus/shortfall in today's dollars (age 65 dollars).</p>
+          <!-- F-113: nominal and real break-even ages cannot differ under
+               this model — common spending/income and a common return
+               cancel out of the strategy-to-strategy comparison, and real
+               is just nominal divided by one shared deflator. The claim
+               that they can differ was false; removed rather than shown
+               conditionally, since it's never true here. -->
+          <p class="text-sm text-gray-500 mb-4 italic">Note: because spending, other income, and investment returns are applied identically to every claiming strategy here, this break-even age is always the same as Chart 1's — it's the same comparison in today's dollars, not independent confirmation.</p>
           <!-- 2.4-b: Add accessible label for screen readers -->
           <div class="relative h-96"><canvas id="inflationChart" aria-label="Projected inflation-adjusted balance line chart"></canvas></div>
           <div class="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -419,17 +442,28 @@
             }
 
             // --- Nominal Calculation ---
-            // 2.2-b: Always compound, even if balance is negative.
-            nominalBalance *= (1 + yearlyData.earnRate);
+            // F-119: only apply the investment return while the balance is
+            // positive. A positive "Annual Return Rate" is a portfolio
+            // assumption, not a borrowing rate — compounding it onto a
+            // negative balance was making a bigger shortfall grow *faster*
+            // as the return rate went up, which has no real financial
+            // meaning here (this model has no separate borrowing-cost
+            // input). A negative balance now simply carries forward
+            // uncompounded until cash flow brings it positive again.
+            if (nominalBalance > 0) {
+              nominalBalance *= (1 + yearlyData.earnRate);
+            }
             nominalBalance += currentAnnualBenefit + yearlyData.income - yearlyData.spend;
             nominalData.push(nominalBalance);
 
             // --- Real (Inflation-Adjusted) Calculation ---
             // 2.2-a: Use the exact formula for real earn rate.
             const realEarnRate = (1 + yearlyData.earnRate) / (1 + inputs.inflationRate) - 1;
-            
-            // 2.2-b: Always compound, even if balance is negative.
-            realBalance *= (1 + realEarnRate);
+
+            // F-119: same rule as the nominal balance above.
+            if (realBalance > 0) {
+              realBalance *= (1 + realEarnRate);
+            }
             
             const deflator = Math.pow(1 + inputs.inflationRate, yearsFromStart);
             const realBenefit = currentAnnualBenefit / deflator;
