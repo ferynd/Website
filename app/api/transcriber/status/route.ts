@@ -1,5 +1,3 @@
-export const runtime = 'edge';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyFirebaseIdToken } from '@/app/lib/verifyFirebaseAuth';
 import { ADMIN_EMAIL } from '@/app/tools/trip-cost/firebaseConfig';

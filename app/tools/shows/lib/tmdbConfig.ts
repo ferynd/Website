@@ -1,8 +1,9 @@
 /**
  * Server-only TMDb credential helper.
  *
- * Credentials are stored as Cloudflare Secrets (accessed via process.env on
- * the deployed edge runtime). Never import this in client-side code.
+ * Credentials are stored as Cloudflare Worker secrets (accessed via
+ * process.env inside the deployed Worker). Never import this in client-side
+ * code.
  *
  * Priority:
  *   1. TMDB_READ_ACCESS_TOKEN  → bearer auth (token in Authorization header, not URL)
@@ -18,16 +19,15 @@ export type TmdbConfig =
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 /**
- * Read TMDb credentials from the runtime environment (Cloudflare Secrets).
+ * Read TMDb credentials from the runtime environment (Cloudflare secrets).
  *
- * On Cloudflare Pages/Workers the `next-on-pages` adapter bridges
- * `env.SECRET_NAME` → `process.env.SECRET_NAME` for edge-runtime routes
- * (routes that declare `export const runtime = 'edge'`). This is the same
+ * The OpenNext Cloudflare adapter (`nodejs_compat`) exposes Worker
+ * bindings/secrets as `process.env.SECRET_NAME` for every route, the same
  * mechanism used by GEMINI_API_KEY in /api/recommend/route.ts, so the
  * approach is validated by that existing working route.
  *
- * No .env.local file is used or expected. Secrets are bound in the
- * Cloudflare Pages dashboard under Settings → Environment variables.
+ * No .env.local file is used or expected. Secrets are set on the deployed
+ * Worker via `wrangler secret put <NAME>` (see README.md "Deployment").
  */
 export function getTmdbConfig(): TmdbConfig {
   const token = process.env.TMDB_READ_ACCESS_TOKEN;

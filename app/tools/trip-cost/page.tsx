@@ -59,8 +59,40 @@ export default function TripCostPage() {
 
   // trips
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [tripsLoaded, setTripsLoaded] = useState(false);
+  // A failed trips listener is not an empty result: keep it separate so a
+  // deep link is never reported as missing/unauthorized when access was
+  // never actually checked.
+  const [tripsError, setTripsError] = useState<string | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [newTripName, setNewTripName] = useState('');
+  const [deepLinkTripId, setDeepLinkTripId] = useState<string | null>(null);
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
+
+  // Capture Trip Planner's `?tripId=` deep link once, before trips finish
+  // loading (F-092: this page previously ignored it entirely and always
+  // landed on the trip list).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tripId = params.get('tripId');
+    if (tripId) setDeepLinkTripId(tripId);
+  }, []);
+
+  // Consume the deep link once the user's accessible trips have loaded:
+  // open it if found, otherwise surface a precise unavailable/unauthorized
+  // notice rather than silently falling through to the trip list.
+  useEffect(() => {
+    if (!deepLinkTripId || !userProfile || !tripsLoaded) return;
+    if (trips.some((t) => t.id === deepLinkTripId)) {
+      setSelectedTripId(deepLinkTripId);
+      setDeepLinkTripId(null);
+    } else {
+      setDeepLinkError(
+        "The linked trip isn't available — it may not exist, or you may not have access to it.",
+      );
+      setDeepLinkTripId(null);
+    }
+  }, [deepLinkTripId, trips, userProfile, tripsLoaded]);
 
   // load auth
   useEffect(() => {
@@ -86,6 +118,8 @@ export default function TripCostPage() {
 
   // load trips
   useEffect(() => {
+    setTripsLoaded(false);
+    setTripsError(null);
     if (!user || !userProfile) {
       setTrips([]);
       return;
@@ -101,6 +135,12 @@ export default function TripCostPage() {
       setTrips(
         snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Trip, 'id'>) }))
       );
+      setTripsError(null);
+      setTripsLoaded(true);
+    }, () => {
+      // Leave tripsLoaded false so the deep-link effect does not consume the
+      // requested trip ID; it resolves after a later successful snapshot.
+      setTripsError('Could not load your trips. Check your connection and reload the page.');
     });
     return () => unsub();
   }, [user, userProfile]);
@@ -202,6 +242,11 @@ export default function TripCostPage() {
 
   return (
     <>
+      {(tripsError || deepLinkError) && (
+        <div role="alert" className="max-w-2xl mx-auto mt-4 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+          {tripsError ?? deepLinkError}
+        </div>
+      )}
       <TripList
         userProfile={userProfile}
         trips={trips}

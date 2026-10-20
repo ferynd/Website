@@ -127,4 +127,13 @@ export interface CappedBalance extends Balance {
   /** true when cap has been hit */
   isCapped: boolean;
   capAmount?: number;
+  /**
+   * Total overage that could not be redistributed to any eligible
+   * participant (e.g. everyone else is already capped) — the same value on
+   * every balance in the array. Non-zero means the caps are infeasible:
+   * shouldHavePaid no longer conserves the trip total, and settlement
+   * advice built from these balances is not trustworthy until either a cap
+   * is relaxed or a participant is added (F-087).
+   */
+  unallocatedOverage: number;
 }

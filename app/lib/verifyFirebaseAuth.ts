@@ -1,9 +1,11 @@
-// Server-only Firebase ID token verification for Edge API routes.
+// Server-only Firebase ID token verification for the transcriber API routes.
 //
 // This is a minimal hand-rolled verifier instead of the `firebase-admin` SDK.
-// firebase-admin depends on Node-only APIs (net/tls/gRPC) and does not run on
-// the Edge runtime this app deploys to on Cloudflare Pages. Everything here
-// uses only Web APIs available at the edge: fetch, atob, crypto.subtle.
+// firebase-admin depends on Node-only APIs (net/tls/gRPC) that Cloudflare
+// Workers' `nodejs_compat` does not provide, so it cannot run in this app's
+// deployed environment. Everything here uses only Web APIs (fetch, atob,
+// crypto.subtle) that are available both in Next.js's Node.js runtime and in
+// the deployed Worker, so this file has no runtime-specific dependency.
 //
 // SECURITY NOTE: `requireAdminUser` is the ONLY thing that protects the
 // Transcriber API routes. Any route that touches OpenAI/Gemini keys or

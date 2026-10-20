@@ -1,5 +1,3 @@
-export const runtime = 'edge';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { callGeminiWithUsage } from '@/app/lib/aiConfig';
 import { resolveGeminiModelId } from '@/app/lib/aiModels';

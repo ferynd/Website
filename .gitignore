@@ -17,6 +17,15 @@
 /.next/
 /out/
 
+# opennext / cloudflare workers
+/.open-next/
+/.wrangler/
+.dev.vars*
+
+# firebase emulators
+*-debug.log
+/.firebase/
+
 # production
 /build
 

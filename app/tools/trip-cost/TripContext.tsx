@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { tripDoc, tripAuditCol } from './db';
 import { EXPENSE_CATEGORIES } from './constants';
+import { uniqueLinkedParticipant } from './utils/payer';
 import type {
   Trip,
   TripParticipant,
@@ -197,6 +198,23 @@ export const TripProvider = ({
   const deleteParticipant = async (id: string) => {
     if (!trip) throw new Error('No trip loaded');
 
+    // Deleting a participant used to silently orphan any expense/payment
+    // that still referenced them — paid amounts and obligations then just
+    // disappeared from balance totals with no indication why (F-089).
+    // Block deletion instead until those references are gone.
+    const referencedByExpense = expenses.some(
+      (e) =>
+        Object.prototype.hasOwnProperty.call(e.paidBy, id) ||
+        e.splitParticipants.includes(id) ||
+        Object.prototype.hasOwnProperty.call(e.manualSplit, id),
+    );
+    const referencedByPayment = payments.some((p) => p.payerId === id || p.payeeId === id);
+    if (referencedByExpense || referencedByPayment) {
+      throw new Error(
+        'This participant has expenses or payments referencing them. Remove or reassign those first.',
+      );
+    }
+
     const updated = participants.filter((p) => p.id !== id);
     const participantIds = updated.map((p) => p.userId || p.id);
 
@@ -240,14 +258,21 @@ export const TripProvider = ({
       throw new Error('Payer amounts must sum to the total amount.');
     }
 
-    // Find current user's participant ID
-    const currentParticipant = participants.find(
-      p => p.userId === userProfile?.uid || p.addedBy === userProfile?.uid
-    );
-    const currentParticipantId = currentParticipant?.id || userProfile?.uid || 'unknown';
+    // Find current user's participant ID. Matching on addedBy too (any
+    // participant record the user manually created, not just their own
+    // linked one) could default a blank payer to the wrong person — e.g.
+    // the first manually-added participant matches before the caller's own
+    // record (F-090). Only a uniquely userId-linked record is trustworthy
+    // enough to auto-default; otherwise require an explicit payer.
+    const currentParticipant = uniqueLinkedParticipant(participants, userProfile?.uid);
 
     if (Object.keys(paidBy).length === 0) {
-      paidBy[currentParticipantId] = totalAmount;
+      if (!currentParticipant) {
+        throw new Error(
+          'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
+        );
+      }
+      paidBy[currentParticipant.id] = totalAmount;
     }
 
     // Process split
@@ -324,13 +349,17 @@ export const TripProvider = ({
       throw new Error('Payer amounts must sum to the total amount.');
     }
 
-    const currentParticipant = participants.find(
-      p => p.userId === userProfile?.uid || p.addedBy === userProfile?.uid
-    );
-    const currentParticipantId = currentParticipant?.id || userProfile?.uid || 'unknown';
+    // See addExpense's identical guard for why this only matches on a
+    // uniquely userId-linked participant (F-090).
+    const currentParticipant = uniqueLinkedParticipant(participants, userProfile?.uid);
 
     if (Object.keys(paidBy).length === 0) {
-      paidBy[currentParticipantId] = totalAmount;
+      if (!currentParticipant) {
+        throw new Error(
+          'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
+        );
+      }
+      paidBy[currentParticipant.id] = totalAmount;
     }
 
     const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
