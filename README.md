@@ -492,7 +492,18 @@ Formatting (Prettier) can be run or set up in your editor for consistent code st
 
 The project deploys to **Cloudflare Workers** via the [OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare) (`@opennextjs/cloudflare`), configured in `open-next.config.ts` and `wrangler.jsonc`. This replaced the previously used `@cloudflare/next-on-pages` (Cloudflare Pages) path in AR-01 — that adapter is deprecated/archived and had capped this project's usable Next.js version, blocking security patches.
 
-> **Deployment target not yet confirmed against a live Cloudflare account.** `wrangler.jsonc`'s `name` (`ferynd-website`) and the `WORKER_SELF_REFERENCE` service binding are placeholders chosen during the migration. Whoever owns the Cloudflare account must confirm or rename them to match the actual Workers project before the first deploy, and record the resulting production/staging URLs here and in the repository's GitHub metadata (tracked as AR-01/F-152).
+**Deployment target (confirmed 2026-10-20):** Worker `jamesberto-website` on Cloudflare account `1fe4f24f7aea01cf86064202b557b79f`; the `WORKER_SELF_REFERENCE` service binding points at the same name. Preview URL: <https://jamesberto-website.arkkahdarkkahd.workers.dev> (`workers_dev: true`, no routes/custom domains yet).
+
+**Current production is still Cloudflare Pages.** `jamesberto.com` and `www.jamesberto.com` are served by the Pages project `weekendtrip` (git-connected, production branch `main`, output dir `.vercel/output/static`, `nodejs_compat`; secrets `GEMINI_API_KEY`, `GPT_API_KEY`, `TMDB_API_KEY`, `TMDB_READ_ACCESS_TOKEN`). The Worker coexists with it until cutover. Pages builds of this OpenNext code fail (Pages runs the next-on-pages build), which does not affect the live site — Pages keeps serving the last successful deployment — but **do not merge this to `main` until the cutover below is done**, or `main`'s Pages builds will start failing too.
+
+**Cutover runbook (owner approval required for steps 3–4):**
+
+1. Set secrets on the Worker (same names as Pages, so no code changes): `npx wrangler secret put GEMINI_API_KEY`, `GPT_API_KEY`, `TMDB_API_KEY`, `TMDB_READ_ACCESS_TOKEN`. Values are write-only in Cloudflare, so re-enter them from the provider dashboards (or rotate new keys).
+2. `npm run cf:deploy`, then run the post-deploy smoke check below against the workers.dev URL.
+3. Move `jamesberto.com` / `www.jamesberto.com` from the Pages project to the Worker (Dashboard → Pages `weekendtrip` → Custom domains → remove; then Worker → Settings → Domains & Routes → add custom domain, or add `"routes": [{ "pattern": "jamesberto.com", "custom_domain": true }, { "pattern": "www.jamesberto.com", "custom_domain": true }]` to `wrangler.jsonc` and deploy).
+4. Merge to `main`, then disable automatic production builds on the Pages project (keep the project for rollback).
+
+**Cutover rollback:** detach the custom domains from the Worker and re-add them to Pages `weekendtrip` (its last good production deployment is still live at `weekendtrip.pages.dev`).
 
 **Exact build/deploy commands:**
 
@@ -510,7 +521,7 @@ The project deploys to **Cloudflare Workers** via the [OpenNext Cloudflare adapt
 
 Firebase remains entirely client-side; no server-side Firebase config is needed. Ensure Firestore/Storage rules allow the deployed Worker's domain if rules are ever locked to specific referrers.
 
-Once deployed, pushes to the configured branch trigger redeployment through whatever CI/CD is wired up in the Cloudflare dashboard (not yet defined in-repo; see AR-06).
+Until cutover, Worker deploys are manual (`npm run cf:deploy`). After cutover, wire Workers Builds (Dashboard → Worker → Settings → Builds, build command `npm run cf:build`, deploy command `npx opennextjs-cloudflare deploy`) or a CI deploy job (see AR-06).
 
 ## Guide for AI and Automated Contributors
 
