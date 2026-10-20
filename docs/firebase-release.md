@@ -1,16 +1,18 @@
 # Firebase rules release — jlb-calorietracker
 
-Status (2026-10-20 review): live Firestore/IAM/Storage were inspected read-only and the review defects below were fixed and emulator-tested. Production release remains blocked on (1) deploying the corrected Conflict Tracker client to the live Pages site, (2) Admin ADC for the migration dry run plus explicit approval of its digest, and (3) Storage not being provisioned. No production data, rules, or client were changed by this work (one side effect: see Storage API note).
+Status (2026-10-20, phase 2): this is a Firestore-rules-only release. Storage is **deferred** until a bucket exists on the Blaze plan. Historical submission mirrors heal **in-app**, so the Admin migration is optional and not required. Remaining gates, in order: merge the Conflict Tracker client backport to `main` and verify Pages serves it, then deploy the Firestore rules, then run the post-deploy checks. No production data, rules or client have been changed by this work. One side effect: the Cloud Storage for Firebase API was enabled; see the live inspection notes.
 
 ## Sources and verified local behavior
 
 - Repository: `ferynd/Website`; source branch: `claude/website-backlog-review-9fzov8`; base: `main`.
-- Canonical files: `firestore.rules`, `storage.rules`, `firebase.json`.
+- Canonical deploy files: `firestore.rules` and `firebase.json`, which now maps **Firestore only**. `storage.rules` is kept, and is still emulator-tested through `firebase.rules-test.json`, but it is **deferred**: it is not wired into the deploy config and must not be deployed until Storage is provisioned. See the Storage notes below.
 - The client configuration names project `jlb-calorietracker` and bucket `jlb-calorietracker.firebasestorage.app`. These are repository identifiers, not live discovery results. Firestore rules assume the `(default)` database. `.firebaserc` deliberately selects a demo project for local testing; every production command must explicitly select the real project.
 - Conflict listeners request named documents: self immediately; partner only after two committed, server-confirmed timestamp mirrors. Missing/invalid mirrors never reveal a partner. Listener errors clear unavailable content and surface an error; cleanup cancels all subscriptions. Deletion batches the two known reflection IDs and parent without querying.
 - Creation and updates enforce assigned-side identity, matching `id`/`person`/`conflictId`/`authorUid`, and immutable non-null submission timestamps. Verified admin retains read/delete authority, including private drafts, but cannot write a reflection as an unassigned author. Admin authority remains verified-email based; this work does not close the separate custom-claim migration.
 - Submission and mirror commit atomically using `getAfter` rules validation. Retrying preserves the original timestamp. Missing historical mirrors default safely to null in rule evaluations.
 - Storage image validation applies to creation/replacement; deletion requires membership/admin authorization without examining `request.resource`. Both upload paths and the actual `listAll`/`getMetadata`/`deleteObject` cleanup sequence have positive and negative emulator coverage.
+- Historical self-heal: older submissions have no parent mirror. When a member's own reflection is submitted but their side's mirror is missing or null, the client writes that mirror once per subscription, using exactly the reflection's `submittedAt`, plus `hasReflectionX` and `updatedAt`. It uses the ordinary rule path (null to the exact value, checked by `validConflictSubmission`). It writes only the caller's own side. It is idempotent: once the mirror is set, nothing more is written. A rejected write is not retried, and errors log only the error code, never content. A conflict reveals after **both** members have opened it once. Until then, drafts and partner reflections stay private.
+- Delete fallback: under the currently deployed rules, a non-admin cannot delete reflections, even ones that don't exist. If the atomic batch delete is denied and neither reflection exists, the client deletes the conflict document directly, which is the old behavior. Under the new rules, the batch succeeds.
 - Both Trip Cost expense paths default a blank payer only when exactly one participant matches the caller's UID.
 
 ## Local checks
@@ -25,7 +27,7 @@ npm run test:rules
 cd public/tools/CalorieTracker && npm test
 ```
 
-Validated locally: root 61 files / 1,402 tests; CalorieTracker 9 files / 584 tests; rules/migration 4 files / 62 tests; lint, TypeScript and production Next.js build passed. No tests were skipped. Counts describe these suites separately; root also discovers CalorieTracker tests.
+Validated locally (phase 2): root 62 files / 1,407 tests; CalorieTracker 9 files / 584 tests; rules/migration 6 files / 90 tests (including `conflict-client-compat`, which runs the corrected client against both the live ruleset fixture and the new rules); lint, TypeScript and production Next.js build passed. No tests were skipped. Counts describe these suites separately; root also discovers CalorieTracker tests.
 
 The former Storage success-test skips reproduced as failures. Two independent harness defects were identified: test project IDs differed from the CLI project used by cross-service lookups, and firebase-tools 15.24's unconditional proxy dispatcher ignored `NO_PROXY` for localhost. The suites now share explicit `demo-website-rules-test`, run serially to prevent clearing each other's data, and load `scripts/emulator-proxy.cjs`. That preload routes only HTTP requests to configured loopback emulator ports directly. All external requests retain their proxy/TLS behavior. No production IAM role is simulated or verified by these local passes.
 
@@ -42,7 +44,7 @@ The former Storage success-test skips reproduced as failures. Two independent ha
 
 ### Compatibility of these rules with the live (`main`) client
 
-The emulator suite `tests/rules/conflict-tracker-release.rules.test.ts` covers this. Legacy conflict creation without mirror fields still works (fixed). However, the `main` client listens to and deletes through the `reflections` **collection**. The new rules deny that before reveal, and that restriction is the privacy fix itself. The `main` client also never writes the submission mirrors. **Deploying these Firestore rules while `main`'s client is live breaks Conflict Tracker reflections, deletion and the shared section.** The corrected client *is* compatible with the currently deployed rules, so it must ship first. This branch cannot build on Pages (OpenNext/Workers), so ship it as a minimal backport PR to `main`: the seven `app/tools/conflict-tracker` files, which typecheck on `main`. One known transient regression applies while the old rules are still live. Person A deleting a conflict now uses one batch that always deletes both reflection IDs. Old rules permit reflection deletes for admin only, so non-admin deletion fails until the new rules ship. Under the old rules, deleting a conflict that had reflections already failed.
+The emulator suites `tests/rules/conflict-tracker-release.rules.test.ts` and `tests/rules/conflict-client-compat.rules.test.ts` cover this. The second suite runs against a verbatim fixture of the live ruleset (`tests/rules/fixtures/firestore.live-7c3d1850.rules`, test-only) and against the new rules. Legacy conflict creation without mirror fields still works (fixed). However, the `main` client listens to and deletes through the `reflections` **collection**. The new rules deny that before reveal, and that restriction is the privacy fix itself. The `main` client also never writes the submission mirrors. **Deploying these Firestore rules while `main`'s client is live breaks Conflict Tracker reflections, deletion and the shared section.** The corrected client *is* compatible with the currently deployed rules, so it must ship first. This branch cannot build on Pages (OpenNext/Workers), so ship it as a minimal backport PR to `main`: the seven `app/tools/conflict-tracker` files, which typecheck on `main`. While the old rules are live, deleting a conflict that has no reflections still works for Person A, through the fallback. A non-admin deleting a conflict that **has** reflections stays denied until the new rules ship. That is identical to the old client, because the old rules allow only admins to delete reflections. So this is not a regression.
 
 ## Live access procedure (for re-verification)
 
@@ -55,7 +57,9 @@ Use an authenticated Firebase connector or trusted CLI/Google ADC. Never paste t
 
 Read-only APIs, if the connected tool exposes them: Firebase project metadata; Firestore `projects/.../databases`; Firebase Storage `projects/.../buckets`; Firebase Rules `projects/.../releases` then each referenced ruleset; Cloud Resource Manager `getIamPolicy`. Retain service account/project metadata without exposing auth values.
 
-## Historical mirrors: dry run, backup, approval, apply
+## Optional: Admin mirror migration (not required for this release)
+
+The in-app self-heal above replaces this migration for the release, so no Admin ADC or production data plan is needed. The scripts stay in the repository for an optional bulk backfill, for example to reveal conflicts that one partner never reopens. Running them still requires owner ADC and explicit approval of a dry-run plan digest, as described below. The earlier concern about mixed-case emails on unclaimed invites is dropped: James confirmed there are no pending invites.
 
 The Admin SDK migration is `scripts/firebase/migrateConflictMirrors.ts`, with tested logic in `scripts/firebase/conflictMigration.ts`. It scans tracker/conflict records, including missing ancestors with surviving subcollections. For each conflict, it validates side/author/document identity and submission types. Each absent mirror becomes null or the exact original stored timestamp for that side; this also handles only one submitted side. It never changes reflection contents, timestamps, shared text, flags, or unrelated parent fields. Existing conflicting mirrors, invalid identities/timestamps, unexpected reflection IDs and missing parents are quarantined. Any inconsistency blocks a production apply until resolved and re-planned.
 
@@ -89,15 +93,23 @@ Replace the digest placeholder with the approved dry-run digest. The script vali
 This branch also contains an unverified Cloudflare Workers migration from earlier work. `wrangler.jsonc`'s Worker identity is not production evidence. Do not run `cf:deploy`, deploy a new Worker, or assume the corrected client is live as part of this Firebase handoff. Coordinate the client release separately on the verified hosting target.
 
 1. Done 2026-10-20: live rules/database/bucket/IAM comparison and local checks (see above).
-2. Open and merge a backport PR to `main` with the corrected Conflict Tracker client. Let Pages deploy it, then record the deployment ID and commit, and smoke-test it against the **current** rules. Under the current rules it works, with two exceptions: historical conflicts don't reveal the partner until migration, and non-admin delete fails as noted above.
-3. Ask users to reload, so stale tabs stop writing unmirrored submissions. Run the migration **dry run** with Admin ADC (`gcloud auth application-default login`, as the project owner). Back it up privately and get explicit approval of the plan's SHA-256. Apply only that digest, then re-run the dry run: affected and blocked must both be 0. If anything drifted, re-plan and re-approve.
-4. Deploy **Firestore rules only** while Storage is unprovisioned:
+2. Merge the client backport PR to `main` (Conflict Tracker client only, including the self-heal and the delete fallback). Wait for the Pages production deployment of `weekendtrip`. Verify that its source commit equals the merge commit, and that `/tools/conflict-tracker` serves the new bundle. Smoke-test it against the **current** rules. Members' first visits will start healing their own historical mirrors, and that is safe under both rule sets.
+3. Deploy **Firestore rules only**:
 
    ```sh
    npx firebase deploy --only firestore:rules --project jlb-calorietracker
    ```
 
-   `--only firestore:rules,storage` fails while no bucket exists. Deploy `storage` later, as its own step: after Storage is provisioned (Blaze), the Storage service agent exists, and `roles/firebaserules.firestoreServiceAgent` is granted. Do not use `storage:rules` (invalid selector). Do not deploy Hosting, Functions, indexes, Auth configuration, or unrelated resources. Do not run `firebase use` to make an implicit production default.
-5. Re-read the active releases and rulesets. Compare their sources to the approved files and record the new ruleset name, keeping `7c3d1850-…` as the rollback reference. Test in production with approved test identities and non-sensitive fixtures: own/partner pre-reveal privacy, mutual submission and reveal, historical submitted vs draft-only, and outsider denial. Test image upload and delete only once Storage exists. Clean up only the fixtures you created.
+   `firebase.json` no longer maps Storage, so this deploys nothing else. Do not deploy Hosting, Functions, indexes, Auth configuration, or unrelated resources. Do not run `firebase use`. Leave the Cloud Storage for Firebase API enabled. Stale tabs still running the old client lose reflection loading and deletion until they reload.
+4. Verify: list the releases and confirm `cloud.firestore` points to a new ruleset whose source equals `firestore.rules`. Record that ruleset; the rollback reference is `7c3d1850-1364-4b63-a283-711021545010`. Then test in production with two dedicated test accounts and a test tracker containing only non-sensitive fixture text:
+   - each side can read only its own draft;
+   - a partner can't read a draft or a one-sided submission;
+   - mutual submission reveals both, and the shared section unlocks only then;
+   - Person A deletes, and Person B and an outsider are denied;
+   - an outsider can't read anything;
+   - a historical conflict reveals only after both members have opened it.
+
+   Delete only the fixtures you created.
+5. Deferred, as a separate future release: Storage. It needs Blaze billing, a default bucket, the Storage service agent with `roles/firebaserules.firestoreServiceAgent`, and then `storage` re-added to `firebase.json` and deployed on its own.
 
 If cutover fails, keep maintenance in place and use the captured previous releases/client artifacts to plan a compatible rollback. Do not roll back privacy rules to broad readable drafts or overwrite historical data wholesale. Record remaining blockers in AR-02/AR-03/AR-04; these initiatives remain open until merge, production acceptance and their other recorded criteria are satisfied.
