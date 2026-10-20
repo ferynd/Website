@@ -71,7 +71,7 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 
 ## 3a. Hosting and deploy flow (as of 2026-10-20)
 
-- **Firebase:** Firestore rules from the AR-03 release are live: ruleset `47cb93f9-4008-4b73-a8f8-cc469f8b8ae4`, deployed from PR #160's `firestore.rules`. Roll back by re-releasing `7c3d1850-1364-4b63-a283-711021545010` (= `main@074c307`). Deploy only with `npx firebase deploy --only firestore:rules --project jlb-calorietracker`. Storage is deferred.
+- **Firebase:** Firestore rules from the AR-03 release are live: ruleset `aa808b96-d906-471f-8441-ee116413a8db`, deployed from PR #160's `firestore.rules` (first release `47cb93f9`, then a conflict-create tightening). Roll back by re-releasing `7c3d1850-1364-4b63-a283-711021545010` (= `main@074c307`). Deploy only with `npx firebase deploy --only firestore:rules --project jlb-calorietracker`. Storage is deferred.
 - **Worker:** `jamesberto-website` (OpenNext). Preview at <https://jamesberto-website.arkkahdarkkahd.workers.dev>. It has secrets for Gemini, GPT, and TMDB. Manual deploy: `npm run cf:build && npx opennextjs-cloudflare deploy -- --message <slug>`, run from a worktree. Roll back with `npx wrangler rollback <version-id>`.
 - **Pages:** `weekendtrip` still serves jamesberto.com and www. Once #160 is on `main`, Pages builds fail (it is Workers-only code), and Pages keeps serving its last good deployment.
 - **Cutover status: blocked on James.** Attaching the custom domains fails with Cloudflare 100117: "Hostname already has externally managed DNS records". The apex and www DNS records that Pages created must be deleted, and the bot's wrangler OAuth has no DNS-edit scope. James's steps:
