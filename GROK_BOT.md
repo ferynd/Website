@@ -260,6 +260,20 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 - [ ] PR is a draft with scope, rationale, item IDs, checks, docs/migrations, follow-ups, residual risk, and **model + effort used** per step.
 - [ ] `PLAN.md` (scratch) is not in the commit; run record `~/runs/<item-id>/run.json` is updated.
 
+## 7a. Pull request and Codex review workflow (James's rule)
+
+- **Always open PRs ready for review.** Use `gh pr create` without `--draft`; never open drafts. This **overrides** the draft-PR default in `AGENTS.md` and `backlogs/protocol.md` for PRs Grok Bot opens (those files are intentionally left unchanged).
+- **Codex review trigger.** Opening or readying a PR triggers the Codex GitHub review (`chatgpt-codex-connector`). If no review appears, or it reports usage limits, re-trigger later with a PR comment `@codex review` (security-focused: `@codex security review`).
+- **Review loop:**
+  1. Read Codex's summary and inline comments: `gh pr view <n> --json reviews,comments` and `gh api repos/ferynd/Website/pulls/<n>/comments`.
+  2. Triage each finding as valid or not applicable. For rejected findings, reply on the comment explaining why.
+  3. Have the implementer (Grok or Codex per the model policy in §5a, via `agent-run`) fix valid findings on the same branch.
+  4. Verify (lint/build/test, `git diff --stat`), push, then comment `@codex review` again.
+  5. Repeat until clean or only rejected findings remain, then summarize to James.
+- **Never merge without James.**
+- **Known limit:** Codex reviews share the ChatGPT Codex usage limits (exhausted on 2026-10-20).
+- **Cloudflare Pages check on `claude/` Workers PRs:** PRs targeting the `claude/` Workers (OpenNext) branch fail the Cloudflare Pages check by design, because Pages can't build OpenNext Workers code. The Workers preview is deployed with `npm run cf:deploy` instead.
+
 ## 8. Smoke test record
 
 **2026-10-20** — isolated local test repo (no remote; nothing pushed): a small `slugify` function with tests.
@@ -270,6 +284,7 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 
 ## Changelog
 
+- **2026-10-20** — Added the PR workflow (§7a): PRs always opened ready for review (overrides the AGENTS.md/protocol draft default), the Codex GitHub review trigger and `@codex review` re-trigger, the triage/fix/re-review loop, the Codex usage-limit note, and the expected Cloudflare Pages check failure on `claude/` Workers PRs.
 - **2026-10-20** — Added `agent-run` credential isolation (bubblewrap with env allowlisting, masking for wrangler, firebase-tools, gh, and browser credential stores, and git push disabled). All planner and implementer commands now go through it. Verification results and limitations are in §3. Noted the Workers preview `jamesberto-website` (workers.dev only; live site still on Pages).
 - **2026-10-20** — Added Grok Build 1.0.62 as a second implementer (verified flags, sandbox, headless usage), the model selection policy (lowest fitting tier, always pinned, recorded in PRs), the scripted plan handoff (`plan.json` → `PLAN.md` with validation), and per-item run records for execution recovery. Noted the Codex "out of credits" failure mode.
 - **2026-10-20** — Initial setup: tool installs and logins (Claude Code, Codex, gh, wrangler, firebase-tools), Gemini skipped, isolated pipeline smoke test passed, this guide added.
