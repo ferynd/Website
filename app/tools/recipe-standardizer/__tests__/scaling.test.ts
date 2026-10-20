@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseRecipeJson } from '../lib/schema';
+import { confirmNutritionLink } from '../lib/nutritionLink';
+import { TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
 import {
   applyScaleToRecipe,
   factorFromMultiplier,
@@ -109,5 +111,17 @@ describe('applyScaleToRecipe', () => {
     base.ingredients[0].equivalent = 'a generous handful';
     const scaled = applyScaleToRecipe(base, 3);
     expect(scaled.ingredients[0].equivalent).toBe('a generous handful');
+  });
+
+  it('preserves a confirmed nutrition link and gram basis unchanged', () => {
+    const base = recipe();
+    const trackerFood: TrackerFood = {
+      id: 'food-flour', name: 'Flour', quantity: 1,
+      nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 1])) as TrackerFood['nutrients'],
+      lastUpdated: 'rev',
+    };
+    const link = confirmNutritionLink(trackerFood, 100, 123, base.ingredients[0].nutritionLink);
+    base.ingredients[0].nutritionLink = link;
+    expect(applyScaleToRecipe(base, 2).ingredients[0].nutritionLink).toEqual(link);
   });
 });

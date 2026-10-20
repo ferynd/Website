@@ -34,7 +34,7 @@ Trip Cost data lives under `artifacts/trip-cost/**` (see **ARCHITECTURE.md**). C
 ### Recipe Standardizer
 
 - Firestore path: `artifacts/recipe-standardizer/users/{uid}/recipes/{recipeId}` — recipes are private to the authenticated user (owner-only read/write; see `firestore.rules`).
-- Reads the same user's CalorieTracker saved foods (`artifacts/default-app-id/users/{uid}/foodItems`) for optional nutrition-link matching; it never reads another user's data and never writes to CalorieTracker paths.
+- Reads the same user's full CalorieTracker food records (`artifacts/default-app-id/users/{uid}/foodItems`) — name, quantity, nutrient values, and `lastUpdated` — for linking and revision checks; it never writes to tracker paths. Recipe links are client-side assertions: rules do not enforce their validity, so the app revalidates them when a recipe opens.
 - No AI/API calls: recipe conversion happens in ChatGPT outside the site; only user-pasted JSON is processed client-side.
 
 ## Firestore Security Rules (authoritative)

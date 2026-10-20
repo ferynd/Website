@@ -28,12 +28,14 @@ import {
   Save,
   Scale,
   UtensilsCrossed,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
+import { assessNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
 import {
@@ -43,7 +45,8 @@ import {
   type StepTextUpdate,
 } from '../lib/stepTextUpdate';
 import { resolveTechnique, type Technique } from '../lib/techniques';
-import type { Recipe, RecipeIngredient } from '../lib/types';
+import type { NutritionLink, Recipe, RecipeIngredient } from '../lib/types';
+import type { FoodsState } from '../lib/trackerFoods';
 import { groupAnchor, normalizeRecipeWorkflow, stepAnchor } from '../lib/workflow';
 import AccordionSection from './AccordionSection';
 import ExecutionSectionCard from './ExecutionSectionCard';
@@ -95,6 +98,7 @@ export default function RecipeWorkspace() {
   const [stepReview, setStepReview] = useState<StepReviewState | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [jsonCopied, setJsonCopied] = useState(false);
+  const [foods, setFoods] = useState<FoodsState>({ status: 'idle', items: [], error: '' });
   // Only Overview (and its timeline) starts open — the working panels are a
   // tap away via the sticky nav, keeping the default view phone-concise.
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
@@ -107,6 +111,24 @@ export default function RecipeWorkspace() {
   // Bumped whenever a different recipe (or none) becomes current, so an
   // in-flight nutrition match can detect that its result no longer applies.
   const recipeSessionRef = useRef(0);
+  const foodsRequestRef = useRef(0);
+
+  const refreshFoods = async (): Promise<import('../lib/trackerFoods').TrackerFood[] | null> => {
+    const request = ++foodsRequestRef.current;
+    const session = recipeSessionRef.current;
+    setFoods((prev) => ({ ...prev, status: 'loading', error: '' }));
+    try {
+      const items = await loadFoodItems();
+      if (request !== foodsRequestRef.current || session !== recipeSessionRef.current) return null;
+      setFoods({ status: 'ready', items, error: '' });
+      return items;
+    } catch (err) {
+      if (request === foodsRequestRef.current && session === recipeSessionRef.current) {
+        setFoods({ status: 'error', items: [], error: err instanceof Error ? err.message : 'unknown error' });
+      }
+      return null;
+    }
+  };
 
   const dirty = useMemo(
     () => Boolean(draft && (!currentId || JSON.stringify(draft) !== JSON.stringify(baseline))),
@@ -149,13 +171,13 @@ export default function RecipeWorkspace() {
     const session = recipeSessionRef.current;
     void (async () => {
       try {
-        const foods = await loadFoodItems();
-        if (foods.length === 0 || session !== recipeSessionRef.current) return;
+        const items = await refreshFoods();
+        if (!items || items.length === 0 || session !== recipeSessionRef.current) return;
         const current = draftRef.current;
         if (!current) return;
-        const { recipe: matched, summary } = applyNutritionMatches(current, foods);
+        const { recipe: matched, summary } = applyNutritionMatches(current, items);
         setDraft(matched);
-        setStatus(`Nutrition match: ${summary.linked} linked, ${summary.likely} likely, ${summary.unlinked} unlinked (see Ingredients).`);
+        setStatus(`Nutrition match: ${summary.candidates} candidate(s) to confirm, ${summary.unlinked} unlinked (see Ingredients).`);
       } catch {
         /* matching is optional — never block import */
       }
@@ -172,6 +194,7 @@ export default function RecipeWorkspace() {
       return;
     }
     openRecipe(result.recipe, recipeId, result.warnings);
+    void refreshFoods();
   };
 
   const handleDelete = async (recipeId: string) => {
@@ -185,6 +208,8 @@ export default function RecipeWorkspace() {
   const handleClose = () => {
     if (!confirmDiscard()) return;
     recipeSessionRef.current += 1;
+    foodsRequestRef.current += 1;
+    setFoods({ status: 'idle', items: [], error: '' });
     setBaseline(null);
     setDraft(null);
     setCurrentId(null);
@@ -254,7 +279,7 @@ export default function RecipeWorkspace() {
         setStatus('No changes to save.');
         return;
       }
-      setSaveModalSummary('You have unsaved edits (ingredients, name, or baked-in scaling).');
+      setSaveModalSummary('You have unsaved edits (ingredients, nutrition links, name, or baked-in scaling).');
     } catch (err) {
       setStatus(`Save failed: ${err instanceof Error ? err.message : 'unknown error'}`);
     }
@@ -292,7 +317,8 @@ export default function RecipeWorkspace() {
   const runNutritionMatch = async (): Promise<MatchSummary> => {
     if (!draft) throw new Error('No recipe open.');
     const session = recipeSessionRef.current;
-    const foods = await loadFoodItems();
+    const foods = await refreshFoods();
+    if (!foods) throw new Error('Could not load Nutrition Tracker foods — try again.');
     // Apply against the *latest* draft, not the click-time closure — and bail
     // out entirely if a different recipe was opened while the read ran.
     if (session !== recipeSessionRef.current) {
@@ -328,6 +354,15 @@ export default function RecipeWorkspace() {
   // One normalized workflow view model drives the Timeline, Prep,
   // Execution, and Ingredients displays for both v1 and v2 recipes.
   const workflow = useMemo(() => (draft ? normalizeRecipeWorkflow(draft) : null), [draft]);
+  const foodsById = useMemo(() => foods.status === 'ready' ? new Map(foods.items.map((food) => [food.id, food])) : null, [foods]);
+  const linkAssessments = useMemo(() => new Map((draft?.ingredients ?? []).map((ingredient) => [
+    ingredient.id, assessNutritionLink(ingredient.nutritionLink, foodsById),
+  ])), [draft, foodsById]);
+  const linkSummary = useMemo(() => summarizeLinkReview(linkAssessments.values()), [linkAssessments]);
+  const handleNutritionLinkChange = (ingredientId: string, link: NutritionLink) => setDraft((prev) => prev ? {
+    ...prev,
+    ingredients: prev.ingredients.map((ingredient) => ingredient.id === ingredientId ? { ...ingredient, nutritionLink: link } : ingredient),
+  } : prev);
   const techniquesByAnchor = useMemo(() => {
     const map = new Map<string, Technique[]>();
     if (!draft || !workflow) return map;
@@ -400,6 +435,7 @@ export default function RecipeWorkspace() {
           </div>
 
           {status && <p className="text-sm text-text-2">{status}</p>}
+          {linkSummary.stale > 0 && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-error/30 bg-error/10 p-3 text-sm text-error"><TriangleAlert size={14} /> {linkSummary.stale} nutrition link(s) point at deleted, renamed, or changed Nutrition Tracker foods. <Button size="sm" variant="ghost" onClick={() => jumpTo('ingredients')}>Review</Button></div>}
           {warnings.length > 0 && (
             <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
               <p className="font-medium">Import notes:</p>
@@ -475,6 +511,11 @@ export default function RecipeWorkspace() {
                   factor={scale.factor}
                   onIngredientChange={handleIngredientChange}
                   onRunNutritionMatch={runNutritionMatch}
+                  linkAssessments={linkAssessments}
+                  foods={foods}
+                  linkSummary={linkSummary}
+                  onNutritionLinkChange={handleNutritionLinkChange}
+                  onRefreshFoods={() => { void refreshFoods(); }}
                 />
               )}
             </AccordionSection>

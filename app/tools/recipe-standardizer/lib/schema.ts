@@ -23,6 +23,8 @@
  *   per-load warning, and nothing is written back to Firestore just because
  *   it was loaded. A v1 recipe becomes a saved v2 recipe only when the user
  *   explicitly saves an edit or a new copy.
+ * - Nutrition links are additive: old linked/likely values become candidates;
+ *   confirmation fields default to null and nothing is written on load.
  * - v2 parses strictly, including the structural workflow validation in
  *   lib/workflowValidate.ts.
  * - Unknown future versions are not silently treated as compatible: they
@@ -31,10 +33,9 @@
  */
 
 import { findUnknownTechniqueIds } from './techniques';
+import { parseNutritionLink } from './nutritionLink';
 import {
   RECIPE_SCHEMA_VERSION,
-  UNLINKED_NUTRITION,
-  type NutritionLink,
   type PrepGroup,
   type PrepTiming,
   type Recipe,
@@ -91,22 +92,6 @@ const readNullableNumber = (
     return null;
   }
   return v;
-};
-
-const readNutritionLink = (v: unknown): NutritionLink => {
-  if (!isObject(v)) return { ...UNLINKED_NUTRITION };
-  const status = v.status === 'linked' || v.status === 'likely' ? v.status : 'unlinked';
-  const confidence =
-    typeof v.matchConfidence === 'number' && Number.isFinite(v.matchConfidence)
-      ? Math.min(1, Math.max(0, v.matchConfidence))
-      : null;
-  return {
-    status,
-    foodItemId: typeof v.foodItemId === 'string' && v.foodItemId ? v.foodItemId : null,
-    matchedName: typeof v.matchedName === 'string' && v.matchedName ? v.matchedName : null,
-    matchConfidence: confidence,
-    needsUserReview: typeof v.needsUserReview === 'boolean' ? v.needsUserReview : status !== 'linked',
-  };
 };
 
 const TIMELINE_KINDS: TimelineKind[] = ['prep', 'execution', 'wait', 'serve'];
@@ -460,7 +445,7 @@ const readIngredients = (
       optional: entry.optional === true,
       substitutionNotes: asString(entry.substitutionNotes),
       conversionNotes: asString(entry.conversionNotes),
-      nutritionLink: readNutritionLink(entry.nutritionLink),
+      nutritionLink: parseNutritionLink(entry.nutritionLink, `${path}.nutritionLink`, warnings),
     });
   });
   return ingredients;

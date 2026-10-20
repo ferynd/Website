@@ -191,14 +191,14 @@ describe('workflow data preservation', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('leaves workflow data alone during nutrition matching and links by exact name', () => {
+  it('leaves workflow data alone during nutrition matching and suggests exact names', () => {
     const { recipe: matched, summary } = applyNutritionMatches(recipe, [
       { id: 'food-cream', name: 'heavy cream' },
     ]);
     expect(matched.prepGroups).toEqual(recipe.prepGroups);
     expect(matched.timeline).toEqual(recipe.timeline);
     const cream = matched.ingredients.find((i) => i.id === 'ing-cream')!;
-    expect(cream.nutritionLink.status).toBe('linked');
-    expect(summary.linked).toBe(1);
+    expect(cream.nutritionLink.status).toBe('candidate');
+    expect(summary.candidates).toBe(1);
   });
 });

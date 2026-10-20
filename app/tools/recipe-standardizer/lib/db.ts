@@ -41,7 +41,8 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { parseRecipeJson, type ParseResult } from './schema';
-import type { FoodItemRef, Recipe, SavedRecipeMeta } from './types';
+import type { Recipe, SavedRecipeMeta } from './types';
+import { parseTrackerFood, type TrackerFood } from './trackerFoods';
 
 const recipesCol = (uid: string): CollectionReference =>
   collection(db, ROOT_COLLECTION, APP_ID, 'users', uid, 'recipes');
@@ -111,13 +112,10 @@ export const deleteRecipe = async (uid: string, recipeId: string): Promise<void>
   await deleteDoc(doc(recipesCol(uid), recipeId));
 };
 
-/** Fetch the user's CalorieTracker saved foods for nutrition-link matching. */
-export const fetchFoodItems = async (uid: string): Promise<FoodItemRef[]> => {
+/** Fetch full read-only food records for linking and later nutrition math; never writes. */
+export const fetchFoodItems = async (uid: string): Promise<TrackerFood[]> => {
   const snap = await getDocs(foodItemsCol(uid));
   return snap.docs
-    .map((docSnap) => {
-      const data = docSnap.data() as Record<string, unknown>;
-      return { id: docSnap.id, name: typeof data.name === 'string' ? data.name : '' };
-    })
-    .filter((item) => item.name.length > 0);
+    .map((docSnap) => parseTrackerFood(docSnap.id, docSnap.data()))
+    .filter((food): food is TrackerFood => food !== null);
 };
