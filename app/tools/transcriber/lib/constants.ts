@@ -64,7 +64,9 @@ export const GEMINI_FILE_POLL_INTERVAL_MS = 2000;
 export const GEMINI_FILE_POLL_TIMEOUT_MS = 120_000;
 
 /** Gemini's larger per-request size budget (vs. OpenAI's 25 MB) — kept under
- * Cloudflare Pages' 100 MB request-body limit for this deployment. */
+ * the Cloudflare Workers 100 MB request-body limit for this deployment's
+ * account plan (that ceiling is plan-dependent; reconfirm against the actual
+ * Cloudflare account if the plan tier ever changes). */
 export const MAX_GEMINI_UPLOAD_BYTES = 95 * 1024 * 1024;
 
 /* ------------------------------------------------------------ */

@@ -54,7 +54,7 @@ Use the smallest scope that provides meaningful confidence, then run every comma
 - Recipe Standardizer logic: root `npm test`; component/page changes also `npm run lint` and `npm run build`.
 - React page/component changes: `npm run lint` and `npm run build`.
 - Shared config/dependencies/routing: `npm run lint`, `npm run build`, and `npm test`.
-- Auth/rules/data-model changes: relevant tests plus Firestore/Storage emulator coverage when available; clearly identify any manual deployment validation.
+- Auth/rules/data-model changes: relevant tests plus `npm run test:rules` (Firestore/Storage emulator coverage under `tests/rules/`, requires Java; see AR-02 in `backlogs/audit-remediation.md`); clearly identify any manual deployment validation.
 - Critical/high fixes require a regression test or a documented reason automation is not feasible.
 
 Report checks concisely; do not paste successful logs.

@@ -1,4 +1,3 @@
-export const runtime = 'edge';
 import { NextRequest, NextResponse } from 'next/server';
 import { searchTmdbCandidates, fetchTmdbTvSeasonInfo } from '@/app/tools/shows/lib/mediaMetadata';
 import { getTmdbConfig, hasTmdbCredentials } from '@/app/tools/shows/lib/tmdbConfig';

@@ -7,10 +7,10 @@ Welcome to my personal website project! This repository is a monorepo containing
 - **Framework:** Next.js (using the App Router)
 - **Language:** TypeScript
 - **Styling:** Tailwind CSS (with official plugins for forms & typography)
-- **Deployment:** Cloudflare Pages
+- **Deployment:** Cloudflare Workers, via the [OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare) (`@opennextjs/cloudflare`)
 - **Backend Services:** Firebase (Authentication & Firestore, used in certain tools)
 
-This stack means the site is primarily a static front-end (deployed on Cloudflare Pages) with some dynamic client-side features. Firebase is used as a backend for data-heavy features (e.g. saving user data for certain tools like the Trip Cost calculator or Calorie Tracker).
+This stack means the site is mostly a static front-end with some dynamic client-side features, plus a handful of server-side API routes (running inside the deployed Worker, never the browser) that call external AI/media APIs using server-only secrets. Firebase is used as a backend for data-heavy features (e.g. saving user data for certain tools like the Trip Cost calculator or Calorie Tracker).
 
 ### Shared UI tokens
 
@@ -143,13 +143,13 @@ Data persists under `artifacts/conflict-tracker/trackers/{trackerId}/conflicts/{
 
 _"Track shared watchlists, ratings, notes, and mood-based recommendations."_
 
-This React tool lives under **app/tools/shows/** with Edge API routes in **app/api/classify/** and **app/api/recommend/**. Gemini is used as a plain text-in / JSON-out helper for title classification/expansion and watch recommendations. Model choices are client-safe metadata in **app/lib/aiModels.ts**, with local device settings for classification (`gemini-3.1-flash-lite` by default) and recommendations (`gemini-2.5-flash` by default). Recommendation candidates include Watching, Planned, On Hold, and Completed shows that relevant viewers marked as rewatchable.
+This React tool lives under **app/tools/shows/** with Worker (OpenNext) API routes in **app/api/classify/** and **app/api/recommend/**. Gemini is used as a plain text-in / JSON-out helper for title classification/expansion and watch recommendations. Model choices are client-safe metadata in **app/lib/aiModels.ts**, with local device settings for classification (`gemini-3.1-flash-lite` by default) and recommendations (`gemini-2.5-flash` by default). Recommendation candidates include Watching, Planned, On Hold, and Completed shows that relevant viewers marked as rewatchable.
 
 ### Transcriber (Firebase + OpenAI + Gemini-backed, admin-only)
 
 _"Upload a long recording and get a cleaned, speaker-labeled, timestamped transcript."_
 
-This React tool lives under **app/tools/transcriber/** with Edge API routes in **app/api/transcriber/**. Unlike every other Firebase-backed tool on this site, it is restricted to a single account (the site admin) rather than any signed-in user, and it has no Firestore persistence at all — nothing about a transcription run is saved once the browser tab closes (settings and speaker-profile data persist locally in that browser's localStorage/IndexedDB, never server-side).
+This React tool lives under **app/tools/transcriber/** with Worker (OpenNext) API routes in **app/api/transcriber/**. Unlike every other Firebase-backed tool on this site, it is restricted to a single account (the site admin) rather than any signed-in user, and it has no Firestore persistence at all — nothing about a transcription run is saved once the browser tab closes (settings and speaker-profile data persist locally in that browser's localStorage/IndexedDB, never server-side).
 
 Key features:
 - **Upload:** accepts a single recording (`.m4a`, `.mp3`, `.wav`, `.aac`, `.ogg`, or `.webm`), validated client- and server-side against a provider-aware upload cap (25 MB for the OpenAI providers, or 95 MB when OpenAI's auto-optimize/chunking setting is on — see below; 95 MB for Gemini), with speaker names/voice notes managed in a Speaker Profiles panel (defaulting to Kait/James, with optional recorded or uploaded voice-reference clips) and optional free-text context notes.
@@ -305,7 +305,7 @@ This is a full-featured nutrition tracker built as a static client-side app (pla
 
 All data lives under `artifacts/${appId}/users/{userId}/`. `appId` is configured in
 `public/tools/CalorieTracker/config.js` and resolves to `window.__app_id` when present
-(Canvas / hosted environment) or falls back to `’default-app-id’`.
+(Canvas / hosted environment) or falls back to `’default-app-id’`. **Production rules authorize only `default-app-id`** (AR-02/F-138), which is what the tool uses on jamesberto.com. The `window.__app_id` (Canvas) mode is unsupported against the production project, and any other namespace is denied. A read-only scan on 2026-10-20 found CalorieTracker data only under `default-app-id`.
 
 - `targets/baseline` — baseline nutrient targets
 - `dailyEntries/{YYYY-MM-DD}` — per-day food log, exercise sessions, estimate metadata
@@ -452,7 +452,7 @@ If you want to run the project locally or work on it:
 
 ### 1\. Install Dependencies
 
-Make sure you have Node.js (v18+ recommended for Next.js 15). After downloading/cloning this repository, install the NPM packages:
+Make sure you have Node.js 22+ (see `.nvmrc`/`engines` in `package.json`; `npm@10.9.7` is the pinned `packageManager`). After downloading/cloning this repository, install the NPM packages:
 
 npm install
 
@@ -470,7 +470,9 @@ While developing, you can modify the Next.js pages (in /app) and see the updates
 
 ### 3\. Firebase Setup (if needed)
 
-Some tools (Trip Cost, Calorie Tracker) use Firebase. For full functionality: - Create a free Firebase project. - Enable Email/Password authentication (for Trip Cost and Calorie Tracker). - Create a Cloud Firestore database. - You might need to set Firestore rules as mentioned in the earlier **Trip Cost** notes, to allow appropriate access. - Update the Firebase configuration in the code (for Trip Cost, in firebaseConfig.ts; for Calorie Tracker, in firebaseConfig.js) with your project's details. - If you don't do this, the site will still run, but those specific tools might not work correctly (or at all).
+Some tools (Trip Cost, Calorie Tracker, and others) use Firebase. For full functionality: - Create a free Firebase project. - Enable Email/Password authentication. - Create a Cloud Firestore database and a Storage bucket. - Deploy `firestore.rules` (the canonical Firestore rule source wired in `firebase.json`) with `npx firebase deploy --only firestore:rules --project <your-project-id>`. `storage.rules` is checked in but deliberately not wired into `firebase.json` — Storage (photo uploads) is deferred; see [the Firebase release runbook](docs/firebase-release.md) before provisioning it. - Update the Firebase configuration in the code (for Trip Cost, in firebaseConfig.ts; for Calorie Tracker, in firebaseConfig.js) with your project's details. - If you don't do this, the site will still run, but those specific tools might not work correctly (or at all).
+
+Run `npm run test:rules` (requires a local Java runtime) to exercise `firestore.rules`/`storage.rules` against the Firebase emulator before deploying a rules change — see `tests/rules/`. The harness explicitly uses the isolated demo project; production CLI commands must select `--project jlb-calorietracker`. See [the Firebase release runbook](docs/firebase-release.md) for live-rule comparison, Storage-to-Firestore IAM, protected migration backups, explicit data-change approval, and compatible client/migration/rules ordering. The AR-03 Firestore rules were deployed to production on 2026-10-20 after the compatible client (#161) shipped; historical submissions self-heal their own side's mirror when opened.
 
 ### 4\. Environment Variables
 
@@ -488,21 +490,38 @@ Formatting (Prettier) can be run or set up in your editor for consistent code st
 
 ## Deployment
 
-The project is configured for deployment on **Cloudflare Pages**. Cloudflare Pages provides excellent support for Next.js (including the newer App Router).
+The project deploys to **Cloudflare Workers** via the [OpenNext Cloudflare adapter](https://opennext.js.org/cloudflare) (`@opennextjs/cloudflare`), configured in `open-next.config.ts` and `wrangler.jsonc`. This replaced the previously used `@cloudflare/next-on-pages` (Cloudflare Pages) path in AR-01 — that adapter is deprecated/archived and had capped this project's usable Next.js version, blocking security patches.
 
-**Steps to deploy on Cloudflare Pages:**
+**Production (since 2026-10-20):** jamesberto.com and www.jamesberto.com are served by the Worker `jamesberto-website` on Cloudflare account `1fe4f24f7aea01cf86064202b557b79f`, as Workers Custom Domains declared in `wrangler.jsonc` `routes` (`custom_domain: true`). Custom Domains own their DNS records, so every deploy reconciles them. The `WORKER_SELF_REFERENCE` service binding points at the same Worker. Preview URL: <https://jamesberto-website.arkkahdarkkahd.workers.dev>. Secrets: `GEMINI_API_KEY`, `GPT_API_KEY`, `TMDB_API_KEY`, `TMDB_READ_ACCESS_TOKEN`, set with `npx wrangler secret put <NAME>`.
 
-- Push your code to a Git repository (e.g., GitHub).
-- In Cloudflare Pages dashboard, create a new project connected to your repo.
-- Use the **Next.js build preset** if available. If not, manually set the build command to npm run build and the build output directory to .vercel/output (for Next 13+ apps) or .next (for older versions). Cloudflare’s preset should handle this for Next 15.
-- Set environment variables on Cloudflare Pages if needed (e.g., any NEXT_PUBLIC_... vars or Firebase config, though if you baked those into the code, it's not necessary).
-- Trigger a deploy. Cloudflare will install dependencies, build the Next.js app, and deploy the site.
+**Deploys:** Workers Builds deploys from `main` (build command `npm run cf:build`, deploy command `npx opennextjs-cloudflare deploy`; other branches run `npx opennextjs-cloudflare upload` for preview versions). For a manual deploy, run `npm run cf:build && npx opennextjs-cloudflare deploy` from a clean checkout of `main`.
 
-Because our site is mostly static and uses Cloudflare’s infrastructure, it should load quickly and handle traffic easily. The static assets in /public will be served directly. Any Next.js server-side rendering (if we had any) would also be handled by Cloudflare’s adapters, but currently the app pages are either static or client-rendered.
+**Previous host:** the Pages project `weekendtrip` was the production host until 2026-10-20. Its custom domains have been removed and its automatic deployments are paused. It is kept, with its last good deployment still at `weekendtrip.pages.dev`, only as a rollback target.
 
-**Note on Firebase with Cloudflare Pages:** Since Firebase is entirely client-side here, we don’t need special server config. Just ensure your Firebase rules allow the Cloudflare Pages domain (if you locked rules to specific referrers, for instance).
+**Rollback:**
+- Code: `npx wrangler rollback [version-id]`.
+- Hosting, back to Pages:
+  1. Delete the Worker custom domains.
+  2. Recreate the CNAME records `jamesberto.com` → `weekendtrip.pages.dev` (DNS only) and `www` → `weekendtrip.pages.dev` (proxied).
+  3. Re-add both custom domains to Pages `weekendtrip`.
 
-Once deployed, updates to the main branch (or whichever branch is configured) will automatically trigger redeployments, keeping the live site up-to-date.
+**Exact build/deploy commands:**
+
+- `npm run cf:build` — runs `opennextjs-cloudflare build`; produces `.open-next/worker.js` and `.open-next/assets/`. This is the command Cloudflare's dashboard build step should run (do **not** use `npm run build` alone as the Cloudflare build command — that only produces `.next/`, not a deployable Worker).
+- `npm run cf:preview` — builds, then runs `opennextjs-cloudflare preview` (local Workers runtime via `wrangler dev`) for a production-equivalent smoke test before deploying.
+- `npm run cf:deploy` — builds, then runs `opennextjs-cloudflare deploy` (`wrangler deploy` under the hood). Requires `wrangler login` or `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` in the environment.
+
+**Required Worker secrets** (set with `npx wrangler secret put <NAME>`, never committed): `GEMINI_API_KEY`, `GPT_API_KEY`, and one of `TMDB_READ_ACCESS_TOKEN` or `TMDB_API_KEY`. See `SECURITY.md` for what each one gates.
+
+**Required `wrangler.jsonc` settings** (already checked in): `compatibility_flags: ["nodejs_compat", "global_fetch_strictly_public"]` and a `compatibility_date` on or after `2024-09-23`. Both are required by the OpenNext adapter; do not remove them.
+
+**Rollback:** Cloudflare Workers keeps prior deployments; roll back with `npx wrangler rollback [deployment-id]` (omit the ID to roll back to the immediately preceding deployment), or re-run `npm run cf:deploy` from a known-good commit.
+
+**Post-deploy smoke check:** load `/` and `/trips` (confirm the Japan itinerary is absent — see `SECURITY.md` Known Limitations), then confirm `/api/transcriber/status` returns `401`/`403` for an unauthenticated request and the Firebase-backed tools (Trip Cost, Conflict Tracker, etc.) can sign in.
+
+Firebase remains entirely client-side; no server-side Firebase config is needed. Ensure Firestore/Storage rules allow the deployed Worker's domain if rules are ever locked to specific referrers.
+
+
 
 ## Guide for AI and Automated Contributors
 

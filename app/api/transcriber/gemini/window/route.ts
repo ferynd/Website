@@ -1,5 +1,3 @@
-export const runtime = 'edge';
-
 import { NextRequest, NextResponse } from 'next/server';
 import { isGeminiTranscribeModel, resolveGeminiModelId } from '@/app/lib/aiModels';
 import { AuthError, requireAdminUser } from '@/app/lib/verifyFirebaseAuth';

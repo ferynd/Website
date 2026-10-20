@@ -93,6 +93,7 @@ export function applySpendCaps(
       ...b,
       rawShouldHavePaid: b.shouldHavePaid,
       isCapped: false,
+      unallocatedOverage: 0,
     }));
   }
 
@@ -103,6 +104,10 @@ export function applySpendCaps(
     rawBalances.map((b) => [b.personId, b.shouldHavePaid])
   );
   const locked = new Set<string>();
+  // Was silently discarded when no eligible recipient existed, breaking
+  // conservation (shouldHavePaid no longer summed to the trip total) and
+  // corrupting settlement advice downstream (F-087).
+  let unallocatedOverage = 0;
 
   // Iterative cascading – repeat until stable
   let changed = true;
@@ -124,7 +129,10 @@ export function applySpendCaps(
         .map((b) => b.personId)
         .filter((id) => id !== pid && !locked.has(id));
 
-      if (!eligible.length) break; // no one to absorb
+      if (!eligible.length) {
+        unallocatedOverage += overage;
+        break;
+      }
 
       if (overageSplit.type === 'manual' && overageSplit.shares) {
         // Manual percentage shares among eligible
@@ -166,6 +174,7 @@ export function applySpendCaps(
         Math.round((b.totalPaid - newShouldHavePaid) * 100) / 100,
       isCapped: locked.has(b.personId),
       capAmount: cap,
+      unallocatedOverage: Math.round(unallocatedOverage * 100) / 100,
     };
   });
 }
@@ -179,6 +188,18 @@ export function calculateSettlements(balances: Balance[]): {
   to: string;
   amount: number;
 }[] {
+  // Settlement advice is only meaningful when obligations conserve the
+  // trip total (balances sum to ~0). Infeasible spend caps (see
+  // applySpendCaps' unallocatedOverage) or other upstream bugs can violate
+  // that, which previously still produced advice — including recommending
+  // one creditor pay another creditor (F-087). Refuse rather than guess.
+  // Any flagged cap shortfall makes the obligations non-conserving, even
+  // when the shortfall is smaller than the rounding tolerance below.
+  if (balances.some((b) => ((b as Partial<CappedBalance>).unallocatedOverage ?? 0) > 0)) return [];
+  const total = balances.reduce((sum, b) => sum + b.balance, 0);
+  const tolerance = 0.01 * Math.max(balances.length, 1);
+  if (Math.abs(total) > tolerance) return [];
+
   const copy = balances.map((b) => ({ ...b }));
   const settlements: { from: string; to: string; amount: number }[] = [];
   copy.sort((a, b) => a.balance - b.balance);
@@ -187,15 +208,17 @@ export function calculateSettlements(balances: Balance[]): {
   while (i < j) {
     const debtor = copy[i];
     const creditor = copy[j];
-    if (Math.abs(debtor.balance) < 0.01) {
+    // Explicit sign checks (not just "near zero") so a positive balance is
+    // never treated as a debtor and vice versa, regardless of sort order.
+    if (debtor.balance >= -0.01) {
       i++;
       continue;
     }
-    if (Math.abs(creditor.balance) < 0.01) {
+    if (creditor.balance <= 0.01) {
       j--;
       continue;
     }
-    const amount = Math.min(Math.abs(debtor.balance), creditor.balance);
+    const amount = Math.min(-debtor.balance, creditor.balance);
     settlements.push({
       from: debtor.name,
       to: creditor.name,
@@ -203,8 +226,8 @@ export function calculateSettlements(balances: Balance[]): {
     });
     debtor.balance += amount;
     creditor.balance -= amount;
-    if (Math.abs(debtor.balance) < 0.01) i++;
-    if (Math.abs(creditor.balance) < 0.01) j--;
+    if (debtor.balance >= -0.01) i++;
+    if (creditor.balance <= 0.01) j--;
   }
   return settlements;
 }

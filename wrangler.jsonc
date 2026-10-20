@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Cloudflare Worker for jamesberto.com after the next-on-pages -> OpenNext
+  // migration (AR-01). Account: 1fe4f24f7aea01cf86064202b557b79f.
+  //
+  // Serves jamesberto.com and www.jamesberto.com as Workers Custom Domains
+  // (cut over from the Pages project `weekendtrip` on 2026-10-20; see README
+  // "Deployment" for rollback). Custom Domains own their DNS records, so keep
+  // them declared here: every `wrangler deploy` reconciles them.
+  "name": "jamesberto-website",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-07-02",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    { "pattern": "jamesberto.com", "custom_domain": true },
+    { "pattern": "www.jamesberto.com", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "jamesberto-website"
+    }
+  ]
+  // Secrets (GEMINI_API_KEY, GPT_API_KEY, TMDB_API_KEY, TMDB_READ_ACCESS_TOKEN)
+  // are set via `wrangler secret put <NAME>` against the deployed Worker,
+  // never committed here. They use the same names as the Pages project, so
+  // no code changes are needed when they are copied over.
+}

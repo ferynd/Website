@@ -62,6 +62,21 @@
             <p class="mt-2 text-lg text-slate-600">An interactive tool to help you understand your benefits and earnings.</p>
         </header>
 
+        <!-- AR-05/F-107,F-108,F-109,F-110,F-111,F-112 containment: this guide is a
+             fixed one-person example (FRA 67, claimed at 65, PIA $1,500), not a
+             personalized calculator, and several of its results are simplified
+             illustrations rather than exact SSA figures. -->
+        <div class="mb-8 rounded-lg border-2 border-amber-400 bg-amber-50 p-4 text-sm text-slate-800" role="note">
+            <p class="font-semibold text-amber-800">Read before relying on this guide</p>
+            <ul class="mt-2 list-disc list-inside space-y-1">
+                <li>This is a <span class="font-semibold">fixed example scenario</span> (FRA 67, claimed at 65, a $1,500 PIA, September 2027 FRA month) — it does not use your birth date, filing status, or actual record, so numbers shown are illustrative, not personalized.</li>
+                <li>Earnings-test limits shown are the official SSA figures: <span class="font-semibold">2026</span> — $24,480/yr under FRA, $65,160 in the year of FRA; <span class="font-semibold">2027</span> (announced by SSA on October 14, 2026, <a class="underline" href="https://www.ssa.gov/news/en/cola/factsheets/2027.html" target="_blank" rel="noopener noreferrer">2027 fact sheet</a>) — $25,560/yr under FRA, $67,920 in the year of FRA.</li>
+                <li>The "Adjustment of the Reduction Factor" payback estimate converts withheld dollars into months by simple division — it does not reflect SSA's actual whole-check withholding and residual-repayment process, so it can overstate or understate your real permanent increase.</li>
+                <li>The tax estimate assumes a single filer, current-year brackets, and a flat standard deduction only — it omits filing status choices, tax-exempt interest, age-65+ deductions, and other required inputs.</li>
+                <li>For decisions that affect your benefits, confirm every figure using <a href="https://www.ssa.gov/benefits/retirement/planner/whileworking.html" class="underline text-sky-700" target="_blank" rel="noopener noreferrer">SSA's official guidance</a> or your <a href="https://www.ssa.gov/myaccount/" class="underline text-sky-700" target="_blank" rel="noopener noreferrer">my Social Security</a> account.</li>
+            </ul>
+        </div>
+
         <!-- Tabs Navigation -->
         <div class="mb-8 border-b border-slate-200">
             <nav class="flex flex-wrap -mb-px" aria-label="Tabs">
@@ -164,17 +179,17 @@
             <section id="2026" class="tab-content">
                 <div class="bg-white p-6 rounded-lg shadow-sm">
                     <h2 class="text-2xl font-bold text-slate-800 mb-2">2026 Simulator: The "Annual Rule"</h2>
-                    <p class="text-slate-600 mb-6">After your first year, an annual limit applies (est. **$23,400** for 2026). For every $2 you earn over this limit, $1 in benefits is withheld. Use the slider to see the impact.</p>
+                    <p class="text-slate-600 mb-6">After your first year, an annual limit applies (<span class="font-bold">$24,480</span> for 2026, per SSA). For every $2 you earn over this limit, $1 in benefits is withheld. Use the slider to see the impact.</p>
                     <div class="mb-6">
                         <label for="annual_earnings_2026" class="block font-medium text-slate-700">Your Estimated 2026 Annual Earnings:</label>
-                        <p class="text-3xl font-bold text-sky-600" id="annual_earnings_display">$23,400</p>
-                        <input type="range" id="annual_earnings_2026" min="0" max="50000" step="100" value="23400" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                        <p class="text-3xl font-bold text-sky-600" id="annual_earnings_display">$24,480</p>
+                        <input type="range" id="annual_earnings_2026" min="0" max="50000" step="100" value="24480" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
                     </div>
                     <div class="chart-container">
                         <canvas id="benefitsChart2026"></canvas>
                     </div>
                     <div id="2026_summary" class="mt-6 text-center bg-slate-50 p-4 rounded-lg">
-                        <p class="text-slate-700">With earnings of <span class="font-bold" id="summary_earnings">$23,400</span>, you are not over the limit. You would receive your full <span class="font-bold text-green-600" id="summary_received">$15,600</span> in benefits.</p>
+                        <p class="text-slate-700">With earnings of <span class="font-bold" id="summary_earnings">$24,480</span>, you are not over the limit. You would receive your full <span class="font-bold text-green-600" id="summary_received">$15,600</span> in benefits.</p>
                     </div>
                 </div>
             </section>
@@ -214,7 +229,7 @@
 
                     <div class="mt-8 pt-6 border-t">
                          <h3 class="text-xl font-semibold mb-3 text-sky-700">What Happens in 2027 Before Your Birthday?</h3>
-                         <p class="text-slate-600 mb-4">In the year you reach FRA, a much higher earnings limit applies to the months <span class="font-bold">before</span> your birthday month. For Jan-Aug 2027, you can earn up to an estimated **$62,160** without benefits being withheld. If you go over that, they only withhold $1 for every $3 earned.</p>
+                         <p class="text-slate-600 mb-4">In the year you reach FRA, a much higher earnings limit applies to the months <span class="font-bold">before</span> your birthday month. For <span class="font-bold">2027</span>, SSA's official year-of-FRA limit is <span class="font-bold">$67,920</span> (announced October 14, 2026; it was $65,160 for 2026). If you go over the limit, they only withhold $1 for every $3 earned.</p>
                          <h3 class="text-xl font-semibold mb-3 text-sky-700">What About Cost-of-Living Adjustments (COLA)?</h3>
                          <p class="text-slate-600">Each year, Social Security benefits usually increase to keep up with inflation. This is the COLA. Your new benefit amount calculated above will <span class="font-bold">also</span> increase by any COLAs announced for 2026 and 2027, making your final check even higher.</p>
                     </div>
@@ -311,8 +326,9 @@
         const SS_CONSTANTS = {
             MONTHLY_BENEFIT_START: 1300,
             MONTHLY_LIMIT_2025: 1950,
-            ANNUAL_LIMIT_2026: 23400,
-            YEAR_OF_FRA_LIMIT_2027: 62160,
+            ANNUAL_LIMIT_2026: 24480, // official SSA under-FRA annual limit for 2026
+            YEAR_OF_FRA_LIMIT_2026: 65160, // official SSA year-of-FRA limit for 2026 (display-only, unused in calculations below)
+            YEAR_OF_FRA_LIMIT_2027: 67920, // official SSA year-of-FRA limit for 2027, announced 2026-10-14 (display-only, see the 2027 tab copy)
             FRA_AGE: 67,
             START_AGE: 65,
             PRIMARY_INSURANCE_AMOUNT: 1500,
