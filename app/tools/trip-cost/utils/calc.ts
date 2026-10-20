@@ -195,7 +195,7 @@ export function calculateSettlements(balances: Balance[]): {
   // one creditor pay another creditor (F-087). Refuse rather than guess.
   // Any flagged cap shortfall makes the obligations non-conserving, even
   // when the shortfall is smaller than the rounding tolerance below.
-  if (balances.some((b) => (b.unallocatedOverage ?? 0) > 0)) return [];
+  if (balances.some((b) => ((b as Partial<CappedBalance>).unallocatedOverage ?? 0) > 0)) return [];
   const total = balances.reduce((sum, b) => sum + b.balance, 0);
   const tolerance = 0.01 * Math.max(balances.length, 1);
   if (Math.abs(total) > tolerance) return [];
