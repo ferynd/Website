@@ -3,16 +3,20 @@
   // Cloudflare Worker for jamesberto.com after the next-on-pages -> OpenNext
   // migration (AR-01). Account: 1fe4f24f7aea01cf86064202b557b79f.
   //
-  // Until cutover, this Worker is served ONLY on its workers.dev preview URL.
-  // The live site (jamesberto.com, www.jamesberto.com) stays on the Pages
-  // project `weekendtrip`. Do not add `routes` / custom domains here until
-  // the cutover in README.md "Deployment" is approved.
+  // Serves jamesberto.com and www.jamesberto.com as Workers Custom Domains
+  // (cut over from the Pages project `weekendtrip` on 2026-10-20; see README
+  // "Deployment" for rollback). Custom Domains own their DNS records, so keep
+  // them declared here: every `wrangler deploy` reconciles them.
   "name": "jamesberto-website",
   "main": ".open-next/worker.js",
   "compatibility_date": "2026-07-02",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "preview_urls": true,
+  "routes": [
+    { "pattern": "jamesberto.com", "custom_domain": true },
+    { "pattern": "www.jamesberto.com", "custom_domain": true }
+  ],
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
