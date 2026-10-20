@@ -40,7 +40,7 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 | Codex CLI | 0.163.0 | ChatGPT sign-in | Implementation; model always pinned with `-m` (see §5) |
 | Grok Build (`grok`) | 1.0.62 | grok.com subscription (device auth) | Second implementer; `~/.local/bin/grok` |
 | GitHub CLI (`gh`) | 2.102.0 | `ferynd`, HTTPS | Push branches, open draft PRs |
-| wrangler | 4.151.3 | Cloudflare OAuth | Pages project `weekendtrip` → jamesberto.com |
+| wrangler | 4.151.3 (repo pins 4.107.0) | Cloudflare OAuth, or the scoped `CLOUDFLARE_API_TOKEN` from the environment (§3a) | Worker `jamesberto-website` serves jamesberto.com (§3a); Pages `weekendtrip` is paused |
 | firebase-tools | 15.34.0 | Google OAuth | Project `jlb-calorietracker`; Firebase connector also signed in |
 | Gemini CLI | 0.64.0 | — (unused) | Google stopped serving Gemini CLI to personal accounts on 2026-06-18; Antigravity CLI is the replacement option |
 
@@ -65,7 +65,34 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 - Always redirect stdin (`</dev/null`) for headless `claude` / `codex` / `grok` runs, or they may hang waiting for input (confirmed again for `codex exec` on 2026-10-20).
 - If Codex reports `Your workspace is out of credits`, the ChatGPT workspace has run out of Codex usage. Fall back to Grok Build, or wait for credits to reset.
 - Run `wrangler` from a directory containing a `package.json`; otherwise it fails with a `/node_modules` cache permission error.
+- `opennextjs-cloudflare deploy -- --message "..."`: the message goes through `/bin/sh`, so parentheses break it. Use a plain slug.
+- Before `npm run cf:build`, move `public/tools/CalorieTracker/node_modules` aside (it exists on the box only for the CalorieTracker tests). Otherwise OpenNext copies it into the Worker's public assets.
 - `gh`, `wrangler`, and `firebase` OAuth flows time out after ~2–5 minutes — finish the browser step promptly, and close stale auth tabs before retrying.
+
+## 3a. Hosting and deploy flow (as of 2026-10-20)
+
+- **Production:** Worker `jamesberto-website` (OpenNext) serves jamesberto.com and www.jamesberto.com as Workers Custom Domains, declared in `wrangler.jsonc` `routes`.
+  - Preview: <https://jamesberto-website.arkkahdarkkahd.workers.dev>.
+  - The cutover was at 5:13 PM CDT on 2026-10-20, and a 1-second probe saw no non-200 responses.
+  - Gotcha: the Worker custom domains only took traffic after the hostnames were removed from the Pages project. Pages custom-domain hostnames take precedence over a Worker custom domain, even after the DNS records change.
+- **Deploys:** Workers Builds is connected to `ferynd/Website`:
+  - repo connection `2a8c59be…`, with build token "weekend-trip-itinerary build token" (`f2856e7e…`) reused
+  - trigger `6729ee63…` "Deploy production (main)": `npm run cf:build`, then `npx opennextjs-cloudflare deploy`
+  - trigger `42dae8ed…` "Preview versions (non-main)": `npm run cf:build`, then `npx opennextjs-cloudflare upload`
+  - First build `b738b7ee` succeeded and deployed version `befd4da3`.
+  - Manual fallback, run from a clean `main` worktree after `npm ci`: `npm run cf:build && npx opennextjs-cloudflare deploy -- --message <slug>`.
+- **Pages:** project `weekendtrip` has no custom domains, and automatic deployments are off (production, previews, PR comments). It is kept only as a rollback target, and its last good deployment is still at `weekendtrip.pages.dev`. Its git source still says `ferynd/WeekendTrip` (the repo's old name).
+- **Firebase:** Firestore rules are live as ruleset `aa808b96-d906-471f-8441-ee116413a8db`, deployed from `firestore.rules` (the first release was `47cb93f9`; a conflict-create tightening followed). Roll back by re-releasing `7c3d1850-1364-4b63-a283-711021545010` (= `main@074c307`). Deploy only with `npx firebase deploy --only firestore:rules --project jlb-calorietracker`. Storage is deferred.
+- **Rollback:**
+  - Code: `npx wrangler rollback <version-id>`.
+  - Hosting, back to Pages: run `~/runs/pr-160/cutover/do-rollback.sh`. It deletes the Worker custom domains and recreates the CNAME records `jamesberto.com` → `weekendtrip.pages.dev` (DNS only) and `www` → `weekendtrip.pages.dev` (proxied). Then re-add both custom domains to Pages: `POST /accounts/<acct>/pages/projects/weekendtrip/domains` with `{"name":"jamesberto.com"}` and `{"name":"www.jamesberto.com"}`. Finally, re-enable Pages deployments if that is needed. Pre-cutover snapshots are in `~/runs/pr-160/cutover/`.
+  - Alternative: Worker `jamesberto-pages-proxy` (`/workspace/pages-proxy`) proxies `weekendtrip.pages.dev`. Add the two custom-domain routes to it and deploy, and the domains move over without any DNS change.
+- **Cloudflare credentials:** a scoped `CLOUDFLARE_API_TOKEN` comes from the environment only and is never written to disk. When it is set, wrangler uses it instead of OAuth. Its scopes:
+  - account: Workers Scripts Edit, Workers Builds Configuration Edit, Pages Edit, Account Settings Read
+  - zone `jamesberto.com`: DNS Edit, DNS Settings Edit, Zone Read, Workers Routes Edit
+
+  It **expires Oct 31, 2026** and can be revoked once the cutover has settled. Workers Builds keeps its own build token, so builds don't need this token. Without the token, wrangler's OAuth login can't edit DNS or reach the Builds API.
+- **Smoke check:** `~/runs/pr-160/smoke.sh <base-url>` (on the box). A Worker response has an `x-opennext-cache` header; a Pages response has `x-matched-path`.
 
 ## 4. Pipeline
 
@@ -235,6 +262,8 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 - Independent verification: 13/13 tests passed, all 10 acceptance criteria met, scope clean, no new dependencies.
 
 ## Changelog
+
+- **2026-10-20** — Hosting and release: PR #161 merged, and the Firestore AR-03 rules are deployed and verified live (current ruleset `aa808b96`). PR #160 merged (`d6503ab`). jamesberto.com and www moved from Pages to the Worker at 5:13 PM CDT with no measured downtime. Workers Builds is connected to deploy `main`. Pages auto-deploys are paused. Added the rollback paths, the token note (expires Oct 31), and deploy quirks (the `--message` slug, moving the CalorieTracker `node_modules` aside).
 
 - **2026-10-20** — Added Grok Build 1.0.62 as a second implementer (verified flags, sandbox, headless usage), the model selection policy (lowest fitting tier, always pinned, recorded in PRs), the scripted plan handoff (`plan.json` → `PLAN.md` with validation), and per-item run records for execution recovery. Noted the Codex "out of credits" failure mode.
 - **2026-10-20** — Initial setup: tool installs and logins (Claude Code, Codex, gh, wrangler, firebase-tools), Gemini skipped, isolated pipeline smoke test passed, this guide added.
