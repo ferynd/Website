@@ -106,4 +106,19 @@ describe('calculateSettlements — F-087 sign/conservation safety', () => {
     ];
     expect(calculateSettlements(allNonNegative)).toEqual([]);
   });
+
+  it('refuses settlements for any flagged cap shortfall, even one below the rounding tolerance', () => {
+    // $30.02 split three ways with everyone capped at $10 leaves $0.02 that
+    // no one can absorb: total imbalance is under the per-participant
+    // tolerance, but the advice would still leave two cents unsettled.
+    const balances = calculateBalances(people, [evenExpense('e1', 30.02, 'a', ['a', 'b', 'c'])], []);
+    const caps: SpendCap[] = [
+      { participantId: 'a', maxAmount: 10 },
+      { participantId: 'b', maxAmount: 10 },
+      { participantId: 'c', maxAmount: 10 },
+    ];
+    const capped = applySpendCaps(balances, caps);
+    expect(capped[0].unallocatedOverage).toBeGreaterThan(0);
+    expect(calculateSettlements(capped)).toEqual([]);
+  });
 });

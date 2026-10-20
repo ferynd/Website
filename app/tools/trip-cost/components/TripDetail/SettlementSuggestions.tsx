@@ -16,7 +16,7 @@ export default function SettlementSuggestions() {
   // case (see calculateSettlements), so "no settlements" must not be
   // read as "trip is settled" here (F-087).
   const unallocatedOverage = cappedBalances[0]?.unallocatedOverage ?? 0;
-  const capsInfeasible = unallocatedOverage > 0.01;
+  const capsInfeasible = unallocatedOverage > 0;
 
   if (!settlements.length) {
     return (

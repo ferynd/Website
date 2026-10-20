@@ -1,3 +1,5 @@
+> **Superseded — historical handoff, do not execute.** This prompt was written before the 2026-10-20 release. Since then, the compatible client shipped (PR #161, `4a24cea`) and the Firestore rules were deployed and verified live: first ruleset `47cb93f9`, then the current `aa808b96`, which adds the conflict-create tightening. For the current state and remaining follow-ups, see `docs/firebase-release.md` and AR-02/AR-03 in `backlogs/audit-remediation.md`. Do not repeat any of the production steps below.
+
 Review and safely release the prepared Firebase repairs for `ferynd/Website`.
 
 Repository/branch: `ferynd/Website`, `claude/website-backlog-review-9fzov8`; base `main`.
