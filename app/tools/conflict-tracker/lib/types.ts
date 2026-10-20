@@ -38,9 +38,22 @@ export interface Conflict {
   personAResolved: boolean;
   personBResolved: boolean;
   status: 'open' | 'partially_resolved' | 'resolved';
-  // Mirrored flags for cheap list rendering
+  // Mirrored flags for cheap list rendering — true once a draft exists,
+  // whether or not it has been submitted. Never gates the shared-section
+  // reveal; see personASubmittedAt/personBSubmittedAt for that (F-069).
   hasReflectionA: boolean;
   hasReflectionB: boolean;
+  /**
+   * Server-validated mirror of each side's reflection `submittedAt` — null
+   * until that side has genuinely submitted (not merely drafted). Firestore
+   * rules only allow this to transition null -> the exact timestamp already
+   * present on that side's own reflection document, so it can't be forged
+   * independent of a real submission. This (not hasReflectionA/B) is the
+   * only trustworthy reveal signal for the shared section and the
+   * partner-reflection read rule (F-036/F-069).
+   */
+  personASubmittedAt: unknown;
+  personBSubmittedAt: unknown;
   createdBy: string;
   createdAt: unknown;
   updatedAt: unknown;

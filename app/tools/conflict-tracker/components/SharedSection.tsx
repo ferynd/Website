@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import { bothSubmitted as hasBothSubmissions, isSubmissionTimestamp } from '../lib/submission';
 import Button from '@/components/Button';
 import type { Conflict, SharedSectionPatch, Tracker } from '../lib/types';
 
@@ -39,8 +40,11 @@ const TA = ({
 );
 
 export default function SharedSection({ conflict, tracker, authorUid, isAdmin, onSave }: Props) {
-  // Phase gate: section is locked until both reflections are submitted
-  const bothSubmitted = conflict.hasReflectionA && conflict.hasReflectionB;
+  // Phase gate: section is locked until both reflections are genuinely
+  // *submitted* — hasReflectionA/B only mean a draft exists (F-069). These
+  // mirror fields are server-validated (see firestore.rules) so they can't
+  // be forged independent of a real submission.
+  const bothSubmitted = hasBothSubmissions(conflict);
 
   // Permission: creator (= personA) or admin can edit; Person B can view
   const isCreator = tracker.createdBy === authorUid;
@@ -88,18 +92,18 @@ export default function SharedSection({ conflict, tracker, authorUid, isAdmin, o
         </p>
         <div className="flex justify-center gap-4 mt-3 text-xs">
           <span className={`rounded-full px-3 py-1 border ${
-            conflict.hasReflectionA
+            isSubmissionTimestamp(conflict.personASubmittedAt)
               ? 'bg-green-900/30 text-green-300 border-green-700/40'
               : 'bg-surface-2 text-text-3 border-border'
           }`}>
-            {aName} {conflict.hasReflectionA ? '✓ submitted' : '○ not yet'}
+            {aName} {isSubmissionTimestamp(conflict.personASubmittedAt) ? '✓ submitted' : '○ not yet'}
           </span>
           <span className={`rounded-full px-3 py-1 border ${
-            conflict.hasReflectionB
+            isSubmissionTimestamp(conflict.personBSubmittedAt)
               ? 'bg-green-900/30 text-green-300 border-green-700/40'
               : 'bg-surface-2 text-text-3 border-border'
           }`}>
-            {bName} {conflict.hasReflectionB ? '✓ submitted' : '○ not yet'}
+            {bName} {isSubmissionTimestamp(conflict.personBSubmittedAt) ? '✓ submitted' : '○ not yet'}
           </span>
         </div>
       </div>

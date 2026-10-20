@@ -14,15 +14,18 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
   where,
+  writeBatch,
   type CollectionReference,
   type DocumentReference,
   type FirestoreError,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { subscribeReflections } from './reflectionSubscriptions';
 import type { Conflict, Reflection, ReflectionInput, SharedSectionPatch, Tracker } from './types';
 
 type Unsub = () => void;
@@ -40,9 +43,6 @@ const conflictsCol = (trackerId: string): CollectionReference =>
 
 const conflictDoc = (trackerId: string, conflictId: string): DocumentReference =>
   doc(db, ROOT_COLLECTION, APP_ID, 'trackers', trackerId, 'conflicts', conflictId);
-
-const reflectionsCol = (trackerId: string, conflictId: string): CollectionReference =>
-  collection(db, ROOT_COLLECTION, APP_ID, 'trackers', trackerId, 'conflicts', conflictId, 'reflections');
 
 const reflectionDoc = (
   trackerId: string,
@@ -80,7 +80,7 @@ export const createTracker = async (input: {
   personBName: string;
 }): Promise<string> => {
   const ref = doc(trackersCol());
-  const normalizedEmail = input.personBEmail ? input.personBEmail.toLowerCase().trim() : null;
+  const normalizedEmail = input.personBEmail?.toLowerCase().trim() || null;
   const memberEmails = normalizedEmail ? [normalizedEmail] : [];
   await setDoc(ref, {
     name: input.name,
@@ -255,6 +255,8 @@ export const createConflict = async (
     status: 'open' as Conflict['status'],
     hasReflectionA: false,
     hasReflectionB: false,
+    personASubmittedAt: null,
+    personBSubmittedAt: null,
     createdBy: input.createdBy,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -309,11 +311,24 @@ export const deleteConflict = async (
   trackerId: string,
   conflictId: string,
 ): Promise<void> => {
-  const refsSnap = await getDocs(reflectionsCol(trackerId, conflictId));
-  for (const r of refsSnap.docs) {
-    await deleteDoc(r.ref);
+  // Batched so a failure never leaves reflections orphaned without their
+  // parent conflict, or vice versa (F-074).
+  const batch = writeBatch(db);
+  batch.delete(reflectionDoc(trackerId, conflictId, 'personA'));
+  batch.delete(reflectionDoc(trackerId, conflictId, 'personB'));
+  batch.delete(conflictDoc(trackerId, conflictId));
+  try {
+    await batch.commit();
+  } catch (error) {
+    if ((error as FirestoreError)?.code !== 'permission-denied') throw error;
+    // Pre-AR-03 rules let only admins delete reflections, even absent ones.
+    // A conflict with no reflections can still be removed directly there;
+    // under the AR-03 rules the batch above is the path that succeeds.
+    const sides = await Promise.all((['personA', 'personB'] as const).map(side =>
+      getDoc(reflectionDoc(trackerId, conflictId, side)).catch(() => null)));
+    if (sides.some(snap => !snap || snap.exists())) throw error;
+    await deleteDoc(conflictDoc(trackerId, conflictId));
   }
-  await deleteDoc(conflictDoc(trackerId, conflictId));
 };
 
 export const watchConflicts = (
@@ -374,44 +389,32 @@ export const submitReflection = async (
   input: ReflectionInput,
 ): Promise<void> => {
   const ref = reflectionDoc(trackerId, conflictId, side);
-  await setDoc(
-    ref,
-    stripUndefined({
-      ...input,
-      id: side,
-      person: side,
-      conflictId,
-      authorUid,
-      submittedAt: serverTimestamp(),
-      tags: ensureStringArray(input.tags),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }),
-    { merge: true },
-  );
   const flag = side === 'personA' ? 'hasReflectionA' : 'hasReflectionB';
-  await updateDoc(conflictDoc(trackerId, conflictId), {
-    [flag]: true,
-    updatedAt: serverTimestamp(),
+  const mirror = side === 'personA' ? 'personASubmittedAt' : 'personBSubmittedAt';
+  await runTransaction(db, async transaction => {
+    const existing = await transaction.get(ref);
+    // Retries preserve the first genuine submission and never desynchronize
+    // an already committed mirror. All timestamp transforms share request.time.
+    const submittedAt = existing.data()?.submittedAt ?? serverTimestamp();
+    transaction.set(ref, stripUndefined({
+      ...input, id: side, person: side, conflictId, authorUid, submittedAt,
+      tags: ensureStringArray(input.tags),
+      createdAt: existing.data()?.createdAt ?? serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }), { merge: true });
+    transaction.update(conflictDoc(trackerId, conflictId), {
+      [flag]: true, [mirror]: submittedAt, updatedAt: serverTimestamp(),
+    });
   });
 };
 
 export const watchReflections = (
   trackerId: string,
   conflictId: string,
+  ownSide: 'personA' | 'personB' | null,
   onData: (reflections: Reflection[], error?: FirestoreError) => void,
-): Unsub =>
-  onSnapshot(
-    reflectionsCol(trackerId, conflictId),
-    (snap) => {
-      const reflections = snap.docs.map((d) => {
-        const data = d.data() as Omit<Reflection, 'id'>;
-        return { id: d.id as 'personA' | 'personB', ...data, tags: ensureStringArray(data.tags) };
-      });
-      onData(reflections);
-    },
-    (err) => onData([], err),
-  );
+  ownUid?: string,
+): Unsub => subscribeReflections(db, trackerId, conflictId, ownSide, onData, ownUid);
 
 // ── User lookup ─────────────────────────────────────────────────────────────
 
@@ -444,5 +447,4 @@ export {
   conflictDoc,
   conflictsCol,
   reflectionDoc,
-  reflectionsCol,
 };
