@@ -215,13 +215,19 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     return () => unsub();
   }, [activeTrackerId]);
 
+  // Only identity changes (tracker/conflict/account/assigned side) restart the
+  // listeners; an ordinary tracker snapshot (tag, rename) must not clear
+  // reflections while a form may be open.
+  const loadedTrackerId = activeTracker?.id ?? null;
+  const reflectionSide = user && activeTracker ? deriveUserSide(activeTracker, user.uid) : null;
+
   // A tracker/account switch clears old contents and cancels every listener.
   useEffect(() => {
     setReflections([]);
     setReflectionError(null);
-    if (!user || !activeTrackerId || !activeConflictId || activeTracker?.id !== activeTrackerId) return;
+    if (!user || !activeTrackerId || !activeConflictId || loadedTrackerId !== activeTrackerId) return;
     let active = true;
-    const side = deriveUserSide(activeTracker, user.uid);
+    const side = reflectionSide;
     const unsub = watchReflections(activeTrackerId, activeConflictId, side, (list, error) => {
       if (!active || !mountedRef.current) return;
       setReflections(list);
@@ -229,7 +235,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
       if (error) setReflectionError('Unable to load reflections. Reselect this conflict to retry.');
     });
     return () => { active = false; unsub(); };
-  }, [user, activeTrackerId, activeConflictId, activeTracker]);
+  }, [user, activeTrackerId, activeConflictId, loadedTrackerId, reflectionSide]);
 
   const activeConflict = useMemo(
     () => conflicts.find((c) => c.id === activeConflictId) ?? null,

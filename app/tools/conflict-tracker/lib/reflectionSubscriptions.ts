@@ -22,6 +22,7 @@ export function subscribeReflections(
   const values = new Map<Side, Reflection>();
   const subscriptions = new Map<Side, { stop: () => void }>();
   let stopped = false;
+  let serverRevealed = false;
   const emit = (error?: FirestoreError) => {
     if (!stopped) onData(
       (['personA', 'personB'] as const).flatMap(side => values.has(side) ? [values.get(side)!] : []),
@@ -59,8 +60,11 @@ export function subscribeReflections(
   const stopParent = onSnapshot(parent, { includeMetadataChanges: true }, snap => {
     if (stopped) return;
     // Cached/optimistic parent data must not initiate a prohibited remote read.
-    const revealed = snap.exists() && !snap.metadata.fromCache
-      && !snap.metadata.hasPendingWrites && bothSubmitted(snap.data());
+    // Once confirmed by the server the last server state wins: rules never let a member
+    // reset a mirror, so later local writes must not tear down the partner listener.
+    if (!snap.exists()) serverRevealed = false;
+    else if (!snap.metadata.fromCache && !snap.metadata.hasPendingWrites) serverRevealed = bothSubmitted(snap.data());
+    const revealed = serverRevealed;
     for (const side of ['personA', 'personB'] as const) {
       if (side === ownSide || revealed) watch(side);
       else remove(side);

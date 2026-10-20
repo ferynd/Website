@@ -59,6 +59,7 @@ export default function TripCostPage() {
 
   // trips
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [tripsLoaded, setTripsLoaded] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [newTripName, setNewTripName] = useState('');
   const [deepLinkTripId, setDeepLinkTripId] = useState<string | null>(null);
@@ -77,7 +78,7 @@ export default function TripCostPage() {
   // open it if found, otherwise surface a precise unavailable/unauthorized
   // notice rather than silently falling through to the trip list.
   useEffect(() => {
-    if (!deepLinkTripId || !userProfile) return;
+    if (!deepLinkTripId || !userProfile || !tripsLoaded) return;
     if (trips.some((t) => t.id === deepLinkTripId)) {
       setSelectedTripId(deepLinkTripId);
       setDeepLinkTripId(null);
@@ -87,7 +88,7 @@ export default function TripCostPage() {
       );
       setDeepLinkTripId(null);
     }
-  }, [deepLinkTripId, trips, userProfile]);
+  }, [deepLinkTripId, trips, userProfile, tripsLoaded]);
 
   // load auth
   useEffect(() => {
@@ -113,6 +114,7 @@ export default function TripCostPage() {
 
   // load trips
   useEffect(() => {
+    setTripsLoaded(false);
     if (!user || !userProfile) {
       setTrips([]);
       return;
@@ -128,7 +130,8 @@ export default function TripCostPage() {
       setTrips(
         snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Trip, 'id'>) }))
       );
-    });
+      setTripsLoaded(true);
+    }, () => setTripsLoaded(true));
     return () => unsub();
   }, [user, userProfile]);
 

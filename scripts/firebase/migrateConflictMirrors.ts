@@ -13,8 +13,9 @@ const { values } = parseArgs({
     'approve-plan-sha256': { type: 'string' }, 'maintenance-confirmed': { type: 'boolean' }, emulator: { type: 'boolean' },
   },
 });
+class PreconditionError extends Error {}
 function requireCondition(condition: unknown, message: string): asserts condition {
-  if (!condition) throw new Error(message);
+  if (!condition) throw new PreconditionError(message);
 }
 function exclusivePrivateFile(path: string, contents: string) {
   const fd = openSync(path, constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW, 0o600);
@@ -80,7 +81,9 @@ async function main() {
     }
   } finally { await db.terminate(); await deleteApp(app); }
 }
-main().catch(() => {
+main().catch((error: unknown) => {
+  // Our own precondition messages are fixed strings and safe to show.
+  if (error instanceof PreconditionError) console.error(`Migration stopped: ${error.message}`);
   // SDK errors can include request data; never log them or a credential object.
   console.error('Migration stopped without printing private data. Verify explicit project/mode, trusted ADC, private output permissions, approved plan/backup digests, maintenance, and source versions.');
   process.exitCode = 1;

@@ -79,7 +79,7 @@ export const createTracker = async (input: {
   personBName: string;
 }): Promise<string> => {
   const ref = doc(trackersCol());
-  const normalizedEmail = input.personBEmail ? input.personBEmail.toLowerCase().trim() : null;
+  const normalizedEmail = input.personBEmail?.toLowerCase().trim() || null;
   const memberEmails = normalizedEmail ? [normalizedEmail] : [];
   await setDoc(ref, {
     name: input.name,

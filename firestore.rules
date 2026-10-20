@@ -240,7 +240,15 @@ service cloud.firestore {
         && request.resource.data.personAUid == request.auth.uid
         && request.auth.uid in request.resource.data.memberUids
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.personBUid == null;
+        && request.resource.data.personBUid == null
+        // Creation cannot pre-seat hidden observers: the only members are the
+        // creator's UID and, optionally, the normalized Person B invite email.
+        && request.resource.data.memberUids == [request.auth.uid]
+        && (request.resource.data.get('personBEmail', null) == null
+          ? request.resource.data.get('memberEmails', []) == []
+          : (request.resource.data.personBEmail is string
+            && request.resource.data.personBEmail == request.resource.data.personBEmail.lower()
+            && request.resource.data.get('memberEmails', []) == [request.resource.data.personBEmail]));
 
       // Was: any member could rewrite every field (membership, side UIDs,
       // creator) with no restriction (F-037). Now split into two narrow,
@@ -251,6 +259,12 @@ service cloud.firestore {
         || (isSignedIn()
             && request.auth.uid == resource.data.personAUid
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'customTags', 'updatedAt']))
+        // (1b) Any claimed member may add tracker custom tags (the conflict
+        //      form calls addCustomTag for whoever creates the conflict).
+        || (isSignedIn()
+            && request.auth.uid in resource.data.memberUids
+            && request.resource.data.customTags is list
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['customTags', 'updatedAt']))
         // (2) Person B claim: a one-time personBUid null -> caller transition,
         //     gated on the caller's email matching the invitation (F-071).
         //     No email_verified requirement yet — this app has no
@@ -274,8 +288,10 @@ service cloud.firestore {
 
       allow create: if isConflictTrackerMember(trackerId)
         && request.resource.data.createdBy == request.auth.uid
-        && request.resource.data.personASubmittedAt == null
-        && request.resource.data.personBSubmittedAt == null;
+        // .get(): the pre-AR-03 client omits the mirrors on create; a missing
+        // field must read as null rather than erroring the whole rule.
+        && request.resource.data.get('personASubmittedAt', null) == null
+        && request.resource.data.get('personBSubmittedAt', null) == null;
 
       // Every update path is field-scoped; there is no general "member can
       // edit everything" fallback (F-037/F-072).
@@ -293,7 +309,8 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'personARealMeaning', 'personBRealMeaning', 'sharedClarification',
               'sharedOwnershipNotes', 'sharedNextSteps', 'sharedUpdatedBy', 'sharedUpdatedAt', 'updatedAt'
-            ]))
+            ])
+          && request.resource.data.get('sharedUpdatedBy', null) == request.auth.uid)
         // (3) Draft-exists flag and/or submitted mirror, together or
         //     separately, for the acting side's own author only:
         //       - hasReflectionX can only be set true, never reset false
