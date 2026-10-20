@@ -46,3 +46,19 @@ describe('bothSubmitted', () => {
     expect(bothSubmitted({ personASubmittedAt: T, personBSubmittedAt: true })).toBe(false);
   });
 });
+
+describe('isLockedSubmission / reflectionIdsToDelete', () => {
+  it('treats any submittedAt as locked; drafts and missing docs as editable', async () => {
+    const { isLockedSubmission } = await import('../submission');
+    expect(isLockedSubmission({ submittedAt: T })).toBe(true);
+    expect(isLockedSubmission({ submittedAt: null })).toBe(false);
+    expect(isLockedSubmission({})).toBe(false);
+    expect(isLockedSubmission(undefined)).toBe(false);
+  });
+  it('always includes canonical IDs and every enumerated stray ID once', async () => {
+    const { reflectionIdsToDelete } = await import('../submission');
+    expect(reflectionIdsToDelete(null)).toEqual(['personA', 'personB']);
+    expect(reflectionIdsToDelete([])).toEqual(['personA', 'personB']);
+    expect(reflectionIdsToDelete(['personB', 'foo', 'bar'])).toEqual(['personA', 'personB', 'foo', 'bar']);
+  });
+});
