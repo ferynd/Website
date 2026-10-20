@@ -168,7 +168,7 @@ export default function ReflectionForm({
 
       {isSubmitted && (
         <div className="rounded-lg bg-blue-900/30 border border-blue-700/40 text-blue-300 px-4 py-3 text-sm">
-          You have already submitted this reflection. Editing and re-submitting will replace it.
+          You have already submitted this reflection. Editing and re-submitting will replace it; it can no longer be saved as a draft.
         </div>
       )}
 
@@ -337,9 +337,11 @@ export default function ReflectionForm({
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={saving}>
-          {saving ? 'Saving…' : 'Save draft'}
-        </Button>
+        {!isSubmitted && (
+          <Button type="button" variant="secondary" onClick={handleSaveDraft} disabled={saving}>
+            {saving ? 'Saving…' : 'Save draft'}
+          </Button>
+        )}
         <Button type="submit" variant="primary" disabled={submitting}>
           {submitting ? 'Submitting…' : 'Submit reflection'}
         </Button>

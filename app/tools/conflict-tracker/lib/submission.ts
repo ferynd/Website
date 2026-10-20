@@ -39,3 +39,16 @@ export function selfHealPatch(
     || ownReflection.person !== side || ownReflection.conflictId !== conflictId) return null;
   return { [mirrorField(side)]: submittedAt, [draftFlagField(side)]: true };
 }
+
+/** A reflection with a submission timestamp can never be saved back to a draft. */
+export const isLockedSubmission = (reflection: Record<string, unknown> | undefined): boolean =>
+  reflection?.submittedAt != null;
+
+export const CANONICAL_REFLECTION_IDS = ['personA', 'personB'] as const;
+/**
+ * Reflection IDs to delete with a conflict: every document the caller could
+ * enumerate plus the two canonical IDs (listing is denied pre-reveal under the
+ * AR-03 rules, so `listed` is null there and only canonical IDs are known).
+ */
+export const reflectionIdsToDelete = (listed: readonly string[] | null): string[] =>
+  [...new Set([...CANONICAL_REFLECTION_IDS, ...(listed ?? [])])];

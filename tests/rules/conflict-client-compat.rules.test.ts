@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { readFileSync } from 'node:fs';
 import { type RulesTestEnvironment, initializeTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, getDoc, setDoc, Timestamp, type Firestore } from 'firebase/firestore';
+import { SubmittedReflectionError } from '../../app/tools/conflict-tracker/lib/db';
 import {
   createConflict, deleteConflict, saveReflectionDraft, setResolved, submitReflection, updateConflictShared, watchReflections,
 } from '../../app/tools/conflict-tracker/lib/db';
@@ -32,6 +33,9 @@ describe.each(RULE_SETS)('corrected client under $name rules', ruleSet => {
   const use = (uid: string) => {
     client.db = env.authenticatedContext(uid, { email_verified: true, email: `${uid}@example.com` }).firestore() as unknown as Firestore;
     return client.db;
+  };
+  const useAdmin = () => {
+    client.db = env.authenticatedContext('admin-uid', { email_verified: true, email: 'arkkahdarkkahd@gmail.com' }).firestore() as unknown as Firestore;
   };
   const read = async (path: string) => {
     let data: Record<string, unknown> | undefined;
@@ -142,4 +146,63 @@ describe.each(RULE_SETS)('corrected client under $name rules', ruleSet => {
       expect(await read(`${TRACKER}/conflicts/${id}/reflections/personA`)).toBeUndefined();
     }
   });
+  it('refuses to save a submitted reflection back to a draft (no un-submit, mirror stays truthful)', async () => {
+    use('a-uid');
+    const id = await createConflict('tracker1', { title: 'T', date: '2026-01-01', severity: 2, tags: [], createdBy: 'a-uid' });
+    await submitReflection('tracker1', id, 'personA', 'a-uid', input);
+    const before = (await read(`${TRACKER}/conflicts/${id}/reflections/personA`))?.submittedAt;
+    await expect(saveReflectionDraft('tracker1', id, 'personA', 'a-uid', { ...input, whatHappened: 'edited' }))
+      .rejects.toBeInstanceOf(SubmittedReflectionError);
+    const after = await read(`${TRACKER}/conflicts/${id}/reflections/personA`);
+    expect(after?.submittedAt).toEqual(before);
+    expect(after?.whatHappened).toBe('synthetic fixture');
+  });
+
+  describe('stray (non-canonical) reflection documents on delete', () => {
+    const seedStray = async (revealed: boolean) => {
+      await env.withSecurityRulesDisabled(async admin => {
+        const fs = admin.firestore();
+        await setDoc(doc(fs, CONFLICT), {
+          trackerId: 'tracker1', title: 'T', date: '2026-01-01', severity: 2, tags: [], personAResolved: false,
+          personBResolved: false, status: 'open', hasReflectionA: true, hasReflectionB: revealed, createdBy: 'a-uid',
+          personASubmittedAt: T1, personBSubmittedAt: revealed ? T2 : null,
+        });
+        await setDoc(doc(fs, `${CONFLICT}/reflections/personA`), { ...input, id: 'personA', person: 'personA', conflictId: 'conflict1', authorUid: 'a-uid', submittedAt: T1 });
+        if (revealed) await setDoc(doc(fs, `${CONFLICT}/reflections/personB`), { ...input, id: 'personB', person: 'personB', conflictId: 'conflict1', authorUid: 'b-uid', submittedAt: T2 });
+        await setDoc(doc(fs, `${CONFLICT}/reflections/legacy-stray`), { ...input, authorUid: 'a-uid', submittedAt: null });
+      });
+    };
+    const paths = [CONFLICT, `${CONFLICT}/reflections/personA`, `${CONFLICT}/reflections/personB`, `${CONFLICT}/reflections/legacy-stray`];
+    it('admin delete enumerates and removes every reflection, leaving no orphan', async () => {
+      await seedStray(false);
+      useAdmin();
+      await deleteConflict('tracker1', 'conflict1');
+      for (const path of paths) expect(await read(path)).toBeUndefined();
+    });
+    it(ruleSet.live
+      ? 'Person A delete is denied as a whole under live rules (reflection deletes are admin-only): nothing is orphaned'
+      : 'Person A delete after reveal enumerates and removes the stray document too', async () => {
+      await seedStray(true);
+      use('a-uid');
+      if (ruleSet.live) {
+        await expect(deleteConflict('tracker1', 'conflict1')).rejects.toMatchObject({ code: 'permission-denied' });
+        expect(await read(CONFLICT)).toBeDefined();
+        expect(await read(`${CONFLICT}/reflections/legacy-stray`)).toBeDefined();
+      } else {
+        await deleteConflict('tracker1', 'conflict1');
+        for (const path of paths) expect(await read(path)).toBeUndefined();
+      }
+    });
+    if (!ruleSet.live) {
+      it('RESIDUAL (documented): pre-reveal Person A cannot list, so a legacy stray ID survives; admin cleanup or the optional dry-run inventory finds it', async () => {
+        await seedStray(false);
+        use('a-uid');
+        await deleteConflict('tracker1', 'conflict1');
+        expect(await read(CONFLICT)).toBeUndefined();
+        expect(await read(`${CONFLICT}/reflections/personA`)).toBeUndefined();
+        expect(await read(`${CONFLICT}/reflections/legacy-stray`)).toBeDefined();
+      });
+    }
+  });
 });
+

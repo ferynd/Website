@@ -26,6 +26,7 @@ import {
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { subscribeReflections } from './reflectionSubscriptions';
+import { CANONICAL_REFLECTION_IDS, isLockedSubmission, reflectionIdsToDelete } from './submission';
 import type { Conflict, Reflection, ReflectionInput, SharedSectionPatch, Tracker } from './types';
 
 type Unsub = () => void;
@@ -311,22 +312,35 @@ export const deleteConflict = async (
   trackerId: string,
   conflictId: string,
 ): Promise<void> => {
+  // Enumerate every reflection the caller can list (legacy rules allowed
+  // arbitrary reflection IDs) so none is orphaned; AR-03 rules deny listing
+  // before reveal, where only the canonical IDs can exist for new writes.
+  let listed: string[] | null = null;
+  try {
+    listed = (await getDocs(collection(conflictDoc(trackerId, conflictId), 'reflections'))).docs.map(d => d.id);
+  } catch (error) {
+    if ((error as FirestoreError)?.code !== 'permission-denied') throw error;
+  }
+  const ids = reflectionIdsToDelete(listed);
+  if (ids.length > 499) throw new Error('Too many reflection documents to delete atomically; contact the admin.');
   // Batched so a failure never leaves reflections orphaned without their
   // parent conflict, or vice versa (F-074).
   const batch = writeBatch(db);
-  batch.delete(reflectionDoc(trackerId, conflictId, 'personA'));
-  batch.delete(reflectionDoc(trackerId, conflictId, 'personB'));
+  for (const id of ids) batch.delete(doc(conflictDoc(trackerId, conflictId), 'reflections', id));
   batch.delete(conflictDoc(trackerId, conflictId));
   try {
     await batch.commit();
   } catch (error) {
     if ((error as FirestoreError)?.code !== 'permission-denied') throw error;
     // Pre-AR-03 rules let only admins delete reflections, even absent ones.
-    // A conflict with no reflections can still be removed directly there;
-    // under the AR-03 rules the batch above is the path that succeeds.
-    const sides = await Promise.all((['personA', 'personB'] as const).map(side =>
-      getDoc(reflectionDoc(trackerId, conflictId, side)).catch(() => null)));
-    if (sides.some(snap => !snap || snap.exists())) throw error;
+    // A conflict with no reflections at all can still be removed directly
+    // there; under the AR-03 rules the batch above is the path that succeeds.
+    const empty = listed !== null
+      ? listed.length === 0
+      : (await Promise.all(CANONICAL_REFLECTION_IDS.map(side =>
+          getDoc(reflectionDoc(trackerId, conflictId, side)).catch(() => null))))
+          .every(snap => snap !== null && !snap.exists());
+    if (!empty) throw error;
     await deleteDoc(conflictDoc(trackerId, conflictId));
   }
 };
@@ -351,6 +365,10 @@ export const watchConflicts = (
 
 // ── Reflection CRUD ─────────────────────────────────────────────────────────
 
+export class SubmittedReflectionError extends Error {
+  constructor() { super('This reflection is already submitted and cannot be saved as a draft.'); }
+}
+
 export const saveReflectionDraft = async (
   trackerId: string,
   conflictId: string,
@@ -359,25 +377,19 @@ export const saveReflectionDraft = async (
   input: ReflectionInput,
 ): Promise<void> => {
   const ref = reflectionDoc(trackerId, conflictId, side);
-  await setDoc(
-    ref,
-    stripUndefined({
-      ...input,
-      id: side,
-      person: side,
-      conflictId,
-      authorUid,
-      submittedAt: null,
-      tags: ensureStringArray(input.tags),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }),
-    { merge: true },
-  );
   const flag = side === 'personA' ? 'hasReflectionA' : 'hasReflectionB';
-  await updateDoc(conflictDoc(trackerId, conflictId), {
-    [flag]: true,
-    updatedAt: serverTimestamp(),
+  await runTransaction(db, async transaction => {
+    const existing = await transaction.get(ref);
+    // Never un-submit: the parent mirror would keep the reveal open while the
+    // partner sees an edited "draft" (the pre-AR-03 rules do not block this).
+    if (isLockedSubmission(existing.data())) throw new SubmittedReflectionError();
+    transaction.set(ref, stripUndefined({
+      ...input, id: side, person: side, conflictId, authorUid, submittedAt: null,
+      tags: ensureStringArray(input.tags),
+      createdAt: existing.data()?.createdAt ?? serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }), { merge: true });
+    transaction.update(conflictDoc(trackerId, conflictId), { [flag]: true, updatedAt: serverTimestamp() });
   });
 };
 

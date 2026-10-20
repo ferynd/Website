@@ -234,3 +234,19 @@ describe('in-app self-heal of historical submission mirrors (rule path null -> e
     await assertFails(getDoc(doc(ctx('outsider'), `${CONFLICT}/reflections/personA`)));
   });
 });
+
+describe('Codex review on #161: un-submitting and stray reflection IDs under the AR-03 rules', () => {
+  it("denies the pre-AR-03 client's draft save (submittedAt -> null, merge) on a submitted reflection", async () => {
+    await seed({ submittedA: T1, submittedB: T2 });
+    await assertFails(setDoc(doc(ctx('a-uid'), `${CONFLICT}/reflections/personA`),
+      { ...reflection('personA', 'a-uid', null), updatedAt: serverTimestamp() }, { merge: true }));
+    await assertFails(updateDoc(doc(ctx('a-uid'), `${CONFLICT}/reflections/personA`), { submittedAt: null }));
+  });
+  it('denies members creating any non-canonical reflection ID', async () => {
+    await seed();
+    for (const [uid, id] of [['a-uid', 'foo'], ['b-uid', 'personA-copy'], ['a-uid', 'personC']] as const) {
+      await assertFails(setDoc(doc(ctx(uid, `${uid}@example.com`), `${CONFLICT}/reflections/${id}`),
+        { ...reflection('personA', uid, null), id }));
+    }
+  });
+});

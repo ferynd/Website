@@ -399,7 +399,7 @@ describe('real client listeners and deletion under restricted queries', () => {
       expect(vi.mocked(onSnapshot).mock.calls.map(call => (call[0] as { path?: string }).path)).not.toContain(`${CONFLICT}/reflections/personB`);
     } finally { stop(); }
   });
-  it.each([false, true])('deletes known reflection documents without querying (has partner draft: %s)', async hasPartner => {
+  it.each([false, true])('deletes canonical reflection documents with the parent (has partner draft: %s)', async hasPartner => {
     await testEnv.withSecurityRulesDisabled(async ctx => {
       await setDoc(doc(ctx.firestore(), `${CONFLICT}/reflections/personA`), reflection('personA', 'a-uid'));
       if (hasPartner) await setDoc(doc(ctx.firestore(), `${CONFLICT}/reflections/personB`), reflection('personB', 'b-uid'));
