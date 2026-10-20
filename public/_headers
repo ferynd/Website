@@ -1,0 +1,5 @@
+# Workers static assets: keep the default headers Cloudflare Pages used to add
+# (AR-01 cutover). HTML/API responses get the same headers from next.config.ts.
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
