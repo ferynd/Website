@@ -1,6 +1,6 @@
 # Firebase rules release — jlb-calorietracker
 
-Status: local repairs and emulator validation are complete; production release is blocked on live access, a reviewed historical-data plan, and a verified compatible client deployment. Nothing in this document establishes that production was changed.
+Status (2026-10-20 review): live Firestore/IAM/Storage were inspected read-only and the review defects below were fixed and emulator-tested. Production release remains blocked on (1) deploying the corrected Conflict Tracker client to the live Pages site, (2) Admin ADC for the migration dry run plus explicit approval of its digest, and (3) Storage not being provisioned. No production data, rules, or client were changed by this work (one side effect: see Storage API note).
 
 ## Sources and verified local behavior
 
@@ -29,9 +29,22 @@ Validated locally: root 61 files / 1,402 tests; CalorieTracker 9 files / 584 tes
 
 The former Storage success-test skips reproduced as failures. Two independent harness defects were identified: test project IDs differed from the CLI project used by cross-service lookups, and firebase-tools 15.24's unconditional proxy dispatcher ignored `NO_PROXY` for localhost. The suites now share explicit `demo-website-rules-test`, run serially to prevent clearing each other's data, and load `scripts/emulator-proxy.cjs`. That preload routes only HTTP requests to configured loopback emulator ports directly. All external requests retain their proxy/TLS behavior. No production IAM role is simulated or verified by these local passes.
 
-## Live access and comparison — required before release
+## Live inspection — 2026-10-20 (read-only, CLI login `arkkahdarkkahd@gmail.com`)
 
-The current session had no callable Firebase connector tools, no CLI login, and no Application Default Credentials (ADC). `firebase projects:list` failed authentication, and the production migration dry run failed loading ADC. No production counts, backup, rules differences, IAM verification, release IDs or post-deploy results are available. Do not substitute an empty result for unavailable data.
+- Project `jlb-calorietracker`, number `994744135946`, billing **disabled** (Spark).
+- Firestore: exactly one database, `(default)`, FIRESTORE_NATIVE, `nam5`. PITR disabled; version retention 1 h.
+- Rules releases: only `cloud.firestore` → ruleset `7c3d1850-1364-4b63-a283-711021545010` (released 2026-05-07 21:53:57 UTC). Its single file `firestore.rules` is byte-identical (except the final newline) to `origin/main` at `074c307`. Current `main` adds only an explicit `recipe-standardizer` block that the deployed legacy `{appId}` wildcard already covers. There are no live-only grants to reconcile. The branch's narrowing to `default-app-id` keeps `recipe-standardizer` via its explicit block. Originals are kept privately for rollback, outside the repo.
+- Storage: **no bucket exists** (`jlb-calorietracker.firebasestorage.app` and `.appspot.com` return 404; the project bucket list is empty), and there is **no Storage rules release**. Date Night and Trip Planner image uploads therefore cannot work in production today, and `storage.rules` is emulator-verified only. A new default bucket requires the Blaze plan. A `firebase deploy --dry-run --only firestore:rules,storage` during the review **enabled the `firebasestorage.googleapis.com` API** as a CLI side effect. It is free, created no bucket, and changed no rules. Then it stopped with "Firebase Storage has not been set up".
+- IAM: no `service-994744135946@gcp-sa-firebasestorage.iam.gserviceaccount.com` agent exists yet, because Storage is not provisioned. Once a bucket exists, grant it `roles/firebaserules.firestoreServiceAgent` before relying on the Storage rules' `firestore.get()` checks. The other bindings are default service agents plus the single owner.
+- Admin account: Auth record has `emailVerified: true` (password provider), so the new `email_verified` requirement keeps admin access.
+- The Firestore rules on this branch compile against production (`firebase deploy --dry-run --only firestore:rules`). The live release stayed unchanged afterward.
+- Live client: Pages project `weekendtrip`, production deployment `9cc93135` built from `main` `bddd054`. It does **not** contain this branch's Conflict Tracker client.
+
+### Compatibility of these rules with the live (`main`) client
+
+The emulator suite `tests/rules/conflict-tracker-release.rules.test.ts` covers this. Legacy conflict creation without mirror fields still works (fixed). However, the `main` client listens to and deletes through the `reflections` **collection**. The new rules deny that before reveal, and that restriction is the privacy fix itself. The `main` client also never writes the submission mirrors. **Deploying these Firestore rules while `main`'s client is live breaks Conflict Tracker reflections, deletion and the shared section.** The corrected client *is* compatible with the currently deployed rules, so it must ship first. This branch cannot build on Pages (OpenNext/Workers), so ship it as a minimal backport PR to `main`: the seven `app/tools/conflict-tracker` files, which typecheck on `main`. One known transient regression applies while the old rules are still live. Person A deleting a conflict now uses one batch that always deletes both reflection IDs. Old rules permit reflection deletes for admin only, so non-admin deletion fails until the new rules ship. Under the old rules, deleting a conflict that had reflections already failed.
+
+## Live access procedure (for re-verification)
 
 Use an authenticated Firebase connector or trusted CLI/Google ADC. Never paste tokens or service-account JSON into chat, source files, or logs. Firebase CLI login alone does not necessarily provide the Admin SDK's ADC; verify both required operations independently.
 
@@ -75,17 +88,16 @@ Replace the digest placeholder with the approved dry-run digest. The script vali
 
 This branch also contains an unverified Cloudflare Workers migration from earlier work. `wrangler.jsonc`'s Worker identity is not production evidence. Do not run `cf:deploy`, deploy a new Worker, or assume the corrected client is live as part of this Firebase handoff. Coordinate the client release separately on the verified hosting target.
 
-1. Finish live rules/database/bucket/IAM comparison and the local checks. Identify the actual production client build and approved rollback artifacts.
-2. Stage the compatible client and rules. Verify the client/rules pair in a non-production environment. The new submission transaction requires `getAfter` support; test against actual retrieved live rules as well, or keep the client inaccessible during the coordinated cutover. Do not expose it against incompatible intermediate rules.
-3. Enter confirmed maintenance for old clients/writers. Produce the final dry run/backup, obtain explicit approval for that digest, apply, and verify it. Keep draft-only data private.
-4. Deploy the compatible client to the separately verified existing application target; record deployed SHA/URL and ensure stale clients cannot continue writes. Keep users paused until rules and smoke checks finish. If client deployment cannot be verified, stop: do not deploy new Firestore rules.
-5. Only when all gates pass, from the reviewed checkout with `firebase.json` mapped to the canonical sources:
+1. Done 2026-10-20: live rules/database/bucket/IAM comparison and local checks (see above).
+2. Open and merge a backport PR to `main` with the corrected Conflict Tracker client. Let Pages deploy it, then record the deployment ID and commit, and smoke-test it against the **current** rules. Under the current rules it works, with two exceptions: historical conflicts don't reveal the partner until migration, and non-admin delete fails as noted above.
+3. Ask users to reload, so stale tabs stop writing unmirrored submissions. Run the migration **dry run** with Admin ADC (`gcloud auth application-default login`, as the project owner). Back it up privately and get explicit approval of the plan's SHA-256. Apply only that digest, then re-run the dry run: affected and blocked must both be 0. If anything drifted, re-plan and re-approve.
+4. Deploy **Firestore rules only** while Storage is unprovisioned:
 
    ```sh
-   npx firebase deploy --only firestore:rules,storage --project jlb-calorietracker
+   npx firebase deploy --only firestore:rules --project jlb-calorietracker
    ```
 
-   Do not use `storage:rules` (invalid selector). Do not deploy Hosting, Functions, indexes, Auth configuration, or unrelated resources. Do not run `firebase use` to make an implicit production default.
-6. Re-read the active releases/rulesets, compare their source hashes to the approved files, and record both resulting references. With approved test identities and non-sensitive fixtures in production, verify own/partner pre-reveal privacy, legitimate mutual submission/reveal, historical submitted vs draft-only behavior, image upload, participant cleanup/delete and outsider denial. Clean up only the fixtures you created. Re-enable traffic only after these pass; record actual results, not just a successful deploy exit.
+   `--only firestore:rules,storage` fails while no bucket exists. Deploy `storage` later, as its own step: after Storage is provisioned (Blaze), the Storage service agent exists, and `roles/firebaserules.firestoreServiceAgent` is granted. Do not use `storage:rules` (invalid selector). Do not deploy Hosting, Functions, indexes, Auth configuration, or unrelated resources. Do not run `firebase use` to make an implicit production default.
+5. Re-read the active releases and rulesets. Compare their sources to the approved files and record the new ruleset name, keeping `7c3d1850-…` as the rollback reference. Test in production with approved test identities and non-sensitive fixtures: own/partner pre-reveal privacy, mutual submission and reveal, historical submitted vs draft-only, and outsider denial. Test image upload and delete only once Storage exists. Clean up only the fixtures you created.
 
 If cutover fails, keep maintenance in place and use the captured previous releases/client artifacts to plan a compatible rollback. Do not roll back privacy rules to broad readable drafts or overwrite historical data wholesale. Record remaining blockers in AR-02/AR-03/AR-04; these initiatives remain open until merge, production acceptance and their other recorded criteria are satisfied.
