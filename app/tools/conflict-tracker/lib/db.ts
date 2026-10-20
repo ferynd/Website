@@ -6,6 +6,7 @@ export const APP_ID = 'conflict-tracker';
 import {
   arrayUnion,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -316,7 +317,18 @@ export const deleteConflict = async (
   batch.delete(reflectionDoc(trackerId, conflictId, 'personA'));
   batch.delete(reflectionDoc(trackerId, conflictId, 'personB'));
   batch.delete(conflictDoc(trackerId, conflictId));
-  await batch.commit();
+  try {
+    await batch.commit();
+  } catch (error) {
+    if ((error as FirestoreError)?.code !== 'permission-denied') throw error;
+    // Pre-AR-03 rules let only admins delete reflections, even absent ones.
+    // A conflict with no reflections can still be removed directly there;
+    // under the AR-03 rules the batch above is the path that succeeds.
+    const sides = await Promise.all((['personA', 'personB'] as const).map(side =>
+      getDoc(reflectionDoc(trackerId, conflictId, side)).catch(() => null)));
+    if (sides.some(snap => !snap || snap.exists())) throw error;
+    await deleteDoc(conflictDoc(trackerId, conflictId));
+  }
 };
 
 export const watchConflicts = (
@@ -401,7 +413,8 @@ export const watchReflections = (
   conflictId: string,
   ownSide: 'personA' | 'personB' | null,
   onData: (reflections: Reflection[], error?: FirestoreError) => void,
-): Unsub => subscribeReflections(db, trackerId, conflictId, ownSide, onData);
+  ownUid?: string,
+): Unsub => subscribeReflections(db, trackerId, conflictId, ownSide, onData, ownUid);
 
 // ── User lookup ─────────────────────────────────────────────────────────────
 

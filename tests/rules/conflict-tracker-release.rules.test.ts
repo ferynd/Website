@@ -182,3 +182,55 @@ describe('deployed origin/main client calls under the new rules (release-order e
     await assertSucceeds(getDocs(collection(ctx('b-uid'), `${CONFLICT}/reflections`)));
   });
 });
+
+describe('in-app self-heal of historical submission mirrors (rule path null -> exact value)', () => {
+  const heal = (side: 'personA' | 'personB', value: Timestamp) => ({
+    [side === 'personA' ? 'personASubmittedAt' : 'personBSubmittedAt']: value,
+    [side === 'personA' ? 'hasReflectionA' : 'hasReflectionB']: true,
+    updatedAt: serverTimestamp(),
+  });
+  it('allows the owner to write their own side with the exact reflection timestamp', async () => {
+    await seed({ submittedA: T1, mirrors: false });
+    await assertSucceeds(updateDoc(doc(ctx('a-uid'), CONFLICT), heal('personA', T1)));
+  });
+  it("denies healing the partner's side, even with the partner's exact value", async () => {
+    await seed({ submittedA: T1, submittedB: T2, mirrors: false });
+    await assertFails(updateDoc(doc(ctx('a-uid'), CONFLICT), heal('personB', T2)));
+    await assertFails(updateDoc(doc(ctx('b-uid', 'b@example.com'), CONFLICT), heal('personA', T1)));
+  });
+  it('denies a mismatched timestamp and re-healing an already set mirror', async () => {
+    await seed({ submittedA: T1, mirrors: false });
+    await assertFails(updateDoc(doc(ctx('a-uid'), CONFLICT), heal('personA', T2)));
+    // Firestore stores microseconds, so differ by 1 µs (1 ns would round to equal).
+    await assertFails(updateDoc(doc(ctx('a-uid'), CONFLICT), heal('personA', new Timestamp(T1.seconds, T1.nanoseconds + 1000))));
+    await assertSucceeds(updateDoc(doc(ctx('a-uid'), CONFLICT), heal('personA', T1)));
+    await assertFails(updateDoc(doc(ctx('a-uid'), CONFLICT), heal('personA', T2)));
+  });
+  it('denies healing from a draft (null submittedAt)', async () => {
+    await seed({ mirrors: false });
+    await testEnv.withSecurityRulesDisabled(async admin => {
+      await setDoc(doc(admin.firestore(), `${CONFLICT}/reflections/personA`), reflection('personA', 'a-uid', null));
+    });
+    await assertFails(updateDoc(doc(ctx('a-uid'), CONFLICT), heal('personA', T1)));
+  });
+  it('keeps the partner draft private after one side heals, then reveals once both heal', async () => {
+    await seed({ submittedA: T1, mirrors: false });
+    await testEnv.withSecurityRulesDisabled(async admin => {
+      await setDoc(doc(admin.firestore(), `${CONFLICT}/reflections/personB`), reflection('personB', 'b-uid', null));
+    });
+    const a = ctx('a-uid');
+    const b = ctx('b-uid', 'b@example.com');
+    await assertSucceeds(updateDoc(doc(a, CONFLICT), heal('personA', T1)));
+    await assertFails(getDoc(doc(a, `${CONFLICT}/reflections/personB`)));
+    await assertFails(getDoc(doc(b, `${CONFLICT}/reflections/personA`)));
+    // B now genuinely submits (historical-style direct write), then heals own side.
+    await testEnv.withSecurityRulesDisabled(async admin => {
+      await updateDoc(doc(admin.firestore(), `${CONFLICT}/reflections/personB`), { submittedAt: T2 });
+    });
+    await assertFails(getDoc(doc(a, `${CONFLICT}/reflections/personB`)));
+    await assertSucceeds(updateDoc(doc(b, CONFLICT), heal('personB', T2)));
+    await assertSucceeds(getDoc(doc(a, `${CONFLICT}/reflections/personB`)));
+    await assertSucceeds(getDoc(doc(b, `${CONFLICT}/reflections/personA`)));
+    await assertFails(getDoc(doc(ctx('outsider'), `${CONFLICT}/reflections/personA`)));
+  });
+});

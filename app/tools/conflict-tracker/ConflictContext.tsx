@@ -233,7 +233,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
       setReflections(list);
       // Do not erase a subscription failure when another listener emits.
       if (error) setReflectionError('Unable to load reflections. Reselect this conflict to retry.');
-    });
+    }, user.uid);
     return () => { active = false; unsub(); };
   }, [user, activeTrackerId, activeConflictId, loadedTrackerId, reflectionSide]);
 
