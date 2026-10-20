@@ -457,20 +457,14 @@
             nominalData.push(nominalBalance);
 
             // --- Real (Inflation-Adjusted) Calculation ---
-            // 2.2-a: Use the exact formula for real earn rate.
-            const realEarnRate = (1 + yearlyData.earnRate) / (1 + inputs.inflationRate) - 1;
-
-            // F-119: same rule as the nominal balance above.
-            if (realBalance > 0) {
-              realBalance *= (1 + realEarnRate);
-            }
-            
+            // Real is derived from the nominal point and one shared deflator
+            // (age-65 dollars), so both charts always describe the same
+            // balances and cross at the same ages (F-113). Compounding a
+            // separate real series diverged from nominal whenever the
+            // balance went negative (F-119 carries a nominal deficit forward
+            // uncompounded, which a separately-tracked real deficit did not).
             const deflator = Math.pow(1 + inputs.inflationRate, yearsFromStart);
-            const realBenefit = currentAnnualBenefit / deflator;
-            const realIncome = yearlyData.income / deflator;
-            const realSpend = yearlyData.spend / deflator;
-            
-            realBalance += realBenefit + realIncome - realSpend;
+            realBalance = nominalBalance / deflator;
             inflationData.push(realBalance);
           }
 

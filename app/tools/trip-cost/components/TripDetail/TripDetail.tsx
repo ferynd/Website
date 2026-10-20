@@ -35,6 +35,34 @@ export default function TripDetail({
     type: string;
     id: string;
   } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const closeConfirm = () => {
+    setConfirmDelete(null);
+    setDeleteError(null);
+  };
+  // Await the deletion so a rejection (e.g. a participant still referenced by
+  // expenses/payments) is shown in the modal instead of being dropped as an
+  // unhandled promise rejection while the modal silently closes.
+  const runConfirmedDelete = async () => {
+    if (!confirmDelete || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      if (confirmDelete.type === 'expense') {
+        await deleteExpense(confirmDelete.id);
+      } else if (confirmDelete.type === 'payment') {
+        await deletePayment(confirmDelete.id);
+      } else if (confirmDelete.type === 'participant') {
+        await deleteParticipant(confirmDelete.id);
+      }
+      closeConfirm();
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Delete failed. Please try again.');
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   if (!trip) {
     return (
@@ -116,17 +144,10 @@ export default function TripDetail({
         {confirmDelete && (
           <ConfirmDeleteModal
             itemType={confirmDelete.type}
-            onCancel={() => setConfirmDelete(null)}
-            onConfirm={() => {
-              if (confirmDelete.type === 'expense') {
-                deleteExpense(confirmDelete.id);
-              } else if (confirmDelete.type === 'payment') {
-                deletePayment(confirmDelete.id);
-              } else if (confirmDelete.type === 'participant') {
-                deleteParticipant(confirmDelete.id);
-              }
-              setConfirmDelete(null);
-            }}
+            onCancel={closeConfirm}
+            onConfirm={() => { void runConfirmedDelete(); }}
+            error={deleteError}
+            busy={deleteBusy}
           />
         )}
       </div>
