@@ -305,7 +305,7 @@ This is a full-featured nutrition tracker built as a static client-side app (pla
 
 All data lives under `artifacts/${appId}/users/{userId}/`. `appId` is configured in
 `public/tools/CalorieTracker/config.js` and resolves to `window.__app_id` when present
-(Canvas / hosted environment) or falls back to `’default-app-id’`.
+(Canvas / hosted environment) or falls back to `’default-app-id’`. **Production rules authorize only `default-app-id`** (AR-02/F-138), which is what the tool uses on jamesberto.com. The `window.__app_id` (Canvas) mode is unsupported against the production project, and any other namespace is denied. A read-only scan on 2026-10-20 found CalorieTracker data only under `default-app-id`.
 
 - `targets/baseline` — baseline nutrient targets
 - `dailyEntries/{YYYY-MM-DD}` — per-day food log, exercise sessions, estimate metadata

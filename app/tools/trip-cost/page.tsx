@@ -60,6 +60,10 @@ export default function TripCostPage() {
   // trips
   const [trips, setTrips] = useState<Trip[]>([]);
   const [tripsLoaded, setTripsLoaded] = useState(false);
+  // A failed trips listener is not an empty result: keep it separate so a
+  // deep link is never reported as missing/unauthorized when access was
+  // never actually checked.
+  const [tripsError, setTripsError] = useState<string | null>(null);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [newTripName, setNewTripName] = useState('');
   const [deepLinkTripId, setDeepLinkTripId] = useState<string | null>(null);
@@ -115,6 +119,7 @@ export default function TripCostPage() {
   // load trips
   useEffect(() => {
     setTripsLoaded(false);
+    setTripsError(null);
     if (!user || !userProfile) {
       setTrips([]);
       return;
@@ -130,8 +135,13 @@ export default function TripCostPage() {
       setTrips(
         snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<Trip, 'id'>) }))
       );
+      setTripsError(null);
       setTripsLoaded(true);
-    }, () => setTripsLoaded(true));
+    }, () => {
+      // Leave tripsLoaded false so the deep-link effect does not consume the
+      // requested trip ID; it resolves after a later successful snapshot.
+      setTripsError('Could not load your trips. Check your connection and reload the page.');
+    });
     return () => unsub();
   }, [user, userProfile]);
 
@@ -232,9 +242,9 @@ export default function TripCostPage() {
 
   return (
     <>
-      {deepLinkError && (
-        <div className="max-w-2xl mx-auto mt-4 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
-          {deepLinkError}
+      {(tripsError || deepLinkError) && (
+        <div role="alert" className="max-w-2xl mx-auto mt-4 rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
+          {tripsError ?? deepLinkError}
         </div>
       )}
       <TripList

@@ -291,7 +291,20 @@ service cloud.firestore {
         // .get(): the pre-AR-03 client omits the mirrors on create; a missing
         // field must read as null rather than erroring the whole rule.
         && request.resource.data.get('personASubmittedAt', null) == null
-        && request.resource.data.get('personBSubmittedAt', null) == null;
+        && request.resource.data.get('personBSubmittedAt', null) == null
+        // A new conflict starts unresolved, without reflections and without
+        // a shared section, so creation cannot bypass the role-scoped update
+        // paths below (e.g. Person B pre-setting personAResolved). Missing
+        // fields (older client shapes) read as their defaults.
+        && request.resource.data.get('personAResolved', false) == false
+        && request.resource.data.get('personBResolved', false) == false
+        && request.resource.data.get('status', 'open') == 'open'
+        && request.resource.data.get('hasReflectionA', false) == false
+        && request.resource.data.get('hasReflectionB', false) == false
+        && !request.resource.data.keys().hasAny([
+            'personARealMeaning', 'personBRealMeaning', 'sharedClarification',
+            'sharedOwnershipNotes', 'sharedNextSteps', 'sharedUpdatedBy', 'sharedUpdatedAt'
+          ]);
 
       // Every update path is field-scoped; there is no general "member can
       // edit everything" fallback (F-037/F-072).

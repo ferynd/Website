@@ -250,3 +250,37 @@ describe('Codex review on #161: un-submitting and stray reflection IDs under the
     }
   });
 });
+
+describe('conflict creation starts from a clean initial state (Codex #160 review)', () => {
+  const clientShape = (createdBy: string) => ({
+    trackerId: 'tracker1', title: 'T', date: '2026-01-01', severity: 2, tags: [],
+    personAResolved: false, personBResolved: false, status: 'open',
+    hasReflectionA: false, hasReflectionB: false, personASubmittedAt: null, personBSubmittedAt: null,
+    createdBy, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+  });
+  const NEW = `${TRACKER}/conflicts/new1`;
+  it('allows the real client shape for either member, and a legacy shape without optional fields', async () => {
+    await seed();
+    await assertSucceeds(setDoc(doc(ctx('a-uid'), NEW), clientShape('a-uid')));
+    await assertSucceeds(setDoc(doc(ctx('b-uid'), `${TRACKER}/conflicts/new2`), clientShape('b-uid')));
+    await assertSucceeds(setDoc(doc(ctx('b-uid'), `${TRACKER}/conflicts/new3`), {
+      trackerId: 'tracker1', title: 'T', date: '2026-01-01', severity: 2, tags: [], createdBy: 'b-uid',
+    }));
+  });
+  it('denies pre-set resolution, status, reflection flags, or shared-section fields', async () => {
+    await seed();
+    const b = ctx('b-uid');
+    for (const patch of [
+      { personAResolved: true, status: 'partially_resolved' },
+      { personBResolved: true, status: 'partially_resolved' },
+      { personAResolved: true, personBResolved: true, status: 'resolved' },
+      { status: 'resolved' },
+      { hasReflectionA: true },
+      { hasReflectionB: true },
+      { sharedClarification: 'x', sharedUpdatedBy: 'b-uid' },
+      { personARealMeaning: 'x' },
+    ]) {
+      await assertFails(setDoc(doc(b, NEW), { ...clientShape('b-uid'), ...patch }));
+    }
+  });
+});

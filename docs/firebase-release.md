@@ -1,6 +1,6 @@
 # Firebase rules release — jlb-calorietracker
 
-Status (2026-10-20, phase 2): this is a Firestore-rules-only release. Storage is **deferred** until a bucket exists on the Blaze plan. Historical submission mirrors heal **in-app**, so the Admin migration is optional and not required. Remaining gates, in order: merge the Conflict Tracker client backport to `main` and verify Pages serves it, then deploy the Firestore rules, then run the post-deploy checks. No production data, rules or client have been changed by this work. One side effect: the Cloud Storage for Firebase API was enabled; see the live inspection notes.
+Status (2026-10-20, released): this is a Firestore-rules-only release, and it is **deployed**. PR #161 (the compatible Conflict Tracker client) merged as `4a24cea`, and Pages production deployment `b063b07d` served it. The rules were released as ruleset `47cb93f9-4008-4b73-a8f8-cc469f8b8ae4` (rollback: `7c3d1850-1364-4b63-a283-711021545010`). Live checks passed 56/56, using throwaway accounts and fixtures that were removed afterwards. A follow-up tightening of the conflict-create rule (clean initial resolution/reflection/shared state, from the Codex review) ships with PR #160 and is deployed the same way. Storage is **deferred** until a bucket exists on the Blaze plan. Historical submission mirrors heal **in-app**, so the Admin migration is optional. No production data was modified, apart from the self-removed fixtures. One side effect: the Cloud Storage for Firebase API was enabled; see the live inspection notes.
 
 ## Sources and verified local behavior
 
@@ -92,18 +92,18 @@ Replace the digest placeholder with the approved dry-run digest. The script vali
 
 ## Compatible release order and exact deployment
 
-This branch also contains an unverified Cloudflare Workers migration from earlier work. `wrangler.jsonc`'s Worker identity is not production evidence. Do not run `cf:deploy`, deploy a new Worker, or assume the corrected client is live as part of this Firebase handoff. Coordinate the client release separately on the verified hosting target.
+The Cloudflare Workers hosting cutover is a separate track; see README "Deployment". It doesn't change the Firebase steps below.
 
 1. Done 2026-10-20: live rules/database/bucket/IAM comparison and local checks (see above).
-2. Merge the client backport PR to `main` (Conflict Tracker client only, including the self-heal and the delete fallback). Wait for the Pages production deployment of `weekendtrip`. Verify that its source commit equals the merge commit, and that `/tools/conflict-tracker` serves the new bundle. Smoke-test it against the **current** rules. Members' first visits will start healing their own historical mirrors, and that is safe under both rule sets.
-3. Deploy **Firestore rules only**:
+2. Done 2026-10-20 (`4a24cea`, Pages `b063b07d`): merge the client backport PR to `main` (Conflict Tracker client only, including the self-heal and the delete fallback). Wait for the Pages production deployment of `weekendtrip`. Verify that its source commit equals the merge commit, and that `/tools/conflict-tracker` serves the new bundle. Smoke-test it against the **current** rules. Members' first visits will start healing their own historical mirrors, and that is safe under both rule sets.
+3. Done 2026-10-20 (ruleset `47cb93f9`): deploy **Firestore rules only**. Re-run this same command for any later rules change, such as the conflict-create tightening in #160:
 
    ```sh
    npx firebase deploy --only firestore:rules --project jlb-calorietracker
    ```
 
    `firebase.json` no longer maps Storage, so this deploys nothing else. Do not deploy Hosting, Functions, indexes, Auth configuration, or unrelated resources. Do not run `firebase use`. Leave the Cloud Storage for Firebase API enabled. Stale tabs still running the old client lose reflection loading and deletion until they reload.
-4. Verify: list the releases and confirm `cloud.firestore` points to a new ruleset whose source equals `firestore.rules`. Record that ruleset; the rollback reference is `7c3d1850-1364-4b63-a283-711021545010`. Then test in production with two dedicated test accounts and a test tracker containing only non-sensitive fixture text:
+4. Done 2026-10-20 (56/56 live checks; historical-shape emulator check 15/15; fixtures and test accounts deleted): verify. List the releases and confirm `cloud.firestore` points to a new ruleset whose source equals `firestore.rules`. Record that ruleset; the rollback reference is `7c3d1850-1364-4b63-a283-711021545010`. Then test in production with two dedicated test accounts and a test tracker containing only non-sensitive fixture text:
    - each side can read only its own draft;
    - a partner can't read a draft or a one-sided submission;
    - mutual submission reveals both, and the shared section unlocks only then;

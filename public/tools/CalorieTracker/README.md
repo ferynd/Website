@@ -106,7 +106,7 @@ The tracker is a browser-native ES module app — no bundler is required to run 
 
 All data lives under `artifacts/${appId}/users/{userId}/`. `appId` is exported from
 `config.js` and resolves to `window.__app_id` when that global is set (Canvas / hosted
-environment) or falls back to `'default-app-id'` for local development.
+environment) or falls back to `'default-app-id'` for local development. **Production rules authorize only `default-app-id`** (AR-02/F-138), which is what the tool uses on jamesberto.com. The `window.__app_id` (Canvas) mode is unsupported against the production project, and any other namespace is denied. A read-only scan on 2026-10-20 found CalorieTracker data only under `default-app-id`.
 
 | Collection / path | Contents |
 |---|---|

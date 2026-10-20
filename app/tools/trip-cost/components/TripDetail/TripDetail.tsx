@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTrip } from '../../TripContext';
 import ParticipantsSection from './ParticipantsSection';
 import ExpenseForm from './ExpenseForm';
@@ -37,29 +37,43 @@ export default function TripDetail({
   } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  // Identifies the modal currently on screen, so a deletion that settles
+  // after the user cancelled (and maybe opened another confirmation) never
+  // closes or annotates the newer modal.
+  const activeRequest = useRef(0);
+  const openConfirm = (next: { type: string; id: string }) => {
+    activeRequest.current += 1;
+    setDeleteError(null);
+    setDeleteBusy(false);
+    setConfirmDelete(next);
+  };
   const closeConfirm = () => {
+    activeRequest.current += 1;
     setConfirmDelete(null);
     setDeleteError(null);
+    setDeleteBusy(false);
   };
   // Await the deletion so a rejection (e.g. a participant still referenced by
   // expenses/payments) is shown in the modal instead of being dropped as an
   // unhandled promise rejection while the modal silently closes.
   const runConfirmedDelete = async () => {
     if (!confirmDelete || deleteBusy) return;
+    const target = confirmDelete;
+    const request = activeRequest.current;
     setDeleteBusy(true);
     setDeleteError(null);
     try {
-      if (confirmDelete.type === 'expense') {
-        await deleteExpense(confirmDelete.id);
-      } else if (confirmDelete.type === 'payment') {
-        await deletePayment(confirmDelete.id);
-      } else if (confirmDelete.type === 'participant') {
-        await deleteParticipant(confirmDelete.id);
+      if (target.type === 'expense') {
+        await deleteExpense(target.id);
+      } else if (target.type === 'payment') {
+        await deletePayment(target.id);
+      } else if (target.type === 'participant') {
+        await deleteParticipant(target.id);
       }
-      closeConfirm();
+      if (activeRequest.current === request) closeConfirm();
     } catch (error) {
+      if (activeRequest.current !== request) return;
       setDeleteError(error instanceof Error ? error.message : 'Delete failed. Please try again.');
-    } finally {
       setDeleteBusy(false);
     }
   };
@@ -101,7 +115,7 @@ export default function TripDetail({
               <ParticipantsSection
                 userProfile={userProfile}
                 onDeleteParticipant={(id) =>
-                  setConfirmDelete({ type: 'participant', id })
+                  openConfirm({ type: 'participant', id })
                 }
               />
               <ExpenseForm />
@@ -120,14 +134,14 @@ export default function TripDetail({
           <ExpensesList
             userProfile={userProfile}
             onDeleteExpense={(id) =>
-              setConfirmDelete({ type: 'expense', id })
+              openConfirm({ type: 'expense', id })
             }
           />
 
           <PaymentHistory
             userProfile={userProfile}
             onDeletePayment={(id) =>
-              setConfirmDelete({ type: 'payment', id })
+              openConfirm({ type: 'payment', id })
             }
           />
 
