@@ -66,6 +66,7 @@ interface ConflictContextValue {
   conflicts: Conflict[];
   activeConflict: Conflict | null;
   reflections: Reflection[];
+  reflectionError: string | null;
   trackerLoading: boolean;
   conflictsLoading: boolean;
   /** Current user's side in activeTracker, or null if unclaimed. */
@@ -137,6 +138,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [activeConflictId, setActiveConflictId] = useState<string | null>(null);
   const [reflections, setReflections] = useState<Reflection[]>([]);
+  const [reflectionError, setReflectionError] = useState<string | null>(null);
   const [trackerLoading, setTrackerLoading] = useState(false);
   const [conflictsLoading, setConflictsLoading] = useState(false);
   const [knownUsers, setKnownUsers] = useState<KnownUser[]>([]);
@@ -213,14 +215,21 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     return () => unsub();
   }, [activeTrackerId]);
 
-  // Watch reflections for active conflict
+  // A tracker/account switch clears old contents and cancels every listener.
   useEffect(() => {
-    if (!activeTrackerId || !activeConflictId) { setReflections([]); return; }
-    const unsub = watchReflections(activeTrackerId, activeConflictId, (list) => {
-      if (mountedRef.current) setReflections(list);
+    setReflections([]);
+    setReflectionError(null);
+    if (!user || !activeTrackerId || !activeConflictId || activeTracker?.id !== activeTrackerId) return;
+    let active = true;
+    const side = deriveUserSide(activeTracker, user.uid);
+    const unsub = watchReflections(activeTrackerId, activeConflictId, side, (list, error) => {
+      if (!active || !mountedRef.current) return;
+      setReflections(list);
+      // Do not erase a subscription failure when another listener emits.
+      if (error) setReflectionError('Unable to load reflections. Reselect this conflict to retry.');
     });
-    return () => unsub();
-  }, [activeTrackerId, activeConflictId]);
+    return () => { active = false; unsub(); };
+  }, [user, activeTrackerId, activeConflictId, activeTracker]);
 
   const activeConflict = useMemo(
     () => conflicts.find((c) => c.id === activeConflictId) ?? null,
@@ -450,6 +459,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     conflicts,
     activeConflict,
     reflections,
+    reflectionError,
     trackerLoading,
     conflictsLoading,
     userSide,
@@ -471,7 +481,7 @@ export const ConflictProvider = ({ children }: { children: React.ReactNode }) =>
     signOut: signOutHandler,
   }), [
     user, authLoading, trackers, activeTracker, conflicts, activeConflict,
-    reflections, trackerLoading, conflictsLoading, userSide,
+    reflections, reflectionError, trackerLoading, conflictsLoading, userSide,
     selectTracker, selectConflict, createNewTracker, claimSide,
     addConflict, editConflict, removeConflict, updateShared, markResolved,
     saveDraft, submitReflectionFn, addTrackerCustomTag, knownUsers,

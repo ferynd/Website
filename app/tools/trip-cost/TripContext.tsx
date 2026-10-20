@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { tripDoc, tripAuditCol } from './db';
 import { EXPENSE_CATEGORIES } from './constants';
+import { uniqueLinkedParticipant } from './utils/payer';
 import type {
   Trip,
   TripParticipant,
@@ -263,14 +264,12 @@ export const TripProvider = ({
     // the first manually-added participant matches before the caller's own
     // record (F-090). Only a uniquely userId-linked record is trustworthy
     // enough to auto-default; otherwise require an explicit payer.
-    const currentParticipant = participants.find(
-      p => p.userId === userProfile?.uid
-    );
+    const currentParticipant = uniqueLinkedParticipant(participants, userProfile?.uid);
 
     if (Object.keys(paidBy).length === 0) {
       if (!currentParticipant) {
         throw new Error(
-          'Select who paid — we can only default the payer for a participant record linked to your account.',
+          'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
         );
       }
       paidBy[currentParticipant.id] = totalAmount;
@@ -352,14 +351,12 @@ export const TripProvider = ({
 
     // See addExpense's identical guard for why this only matches on a
     // uniquely userId-linked participant (F-090).
-    const currentParticipant = participants.find(
-      p => p.userId === userProfile?.uid
-    );
+    const currentParticipant = uniqueLinkedParticipant(participants, userProfile?.uid);
 
     if (Object.keys(paidBy).length === 0) {
       if (!currentParticipant) {
         throw new Error(
-          'Select who paid — we can only default the payer for a participant record linked to your account.',
+          'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
         );
       }
       paidBy[currentParticipant.id] = totalAmount;

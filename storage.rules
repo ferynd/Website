@@ -41,12 +41,14 @@ service firebase.storage {
 
     match /artifacts/date-night/uploads/{allPaths=**} {
       allow read: if isAdmin() || isCoupleParticipant();
-      allow write: if (isAdmin() || isCoupleParticipant()) && isAllowedImageUpload();
+      allow create, update: if (isAdmin() || isCoupleParticipant()) && isAllowedImageUpload();
+      allow delete: if isAdmin() || isCoupleParticipant();
     }
 
     match /artifacts/trip-planner/uploads/{plannerId}/{allPaths=**} {
       allow read: if isAdmin() || isTripPlannerParticipant(plannerId);
-      allow write: if (isAdmin() || isTripPlannerParticipant(plannerId)) && isAllowedImageUpload();
+      allow create, update: if (isAdmin() || isTripPlannerParticipant(plannerId)) && isAllowedImageUpload();
+      allow delete: if isAdmin() || isTripPlannerParticipant(plannerId);
     }
 
     // Everything else is denied by default (no catch-all allow rule).

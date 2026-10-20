@@ -6,6 +6,8 @@ import { defineConfig } from 'vitest/config';
 // running emulator.
 export default defineConfig({
   test: {
+    // All suites share the CLI's demo project for Storage-to-Firestore lookups.
+    fileParallelism: false,
     include: ['tests/rules/**/*.test.ts'],
     testTimeout: 20000,
     hookTimeout: 20000,

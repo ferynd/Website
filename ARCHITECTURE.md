@@ -160,3 +160,9 @@ Authority is enforced by Firestore Security Rules (see SECURITY.md).
 
 
 > Firestore Security Rules source of truth: `firestore.rules` (repo root). Keep docs referencing this file rather than embedding duplicate rule blocks.
+
+## Conflict Tracker reflection subscriptions and release
+
+`lib/reflectionSubscriptions.ts` listens to the current user's assigned reflection document and the parent conflict. Only two valid server-confirmed submission timestamps add the partner's named document listener. Cache-only and pending local parent writes cannot unlock the remote read. Cleanup cancels parent and child listeners, and unavailable reflection data is removed on errors or access-gate changes. `ConflictContext` clears selection/account state and exposes reflection errors to the detail view.
+
+Submission commits the reflection and exact parent mirror in one transaction, validated by Firestore `getAfter`; retries keep the first stored timestamp. Deletion batches `personA`, `personB`, and the parent without a collection query. The trusted Node-only migration under `scripts/firebase/` is a development/admin tool, never part of the web client. See `docs/firebase-release.md` for the approval and client/data/rules cutover contract.

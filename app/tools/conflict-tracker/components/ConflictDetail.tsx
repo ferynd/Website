@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from 'react';
+import { bothSubmitted as hasBothSubmissions, isSubmissionTimestamp } from '../lib/submission';
 import { ArrowLeft, Pencil, Trash2 } from 'lucide-react';
 import Button from '@/components/Button';
 import ReflectionForm from './ReflectionForm';
@@ -40,6 +41,7 @@ export default function ConflictDetail({
     saveDraft,
     submitReflectionFn,
     userSide,
+    reflectionError,
   } = useConflict();
 
   const [view, setView] = useState<'detail' | 'edit-conflict' | 'reflect'>('detail');
@@ -67,7 +69,7 @@ export default function ConflictDetail({
   // identical derivation (F-069). Before this is true, the partner's
   // reflection document isn't even readable, so reflectionA/reflectionB
   // above may be genuinely absent from `reflections` for one side.
-  const bothSubmitted = Boolean(conflict.personASubmittedAt) && Boolean(conflict.personBSubmittedAt);
+  const bothSubmitted = hasBothSubmissions(conflict);
 
   const canEditConflict = isPersonA || isAdmin;
   const canDelete = isPersonA || isAdmin;
@@ -138,6 +140,7 @@ export default function ConflictDetail({
 
   return (
     <div className="space-y-6">
+      {reflectionError && <p role="alert" className="text-error">{reflectionError}</p>}
       {/* Header */}
       <div className="flex items-start gap-3">
         <button
@@ -258,24 +261,24 @@ export default function ConflictDetail({
               "submitted" from the other person's point of view (F-069).
             */}
             <span className={`rounded-full px-3 py-1 border text-xs ${
-              conflict.personASubmittedAt
+              isSubmissionTimestamp(conflict.personASubmittedAt)
                 ? 'bg-green-900/30 text-green-300 border-green-700/40'
                 : 'bg-surface-2 text-text-3 border-border'
             }`}>
               {aName}{' '}
-              {conflict.personASubmittedAt
+              {isSubmissionTimestamp(conflict.personASubmittedAt)
                 ? '✓ submitted'
                 : conflict.hasReflectionA
                 ? '◑ draft'
                 : '○ not started'}
             </span>
             <span className={`rounded-full px-3 py-1 border text-xs ${
-              conflict.personBSubmittedAt
+              isSubmissionTimestamp(conflict.personBSubmittedAt)
                 ? 'bg-green-900/30 text-green-300 border-green-700/40'
                 : 'bg-surface-2 text-text-3 border-border'
             }`}>
               {bName}{' '}
-              {conflict.personBSubmittedAt
+              {isSubmissionTimestamp(conflict.personBSubmittedAt)
                 ? '✓ submitted'
                 : conflict.hasReflectionB
                 ? '◑ draft'

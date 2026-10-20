@@ -470,9 +470,9 @@ While developing, you can modify the Next.js pages (in /app) and see the updates
 
 ### 3\. Firebase Setup (if needed)
 
-Some tools (Trip Cost, Calorie Tracker, and others) use Firebase. For full functionality: - Create a free Firebase project. - Enable Email/Password authentication. - Create a Cloud Firestore database and a Storage bucket. - Deploy `firestore.rules` and `storage.rules` (the canonical, only rule sources — see `firebase.json`) with `npx firebase deploy --only firestore:rules,storage:rules`. - Update the Firebase configuration in the code (for Trip Cost, in firebaseConfig.ts; for Calorie Tracker, in firebaseConfig.js) with your project's details. - If you don't do this, the site will still run, but those specific tools might not work correctly (or at all).
+Some tools (Trip Cost, Calorie Tracker, and others) use Firebase. For full functionality: - Create a free Firebase project. - Enable Email/Password authentication. - Create a Cloud Firestore database and a Storage bucket. - Deploy `firestore.rules` and `storage.rules` (the canonical, only rule sources — see `firebase.json`) with `npx firebase deploy --only firestore:rules,storage --project jlb-calorietracker`. - Update the Firebase configuration in the code (for Trip Cost, in firebaseConfig.ts; for Calorie Tracker, in firebaseConfig.js) with your project's details. - If you don't do this, the site will still run, but those specific tools might not work correctly (or at all).
 
-Run `npm run test:rules` (requires a local Java runtime) to exercise `firestore.rules`/`storage.rules` against the Firebase emulator before deploying a rules change — see `tests/rules/`.
+Run `npm run test:rules` (requires a local Java runtime) to exercise `firestore.rules`/`storage.rules` against the Firebase emulator before deploying a rules change — see `tests/rules/`. The harness explicitly uses the isolated demo project; production CLI commands must select `--project jlb-calorietracker`. See [the Firebase release runbook](docs/firebase-release.md) for live-rule comparison, Storage-to-Firestore IAM, protected migration backups, explicit data-change approval, and compatible client/migration/rules ordering. Do not deploy these rules before historical mirrors and the compatible client are verified.
 
 ### 4\. Environment Variables
 

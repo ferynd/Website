@@ -66,6 +66,21 @@ service cloud.firestore {
       return isSignedIn() && (request.auth.uid == tracker.createdBy || request.auth.uid == tracker.personAUid);
     }
 
+    function ownsConflictSide(trackerId, side) {
+      let tracker = get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data;
+      return isSignedIn() && (
+        (side == 'personA' && request.auth.uid == tracker.personAUid) ||
+        (side == 'personB' && request.auth.uid == tracker.get('personBUid', null))
+      );
+    }
+
+    function validConflictSubmission(trackerId, conflictId, side, submittedAt) {
+      let reflection = getAfter(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)/reflections/$(side)).data;
+      return submittedAt is timestamp && submittedAt == reflection.submittedAt
+        && reflection.authorUid == request.auth.uid && reflection.id == side
+        && reflection.person == side && reflection.conflictId == conflictId;
+    }
+
     // Conflict Tracker: true once both sides have a genuinely *submitted*
     // (not draft) reflection, per the conflict doc's server-validated mirror
     // fields (see the conflicts match block below) — the only signal the
@@ -73,7 +88,8 @@ service cloud.firestore {
     // (AR-03/F-036/F-069).
     function conflictBothSubmitted(trackerId, conflictId) {
       let c = get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)).data;
-      return c.personASubmittedAt != null && c.personBSubmittedAt != null;
+      return c.get('personASubmittedAt', null) is timestamp
+        && c.get('personBSubmittedAt', null) is timestamp;
     }
 
 		// Show Tracker: member of a list
@@ -273,7 +289,7 @@ service cloud.firestore {
         //     once both sides have genuinely submitted (F-069: this was
         //     previously gated on client-only hasReflectionA/B draft flags).
         || (isConflictCreatorOrPersonA(trackerId)
-          && resource.data.personASubmittedAt != null && resource.data.personBSubmittedAt != null
+          && resource.data.get('personASubmittedAt', null) is timestamp && resource.data.get('personBSubmittedAt', null) is timestamp
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'personARealMeaning', 'personBRealMeaning', 'sharedClarification',
               'sharedOwnershipNotes', 'sharedNextSteps', 'sharedUpdatedBy', 'sharedUpdatedAt', 'updatedAt'
@@ -283,7 +299,7 @@ service cloud.firestore {
         //       - hasReflectionX can only be set true, never reset false
         //         (matches saveReflectionDraft/submitReflection);
         //       - personXSubmittedAt can only go null -> the exact value
-        //         already present on that side's own reflection document,
+        //         present on that side's own reflection after the atomic write,
         //         never reset (no unsubmitting — F-036/F-069/F-073). This
         //         can't be forged independent of an actual submission
         //         because the value must match the reflection doc exactly.
@@ -291,14 +307,14 @@ service cloud.firestore {
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasReflectionA', 'personASubmittedAt', 'updatedAt'])
           && (!('hasReflectionA' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.hasReflectionA == true)
           && (!('personASubmittedAt' in request.resource.data.diff(resource.data).affectedKeys())
-              || (resource.data.personASubmittedAt == null
-                  && request.resource.data.personASubmittedAt == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)/reflections/personA).data.submittedAt)))
+              || (resource.data.get('personASubmittedAt', null) == null
+                  && validConflictSubmission(trackerId, conflictId, 'personA', request.resource.data.personASubmittedAt))))
         || (request.auth.uid == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)).data.personBUid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hasReflectionB', 'personBSubmittedAt', 'updatedAt'])
           && (!('hasReflectionB' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.hasReflectionB == true)
           && (!('personBSubmittedAt' in request.resource.data.diff(resource.data).affectedKeys())
-              || (resource.data.personBSubmittedAt == null
-                  && request.resource.data.personBSubmittedAt == get(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)/reflections/personB).data.submittedAt)))
+              || (resource.data.get('personBSubmittedAt', null) == null
+                  && validConflictSubmission(trackerId, conflictId, 'personB', request.resource.data.personBSubmittedAt))))
         // (4) Resolution — each side may only set their own resolved flag;
         //     status must be the value that flag combination derives to
         //     (F-072: previously any member could flip either side).
@@ -323,24 +339,33 @@ service cloud.firestore {
       // reflection is only visible once BOTH sides have genuinely submitted
       // (F-036: previously any tracker member could read both reflections
       // at any time, including unsubmitted drafts).
-      allow read: if isAdmin()
-        || (isConflictTrackerMember(trackerId) && request.auth.uid == resource.data.authorUid)
+      allow get: if isAdmin()
+        || (isConflictTrackerMember(trackerId) && ownsConflictSide(trackerId, side)
+          && (!exists(/databases/$(database)/documents/artifacts/conflict-tracker/trackers/$(trackerId)/conflicts/$(conflictId)/reflections/$(side))
+            || resource.data.authorUid == request.auth.uid))
+        || (isConflictTrackerMember(trackerId) && conflictBothSubmitted(trackerId, conflictId));
+      allow list: if isAdmin()
         || (isConflictTrackerMember(trackerId) && conflictBothSubmitted(trackerId, conflictId));
 
-      allow create: if isConflictTrackerMember(trackerId)
-        && side in ['personA', 'personB']
-        && request.resource.data.authorUid == request.auth.uid
-        && request.resource.data.conflictId == conflictId;
+      function validIdentity() {
+        return request.resource.data.id == side
+          && request.resource.data.person == side
+          && request.resource.data.conflictId == conflictId
+          && request.resource.data.authorUid == request.auth.uid;
+      }
 
-      // Was: only request.resource.data.authorUid was checked, so a member
-      // could overwrite the OTHER side's existing reflection and reassign
-      // authorUid to themselves (F-036/F-037). Now the *existing* document's
-      // authorUid must already be the caller. Once submitted, submittedAt
-      // can only stay set (no unsubmitting back to a hidden draft — F-073).
+      // Admin keeps read/delete/parent override authority, but cannot impersonate
+      // an assigned author. Creating/editing a reflection requires that side's UID.
+      allow create: if isConflictTrackerMember(trackerId)
+        && ownsConflictSide(trackerId, side) && validIdentity()
+        && (request.resource.data.submittedAt == null || request.resource.data.submittedAt is timestamp);
+
       allow update: if isConflictTrackerMember(trackerId)
+        && ownsConflictSide(trackerId, side) && validIdentity()
         && resource.data.authorUid == request.auth.uid
-        && request.resource.data.authorUid == request.auth.uid
-        && (resource.data.submittedAt == null || request.resource.data.submittedAt != null);
+        && (resource.data.get('submittedAt', null) == null
+          ? (request.resource.data.submittedAt == null || request.resource.data.submittedAt is timestamp)
+          : request.resource.data.submittedAt == resource.data.submittedAt);
 
       // Matches conflict-level deletion authority (F-074) so deleteConflict's
       // batch can remove reflections and the conflict together.

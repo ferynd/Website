@@ -13,6 +13,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -23,6 +24,7 @@ import {
   type FirestoreError,
 } from 'firebase/firestore';
 import { db } from './firebase';
+import { subscribeReflections } from './reflectionSubscriptions';
 import type { Conflict, Reflection, ReflectionInput, SharedSectionPatch, Tracker } from './types';
 
 type Unsub = () => void;
@@ -40,9 +42,6 @@ const conflictsCol = (trackerId: string): CollectionReference =>
 
 const conflictDoc = (trackerId: string, conflictId: string): DocumentReference =>
   doc(db, ROOT_COLLECTION, APP_ID, 'trackers', trackerId, 'conflicts', conflictId);
-
-const reflectionsCol = (trackerId: string, conflictId: string): CollectionReference =>
-  collection(db, ROOT_COLLECTION, APP_ID, 'trackers', trackerId, 'conflicts', conflictId, 'reflections');
 
 const reflectionDoc = (
   trackerId: string,
@@ -313,11 +312,9 @@ export const deleteConflict = async (
 ): Promise<void> => {
   // Batched so a failure never leaves reflections orphaned without their
   // parent conflict, or vice versa (F-074).
-  const refsSnap = await getDocs(reflectionsCol(trackerId, conflictId));
   const batch = writeBatch(db);
-  for (const r of refsSnap.docs) {
-    batch.delete(r.ref);
-  }
+  batch.delete(reflectionDoc(trackerId, conflictId, 'personA'));
+  batch.delete(reflectionDoc(trackerId, conflictId, 'personB'));
   batch.delete(conflictDoc(trackerId, conflictId));
   await batch.commit();
 };
@@ -380,52 +377,31 @@ export const submitReflection = async (
   input: ReflectionInput,
 ): Promise<void> => {
   const ref = reflectionDoc(trackerId, conflictId, side);
-  await setDoc(
-    ref,
-    stripUndefined({
-      ...input,
-      id: side,
-      person: side,
-      conflictId,
-      authorUid,
-      submittedAt: serverTimestamp(),
-      tags: ensureStringArray(input.tags),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    }),
-    { merge: true },
-  );
-  // Rules require the conflict doc's mirror field to match this
-  // reflection's own committed submittedAt exactly (F-036/F-069), so read
-  // it back rather than writing a second, independently-resolved
-  // serverTimestamp() sentinel.
-  const committed = await getDoc(ref);
-  const submittedAt = committed.data()?.submittedAt ?? null;
   const flag = side === 'personA' ? 'hasReflectionA' : 'hasReflectionB';
   const mirror = side === 'personA' ? 'personASubmittedAt' : 'personBSubmittedAt';
-  await updateDoc(conflictDoc(trackerId, conflictId), {
-    [flag]: true,
-    [mirror]: submittedAt,
-    updatedAt: serverTimestamp(),
+  await runTransaction(db, async transaction => {
+    const existing = await transaction.get(ref);
+    // Retries preserve the first genuine submission and never desynchronize
+    // an already committed mirror. All timestamp transforms share request.time.
+    const submittedAt = existing.data()?.submittedAt ?? serverTimestamp();
+    transaction.set(ref, stripUndefined({
+      ...input, id: side, person: side, conflictId, authorUid, submittedAt,
+      tags: ensureStringArray(input.tags),
+      createdAt: existing.data()?.createdAt ?? serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }), { merge: true });
+    transaction.update(conflictDoc(trackerId, conflictId), {
+      [flag]: true, [mirror]: submittedAt, updatedAt: serverTimestamp(),
+    });
   });
 };
 
 export const watchReflections = (
   trackerId: string,
   conflictId: string,
+  ownSide: 'personA' | 'personB' | null,
   onData: (reflections: Reflection[], error?: FirestoreError) => void,
-): Unsub =>
-  onSnapshot(
-    reflectionsCol(trackerId, conflictId),
-    (snap) => {
-      const reflections = snap.docs.map((d) => {
-        const data = d.data() as Omit<Reflection, 'id'>;
-        return { id: d.id as 'personA' | 'personB', ...data, tags: ensureStringArray(data.tags) };
-      });
-      onData(reflections);
-    },
-    (err) => onData([], err),
-  );
+): Unsub => subscribeReflections(db, trackerId, conflictId, ownSide, onData);
 
 // ── User lookup ─────────────────────────────────────────────────────────────
 
@@ -458,5 +434,4 @@ export {
   conflictDoc,
   conflictsCol,
   reflectionDoc,
-  reflectionsCol,
 };
