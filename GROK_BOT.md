@@ -40,7 +40,7 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 | Codex CLI | 0.163.0 | ChatGPT sign-in | Implementation; model always pinned with `-m` (see §5) |
 | Grok Build (`grok`) | 1.0.62 | grok.com subscription (device auth) | Second implementer; `~/.local/bin/grok` |
 | GitHub CLI (`gh`) | 2.102.0 | `ferynd`, HTTPS | Push branches, open draft PRs |
-| wrangler | 4.151.3 (repo pins 4.107.0) | Cloudflare OAuth (no DNS-edit, Workers Builds, or API-token scopes) | Worker `jamesberto-website`; Pages `weekendtrip` still serves jamesberto.com until the cutover (§3a) |
+| wrangler | 4.151.3 (repo pins 4.107.0) | Cloudflare OAuth, or the scoped `CLOUDFLARE_API_TOKEN` from the environment (§3a) | Worker `jamesberto-website` serves jamesberto.com (§3a); Pages `weekendtrip` is paused |
 | firebase-tools | 15.34.0 | Google OAuth | Project `jlb-calorietracker`; Firebase connector also signed in |
 | Gemini CLI | 0.64.0 | — (unused) | Google stopped serving Gemini CLI to personal accounts on 2026-06-18; Antigravity CLI is the replacement option |
 
@@ -71,15 +71,27 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 
 ## 3a. Hosting and deploy flow (as of 2026-10-20)
 
-- **Firebase:** Firestore rules from the AR-03 release are live: ruleset `aa808b96-d906-471f-8441-ee116413a8db`, deployed from PR #160's `firestore.rules` (first release `47cb93f9`, then a conflict-create tightening). Roll back by re-releasing `7c3d1850-1364-4b63-a283-711021545010` (= `main@074c307`). Deploy only with `npx firebase deploy --only firestore:rules --project jlb-calorietracker`. Storage is deferred.
-- **Worker:** `jamesberto-website` (OpenNext). Preview at <https://jamesberto-website.arkkahdarkkahd.workers.dev>. It has secrets for Gemini, GPT, and TMDB. Manual deploy: `npm run cf:build && npx opennextjs-cloudflare deploy -- --message <slug>`, run from a worktree. Roll back with `npx wrangler rollback <version-id>`.
-- **Pages:** `weekendtrip` still serves jamesberto.com and www. Once #160 is on `main`, Pages builds fail (it is Workers-only code), and Pages keeps serving its last good deployment.
-- **Cutover status: blocked on James.** Attaching the custom domains fails with Cloudflare 100117: "Hostname already has externally managed DNS records". The apex and www DNS records that Pages created must be deleted, and the bot's wrangler OAuth has no DNS-edit scope. James's steps:
-  1. Dashboard → `jamesberto.com` zone → DNS → delete the `jamesberto.com` and `www` records that point to `weekendtrip.pages.dev`.
-  2. Right away, in Worker `jamesberto-website` → Settings → Domains & Routes → Add → Custom domain, add `jamesberto.com` and then `www.jamesberto.com`. The site is down between steps 1 and 2, so do them back to back.
-  3. Then the bot commits the matching `wrangler.jsonc` `routes` (`custom_domain: true`, saved in `~/runs/pr-160/cutover/wrangler-custom-domains.patch`), verifies, and removes both custom domains from Pages `weekendtrip`.
-- **Cutover rollback:** Worker `jamesberto-pages-proxy` (source in `/workspace/pages-proxy` on the box) proxies `weekendtrip.pages.dev`. Add the same two custom-domain routes to it and `wrangler deploy`, and the domains move over without any DNS edit. The full revert is to delete the Worker custom domains and re-add both domains to Pages.
-- **Auto-deploy: needs James.** Workers Builds can't be reached with the wrangler OAuth token. In the Dashboard: Worker `jamesberto-website` → Settings → Builds → Connect `ferynd/Website`, production branch `main`, build command `npm run cf:build`, deploy command `npx opennextjs-cloudflare deploy`, non-production branch command `npx opennextjs-cloudflare upload`. The GitHub Actions fallback would need a `CLOUDFLARE_API_TOKEN` that the bot can't create, so until then deploys are manual from `main`.
+- **Production:** Worker `jamesberto-website` (OpenNext) serves jamesberto.com and www.jamesberto.com as Workers Custom Domains, declared in `wrangler.jsonc` `routes`.
+  - Preview: <https://jamesberto-website.arkkahdarkkahd.workers.dev>.
+  - The cutover was at 5:13 PM CDT on 2026-10-20, and a 1-second probe saw no non-200 responses.
+  - Gotcha: the Worker custom domains only took traffic after the hostnames were removed from the Pages project. Pages custom-domain hostnames take precedence over a Worker custom domain, even after the DNS records change.
+- **Deploys:** Workers Builds is connected to `ferynd/Website`:
+  - repo connection `2a8c59be…`, with build token "weekend-trip-itinerary build token" (`f2856e7e…`) reused
+  - trigger `6729ee63…` "Deploy production (main)": `npm run cf:build`, then `npx opennextjs-cloudflare deploy`
+  - trigger `42dae8ed…` "Preview versions (non-main)": `npm run cf:build`, then `npx opennextjs-cloudflare upload`
+  - First build `b738b7ee` succeeded and deployed version `befd4da3`.
+  - Manual fallback, run from a clean `main` worktree after `npm ci`: `npm run cf:build && npx opennextjs-cloudflare deploy -- --message <slug>`.
+- **Pages:** project `weekendtrip` has no custom domains, and automatic deployments are off (production, previews, PR comments). It is kept only as a rollback target, and its last good deployment is still at `weekendtrip.pages.dev`. Its git source still says `ferynd/WeekendTrip` (the repo's old name).
+- **Firebase:** Firestore rules are live as ruleset `aa808b96-d906-471f-8441-ee116413a8db`, deployed from `firestore.rules` (the first release was `47cb93f9`; a conflict-create tightening followed). Roll back by re-releasing `7c3d1850-1364-4b63-a283-711021545010` (= `main@074c307`). Deploy only with `npx firebase deploy --only firestore:rules --project jlb-calorietracker`. Storage is deferred.
+- **Rollback:**
+  - Code: `npx wrangler rollback <version-id>`.
+  - Hosting, back to Pages: run `~/runs/pr-160/cutover/do-rollback.sh`. It deletes the Worker custom domains and recreates the CNAME records `jamesberto.com` → `weekendtrip.pages.dev` (DNS only) and `www` → `weekendtrip.pages.dev` (proxied). Then re-add both custom domains to Pages: `POST /accounts/<acct>/pages/projects/weekendtrip/domains` with `{"name":"jamesberto.com"}` and `{"name":"www.jamesberto.com"}`. Finally, re-enable Pages deployments if that is needed. Pre-cutover snapshots are in `~/runs/pr-160/cutover/`.
+  - Alternative: Worker `jamesberto-pages-proxy` (`/workspace/pages-proxy`) proxies `weekendtrip.pages.dev`. Add the two custom-domain routes to it and deploy, and the domains move over without any DNS change.
+- **Cloudflare credentials:** a scoped `CLOUDFLARE_API_TOKEN` comes from the environment only and is never written to disk. When it is set, wrangler uses it instead of OAuth. Its scopes:
+  - account: Workers Scripts Edit, Workers Builds Configuration Edit, Pages Edit, Account Settings Read
+  - zone `jamesberto.com`: DNS Edit, DNS Settings Edit, Zone Read, Workers Routes Edit
+
+  It **expires Oct 31, 2026** and can be revoked once the cutover has settled. Workers Builds keeps its own build token, so builds don't need this token. Without the token, wrangler's OAuth login can't edit DNS or reach the Builds API.
 - **Smoke check:** `~/runs/pr-160/smoke.sh <base-url>` (on the box). A Worker response has an `x-opennext-cache` header; a Pages response has `x-matched-path`.
 
 ## 4. Pipeline
@@ -251,7 +263,7 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 
 ## Changelog
 
-- **2026-10-20** — Hosting and release: PR #161 merged, and the Firestore AR-03 rules are deployed and verified live (§3a). PR #158 is merged into the release branch, and the Worker is deployed and smoke-checked. The jamesberto.com cutover is blocked on James deleting the Pages DNS records, and Workers Builds needs dashboard setup. A rollback proxy Worker is ready. Added the deploy quirks (the `--message` slug, moving the CalorieTracker `node_modules` aside).
+- **2026-10-20** — Hosting and release: PR #161 merged, and the Firestore AR-03 rules are deployed and verified live (current ruleset `aa808b96`). PR #160 merged (`d6503ab`). jamesberto.com and www moved from Pages to the Worker at 5:13 PM CDT with no measured downtime. Workers Builds is connected to deploy `main`. Pages auto-deploys are paused. Added the rollback paths, the token note (expires Oct 31), and deploy quirks (the `--message` slug, moving the CalorieTracker `node_modules` aside).
 
 - **2026-10-20** — Added Grok Build 1.0.62 as a second implementer (verified flags, sandbox, headless usage), the model selection policy (lowest fitting tier, always pinned, recorded in PRs), the scripted plan handoff (`plan.json` → `PLAN.md` with validation), and per-item run records for execution recovery. Noted the Codex "out of credits" failure mode.
 - **2026-10-20** — Initial setup: tool installs and logins (Claude Code, Codex, gh, wrangler, firebase-tools), Gemini skipped, isolated pipeline smoke test passed, this guide added.
