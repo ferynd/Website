@@ -28,6 +28,7 @@ It follows the repo's own context order — nothing in this file overrides it:
 - **No deploys, merges, production/Firebase changes, or destructive actions** without James's explicit approval.
 - CLI logins live on the bot's box and **persist across chats**; they only need redoing if a token expires or is revoked.
 - No secrets, tokens, or private keys are ever committed (Firebase web keys are public identifiers per `AGENTS.md`).
+- Coding agents (`claude`, `codex`, `grok`) **always run through `agent-run`** (§3, Credential isolation), so they cannot see Cloudflare, Firebase, or GitHub credentials. Only the orchestrator itself pushes, opens PRs, or touches Cloudflare and Firebase.
 
 ## 3. Environment (as of 2026-10-20)
 
@@ -40,7 +41,8 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 | Codex CLI | 0.163.0 | ChatGPT sign-in | Implementation; model always pinned with `-m` (see §5) |
 | Grok Build (`grok`) | 1.0.62 | grok.com subscription (device auth) | Second implementer; `~/.local/bin/grok` |
 | GitHub CLI (`gh`) | 2.102.0 | `ferynd`, HTTPS | Push branches, open draft PRs |
-| wrangler | 4.151.3 | Cloudflare OAuth | Pages project `weekendtrip` → jamesberto.com |
+| wrangler | 4.151.3 | Cloudflare OAuth | Pages project `weekendtrip` → jamesberto.com (live); Worker `jamesberto-website` → workers.dev preview only (AR-01, PR #158) |
+| `agent-run` | — | — | Credential-isolation wrapper, `~/.local/bin/agent-run` (bubblewrap) |
 | firebase-tools | 15.34.0 | Google OAuth | Project `jlb-calorietracker`; Firebase connector also signed in |
 | Gemini CLI | 0.64.0 | — (unused) | Google stopped serving Gemini CLI to personal accounts on 2026-06-18; Antigravity CLI is the replacement option |
 
@@ -58,6 +60,37 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
   - `--permission-mode <default|acceptEdits|auto|dontAsk|bypassPermissions|plan>`. In headless runs, any tool call that needs approval is refused (exit code stays 0, stderr says `permission required: ...`). `acceptEdits` did **not** allow file writes headless on 1.0.62. Use `--always-approve` (alias `--yolo`, same as `bypassPermissions`), and always pair it with `--sandbox workspace`.
   - `--output-format plain|json|streaming-json|streaming-messages-json`. In `json`, the reply is in `.text` and the stop reason in `.stopReason` (`end_turn` on success), with `.modelUsage` and `.total_cost_usd`.
   - `--max-turns <N>`, `--no-plan`, `--disable-web-search`, `-w, --worktree [NAME]` + `--worktree-ref <REF>` (isolated git worktree).
+
+### Credential isolation (`agent-run`)
+
+`~/.local/bin/agent-run <cmd> [args...]` runs a coding agent with deploy and GitHub credentials hidden. No sudo is needed; it uses unprivileged bubblewrap (`/usr/bin/bwrap`).
+
+- **Environment:** `env -i` with an allowlist: `PATH` (`~/.local/bin`, node, system), `HOME` (the real home, so the CLIs' own subscription logins in `~/.claude`, `~/.claude.json`, `~/.codex`, and `~/.grok` keep working), `USER`, `LOGNAME`, `TERM`, `LANG`, `LC_ALL`, `TMPDIR`, and `NPM_CONFIG_PREFIX`. Nothing else is forwarded. That excludes `CLOUDFLARE_*`, `CF_*`, `FIREBASE_*`, `GOOGLE_APPLICATION_CREDENTIALS`, `GH_*`/`GITHUB_*`, and `*API_KEY*`/`*TOKEN*`.
+- **On-disk credentials:** these are masked with an empty tmpfs: `~/.config/.wrangler`, `~/.wrangler`, `~/.config/configstore` (firebase-tools), `~/.cache/firebase`, `~/.config/gcloud`, `~/.config/gh`, `~/chrome-profile`, and `~/.config/google-chrome`. `~/.git-credentials` and `~/.netrc` are bound to `/dev/null` if they exist.
+- **Git:** the credential helper is cleared and prompts are disabled (`GIT_TERMINAL_PROMPT=0`, `GIT_ASKPASS=/bin/false`), so `git push` inside the wrapper fails immediately.
+- **Fail-closed:** if `bwrap` is missing, the wrapper refuses to run.
+- **Debugging:** `AGENT_RUN_DEBUG=1` prints the bwrap invocation.
+
+Verified 2026-10-20:
+
+| Inside `agent-run` | Result |
+|---|---|
+| `env` (with fake `CLOUDFLARE_API_TOKEN`, `GH_TOKEN`, `OPENAI_API_KEY` exported outside) | none forwarded |
+| `wrangler whoami` | "You are not authenticated" |
+| `firebase projects:list` | auth error, exit 1 |
+| `gh auth status` | "not logged into any GitHub hosts", exit 1 |
+| `git push --dry-run origin …` | `could not read Username`, exit 128 |
+| `claude -p 'Say ok'` / `grok -p 'Say ok'` | `ok` |
+| `codex login status` | "Logged in using ChatGPT"; `codex exec` gets past auth and is currently blocked only by "workspace is out of credits", the same as outside the wrapper |
+
+Outside the wrapper, `wrangler`, `firebase`, `gh`, and `git push` all still work.
+
+**Limitations:**
+
+- The wrapper runs under the same UID. It guards against accidental or prompt-injected use of deploy credentials, but it is not a hard boundary against a hostile process that escapes bwrap.
+- Network access is unrestricted, because the agents need their model APIs.
+- Agents can still read the repo (including `.git/config` remotes). They just can't authenticate.
+- Any new credential location must be added to `MASK_DIRS` in the script, and this table must be updated.
 
 ### Known quirks
 
@@ -123,7 +156,7 @@ Plan, then the **required scripted handoff**. If any step fails, abort; never im
 
 ```bash
 RUN="$HOME/runs/$ITEM"; mkdir -p "$RUN/checks"
-claude -p "$PROMPT" --model opus --effort high --permission-mode plan \
+agent-run claude -p "$PROMPT" --model opus --effort high --permission-mode plan \
   --output-format json </dev/null > "$RUN/plan.json"
 
 jq -e '.is_error == false' "$RUN/plan.json" >/dev/null \
@@ -149,7 +182,7 @@ Run <checks> and report results.
 Codex (default choice; pin the model per §5a):
 
 ```bash
-codex exec -m gpt-6-luna -c model_reasoning_effort=medium \
+agent-run codex exec -m gpt-6-luna -c model_reasoning_effort=medium \
   --sandbox workspace-write --skip-git-repo-check -C "$REPO" \
   --json -o "$RUN/codex-last.txt" "$PROMPT" </dev/null > "$RUN/impl.jsonl"
 ```
@@ -159,7 +192,7 @@ Use `-m gpt-6.1-sol -c model_reasoning_effort=high` for security/refactor items.
 Grok Build (second implementer or alternate implementation):
 
 ```bash
-grok -p "$PROMPT" -m grok-4.7-build-fast --effort medium \
+agent-run grok -p "$PROMPT" -m grok-4.7-build-fast --effort medium \
   --cwd "$REPO" --sandbox workspace --always-approve \
   --output-format json </dev/null > "$RUN/grok.json"
 jq -e '.stopReason == "end_turn"' "$RUN/grok.json"
@@ -222,9 +255,24 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 - [ ] Every acceptance criterion is verified; critical/high fixes have regression coverage or a documented reason.
 - [ ] Docs updated per `AGENTS.md` documentation ownership.
 - [ ] No secrets, tokens, or private keys in the diff.
+- [ ] Every Claude, Codex, and Grok call in the run went through `agent-run`.
 - [ ] Conventional Commit with item ID; backlog item marked `[p] pushed — …; commit: <sha>; PR: #<n>`.
 - [ ] PR is a draft with scope, rationale, item IDs, checks, docs/migrations, follow-ups, residual risk, and **model + effort used** per step.
 - [ ] `PLAN.md` (scratch) is not in the commit; run record `~/runs/<item-id>/run.json` is updated.
+
+## 7a. Pull request and Codex review workflow (James's rule)
+
+- **Always open PRs ready for review.** Use `gh pr create` without `--draft`; never open drafts. This **overrides** the draft-PR default in `AGENTS.md` and `backlogs/protocol.md` for PRs Grok Bot opens (those files are intentionally left unchanged).
+- **Codex review trigger.** Opening or readying a PR triggers the Codex GitHub review (`chatgpt-codex-connector`). If no review appears, or it reports usage limits, re-trigger later with a PR comment `@codex review` (security-focused: `@codex security review`).
+- **Review loop:**
+  1. Read Codex's summary and inline comments: `gh pr view <n> --json reviews,comments` and `gh api repos/ferynd/Website/pulls/<n>/comments`.
+  2. Triage each finding as valid or not applicable. For rejected findings, reply on the comment explaining why.
+  3. Have the implementer (Grok or Codex per the model policy in §5a, via `agent-run`) fix valid findings on the same branch.
+  4. Verify (lint/build/test, `git diff --stat`), push, then comment `@codex review` again.
+  5. Repeat until clean or only rejected findings remain, then summarize to James.
+- **Never merge without James.**
+- **Known limit:** Codex reviews share the ChatGPT Codex usage limits (exhausted on 2026-10-20).
+- **Cloudflare Pages check on `claude/` Workers PRs:** PRs targeting the `claude/` Workers (OpenNext) branch fail the Cloudflare Pages check by design, because Pages can't build OpenNext Workers code. The Workers preview is deployed with `npm run cf:deploy` instead.
 
 ## 8. Smoke test record
 
@@ -236,5 +284,7 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 
 ## Changelog
 
+- **2026-10-20** — Added the PR workflow (§7a): PRs always opened ready for review (overrides the AGENTS.md/protocol draft default), the Codex GitHub review trigger and `@codex review` re-trigger, the triage/fix/re-review loop, the Codex usage-limit note, and the expected Cloudflare Pages check failure on `claude/` Workers PRs.
+- **2026-10-20** — Added `agent-run` credential isolation (bubblewrap with env allowlisting, masking for wrangler, firebase-tools, gh, and browser credential stores, and git push disabled). All planner and implementer commands now go through it. Verification results and limitations are in §3. Noted the Workers preview `jamesberto-website` (workers.dev only; live site still on Pages).
 - **2026-10-20** — Added Grok Build 1.0.62 as a second implementer (verified flags, sandbox, headless usage), the model selection policy (lowest fitting tier, always pinned, recorded in PRs), the scripted plan handoff (`plan.json` → `PLAN.md` with validation), and per-item run records for execution recovery. Noted the Codex "out of credits" failure mode.
 - **2026-10-20** — Initial setup: tool installs and logins (Claude Code, Codex, gh, wrangler, firebase-tools), Gemini skipped, isolated pipeline smoke test passed, this guide added.
