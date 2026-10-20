@@ -5,7 +5,8 @@
 const { createRequire } = require('node:module');
 const firebaseRequire = createRequire(require.resolve('firebase-tools/package.json'));
 const undici = firebaseRequire('undici');
-const { emulators } = require('../firebase.json');
+// Emulator-only config (includes deferred Storage rules); see firebase.rules-test.json.
+const { emulators } = require('../firebase.rules-test.json');
 const ports = new Set(
   Object.values(emulators).filter(value => value.port).map(value => String(value.port)),
 );

@@ -12,7 +12,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:rules": "node --require ./scripts/emulator-proxy.cjs ./node_modules/firebase-tools/lib/bin/firebase.js emulators:exec --project demo-website-rules-test --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
+    "test:rules": "node --require ./scripts/emulator-proxy.cjs ./node_modules/firebase-tools/lib/bin/firebase.js emulators:exec --config firebase.rules-test.json --project demo-website-rules-test --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
     "cf:build": "opennextjs-cloudflare build",
     "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
