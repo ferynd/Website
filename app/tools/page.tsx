@@ -54,7 +54,7 @@ const toolList = [
   },
   {
     name: 'Recipe Standardizer',
-    description: 'Paste a ChatGPT-converted recipe as strict JSON, then stage prep groups, execute with named results, scale, and save — a phone-first kitchen workflow.',
+    description: 'Paste a ChatGPT-converted recipe as strict JSON, then stage prep groups, execute with named results, check nutrition, scale, and save — a phone-first kitchen workflow.',
     href: '/tools/recipe-standardizer',
     icon: <CookingPot size={cardIconSize} className="text-accent" />,
   },

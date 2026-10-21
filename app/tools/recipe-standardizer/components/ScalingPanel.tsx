@@ -14,6 +14,7 @@ import {
   factorFromServings,
   factorFromTargetWeight,
   formatFactor,
+  isScaleActive,
   referenceWeightG,
   type ScaleResult,
 } from '../lib/scaling';
@@ -42,6 +43,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
 
   const refWeight = referenceWeightG(recipe);
   const baseline = recipe.servings.baselineServings;
+  const scaleActive = isScaleActive(scale);
 
   const apply = (result: ScaleResult | null, failureHint: string) => {
     if (!result) {
@@ -58,9 +60,9 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
         <Scale size={18} className="text-accent" />
         <p className="text-sm text-text">
           Current scale: <span className="font-semibold">{formatFactor(scale.factor)}</span>
-          {scale.factor !== 1 && <span className="text-text-3"> — {scale.label}</span>}
+          {scaleActive && <span className="text-text-3"> — {scale.label}</span>}
         </p>
-        {scale.factor !== 1 && (
+        {scaleActive && (
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="ghost" onClick={() => onScaleChange({ factor: 1, label: 'baseline' })} className="inline-flex items-center gap-1">
               <RotateCcw size={14} /> Reset to 1×
@@ -80,7 +82,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
       <div className="grid gap-4 sm:grid-cols-2">
         <form
           className="rounded-lg border border-border bg-surface-2 p-3 space-y-2"
-          onSubmit={(e) => { e.preventDefault(); apply(factorFromMultiplier(Number(multiplier)), 'Enter a positive multiplier.'); }}
+          onSubmit={(e) => { e.preventDefault(); apply(factorFromMultiplier(Number(multiplier)), 'Enter a positive multiplier (scale 0.001×–1000×).'); }}
         >
           <p className="text-sm font-medium text-text">Batch multiplier</p>
           <div className="flex items-end gap-2">
@@ -96,7 +98,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
             apply(
               factorFromServings(Number(servings), baseline),
               baseline
-                ? 'Enter a positive serving count.'
+                ? 'Enter a positive serving count (scale 0.001×–1000×).'
                 : 'This recipe has no baselineServings, so serving-based scaling is unavailable — use a multiplier or weight instead.',
             );
           }}
@@ -117,7 +119,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
             apply(
               factorFromTargetWeight(Number(targetWeight), refWeight),
               refWeight
-                ? 'Enter a positive target weight in grams.'
+                ? 'Enter a positive target weight in grams (scale 0.001×–1000×).'
                 : 'This recipe has no estimated or actual final weight, so weight-based scaling is unavailable.',
             );
           }}
@@ -143,7 +145,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
             apply(
               factorFromPortions(Number(portionCount), Number(portionSize), refWeight),
               refWeight
-                ? 'Enter a positive portion count and portion size.'
+                ? 'Enter a positive portion count and portion size (scale 0.001×–1000×).'
                 : 'This recipe has no estimated or actual final weight, so portion-based scaling is unavailable.',
             );
           }}

@@ -8,7 +8,9 @@ import {
   factorFromPortions,
   factorFromServings,
   factorFromTargetWeight,
+  isScaleActive,
   referenceWeightG,
+  referenceWeightSource,
   scaleEquivalentText,
   scaleQuantityG,
 } from '../lib/scaling';
@@ -26,6 +28,9 @@ describe('scale factor derivation', () => {
     expect(factorFromMultiplier(1.5)?.factor).toBe(1.5);
     expect(factorFromMultiplier(0)).toBeNull();
     expect(factorFromMultiplier(-2)).toBeNull();
+    expect(factorFromMultiplier(1e308)).toBeNull();
+    expect(factorFromMultiplier(1000)?.factor).toBe(1000);
+    expect(factorFromMultiplier(0.0001)).toBeNull();
   });
 
   it('derives factor from servings against the baseline', () => {
@@ -42,9 +47,40 @@ describe('scale factor derivation', () => {
 
   it('derives factor from target weight and from portions', () => {
     expect(factorFromTargetWeight(2160, 1080)?.factor).toBe(2);
+    expect(factorFromTargetWeight(999.9999999999, 1000)?.factor).toBe(1);
     expect(factorFromTargetWeight(500, null)).toBeNull();
     expect(factorFromPortions(12, 90, 1080)?.factor).toBe(1);
     expect(factorFromPortions(12, 90, null)).toBeNull();
+  });
+
+  it('snaps a near-one fractional portion factor to exactly one', () => {
+    expect(factorFromPortions(3, 150.7, 452.1)?.factor).toBe(1);
+  });
+
+  it('records the requested portion count and size as a portion override', () => {
+    expect(factorFromPortions(10, 150, 1000)?.portionOverride).toEqual({ count: 10, sizeG: 150 });
+  });
+
+  it('treats a factor-one portion override as an active scale', () => {
+    expect(isScaleActive({ factor: 1, label: 'baseline' })).toBe(false);
+    expect(isScaleActive(factorFromPortions(12, 90, 1080)!)).toBe(true);
+    expect(isScaleActive({ factor: 2, label: 'batch 2×' })).toBe(true);
+  });
+
+  it.each([
+    ['multiplier', factorFromMultiplier(2)],
+    ['servings', factorFromServings(8, 4)],
+    ['target-weight', factorFromTargetWeight(500, 250)],
+  ])('does not set a portion override for %s scaling', (_mode, result) => {
+    expect(result?.portionOverride).toBeUndefined();
+  });
+
+  it('reports whether the reference weight is actual, estimated, or missing', () => {
+    const base = recipe();
+    expect(referenceWeightSource(base)).toBe('estimated');
+    expect(referenceWeightSource({ ...base, yield: { ...base.yield, actualFinalWeightG: 900 } })).toBe('actual');
+    expect(referenceWeightSource({ ...base, yield: { ...base.yield, actualFinalWeightG: 0 } })).toBe('estimated');
+    expect(referenceWeightSource({ ...base, yield: { ...base.yield, estimatedFinalWeightG: 0 } })).toBeNull();
   });
 });
 
@@ -123,5 +159,59 @@ describe('applyScaleToRecipe', () => {
     const link = confirmNutritionLink(trackerFood, 100, 123, base.ingredients[0].nutritionLink);
     base.ingredients[0].nutritionLink = link;
     expect(applyScaleToRecipe(base, 2).ingredients[0].nutritionLink).toEqual(link);
+  });
+
+  it('scales portion count and keeps portion size when baking', () => {
+    const base = recipe();
+    const scaled = applyScaleToRecipe(base, 2);
+    expect(scaled.servings.portionCount).toBe(48);
+    expect(scaled.servings.portionSizeG).toBe(45);
+  });
+
+  it('keeps a null portion count null when baking', () => {
+    const base = recipe();
+    base.servings.portionCount = null;
+    expect(applyScaleToRecipe(base, 2).servings.portionCount).toBeNull();
+  });
+
+  it('applies the portions-mode count and size when baking', () => {
+    const scaled = applyScaleToRecipe(recipe(), 1.5, { count: 10, sizeG: 150 });
+    expect(scaled.servings.portionCount).toBe(10);
+    expect(scaled.servings.portionSizeG).toBe(150);
+  });
+
+  it('bakes a 1× portion override without scaling any other recipe values', () => {
+    const base = recipe();
+    base.yield.actualFinalWeightG = 1000;
+    const original = structuredClone(base);
+    const scale = factorFromPortions(10, 100, 1000)!;
+    const scaled = applyScaleToRecipe(base, scale.factor, scale.portionOverride);
+
+    expect(scaled).not.toBe(base);
+    expect(scaled.ingredients).toEqual(original.ingredients);
+    expect(scaled.yield).toEqual(original.yield);
+    expect(scaled.servings).toEqual({
+      ...original.servings,
+      portionCount: 10,
+      portionSizeG: 100,
+    });
+    expect(base).toEqual(original);
+  });
+
+  it('bakes near-1× portions by changing only portion fields', () => {
+    const base = recipe();
+    base.yield.actualFinalWeightG = 452.1;
+    const original = structuredClone(base);
+    const scale = factorFromPortions(3, 150.7, 452.1)!;
+    const scaled = applyScaleToRecipe(base, scale.factor, scale.portionOverride);
+
+    expect(scale.factor).toBe(1);
+    expect(scaled.ingredients).toEqual(original.ingredients);
+    expect(scaled.yield).toEqual(original.yield);
+    expect(scaled.servings).toEqual({
+      ...original.servings,
+      portionCount: 3,
+      portionSizeG: 150.7,
+    });
   });
 });

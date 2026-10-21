@@ -3,6 +3,12 @@
 /* ------------------------------------------------------------ */
 /** Below this many grams, scaled quantities show one decimal place. */
 const FINE_GRAM_THRESHOLD = 10;
+/** Treat scale calculations sufficiently close to one as an exact 1× scale. */
+const FACTOR_ONE_EPSILON = 1e-9;
+/** Largest supported scale factor. */
+export const MAX_SCALE_FACTOR = 1000;
+/** Smallest supported scale factor. */
+export const MIN_SCALE_FACTOR = 0.001;
 
 /**
  * Pure scaling math for the Recipe Standardizer.
@@ -17,33 +23,62 @@ const FINE_GRAM_THRESHOLD = 10;
 
 import type { Recipe } from './types';
 
+/** Available ways to derive a working-copy scale factor. */
 export type ScaleMode = 'multiplier' | 'servings' | 'targetWeight' | 'portions';
 
+/** The portion count and size requested in Portions-mode scaling. */
+export interface PortionOverride {
+  count: number;
+  sizeG: number;
+}
+
+/** The derived scale factor and its explanatory label. */
 export interface ScaleResult {
   factor: number;
   /** Human description of how the factor was derived, e.g. "18 servings (1.5x)". */
   label: string;
+  /** Set only by portions-mode scaling. */
+  portionOverride?: PortionOverride;
 }
+
+/** Whether the working copy has an active scale, including portion-only overrides. */
+export const isScaleActive = (scale: ScaleResult): boolean => (
+  scale.factor !== 1 || scale.portionOverride !== undefined
+);
 
 const isPositive = (v: number | null | undefined): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v > 0;
 
+const snapFactor = (factor: number): number => (
+  Math.abs(factor - 1) < FACTOR_ONE_EPSILON ? 1 : factor
+);
+
+const isSupportedFactor = (factor: number): boolean => (
+  Number.isFinite(factor) && factor >= MIN_SCALE_FACTOR && factor <= MAX_SCALE_FACTOR
+);
+
+/** Format a scale factor to at most two decimal places. */
 export const formatFactor = (factor: number): string => {
   const rounded = Math.round(factor * 100) / 100;
   return `${rounded}×`;
 };
 
+/** Derive a scale result from a positive multiplier. */
 export const factorFromMultiplier = (multiplier: number): ScaleResult | null => {
   if (!isPositive(multiplier)) return null;
-  return { factor: multiplier, label: `batch ${formatFactor(multiplier)}` };
+  const factor = snapFactor(multiplier);
+  if (!isSupportedFactor(factor)) return null;
+  return { factor, label: `batch ${formatFactor(factor)}` };
 };
 
+/** Derive a scale result from requested servings and baseline servings. */
 export const factorFromServings = (
   targetServings: number,
   baselineServings: number | null,
 ): ScaleResult | null => {
   if (!isPositive(targetServings) || !isPositive(baselineServings)) return null;
-  const factor = targetServings / baselineServings;
+  const factor = snapFactor(targetServings / baselineServings);
+  if (!isSupportedFactor(factor)) return null;
   return { factor, label: `${targetServings} servings (${formatFactor(factor)})` };
 };
 
@@ -54,15 +89,25 @@ export const referenceWeightG = (recipe: Recipe): number | null => {
   return null;
 };
 
+/** Identify which final weight is used as the reference. */
+export const referenceWeightSource = (recipe: Recipe): 'actual' | 'estimated' | null => {
+  if (isPositive(recipe.yield.actualFinalWeightG)) return 'actual';
+  if (isPositive(recipe.yield.estimatedFinalWeightG)) return 'estimated';
+  return null;
+};
+
+/** Derive a scale result from a target final weight and reference weight. */
 export const factorFromTargetWeight = (
   targetWeightG: number,
   refWeightG: number | null,
 ): ScaleResult | null => {
   if (!isPositive(targetWeightG) || !isPositive(refWeightG)) return null;
-  const factor = targetWeightG / refWeightG;
+  const factor = snapFactor(targetWeightG / refWeightG);
+  if (!isSupportedFactor(factor)) return null;
   return { factor, label: `${Math.round(targetWeightG)} g final weight (${formatFactor(factor)})` };
 };
 
+/** Derive a scale result from a requested count and size of portions. */
 export const factorFromPortions = (
   portionCount: number,
   portionSizeG: number,
@@ -70,14 +115,16 @@ export const factorFromPortions = (
 ): ScaleResult | null => {
   if (!isPositive(portionCount) || !isPositive(portionSizeG) || !isPositive(refWeightG)) return null;
   const targetWeightG = portionCount * portionSizeG;
-  const factor = targetWeightG / refWeightG;
+  const factor = snapFactor(targetWeightG / refWeightG);
+  if (!isSupportedFactor(factor)) return null;
   return {
     factor,
     label: `${portionCount} × ${Math.round(portionSizeG)} g portions (${formatFactor(factor)})`,
+    portionOverride: { count: portionCount, sizeG: portionSizeG },
   };
 };
 
-/** Scale a gram quantity and round to a kitchen-sensible precision. */
+/** Scale and kitchen-round a known gram quantity. */
 export const scaleQuantityG = (quantityG: number | null, factor: number): number | null => {
   if (quantityG === null || !Number.isFinite(quantityG)) return null;
   const scaled = quantityG * factor;
@@ -85,6 +132,7 @@ export const scaleQuantityG = (quantityG: number | null, factor: number): number
   return Math.round(scaled);
 };
 
+/** Format a gram amount, showing a dash for unknown quantity. */
 export const formatGrams = (quantityG: number | null): string =>
   quantityG === null ? '— g' : `${quantityG} g`;
 
@@ -171,28 +219,52 @@ export const scaleEquivalentText = (equivalent: string, factor: number): string 
 };
 
 /** Bake a scale factor into a recipe, producing a new baseline. */
-export const applyScaleToRecipe = (recipe: Recipe, factor: number): Recipe => ({
-  ...recipe,
-  servings: {
-    ...recipe.servings,
-    baselineServings:
-      recipe.servings.baselineServings === null
-        ? null
-        : Math.round(recipe.servings.baselineServings * factor * 100) / 100,
-    currentServings: null,
-  },
-  yield: {
-    ...recipe.yield,
-    // The best-known weight (actual beats estimated) scales into the new
-    // baseline's *estimate*; the measured actual weight belonged to the old
-    // batch size and is cleared.
-    estimatedFinalWeightG: scaleQuantityG(referenceWeightG(recipe) ?? recipe.yield.estimatedFinalWeightG, factor),
-    actualFinalWeightG: null,
-    yieldNotes: recipe.yield.yieldNotes,
-  },
-  ingredients: recipe.ingredients.map((ing) => ({
-    ...ing,
-    quantityG: scaleQuantityG(ing.quantityG, factor),
-    equivalent: scaleEquivalentText(ing.equivalent, factor) ?? ing.equivalent,
-  })),
-});
+export const applyScaleToRecipe = (
+  recipe: Recipe,
+  factor: number,
+  portionOverride?: PortionOverride,
+): Recipe => {
+  if (factor === 1 && portionOverride !== undefined) {
+    return {
+      ...recipe,
+      servings: {
+        ...recipe.servings,
+        portionCount: portionOverride.count,
+        portionSizeG: portionOverride.sizeG,
+      },
+    };
+  }
+
+  return {
+    ...recipe,
+    servings: {
+      ...recipe.servings,
+      baselineServings:
+        recipe.servings.baselineServings === null
+          ? null
+          : Math.round(recipe.servings.baselineServings * factor * 100) / 100,
+      currentServings: null,
+      portionCount:
+        portionOverride !== undefined
+          ? portionOverride.count
+          : recipe.servings.portionCount === null
+            ? null
+            : Math.round(recipe.servings.portionCount * factor * 100) / 100,
+      portionSizeG: portionOverride?.sizeG ?? recipe.servings.portionSizeG,
+    },
+    yield: {
+      ...recipe.yield,
+      estimatedFinalWeightG: scaleQuantityG(
+        referenceWeightG(recipe) ?? recipe.yield.estimatedFinalWeightG,
+        factor,
+      ),
+      actualFinalWeightG: null,
+      yieldNotes: recipe.yield.yieldNotes,
+    },
+    ingredients: recipe.ingredients.map((ing) => ({
+      ...ing,
+      quantityG: scaleQuantityG(ing.quantityG, factor),
+      equivalent: scaleEquivalentText(ing.equivalent, factor) ?? ing.equivalent,
+    })),
+  };
+};
