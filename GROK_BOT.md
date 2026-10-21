@@ -61,6 +61,8 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 
 ### Known quirks
 
+- Next.js 15 left its support window on 2026-10-21. OpenNext then refuses to build it, so the `cf:*` scripts pass `--dangerouslyUseUnsupportedNextVersion`. Running `npx opennextjs-cloudflare build` by hand needs the flag too. Remove it after the Next 16 upgrade.
+
 - Codex 0.163.0 has **no `--full-auto`**; use `--sandbox workspace-write`.
 - Always redirect stdin (`</dev/null`) for headless `claude` / `codex` / `grok` runs, or they may hang waiting for input (confirmed again for `codex exec` on 2026-10-20).
 - If Codex reports `Your workspace is out of credits`, the ChatGPT workspace has run out of Codex usage. Fall back to Grok Build, or wait for credits to reset.
@@ -262,6 +264,8 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 - Independent verification: 13/13 tests passed, all 10 acceptance criteria met, scope clean, no new dependencies.
 
 ## Changelog
+
+- **2026-10-20** — Workers Builds failed from 7:48 PM CDT (00:48Z Oct 21) because Next.js 15 passed OpenNext's 2-year support check. PR #165 adds `--dangerouslyUseUnsupportedNextVersion` to the `cf:*` scripts as a stopgap until the Next 16 upgrade. Added a known-quirk note.
 
 - **2026-10-20** — Hosting and release: PR #161 merged, and the Firestore AR-03 rules are deployed and verified live (current ruleset `aa808b96`). PR #160 merged (`d6503ab`). jamesberto.com and www moved from Pages to the Worker at 5:13 PM CDT with no measured downtime. Workers Builds is connected to deploy `main`. Pages auto-deploys are paused. Added the rollback paths, the token note (expires Oct 31), and deploy quirks (the `--message` slug, moving the CalorieTracker `node_modules` aside).
 
