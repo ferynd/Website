@@ -28,6 +28,9 @@ describe('scale factor derivation', () => {
     expect(factorFromMultiplier(1.5)?.factor).toBe(1.5);
     expect(factorFromMultiplier(0)).toBeNull();
     expect(factorFromMultiplier(-2)).toBeNull();
+    expect(factorFromMultiplier(1e308)).toBeNull();
+    expect(factorFromMultiplier(1000)?.factor).toBe(1000);
+    expect(factorFromMultiplier(0.0001)).toBeNull();
   });
 
   it('derives factor from servings against the baseline', () => {

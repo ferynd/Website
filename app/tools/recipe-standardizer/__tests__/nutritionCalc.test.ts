@@ -607,5 +607,9 @@ describe('calculator determinism and safety', () => {
     };
     expect(finite(calculate(baseRecipe()))).toBe(true);
     expect(finite(calculate(recipeOf([ingredient('bad', Number.NaN)])))).toBe(true);
+
+    const oversizedFactor = calculate(baseRecipe(), ready([FLOUR, BUTTER, EGG]), 1e308);
+    expect(oversizedFactor.factor).toBe(1);
+    expect(finite(oversizedFactor)).toBe(true);
   });
 });

@@ -95,9 +95,14 @@ export const formatCount = (value: number): string => (
 
 /** Return a coverage percentage, flooring partial values and suppressing zero-known-gram ratios. */
 export const formatCoveragePercent = (coverage: NutritionCoverage): string | null => {
+  if (!Number.isFinite(coverage.coveredGrams) || !Number.isFinite(coverage.knownGrams)) return null;
   if (coverage.knownGrams <= 0) return null;
   if (coverage.status === 'complete') return '100%';
-  return `${Math.floor((coverage.coveredGrams / coverage.knownGrams) * 100)}%`;
+  const ratio = coverage.coveredGrams / coverage.knownGrams;
+  if (!Number.isFinite(ratio)) return null;
+  const percent = ratio * 100;
+  if (!Number.isFinite(percent)) return null;
+  return `${Math.floor(percent)}%`;
 };
 
 /** Describe a link or quantity exclusion in user-facing language. */

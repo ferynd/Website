@@ -16,6 +16,8 @@ import {
   type LinkAssessment,
 } from './nutritionLink';
 import {
+  MAX_SCALE_FACTOR,
+  MIN_SCALE_FACTOR,
   referenceWeightG,
   referenceWeightSource,
   type PortionOverride,
@@ -184,6 +186,14 @@ const positiveFinite = (value: number | null | undefined): value is number => (
   typeof value === 'number' && Number.isFinite(value) && value > 0
 );
 
+const finiteOrNull = (value: number): number | null => (
+  Number.isFinite(value) ? value : null
+);
+
+const finiteOrZero = (value: number): number => (
+  Number.isFinite(value) ? value : 0
+);
+
 /** Return the exclusion reason for a missing, zero, or invalid gram amount. */
 export const quantityExclusionReason = (value: unknown): QuantityExclusionReason | null => {
   if (value === null || value === undefined) return 'missing-quantity';
@@ -320,7 +330,11 @@ const rowFor = (
 
 /** Calculate recipe nutrition, coverage, exclusions, and available serving bases. */
 export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInput): RecipeNutritionResult => {
-  const factor = positiveFinite(scale.factor) ? scale.factor : 1;
+  const factor = positiveFinite(scale.factor)
+    && scale.factor >= MIN_SCALE_FACTOR
+    && scale.factor <= MAX_SCALE_FACTOR
+    ? scale.factor
+    : 1;
   const foodsById = foods.status === 'ready'
     ? new Map(foods.items.map((food) => [food.id, food]))
     : null;
@@ -344,7 +358,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     }
     const assessment = assessNutritionLink(ingredient.nutritionLink, foodsById);
     if (seenIds.has(ingredient.id)) {
-      excluded.push(rowFor(ingredient, index, grams === null ? null : grams * factor, ['duplicate-id'], assessment));
+      excluded.push(rowFor(ingredient, index, grams === null ? null : finiteOrNull(grams * factor), ['duplicate-id'], assessment));
       return;
     }
     seenIds.add(ingredient.id);
@@ -363,12 +377,12 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       if (contributions === null) reasons.push('invalid-basis');
     }
     if (reasons.length > 0) {
-      excluded.push(rowFor(ingredient, index, grams === null ? null : grams * factor, reasons, assessment));
+      excluded.push(rowFor(ingredient, index, grams === null ? null : finiteOrNull(grams * factor), reasons, assessment));
       return;
     }
     const gramsPerUnit = ingredient.nutritionLink.gramsPerUnit ?? Number.NaN;
     if (contributions === null || assessment.food === null || grams === null) {
-      excluded.push(rowFor(ingredient, index, grams === null ? null : grams * factor, ['invalid-basis'], assessment));
+      excluded.push(rowFor(ingredient, index, grams === null ? null : finiteOrNull(grams * factor), ['invalid-basis'], assessment));
       return;
     }
     included.push({
@@ -376,7 +390,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       index,
       displayName: ingredient.displayName,
       optional: ingredient.optional,
-      scaledGrams: grams * factor,
+      scaledGrams: finiteOrZero(grams * factor),
       foodId: assessment.food.id,
       foodName: assessment.food.name,
       gramsPerUnit,
@@ -420,8 +434,8 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     status,
     includedCount: included.length,
     totalCount: recipe.ingredients.length,
-    coveredGrams: coveredBase * factor,
-    knownGrams: knownBase * factor,
+    coveredGrams: finiteOrZero(coveredBase * factor),
+    knownGrams: finiteOrZero(knownBase * factor),
     unknownWeightCount,
     optionalIncludedCount,
     nutrientGaps,
@@ -445,13 +459,13 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     total: availableBasis('total', mapAmounts(baseAmounts, (value) => value * factor)),
     perServing: positiveFinite(servings)
       ? availableBasis('perServing', mapAmounts(baseAmounts, (value) => value / servings), {
-        servings: servings * factor,
+        servings: finiteOrNull(servings * factor),
       })
       : emptyBasis('perServing', 'no-servings'),
     perPortion: emptyBasis('perPortion', 'no-portion-data'),
     per100gCooked: referenceWeight !== null
       ? availableBasis('per100gCooked', mapAmounts(baseAmounts, (value) => (value * 100) / referenceWeight), {
-        finalWeightG: referenceWeight * factor,
+        finalWeightG: finiteOrNull(referenceWeight * factor),
         weightSource,
         estimated: weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1),
       })
@@ -467,7 +481,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
         portionMode: 'override',
         portionCount: override.count,
         portionSizeG: override.sizeG,
-        finalWeightG: referenceWeight === null ? null : referenceWeight * factor,
+        finalWeightG: referenceWeight === null ? null : finiteOrNull(referenceWeight * factor),
         weightSource,
         estimated: weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1),
       },
@@ -478,9 +492,9 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       mapAmounts(baseAmounts, (value) => value / portionCount),
       {
         portionMode: 'count',
-        portionCount: portionCount * factor,
+        portionCount: finiteOrNull(portionCount * factor),
         portionSizeG: referenceWeight === null ? null : referenceWeight / portionCount,
-        finalWeightG: referenceWeight === null ? null : referenceWeight * factor,
+        finalWeightG: referenceWeight === null ? null : finiteOrNull(referenceWeight * factor),
         weightSource: referenceWeight === null ? null : weightSource,
         estimated: weightSource === 'estimated',
       },
@@ -492,7 +506,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       {
         portionMode: 'size',
         portionSizeG,
-        finalWeightG: referenceWeight * factor,
+        finalWeightG: finiteOrNull(referenceWeight * factor),
         weightSource,
         estimated: weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1),
       },

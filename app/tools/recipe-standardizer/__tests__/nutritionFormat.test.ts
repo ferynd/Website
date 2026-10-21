@@ -161,6 +161,12 @@ describe('coverage display', () => {
     expect(formatCoveragePercent(coverage({ status: 'partial', coveredGrams: 0, knownGrams: 0 }))).toBeNull();
   });
 
+  it('returns null for non-finite coverage gram values', () => {
+    expect(formatCoveragePercent(coverage({ coveredGrams: Number.POSITIVE_INFINITY }))).toBeNull();
+    expect(formatCoveragePercent(coverage({ status: 'partial', knownGrams: Number.POSITIVE_INFINITY }))).toBeNull();
+    expect(formatCoveragePercent(coverage({ status: 'partial', coveredGrams: Number.MAX_VALUE, knownGrams: Number.MIN_VALUE }))).toBeNull();
+  });
+
   it.each([
     ['loading', 'Loading Nutrition Tracker foods…'],
     ['error', "Couldn't load Nutrition Tracker foods — nutrition can't be checked."],

@@ -5,6 +5,10 @@
 const FINE_GRAM_THRESHOLD = 10;
 /** Treat scale calculations sufficiently close to one as an exact 1× scale. */
 const FACTOR_ONE_EPSILON = 1e-9;
+/** Largest supported scale factor. */
+export const MAX_SCALE_FACTOR = 1000;
+/** Smallest supported scale factor. */
+export const MIN_SCALE_FACTOR = 0.001;
 
 /**
  * Pure scaling math for the Recipe Standardizer.
@@ -49,6 +53,10 @@ const snapFactor = (factor: number): number => (
   Math.abs(factor - 1) < FACTOR_ONE_EPSILON ? 1 : factor
 );
 
+const isSupportedFactor = (factor: number): boolean => (
+  Number.isFinite(factor) && factor >= MIN_SCALE_FACTOR && factor <= MAX_SCALE_FACTOR
+);
+
 /** Format a scale factor to at most two decimal places. */
 export const formatFactor = (factor: number): string => {
   const rounded = Math.round(factor * 100) / 100;
@@ -58,7 +66,9 @@ export const formatFactor = (factor: number): string => {
 /** Derive a scale result from a positive multiplier. */
 export const factorFromMultiplier = (multiplier: number): ScaleResult | null => {
   if (!isPositive(multiplier)) return null;
-  return { factor: multiplier, label: `batch ${formatFactor(multiplier)}` };
+  const factor = snapFactor(multiplier);
+  if (!isSupportedFactor(factor)) return null;
+  return { factor, label: `batch ${formatFactor(factor)}` };
 };
 
 /** Derive a scale result from requested servings and baseline servings. */
@@ -68,6 +78,7 @@ export const factorFromServings = (
 ): ScaleResult | null => {
   if (!isPositive(targetServings) || !isPositive(baselineServings)) return null;
   const factor = snapFactor(targetServings / baselineServings);
+  if (!isSupportedFactor(factor)) return null;
   return { factor, label: `${targetServings} servings (${formatFactor(factor)})` };
 };
 
@@ -92,6 +103,7 @@ export const factorFromTargetWeight = (
 ): ScaleResult | null => {
   if (!isPositive(targetWeightG) || !isPositive(refWeightG)) return null;
   const factor = snapFactor(targetWeightG / refWeightG);
+  if (!isSupportedFactor(factor)) return null;
   return { factor, label: `${Math.round(targetWeightG)} g final weight (${formatFactor(factor)})` };
 };
 
@@ -104,6 +116,7 @@ export const factorFromPortions = (
   if (!isPositive(portionCount) || !isPositive(portionSizeG) || !isPositive(refWeightG)) return null;
   const targetWeightG = portionCount * portionSizeG;
   const factor = snapFactor(targetWeightG / refWeightG);
+  if (!isSupportedFactor(factor)) return null;
   return {
     factor,
     label: `${portionCount} × ${Math.round(portionSizeG)} g portions (${formatFactor(factor)})`,
