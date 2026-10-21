@@ -110,3 +110,32 @@ export function allocateCents(
   }
   return result;
 }
+
+/* ------------------------------------------------------------------ */
+/*  Form input parsing                                                 */
+/* ------------------------------------------------------------------ */
+
+export type ParsedInput =
+  | { kind: 'blank' }
+  | { kind: 'invalid' }
+  | { kind: 'negative' }
+  /** More decimal places than `scale` allows (e.g. a fraction of a cent). */
+  | { kind: 'fractional' }
+  | { kind: 'ok'; units: number };
+
+/**
+ * Parses a typed decimal into integer units of 1/`scale` (100 for cents),
+ * without rounding: "10.005" at scale 100 is `fractional`, not 1001 cents.
+ */
+export function parseScaledInput(raw: unknown, scale: number): ParsedInput {
+  const text = typeof raw === 'number' ? String(raw) : String(raw ?? '').trim();
+  if (!text) return { kind: 'blank' };
+  const value = Number(text);
+  if (!Number.isFinite(value)) return { kind: 'invalid' };
+  if (value < 0) return { kind: 'negative' };
+  // toPrecision strips binary noise (0.29 * 100 = 28.999999999999996).
+  const units = Number((value * scale).toPrecision(15));
+  if (!Number.isInteger(units)) return { kind: 'fractional' };
+  if (!Number.isSafeInteger(units)) return { kind: 'invalid' };
+  return { kind: 'ok', units: units + 0 };
+}

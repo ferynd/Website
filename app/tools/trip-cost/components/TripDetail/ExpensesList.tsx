@@ -5,6 +5,7 @@ import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import { CURRENCY_SYMBOL } from '../../constants';
 import { groupExpensesByCategory } from '../../utils/calc';
+import { expenseToDraft } from '../../utils/expenseDraft';
 import type { UserProfile, Expense, ExpenseDraft } from '../../pageTypes';
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -15,27 +16,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   Shopping: 'bg-pink-500/10 text-pink-400 border-pink-500/20',
   Other: 'bg-gray-500/10 text-gray-400 border-gray-500/20',
 };
-
-function expenseToDraft(e: Expense): ExpenseDraft {
-  return {
-    category: e.category,
-    description: e.description,
-    totalAmount: String(e.totalAmount),
-    paidBy: Object.fromEntries(
-      Object.entries(e.paidBy).map(([k, v]) => [k, String(v)])
-    ),
-    splitType: e.splitType,
-    splitParticipants: [...e.splitParticipants],
-    manualSplit: Object.fromEntries(
-      Object.entries(e.manualSplit).map(([k, v]) => [
-        k,
-        { type: v.type, value: String(v.value) },
-      ])
-    ),
-    manualSplitMode:
-      Object.values(e.manualSplit)[0]?.type || 'amount',
-  };
-}
 
 export default function ExpensesList({
   userProfile,

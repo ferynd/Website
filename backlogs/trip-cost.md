@@ -30,20 +30,15 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 - Remaining = final responsibility − paid for purchases − reimbursements sent + reimbursements received (positive = owes).
 - Unknown travelers, empty splits, payer gaps, and split gaps are explicit ledger problems; settlement suggestions pause while any cost is unallocated or balances don't net to zero.
 - Adding a traveler never resplits saved expense rows (`splitParticipants` is stored per expense).
+- New expense writes add up exactly (payers and Custom $ to the cent, Custom % to exactly 100%); money fields left unedited on an existing expense are saved back verbatim, so legacy rows within the old tolerance stay editable. Payments must be > $0 in whole cents between two different travelers on the trip.
+- Linking an account keeps the participant `id`; a uid may be linked to at most one traveler per trip; `participantIds` is always recomputed from `participants`.
 
 ## Active phases
 
-### TC-P1 — Calculation core
-
-- [p] **Cents-exact ledger with explicit problems, cap transfers, and corrected balances.**
-  > pushed — cents-exact ledger (`utils/money.ts`, `utils/ledger.ts`, `utils/ledgerLabels.ts`) with explicit problems and cap transfer rows; C1/C2/C4/C5/C6/C7/C9 fixed; Balances/Settlement Suggestions read `TripContext.ledger` with a problem banner; Ohio golden matches with no 1¢ drift; docs; no rules/schema/data changes; before merge: confirm no production trip has payments; checks: npm test (1898), lint, tsc, build pass; commit: 3f420e6; PR: #169
-  - Fixes C1 (reimbursements counted as cost/consuming caps), C2 (trip total), C4 (cent drift), C5 (legacy tolerance residuals), C6 (silently dropped costs), C7 (cap transfers), C9 (name-keyed suggestions).
-  - **Accept:** Ohio Ren Faire golden test matches the displayed figures to the cent; C1 regression (Bob owes $350, not $550); payments never change spending or final responsibility; cascading and infeasible caps; unknown id, empty split, legacy 99.99%; manual-overage fallback flagged; transfers net to 0 and match net adjustments; a new zero-share traveler changes no expense row; seeded property loop (conservation, remaining nets to 0 when nothing is unallocated, no capped person above cap, all integers). Displayed trip total equals the Expenses total; a problem banner appears for bad data.
-  - **Migration:** none.
-
 ### TC-P2 — Draft, payment, and participant logic
 
-- [ ] **Pure draft/validation helpers wired into `TripContext`; no layout change.** Depends: TC-P1.
+- [p] **Pure draft/validation helpers wired into `TripContext`; no layout change.** Depends: TC-P1.
+  > pushed — `utils/expenseDraft.ts`, `utils/payment.ts`, `utils/participants.ts` wired into `TripContext` (exact-cent new writes per C5, payment validation per C10, id-preserving account linking per D3; unedited legacy money fields saved verbatim); no layout, rules, schema, or data changes; checks: npm test (1963), lint, tsc, build pass; commit: 1aeb666; PR: #170
   - `utils/expenseDraft.ts` (`expenseToDraft`, `validateDraft` → errors + preview, `draftToExpenseFields`, trip-default application/renormalization per D2), `utils/payment.ts` (`validatePayment`), `utils/participants.ts` (`linkParticipantAccount`, `participantIdsFor`).
   - New writes require exact cent sums (C5) and valid payments (C10: amount > 0 in whole cents, payer ≠ payee, both known).
   - **Accept:** every split method; explicit zero vs excluded; $↔% conversion; exact-cent validation; legacy round-trip leaves stored values unchanged; payment validation cases (negative, zero, fractional cent, self, unknown); linking keeps the id, refuses a uid already linked elsewhere in the trip, recomputes `participantIds`.

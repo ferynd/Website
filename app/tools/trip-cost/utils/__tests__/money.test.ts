@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allocateCents, formatMoney, fromCents, toCents } from '../money';
+import { allocateCents, formatMoney, fromCents, parseScaledInput, toCents } from '../money';
 
 describe('toCents / fromCents', () => {
   it('converts dollars to integer cents without binary noise', () => {
@@ -97,5 +97,23 @@ describe('allocateCents (largest remainder)', () => {
       const shares = allocateCents(total, { a: 3, b: 7, c: 11 }, order);
       expect(shares.a + shares.b + shares.c).toBe(total);
     }
+  });
+});
+
+describe('parseScaledInput', () => {
+  it('parses typed decimals to integer units without rounding', () => {
+    expect(parseScaledInput('12.34', 100)).toEqual({ kind: 'ok', units: 1234 });
+    expect(parseScaledInput(' 0.29 ', 100)).toEqual({ kind: 'ok', units: 29 });
+    expect(parseScaledInput(33.3333, 10_000)).toEqual({ kind: 'ok', units: 333333 });
+    expect(parseScaledInput('-0', 100)).toEqual({ kind: 'ok', units: 0 });
+  });
+
+  it('distinguishes blank, invalid, negative and fractional input', () => {
+    expect(parseScaledInput('', 100)).toEqual({ kind: 'blank' });
+    expect(parseScaledInput(undefined, 100)).toEqual({ kind: 'blank' });
+    expect(parseScaledInput('12abc', 100)).toEqual({ kind: 'invalid' });
+    expect(parseScaledInput(NaN, 100)).toEqual({ kind: 'invalid' });
+    expect(parseScaledInput('-1', 100)).toEqual({ kind: 'negative' });
+    expect(parseScaledInput('10.005', 100)).toEqual({ kind: 'fractional' });
   });
 });

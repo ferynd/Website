@@ -31,6 +31,14 @@ import type {
   DefaultSplit,
 } from './pageTypes';
 import { buildLedger, type Ledger } from './utils/ledger';
+import { draftToExpenseFields, type DraftContext } from './utils/expenseDraft';
+import { validatePayment } from './utils/payment';
+import { fromCents } from './utils/money';
+import {
+  linkParticipantAccount as linkAccount,
+  participantForAccount,
+  participantIdsFor,
+} from './utils/participants';
 
 interface TripContextValue {
   trip: Trip | null;
@@ -48,6 +56,8 @@ interface TripContextValue {
     userId?: string
   ) => Promise<void>;
   updateParticipant: (id: string, name: string) => Promise<void>;
+  /** Admin only (D3): links an existing traveler to a registered account, keeping its id. */
+  linkParticipantAccount: (id: string, uid: string) => Promise<void>;
   deleteParticipant: (id: string) => Promise<void>;
   addExpense: (draft: ExpenseDraft) => Promise<void>;
   updateExpense: (id: string, draft: ExpenseDraft) => Promise<void>;
@@ -145,6 +155,9 @@ export const TripProvider = ({
   ) => {
     if (!trip) throw new Error('No trip loaded');
     if (!name.trim()) throw new Error('Participant name is required');
+    if (userId && participantForAccount(participants, userId)) {
+      throw new Error('That account is already a traveler on this trip.');
+    }
 
     const newPart: TripParticipant = {
       id: crypto.randomUUID(),
@@ -155,7 +168,7 @@ export const TripProvider = ({
     };
 
     const updated = [...participants, newPart];
-    const participantIds = updated.map((p) => p.userId || p.id);
+    const participantIds = participantIdsFor(updated);
 
     await setDoc(
       tripDoc(trip.id),
@@ -171,11 +184,29 @@ export const TripProvider = ({
     const updated = participants.map((p) =>
       p.id === id ? { ...p, name: name.trim() } : p
     );
-    const participantIds = updated.map((p) => p.userId || p.id);
+    const participantIds = participantIdsFor(updated);
 
     await setDoc(
       tripDoc(trip.id),
       { participants: updated, participantIds, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  };
+
+  const linkParticipantAccount = async (id: string, uid: string) => {
+    if (!trip) throw new Error('No trip loaded');
+    if (!userProfile?.isAdmin) throw new Error('Only an admin can link accounts.');
+
+    const result = linkAccount(participants, id, uid);
+    if (!result.ok) throw new Error(result.message);
+
+    await setDoc(
+      tripDoc(trip.id),
+      {
+        participants: result.participants,
+        participantIds: result.participantIds,
+        updatedAt: serverTimestamp(),
+      },
       { merge: true }
     );
   };
@@ -201,7 +232,7 @@ export const TripProvider = ({
     }
 
     const updated = participants.filter((p) => p.id !== id);
-    const participantIds = updated.map((p) => p.userId || p.id);
+    const participantIds = participantIdsFor(updated);
 
     // Also remove any spend cap for this participant
     const updatedCaps = (trip.spendCaps || []).filter(
@@ -225,84 +256,24 @@ export const TripProvider = ({
     );
   };
 
+  // Shared by add and edit. A blank payer only defaults to the caller when
+  // exactly one participant record is linked to their account; matching on
+  // addedBy too could credit the wrong person (F-090).
+  const draftContext = (original?: Expense): DraftContext => ({
+    travelerIds: participants.map((p) => p.id),
+    defaultPayerId: uniqueLinkedParticipant(participants, userProfile?.uid)?.id,
+    original,
+  });
+
   const addExpense = async (draft: ExpenseDraft) => {
     if (!trip) throw new Error('No trip loaded');
 
-    const totalAmount = Math.max(0, parseFloat(String(draft.totalAmount || '')));
-    if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
-
-    // Process who paid
-    const paidBy: Record<string, number> = {};
-    for (const [pid, val] of Object.entries(draft.paidBy || {})) {
-      const n = parseFloat(String(val));
-      if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
-    }
-
-    const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
-    if (sumPaid > 0 && Math.abs(sumPaid - totalAmount) > 0.01) {
-      throw new Error('Payer amounts must sum to the total amount.');
-    }
-
-    // Find current user's participant ID. Matching on addedBy too (any
-    // participant record the user manually created, not just their own
-    // linked one) could default a blank payer to the wrong person — e.g.
-    // the first manually-added participant matches before the caller's own
-    // record (F-090). Only a uniquely userId-linked record is trustworthy
-    // enough to auto-default; otherwise require an explicit payer.
-    const currentParticipant = uniqueLinkedParticipant(participants, userProfile?.uid);
-
-    if (Object.keys(paidBy).length === 0) {
-      if (!currentParticipant) {
-        throw new Error(
-          'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
-        );
-      }
-      paidBy[currentParticipant.id] = totalAmount;
-    }
-
-    // Process split
-    const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
-    let splitParticipants = Array.isArray(draft.splitParticipants)
-      ? draft.splitParticipants.slice()
-      : [];
-    if (!splitParticipants.length) {
-      splitParticipants = (trip.participants || []).map((p) => p.id);
-    }
-
-    const manualSplit: Expense['manualSplit'] = {};
-    if (splitType === 'manual') {
-      const mode = draft.manualSplitMode || 'amount';
-      for (const pid of splitParticipants) {
-        const v = draft.manualSplit?.[pid]?.value;
-        const n = parseFloat(String(v));
-        if (!Number.isNaN(n) && n >= 0) {
-          manualSplit[pid] = { type: mode, value: n };
-        }
-      }
-
-      // Validate
-      if (mode === 'percent') {
-        const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
-        if (Math.abs(sum - 100) > 0.01) {
-          throw new Error('Percentage split must sum to 100%.');
-        }
-      } else {
-        const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
-        if (Math.abs(sum - totalAmount) > 0.01) {
-          throw new Error('Manual split must sum to total amount.');
-        }
-      }
-    }
+    const { fields, errors } = draftToExpenseFields(draft, draftContext());
+    if (!fields) throw new Error(errors[0].message);
 
     const expense: Expense = {
       id: crypto.randomUUID(),
-      category: draft.category,
-      description: draft.description.trim(),
-      totalAmount,
-      paidBy,
-      splitType,
-      splitParticipants,
-      manualSplit,
+      ...fields,
       createdBy: userProfile?.uid || 'unknown',
       createdAt: Timestamp.fromDate(new Date()),
     };
@@ -320,79 +291,15 @@ export const TripProvider = ({
   const updateExpense = async (id: string, draft: ExpenseDraft) => {
     if (!trip) throw new Error('No trip loaded');
 
-    const totalAmount = Math.max(0, parseFloat(String(draft.totalAmount || '')));
-    if (totalAmount <= 0) throw new Error('Enter an amount greater than 0.');
+    const original = expenses.find((e) => e.id === id);
+    if (!original) throw new Error('This expense no longer exists.');
 
-    const paidBy: Record<string, number> = {};
-    for (const [pid, val] of Object.entries(draft.paidBy || {})) {
-      const n = parseFloat(String(val));
-      if (!Number.isNaN(n) && n > 0) paidBy[pid] = n;
-    }
+    // Money fields left untouched keep their stored values, so legacy rows
+    // stay editable; any changed amount or split must add up exactly (C5).
+    const { fields, errors } = draftToExpenseFields(draft, draftContext(original));
+    if (!fields) throw new Error(errors[0].message);
 
-    const sumPaid = Object.values(paidBy).reduce((a, n) => a + n, 0);
-    if (sumPaid > 0 && Math.abs(sumPaid - totalAmount) > 0.01) {
-      throw new Error('Payer amounts must sum to the total amount.');
-    }
-
-    // See addExpense's identical guard for why this only matches on a
-    // uniquely userId-linked participant (F-090).
-    const currentParticipant = uniqueLinkedParticipant(participants, userProfile?.uid);
-
-    if (Object.keys(paidBy).length === 0) {
-      if (!currentParticipant) {
-        throw new Error(
-          'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
-        );
-      }
-      paidBy[currentParticipant.id] = totalAmount;
-    }
-
-    const splitType = draft.splitType === 'manual' ? 'manual' : 'even';
-    let splitParticipants = Array.isArray(draft.splitParticipants)
-      ? draft.splitParticipants.slice()
-      : [];
-    if (!splitParticipants.length) {
-      splitParticipants = (trip.participants || []).map((p) => p.id);
-    }
-
-    const manualSplit: Expense['manualSplit'] = {};
-    if (splitType === 'manual') {
-      const mode = draft.manualSplitMode || 'amount';
-      for (const pid of splitParticipants) {
-        const v = draft.manualSplit?.[pid]?.value;
-        const n = parseFloat(String(v));
-        if (!Number.isNaN(n) && n >= 0) {
-          manualSplit[pid] = { type: mode, value: n };
-        }
-      }
-
-      if (mode === 'percent') {
-        const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
-        if (Math.abs(sum - 100) > 0.01) {
-          throw new Error('Percentage split must sum to 100%.');
-        }
-      } else {
-        const sum = Object.values(manualSplit).reduce((a, s) => a + s.value, 0);
-        if (Math.abs(sum - totalAmount) > 0.01) {
-          throw new Error('Manual split must sum to total amount.');
-        }
-      }
-    }
-
-    const updated = expenses.map((e) =>
-      e.id === id
-        ? {
-            ...e,
-            category: draft.category,
-            description: draft.description.trim(),
-            totalAmount,
-            paidBy,
-            splitType,
-            splitParticipants,
-            manualSplit,
-          }
-        : e
-    );
+    const updated = expenses.map((e) => (e.id === id ? { ...e, ...fields } : e));
 
     await setDoc(
       tripDoc(trip.id),
@@ -420,11 +327,17 @@ export const TripProvider = ({
   ) => {
     if (!trip) throw new Error('No trip loaded');
 
+    const { cents, errors } = validatePayment(
+      { payerId, payeeId, amount },
+      participants.map((p) => p.id)
+    );
+    if (cents === null) throw new Error(errors[0].message);
+
     const payment: Payment = {
       id: crypto.randomUUID(),
       payerId,
       payeeId,
-      amount,
+      amount: fromCents(cents),
       description,
       date: new Date().toISOString(),
       createdBy: authorUid,
@@ -487,6 +400,7 @@ export const TripProvider = ({
     setNewExpense,
     addParticipant,
     updateParticipant,
+    linkParticipantAccount,
     deleteParticipant,
     addExpense,
     updateExpense,

@@ -48,8 +48,8 @@ export default function BalanceSummary({
         ...f,
         [id]: { payeeId: '', amount: '', description: '' },
       }));
-    } catch {
-      setError('Failed to add payment. Please try again.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add payment. Please try again.');
     }
   };
 
