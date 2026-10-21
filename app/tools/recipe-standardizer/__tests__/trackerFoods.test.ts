@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allNutrients, NUTRIENT_MAX_BOUNDS } from '../../../../public/tools/CalorieTracker/constants.js';
-import { buildTrackerFoodDoc, fingerprintTrackerFood, parseTrackerFood, TRACKER_NUTRIENT_KEYS, trackerFoodId, validateTrackerFoodName } from '../lib/trackerFoods';
+import { buildTrackerFoodDoc, fingerprintTrackerFood, isValidFirestoreDocId, parseTrackerFood, TRACKER_NUTRIENT_KEYS, trackerFoodId, validateTrackerFoodName } from '../lib/trackerFoods';
 import { NUTRIENT_INTAKE_SPEC } from '../lib/nutritionIntake';
 
 const fullFood = () => ({
@@ -46,9 +46,20 @@ describe('trackerFoods', () => {
     expect(trackerFoodId('olive-oil')).toBe(trackerFoodId('Olive Oil'));
     expect(validateTrackerFoodName('  ')).toBe('Enter a food name.');
     expect(validateTrackerFoodName('x'.repeat(81))).toContain('80 characters');
-    expect(validateTrackerFoodName('東京')).toContain('letter or digit');
+    expect(validateTrackerFoodName('東京')).toBe('Add Latin letters or digits to the name (the Nutrition Tracker ID only keeps A–Z and 0–9).');
+    expect(validateTrackerFoodName('豆腐 (per 100 g)')).toBe('Add Latin letters or digits to the name (the Nutrition Tracker ID only keeps A–Z and 0–9).');
+    expect(validateTrackerFoodName('Tofu 豆腐 (per 100 g)')).toBeNull();
+    expect(validateTrackerFoodName('Flour (per 100 g)')).toBeNull();
     expect(validateTrackerFoodName('**x**')).toContain('reserved Firestore ID');
     expect(validateTrackerFoodName('Olive oil')).toBeNull();
+  });
+
+  it('checks Firestore document ID constraints using UTF-8 byte length', () => {
+    for (const id of ['foo/bar', '.', '..', '__x__', 'é'.repeat(751)]) {
+      expect(isValidFirestoreDocId(id)).toBe(false);
+    }
+    expect(isValidFirestoreDocId('normal-id')).toBe(true);
+    expect(isValidFirestoreDocId('é'.repeat(750))).toBe(true);
   });
 
   it('builds exact Tracker shape and keeps all intake bounds within Tracker caps', () => {

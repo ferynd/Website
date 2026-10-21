@@ -43,7 +43,7 @@ import {
 import { db } from './firebase';
 import { parseRecipeJson, type ParseResult } from './schema';
 import type { Recipe, SavedRecipeMeta } from './types';
-import { FoodIdCollisionError, FoodTargetReappearedError, parseTrackerFood, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
+import { FoodIdCollisionError, FoodTargetReappearedError, isValidFirestoreDocId, parseTrackerFood, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
 import { MAX_INTAKE_ITEMS } from './nutritionIntake';
 
 const recipesCol = (uid: string): CollectionReference =>
@@ -125,8 +125,10 @@ export const fetchFoodItems = async (uid: string): Promise<TrackerFood[]> => {
 /** Create new tracker foods atomically; never overwrites. */
 export const createFoodItemsIfAbsent = async (uid: string, docs: { id: string; data: TrackerFoodDoc }[], guardIds: string[] = []): Promise<void> => {
   const ids = docs.map((d) => d.id);
+  const invalidIds = ids.filter((id) => !isValidFirestoreDocId(id));
+  if (invalidIds.length) throw new Error(`Invalid food document ID(s): ${invalidIds.join(', ')}`);
   const idSet = new Set(ids);
-  const uniqueGuardIds = [...new Set(guardIds.filter((id) => id && !idSet.has(id)))];
+  const uniqueGuardIds = [...new Set(guardIds.filter((id) => isValidFirestoreDocId(id) && !idSet.has(id)))];
   if (!docs.length && !uniqueGuardIds.length) return;
   if (docs.length > MAX_INTAKE_ITEMS) throw new Error(`At most ${MAX_INTAKE_ITEMS} foods can be created at once.`);
   if (new Set(ids).size !== ids.length) throw new Error('Duplicate food ids in one batch.');

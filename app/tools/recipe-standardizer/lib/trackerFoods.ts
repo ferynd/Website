@@ -21,13 +21,23 @@ export type TrackerNutrientKey = (typeof TRACKER_NUTRIENT_KEYS)[number];
 export const TRACKER_FOOD_NAME_MAX = 80;
 /** Convert a tracker food name to its document ID. */
 export const trackerFoodId = (name: string): string => name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+/** Return whether a string is a valid Firestore document ID for a food item. */
+export const isValidFirestoreDocId = (id: string): boolean => (
+  id.length > 0
+  && !id.includes('/')
+  && id !== '.'
+  && id !== '..'
+  && !/^__.*__$/.test(id)
+  && new TextEncoder().encode(id).length <= 1500
+);
 /** Validate a display name against tracker naming and ID constraints. */
 export const validateTrackerFoodName = (name: string): string | null => {
   const trimmed = name.trim();
   if (!trimmed) return 'Enter a food name.';
   if (trimmed.length > TRACKER_FOOD_NAME_MAX) return 'Food names are limited to 80 characters.';
-  const id = trackerFoodId(trimmed);
-  if (!/[a-z0-9]/.test(id)) return 'The name needs at least one letter or digit (A–Z, 0–9) for its Nutrition Tracker ID.';
+  const meaningfulName = trimmed.replace(/\s*\(per 100 g\)\s*$/i, '').trim();
+  const id = trackerFoodId(meaningfulName);
+  if (!/[a-z0-9]/.test(id)) return 'Add Latin letters or digits to the name (the Nutrition Tracker ID only keeps A–Z and 0–9).';
   if (/^__.*__$/.test(id)) return 'This name maps to a reserved Firestore ID — change the leading/trailing symbols.';
   return null;
 };

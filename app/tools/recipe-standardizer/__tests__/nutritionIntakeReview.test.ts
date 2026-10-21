@@ -38,12 +38,32 @@ describe('nutrition intake review eligibility and grouping', () => {
     const recipe = makeRecipe(
       ingredient('first', 'Butter', 'unlinked', null, { equivalent: '1 cup', prepNote: 'melted' }),
       ingredient('other', 'Flour'),
-      ingredient('second', 'butter', 'unlinked', null, { equivalent: '', prepNote: 'softened' }),
+      ingredient('second', 'butter', 'unlinked', null, { equivalent: '1 cup', prepNote: 'melted' }),
     );
     const groups = selectIntakeGroups(recipe, assessments([['first', 'unlinked'], ['other', 'unlinked'], ['second', 'stale-missing']]));
     expect(groups.map((group) => group.displayName)).toEqual(['Butter', 'Flour']);
     expect(groups[0]).toMatchObject({ key: 'first', ingredientIds: ['first', 'second'], note: '1 cup; melted' });
     expect(defaultFoodName('Butter')).toBe('Butter (per 100 g)');
+  });
+
+  it('keeps the same name separate when preparation notes differ', () => {
+    const recipe = makeRecipe(
+      ingredient('raw', 'Rice'),
+      ingredient('cooked', 'rice', 'unlinked', null, { prepNote: 'cooked' }),
+    );
+    const groups = selectIntakeGroups(recipe, assessments([['raw', 'unlinked'], ['cooked', 'unlinked']]));
+    expect(groups).toHaveLength(2);
+    expect(groups.map((group) => [group.normalizedName, group.note])).toEqual([['rice', ''], ['rice', 'cooked']]);
+  });
+
+  it('groups notes that differ only by case and whitespace', () => {
+    const recipe = makeRecipe(
+      ingredient('first', 'Rice', 'unlinked', null, { prepNote: '  COOKED   rice ' }),
+      ingredient('second', 'rice', 'unlinked', null, { prepNote: 'cooked rice' }),
+    );
+    const groups = selectIntakeGroups(recipe, assessments([['first', 'unlinked'], ['second', 'unlinked']]));
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ ingredientIds: ['first', 'second'], note: 'COOKED rice' });
   });
 });
 
@@ -58,6 +78,15 @@ describe('nutrition intake row matching and defaults', () => {
     expect(resolveTarget(parsedItem(0, 'a2'), groups)).toMatchObject({ targetKey: 'a', matchedBy: 'id' });
     expect(resolveTarget(parsedItem(0, 'missing', ' butter '), groups)).toMatchObject({ targetKey: 'a', matchedBy: 'name' });
     expect(resolveTarget(parsedItem(0, 'missing', 'Unknown'), groups)).toMatchObject({ targetKey: null, matchedBy: null });
+  });
+
+  it('returns no name match when multiple preparation groups share a normalized name', () => {
+    const sameNameDifferentPrep: IntakeGroup[] = [
+      { key: 'raw', displayName: 'Rice', normalizedName: 'rice', ingredientIds: ['raw'], note: '' },
+      { key: 'cooked', displayName: 'Rice', normalizedName: 'rice', ingredientIds: ['cooked'], note: 'cooked' },
+    ];
+    expect(resolveTarget(parsedItem(0, 'unknown', 'Rice'), sameNameDifferentPrep)).toEqual({ targetKey: null, matchedBy: null });
+    expect(resolveTarget(parsedItem(0, 'cooked', 'Rice'), sameNameDifferentPrep)).toEqual({ targetKey: 'cooked', matchedBy: 'id' });
   });
 
   it('warns when an ID now belongs to an ineligible ingredient', () => {
@@ -84,6 +113,20 @@ describe('nutrition intake row matching and defaults', () => {
   it('defaults an invalid parsed row to skip', () => {
     const invalid = parsedItem(0, 'a', 'Butter', ['items[0].nutrients.fat is invalid']);
     expect(initialIntakeRows([invalid], groups, [], new Set())[0].decision).toBe('skip');
+  });
+
+  it('allows linking an invalid parsed row to a collision but blocks creating it', () => {
+    const invalid = row(parsedItem(0, 'a', 'Olive Oil', ['invalid fat']), 'a', {
+      foodName: 'olive_oil',
+      linkGrams: '100',
+    });
+    const evaluation = evaluateIntakeRows([invalid], groups, [food('olive_oil', 'Existing Olive Oil')], new Set())[0];
+    expect(evaluation).toMatchObject({
+      createBlockers: ['Fix this row in ChatGPT and paste again, or skip it.'],
+      linkAvailable: true,
+      canCreate: false,
+      canLinkExisting: true,
+    });
   });
 });
 
@@ -229,6 +272,31 @@ describe('nutrition intake commit plan', () => {
       skipped: 0,
     } satisfies IntakeCommitPlan;
     expect(collectGuardFoodIds(plan, recipe)).toEqual(['old-food']);
+  });
+
+  it('excludes invalid Firestore document IDs from guards', () => {
+    const recipe = makeRecipe(
+      ingredient('slash', 'Slash', 'candidate', 'foo/bar'),
+      ingredient('dot', 'Dot', 'candidate', '.'),
+      ingredient('dotdot', 'Dot dot', 'candidate', '..'),
+      ingredient('reserved', 'Reserved', 'candidate', '__x__'),
+      ingredient('good', 'Good', 'candidate', 'normal-id'),
+    );
+    const plan = {
+      creates: [{
+        foodId: 'new-food',
+        name: 'New food',
+        nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])) as IntakeCommitPlan['creates'][number]['nutrients'],
+        ingredients: ['slash', 'dot', 'dotdot', 'reserved', 'good'].map((ingredientId) => ({
+          ingredientId,
+          status: 'candidate' as const,
+          foodItemId: recipe.ingredients.find((item) => item.id === ingredientId)!.nutritionLink.foodItemId,
+        })),
+      }],
+      links: [],
+      skipped: 0,
+    } satisfies IntakeCommitPlan;
+    expect(collectGuardFoodIds(plan, recipe)).toEqual(['normal-id']);
   });
 
   it('refreshes link-existing snapshots by ID and reports missing targets without changing creates', () => {

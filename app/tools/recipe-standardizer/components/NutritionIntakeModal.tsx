@@ -223,7 +223,7 @@ function ReviewRowCard({ row, evaluation, index, groups, disabled, onChange }: R
           <option value="">— Not assigned —</option>
           {groups.map((group) => (
             <option key={group.key} value={group.key}>
-              {group.displayName}
+              {group.displayName}{group.note ? ` — ${group.note}` : ''}
               {group.ingredientIds.length > 1 ? ` ×${group.ingredientIds.length}` : ''}
             </option>
           ))}
@@ -301,6 +301,9 @@ function ReviewRowCard({ row, evaluation, index, groups, disabled, onChange }: R
           />
           <p className="text-xs text-text-3">ID: {evaluation.slug ?? '—'}</p>
           {evaluation.baseBlockers.map((blocker, blockerIndex) => (
+            <p key={blockerIndex} className="text-xs text-error">{blocker}</p>
+          ))}
+          {evaluation.createBlockers.map((blocker, blockerIndex) => (
             <p key={blockerIndex} className="text-xs text-error">{blocker}</p>
           ))}
           {evaluation.batchConflictRow !== null && (

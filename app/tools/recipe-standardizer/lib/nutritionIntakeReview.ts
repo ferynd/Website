@@ -5,6 +5,7 @@ import { normalizeIngredientName } from './shoppingList';
 import { MAX_INTAKE_ITEMS, type IntakeGroup, type ParsedNutritionItem } from './nutritionIntake';
 import {
   TRACKER_NUTRIENT_KEYS,
+  isValidFirestoreDocId,
   trackerFoodId,
   validateTrackerFoodName,
   type TrackerFood,
@@ -41,6 +42,7 @@ export interface RowEvaluation {
   nameError: string | null;
   collision: { foodId: string; food: TrackerFood | null } | null;
   baseBlockers: string[];
+  createBlockers: string[];
   batchConflictRow: number | null;
   canCreate: boolean;
   linkAvailable: boolean;
@@ -79,7 +81,7 @@ export const collectGuardFoodIds = (plan: IntakeCommitPlan, recipe: Recipe): str
     const ingredient = recipe.ingredients.find((item) => item.id === member.ingredientId);
     if (!ingredient) continue;
     const { foodItemId, status } = ingredient.nutritionLink;
-    if (typeof foodItemId === 'string' && foodItemId && (status === 'candidate' || status === 'confirmed')) {
+    if (typeof foodItemId === 'string' && isValidFirestoreDocId(foodItemId) && (status === 'candidate' || status === 'confirmed')) {
       guarded.add(foodItemId);
     }
   }
@@ -149,7 +151,7 @@ export type IntakeCommitOutcome =
   | { status: 'created-unlinked'; created: number }
   | { status: 'error'; message: string };
 
-/** Group eligible recipe ingredients by normalized display name. */
+/** Group eligible recipe ingredients by normalized display name and preparation note. */
 export const selectIntakeGroups = (
   recipe: Recipe,
   assessments: Map<string, LinkAssessment>,
@@ -163,20 +165,22 @@ export const selectIntakeGroups = (
     const normalizedName = normalizeIngredientName(ingredient.displayName);
     if (!normalizedName) continue;
 
-    const existing = groups.get(normalizedName);
+    const noteParts = [ingredient.equivalent, ingredient.prepNote]
+      .map((value) => value.trim().replace(/\s+/g, ' '))
+      .filter(Boolean);
+    const note = noteParts.join('; ');
+    const normalizedNote = note.toLowerCase().replace(/\s+/g, ' ');
+    const groupKey = `${normalizedName}|${normalizedNote}`;
+    const existing = groups.get(groupKey);
     if (existing) {
       existing.ingredientIds.push(ingredient.id);
     } else {
-      groups.set(normalizedName, {
+      groups.set(groupKey, {
         key: ingredient.id,
         displayName: ingredient.displayName,
         normalizedName,
         ingredientIds: [ingredient.id],
-        note: [ingredient.equivalent, ingredient.prepNote]
-          .map((value) => value.trim())
-          .filter(Boolean)
-          .join('; ')
-          .slice(0, 120),
+        note: note.slice(0, 120),
       });
     }
   }
@@ -200,8 +204,9 @@ export const resolveTarget = (
   const byId = groups.find((group) => group.ingredientIds.includes(item.ingredientId ?? ''));
   if (byId) return { targetKey: byId.key, matchedBy: 'id' };
 
-  const byName = groups.find((group) => normalizeIngredientName(item.name) === group.normalizedName);
-  if (byName) return { targetKey: byName.key, matchedBy: 'name' };
+  const nameMatches = groups.filter((group) => normalizeIngredientName(item.name) === group.normalizedName);
+  if (nameMatches.length === 1) return { targetKey: nameMatches[0].key, matchedBy: 'name' };
+  if (nameMatches.length > 1) return { targetKey: null, matchedBy: null };
 
   const ineligible = recipe?.ingredients.find((ingredient) => ingredient.id === item.ingredientId);
   return {
@@ -230,7 +235,8 @@ export const evaluateIntakeRows = (
   return rows.map((row, index) => {
     const group = groups.find((candidate) => candidate.key === row.targetKey);
     const blockers: string[] = [];
-    if (row.item.errors.length) blockers.push('Fix this row in ChatGPT and paste again, or skip it.');
+    const createBlockers: string[] = [];
+    if (row.item.errors.length) createBlockers.push('Fix this row in ChatGPT and paste again, or skip it.');
     if (!group) blockers.push('Choose the ingredient this row belongs to.');
 
     const duplicate = row.targetKey === null
@@ -262,14 +268,15 @@ export const evaluateIntakeRows = (
       ))
       : -1;
     const batch = batchConflictRow >= 0 ? batchConflictRow : null;
-    const canCreate = !blockers.length && !nameError && !collision && batch === null;
-    const linkAvailable = !blockers.length && collision?.food !== null && collision !== null;
+    const canCreate = !blockers.length && !createBlockers.length && !nameError && !collision && batch === null;
+    const linkAvailable = !blockers.length && collision?.food != null;
 
     return {
       slug,
       nameError,
       collision,
       baseBlockers: blockers,
+      createBlockers,
       batchConflictRow: batch,
       canCreate,
       linkAvailable,
