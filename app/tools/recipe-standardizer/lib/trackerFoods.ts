@@ -1,5 +1,6 @@
 /* Nutrition Tracker food contracts, parsing, and identifiers. */
 
+import { normalizeIngredientName } from './shoppingList';
 import type { FoodItemRef } from './types';
 
 /* CONFIGURATION: Nutrition Tracker nutrient keys (mirror of
@@ -130,3 +131,25 @@ export const fingerprintTrackerFood = (
   }
   return hash.toString(16).padStart(8, '0');
 };
+
+/** Identity of a tracker food that a planned link must still match at commit. */
+export interface LinkTarget {
+  id: string;
+  fingerprint: string;
+  normalizedName: string;
+  lastUpdated: string | null;
+}
+
+/**
+ * A document read in the commit transaction no longer matches the captured link.
+ * Missing documents are handled by the caller; null means the snapshot did not parse.
+ */
+export const linkTargetChanged = (
+  parsed: TrackerFood | null,
+  expected: Pick<LinkTarget, 'fingerprint' | 'normalizedName' | 'lastUpdated'>,
+): boolean => (
+  parsed === null
+  || fingerprintTrackerFood(parsed) !== expected.fingerprint
+  || normalizeIngredientName(parsed.name) !== expected.normalizedName
+  || parsed.lastUpdated !== expected.lastUpdated
+);

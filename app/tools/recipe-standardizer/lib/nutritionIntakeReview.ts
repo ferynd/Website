@@ -9,10 +9,13 @@ import {
   isValidFirestoreDocId,
   trackerFoodId,
   validateTrackerFoodName,
+  type LinkTarget,
   type TrackerFood,
   type TrackerNutrientKey,
 } from './trackerFoods';
 import type { NutritionLink, Recipe } from './types';
+
+export { linkTargetChanged, type LinkTarget } from './trackerFoods';
 
 /* CONFIGURATION: intake eligibility and review decisions */
 /** Link states whose ingredients can receive nutrition intake rows. */
@@ -90,14 +93,6 @@ export const collectGuardFoodIds = (plan: IntakeCommitPlan, recipe: Recipe): str
   return [...guarded];
 };
 
-/** Identity of a tracker food that a planned link must still match at commit. */
-export interface LinkTarget {
-  id: string;
-  fingerprint: string;
-  normalizedName: string;
-  lastUpdated: string | null;
-}
-
 /** Capture the refreshed food versions that must remain unchanged through commit. */
 export const collectLinkTargets = (plan: IntakeCommitPlan): LinkTarget[] => {
   const targets = new Map<string, LinkTarget>();
@@ -112,20 +107,6 @@ export const collectLinkTargets = (plan: IntakeCommitPlan): LinkTarget[] => {
   }
   return [...targets.values()];
 };
-
-/**
- * A document read in the commit transaction no longer matches the captured link.
- * Missing documents are handled by the caller; null means the snapshot did not parse.
- */
-export const linkTargetChanged = (
-  parsed: TrackerFood | null,
-  expected: Pick<LinkTarget, 'fingerprint' | 'normalizedName' | 'lastUpdated'>,
-): boolean => (
-  parsed === null
-  || fingerprintTrackerFood(parsed) !== expected.fingerprint
-  || normalizeIngredientName(parsed.name) !== expected.normalizedName
-  || parsed.lastUpdated !== expected.lastUpdated
-);
 
 /** Keep one prompt/review batch within the parser's supported item limit. */
 export const limitIntakeGroups = (

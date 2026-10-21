@@ -43,9 +43,8 @@ import {
 import { db } from './firebase';
 import { parseRecipeJson, type ParseResult } from './schema';
 import type { Recipe, SavedRecipeMeta } from './types';
-import { FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, isValidFirestoreDocId, parseTrackerFood, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
+import { FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, isValidFirestoreDocId, linkTargetChanged, parseTrackerFood, type LinkTarget, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
 import { MAX_INTAKE_ITEMS } from './nutritionIntake';
-import { linkTargetChanged, type LinkTarget } from './nutritionIntakeReview';
 
 const recipesCol = (uid: string): CollectionReference =>
   collection(db, ROOT_COLLECTION, APP_ID, 'users', uid, 'recipes');
@@ -137,7 +136,11 @@ export const createFoodItemsIfAbsent = async (
   if (invalidLinkIds.length) throw new FoodLinkTargetChangedError(invalidLinkIds);
   const idSet = new Set(ids);
   const uniqueGuardIds = [...new Set(guardIds.filter((id) => isValidFirestoreDocId(id) && !idSet.has(id)))];
-  const uniqueLinkTargets = [...new Map(linkTargets.map((target) => [target.id, target])).values()];
+  const linkTargetsById = new Map<string, LinkTarget>();
+  for (const target of linkTargets) {
+    if (!linkTargetsById.has(target.id)) linkTargetsById.set(target.id, target);
+  }
+  const uniqueLinkTargets = [...linkTargetsById.values()];
   if (!docs.length && !uniqueGuardIds.length && !uniqueLinkTargets.length) return;
   if (docs.length > MAX_INTAKE_ITEMS) throw new Error(`At most ${MAX_INTAKE_ITEMS} foods can be created at once.`);
   if (new Set(ids).size !== ids.length) throw new Error('Duplicate food ids in one batch.');

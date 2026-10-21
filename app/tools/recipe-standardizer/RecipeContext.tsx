@@ -35,8 +35,7 @@ import {
 } from './lib/db';
 import type { ParseResult } from './lib/schema';
 import type { Recipe, SavedRecipeMeta } from './lib/types';
-import type { LinkTarget } from './lib/nutritionIntakeReview';
-import type { TrackerFood, TrackerFoodDoc } from './lib/trackerFoods';
+import type { LinkTarget, TrackerFood, TrackerFoodDoc } from './lib/trackerFoods';
 
 interface RecipeContextValue {
   user: User | null;
