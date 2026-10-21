@@ -12,7 +12,8 @@ Backlogs live under `backlogs/`. Use `backlogs/AGENTS.md` to create and maintain
 
 ## Active feature backlogs — default order
 
-1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. P0 is a user-assisted, non-blocking deployment check; P1–P3 are merged; default coding continues with P4, then P5. P6/P7 require explicit approval.
+1. `backlogs/trip-cost.md` — Trip Cost Tracker ledger-first redesign, TC-P1–TC-P6. Listed first per James (2026-10-21); touches no Recipe Standardizer files.
+2. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. P0 is a user-assisted, non-blocking deployment check; P1–P4 are merged; default coding continues with P5 after the Trip Cost rollout (James, 2026-10-21). P6/P7 require explicit approval.
 
 `backlogs/calorie-tracker.md` currently has no actionable items and is dormant until new work is added.
 
@@ -22,6 +23,7 @@ Backlogs live under `backlogs/`. Use `backlogs/AGENTS.md` to create and maintain
 
 ## Completed archives
 
+- `backlogs/trip-cost-completed.md`
 - `backlogs/recipe-standardizer-completed.md`
 - `backlogs/calorie-tracker-completed.md`
 - `backlogs/audit-remediation-completed.md`
