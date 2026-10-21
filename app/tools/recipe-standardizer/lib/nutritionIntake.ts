@@ -70,7 +70,10 @@ export interface IntakeGroup {
   displayName: string;
   normalizedName: string;
   ingredientIds: string[];
+  /** Prompt context from the first member: household measure and preparation. */
   note: string;
+  /** Preparation shown to disambiguate the review select. Empty when the first member has none. */
+  prepNote: string;
 }
 
 /** Build the Nutrition Tracker prompt with the established exact output text. */

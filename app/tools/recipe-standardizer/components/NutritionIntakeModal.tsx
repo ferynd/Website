@@ -223,7 +223,7 @@ function ReviewRowCard({ row, evaluation, index, groups, disabled, onChange }: R
           <option value="">— Not assigned —</option>
           {groups.map((group) => (
             <option key={group.key} value={group.key}>
-              {group.displayName}{group.note ? ` — ${group.note}` : ''}
+              {group.displayName}{group.prepNote ? ` — ${group.prepNote}` : ''}
               {group.ingredientIds.length > 1 ? ` ×${group.ingredientIds.length}` : ''}
             </option>
           ))}

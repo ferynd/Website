@@ -90,14 +90,42 @@ export const collectGuardFoodIds = (plan: IntakeCommitPlan, recipe: Recipe): str
   return [...guarded];
 };
 
+/** Identity of a tracker food that a planned link must still match at commit. */
+export interface LinkTarget {
+  id: string;
+  fingerprint: string;
+  normalizedName: string;
+  lastUpdated: string | null;
+}
+
 /** Capture the refreshed food versions that must remain unchanged through commit. */
-export const collectLinkTargets = (plan: IntakeCommitPlan): { id: string; fingerprint: string }[] => {
-  const targets = new Map<string, string>();
+export const collectLinkTargets = (plan: IntakeCommitPlan): LinkTarget[] => {
+  const targets = new Map<string, LinkTarget>();
   for (const link of plan.links) {
-    if (!targets.has(link.food.id)) targets.set(link.food.id, fingerprintTrackerFood(link.food));
+    if (targets.has(link.food.id)) continue;
+    targets.set(link.food.id, {
+      id: link.food.id,
+      fingerprint: fingerprintTrackerFood(link.food),
+      normalizedName: normalizeIngredientName(link.food.name),
+      lastUpdated: link.food.lastUpdated,
+    });
   }
-  return [...targets].map(([id, fingerprint]) => ({ id, fingerprint }));
+  return [...targets.values()];
 };
+
+/**
+ * A document read in the commit transaction no longer matches the captured link.
+ * Missing documents are handled by the caller; null means the snapshot did not parse.
+ */
+export const linkTargetChanged = (
+  parsed: TrackerFood | null,
+  expected: Pick<LinkTarget, 'fingerprint' | 'normalizedName' | 'lastUpdated'>,
+): boolean => (
+  parsed === null
+  || fingerprintTrackerFood(parsed) !== expected.fingerprint
+  || normalizeIngredientName(parsed.name) !== expected.normalizedName
+  || parsed.lastUpdated !== expected.lastUpdated
+);
 
 /** Keep one prompt/review batch within the parser's supported item limit. */
 export const limitIntakeGroups = (
@@ -161,6 +189,11 @@ export type IntakeCommitOutcome =
   | { status: 'created-unlinked'; created: number }
   | { status: 'error'; message: string };
 
+const compactText = (value: string): string => value.trim().replace(/\s+/g, ' ');
+
+/** Preparation key: trim, lower-case, then collapse whitespace. */
+const normalizedPrepNote = (prepNote: string): string => compactText(prepNote.trim().toLowerCase());
+
 /** Group eligible recipe ingredients by normalized display name and preparation note. */
 export const selectIntakeGroups = (
   recipe: Recipe,
@@ -175,12 +208,12 @@ export const selectIntakeGroups = (
     const normalizedName = normalizeIngredientName(ingredient.displayName);
     if (!normalizedName) continue;
 
-    const noteParts = [ingredient.equivalent, ingredient.prepNote]
-      .map((value) => value.trim().replace(/\s+/g, ' '))
-      .filter(Boolean);
+    // `equivalent` is a household measure ("1 cup"), not a preparation, so it
+    // stays in the prompt note and out of the group key.
+    const prepNote = compactText(ingredient.prepNote);
+    const noteParts = [ingredient.equivalent, ingredient.prepNote].map(compactText).filter(Boolean);
     const note = noteParts.join('; ');
-    const normalizedNote = note.toLowerCase().replace(/\s+/g, ' ');
-    const groupKey = `${normalizedName}|${normalizedNote}`;
+    const groupKey = `${normalizedName}|${normalizedPrepNote(ingredient.prepNote)}`;
     const existing = groups.get(groupKey);
     if (existing) {
       existing.ingredientIds.push(ingredient.id);
@@ -191,6 +224,7 @@ export const selectIntakeGroups = (
         normalizedName,
         ingredientIds: [ingredient.id],
         note: note.slice(0, 120),
+        prepNote: prepNote.slice(0, 120),
       });
     }
   }

@@ -43,8 +43,9 @@ import {
 import { db } from './firebase';
 import { parseRecipeJson, type ParseResult } from './schema';
 import type { Recipe, SavedRecipeMeta } from './types';
-import { FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, fingerprintTrackerFood, isValidFirestoreDocId, parseTrackerFood, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
+import { FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, isValidFirestoreDocId, parseTrackerFood, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
 import { MAX_INTAKE_ITEMS } from './nutritionIntake';
+import { linkTargetChanged, type LinkTarget } from './nutritionIntakeReview';
 
 const recipesCol = (uid: string): CollectionReference =>
   collection(db, ROOT_COLLECTION, APP_ID, 'users', uid, 'recipes');
@@ -127,7 +128,7 @@ export const createFoodItemsIfAbsent = async (
   uid: string,
   docs: { id: string; data: TrackerFoodDoc }[],
   guardIds: string[] = [],
-  linkTargets: { id: string; fingerprint: string }[] = [],
+  linkTargets: LinkTarget[] = [],
 ): Promise<void> => {
   const ids = docs.map((d) => d.id);
   const invalidIds = ids.filter((id) => !isValidFirestoreDocId(id));
@@ -154,11 +155,10 @@ export const createFoodItemsIfAbsent = async (
     const reappeared = guardSnaps.filter((snap) => snap.exists()).map((snap) => snap.id);
     if (reappeared.length) throw new FoodTargetReappearedError(reappeared);
     const changedLinks = linkSnaps.flatMap((snap, index) => {
-      if (!snap.exists()) return [uniqueLinkTargets[index].id];
+      const expected = uniqueLinkTargets[index];
+      if (!snap.exists()) return [expected.id];
       const parsed = parseTrackerFood(snap.id, snap.data());
-      if (!parsed || fingerprintTrackerFood(parsed) !== uniqueLinkTargets[index].fingerprint) {
-        return [uniqueLinkTargets[index].id];
-      }
+      if (linkTargetChanged(parsed, expected)) return [expected.id];
       return [];
     });
     if (changedLinks.length) throw new FoodLinkTargetChangedError(changedLinks);

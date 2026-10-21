@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assessNutritionLink, confirmNutritionLink, type LinkAssessment, type LinkReviewState } from '../lib/nutritionLink';
 import {
-  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, collectGuardFoodIds, collectLinkTargets, defaultFoodName, evaluateIntakeRows,
+  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, collectGuardFoodIds, collectLinkTargets, defaultFoodName, evaluateIntakeRows, linkTargetChanged,
   findNoLongerEligible, findPlanCollisions, initialIntakeRows, limitIntakeGroups, refreshPlanLinkTargets, reassignRow, resolveTarget, selectIntakeGroups,
   type IntakeCommitPlan,
   type IntakeRow,
@@ -53,7 +53,22 @@ describe('nutrition intake review eligibility and grouping', () => {
     );
     const groups = selectIntakeGroups(recipe, assessments([['raw', 'unlinked'], ['cooked', 'unlinked']]));
     expect(groups).toHaveLength(2);
-    expect(groups.map((group) => [group.normalizedName, group.note])).toEqual([['rice', ''], ['rice', 'cooked']]);
+    expect(groups.map((group) => [group.normalizedName, group.note, group.prepNote])).toEqual([['rice', '', ''], ['rice', 'cooked', 'cooked']]);
+  });
+
+  it('groups the same name and preparation when only the household measure differs', () => {
+    const recipe = makeRecipe(
+      ingredient('cup', 'Rice', 'unlinked', null, { equivalent: '1 cup', prepNote: 'cooked' }),
+      ingredient('tbsp', 'rice', 'unlinked', null, { equivalent: '2 tbsp', prepNote: 'cooked' }),
+    );
+    const groups = selectIntakeGroups(recipe, assessments([['cup', 'unlinked'], ['tbsp', 'unlinked']]));
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({
+      key: 'cup',
+      ingredientIds: ['cup', 'tbsp'],
+      note: '1 cup; cooked',
+      prepNote: 'cooked',
+    });
   });
 
   it('groups notes that differ only by case and whitespace', () => {
@@ -63,14 +78,14 @@ describe('nutrition intake review eligibility and grouping', () => {
     );
     const groups = selectIntakeGroups(recipe, assessments([['first', 'unlinked'], ['second', 'unlinked']]));
     expect(groups).toHaveLength(1);
-    expect(groups[0]).toMatchObject({ ingredientIds: ['first', 'second'], note: 'COOKED rice' });
+    expect(groups[0]).toMatchObject({ ingredientIds: ['first', 'second'], note: 'COOKED rice', prepNote: 'COOKED rice' });
   });
 });
 
 describe('nutrition intake row matching and defaults', () => {
   const groups: IntakeGroup[] = [
-    { key: 'a', displayName: 'Butter', normalizedName: 'butter', ingredientIds: ['a', 'a2'], note: '' },
-    { key: 'b', displayName: 'Olive Oil', normalizedName: 'olive oil', ingredientIds: ['b'], note: '' },
+    { key: 'a', displayName: 'Butter', normalizedName: 'butter', ingredientIds: ['a', 'a2'], note: '', prepNote: '' },
+    { key: 'b', displayName: 'Olive Oil', normalizedName: 'olive oil', ingredientIds: ['b'], note: '', prepNote: '' },
   ];
 
   it('matches representative and member IDs, then normalized names, and rejects unknown targets', () => {
@@ -82,8 +97,8 @@ describe('nutrition intake row matching and defaults', () => {
 
   it('returns no name match when multiple preparation groups share a normalized name', () => {
     const sameNameDifferentPrep: IntakeGroup[] = [
-      { key: 'raw', displayName: 'Rice', normalizedName: 'rice', ingredientIds: ['raw'], note: '' },
-      { key: 'cooked', displayName: 'Rice', normalizedName: 'rice', ingredientIds: ['cooked'], note: 'cooked' },
+      { key: 'raw', displayName: 'Rice', normalizedName: 'rice', ingredientIds: ['raw'], note: '', prepNote: '' },
+      { key: 'cooked', displayName: 'Rice', normalizedName: 'rice', ingredientIds: ['cooked'], note: 'cooked', prepNote: 'cooked' },
     ];
     expect(resolveTarget(parsedItem(0, 'unknown', 'Rice'), sameNameDifferentPrep)).toEqual({ targetKey: null, matchedBy: null });
     expect(resolveTarget(parsedItem(0, 'cooked', 'Rice'), sameNameDifferentPrep)).toEqual({ targetKey: 'cooked', matchedBy: 'id' });
@@ -131,7 +146,7 @@ describe('nutrition intake row matching and defaults', () => {
 });
 
 describe('nutrition intake collisions and link-existing validation', () => {
-  const group: IntakeGroup = { key: 'a', displayName: 'Olive Oil', normalizedName: 'olive oil', ingredientIds: ['a'], note: '' };
+  const group: IntakeGroup = { key: 'a', displayName: 'Olive Oil', normalizedName: 'olive oil', ingredientIds: ['a'], note: '', prepNote: '' };
   const groups = [group];
 
   it('detects an existing ID collision and offers link-existing while defaulting to skip', () => {
@@ -176,7 +191,7 @@ describe('nutrition intake collisions and link-existing validation', () => {
 });
 
 describe('nutrition intake commit plan', () => {
-  const groups: IntakeGroup[] = [{ key: 'a', displayName: 'Butter', normalizedName: 'butter', ingredientIds: ['a', 'a2'], note: '' }];
+  const groups: IntakeGroup[] = [{ key: 'a', displayName: 'Butter', normalizedName: 'butter', ingredientIds: ['a', 'a2'], note: '', prepNote: '' }];
 
   it('blocks committing when all rows are skipped or any create row is blocked', () => {
     const skipped = row(parsedItem(0, 'a'), 'a', { decision: 'skip' });
@@ -264,20 +279,51 @@ describe('nutrition intake commit plan', () => {
     expect(collectGuardFoodIds(plan, recipe)).toEqual([]);
   });
 
-  it('collects unique link targets and fingerprints their refreshed food data', () => {
-    const existing = food('existing', 'Existing');
+  it('collects unique link targets with name and revision, keeping the first food for an id', () => {
+    const existing = food('existing', 'Existing Olive-Oil');
+    const duplicate = { ...food('existing', 'Renamed later'), lastUpdated: '2026-02-02T00:00:00.000Z' };
+    const undated = { ...food('other', 'Plain Rice'), lastUpdated: null };
     const plan = {
       creates: [],
       links: [
         { food: existing, gramsPerUnit: 100, ingredients: [] },
-        { food: existing, gramsPerUnit: 50, ingredients: [] },
+        { food: duplicate, gramsPerUnit: 50, ingredients: [] },
+        { food: undated, gramsPerUnit: 100, ingredients: [] },
       ],
       skipped: 0,
     } satisfies IntakeCommitPlan;
 
     expect(collectLinkTargets(plan)).toEqual([
-      { id: 'existing', fingerprint: fingerprintTrackerFood(existing) },
+      {
+        id: 'existing',
+        fingerprint: fingerprintTrackerFood(existing),
+        normalizedName: 'existing olive oil',
+        lastUpdated: '2025-01-01T00:00:00.000Z',
+      },
+      {
+        id: 'other',
+        fingerprint: fingerprintTrackerFood(undated),
+        normalizedName: 'plain rice',
+        lastUpdated: null,
+      },
     ]);
+  });
+
+  it('treats a link target as changed when it is unreadable, renamed, nutritionally different, or revised', () => {
+    const original = food('olive_oil', 'Olive Oil');
+    const [expected] = collectLinkTargets({
+      creates: [],
+      links: [{ food: original, gramsPerUnit: 100, ingredients: [] }],
+      skipped: 0,
+    });
+    const renamedCase = { ...original, name: '  olive   oil ' };
+    expect(linkTargetChanged(renamedCase, expected)).toBe(false);
+    expect(linkTargetChanged({ ...original, name: 'olive-oil' }, expected)).toBe(false);
+    expect(linkTargetChanged(null, expected)).toBe(true);
+    expect(linkTargetChanged({ ...original, name: 'Olive Oil, unsalted' }, expected)).toBe(true);
+    expect(linkTargetChanged({ ...original, nutrients: { ...original.nutrients, calories: 50 } }, expected)).toBe(true);
+    expect(linkTargetChanged({ ...original, lastUpdated: '2026-01-01T00:00:00.000Z' }, expected)).toBe(true);
+    expect(linkTargetChanged({ ...original, lastUpdated: null }, expected)).toBe(true);
   });
 
   it('deduplicates guard IDs in plan order and ignores missing ingredients', () => {

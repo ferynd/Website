@@ -14,7 +14,7 @@ const parseItem = (value: unknown) => {
 };
 
 describe('nutrition intake prompt', () => {
-  const group = { key: 'ing-1', displayName: 'Butter', normalizedName: 'butter', ingredientIds: ['ing-1'], note: '1 cup; softened' };
+  const group = { key: 'ing-1', displayName: 'Butter', normalizedName: 'butter', ingredientIds: ['ing-1'], note: '1 cup; softened', prepNote: 'softened' };
 
   it('includes all 24 nutrient keys in the JSON shape', () => {
     const prompt = buildNutritionPrompt('Cake', [group]);
