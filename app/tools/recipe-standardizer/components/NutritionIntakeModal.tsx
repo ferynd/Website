@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
-import { buildNutritionPrompt, NUTRIENT_INTAKE_SPEC, parseNutritionJson } from '../lib/nutritionIntake';
+import { buildNutritionPrompt, MAX_INTAKE_ITEMS, NUTRIENT_INTAKE_SPEC, parseNutritionJson } from '../lib/nutritionIntake';
 import {
   buildIntakeCommitPlan,
   canCommitIntake,
@@ -51,6 +51,8 @@ interface PromptStepProps {
   foods: FoodsState;
   groups: IntakeGroup[];
   prompt: string;
+  offset: number;
+  total: number;
   remaining: number;
   raw: string;
   errors: string[];
@@ -60,6 +62,8 @@ interface PromptStepProps {
   onRetryFoods: () => void;
   onCopyPrompt: () => void;
   onReview: () => void;
+  onNextBatch: () => void;
+  onPreviousBatch: () => void;
 }
 
 interface ReviewRowCardProps {
@@ -67,6 +71,7 @@ interface ReviewRowCardProps {
   evaluation: RowEvaluation;
   index: number;
   groups: IntakeGroup[];
+  disabled: boolean;
   onChange: (index: number, update: (row: IntakeRow) => IntakeRow) => void;
 }
 
@@ -88,6 +93,8 @@ function PromptStep({
   foods,
   groups,
   prompt,
+  offset,
+  total,
   remaining,
   raw,
   errors,
@@ -97,6 +104,8 @@ function PromptStep({
   onRetryFoods,
   onCopyPrompt,
   onReview,
+  onNextBatch,
+  onPreviousBatch,
 }: PromptStepProps) {
   return (
     <>
@@ -123,11 +132,18 @@ function PromptStep({
 
       {foods.status === 'ready' && groups.length > 0 && (
         <div className="space-y-3">
-          {remaining > 0 && (
+          <div className="flex flex-wrap items-center gap-2">
             <p className="text-sm text-warning">
-              This prompt covers the first 100 ingredients. After creating these foods, open this again for the remaining {remaining}.
+              This prompt covers ingredients {offset + 1}–{offset + groups.length} of {total}.
+              {remaining > 0 && ` Use Next batch for the remaining ${remaining}.`}
             </p>
-          )}
+            {offset > 0 && (
+              <Button variant="secondary" onClick={onPreviousBatch}>Previous batch</Button>
+            )}
+            {remaining > 0 && (
+              <Button variant="secondary" onClick={onNextBatch}>Next batch</Button>
+            )}
+          </div>
           <p className="text-sm text-text-2">
             {groups.length} ingredient(s) without a Nutrition Tracker food:
           </p>
@@ -179,7 +195,7 @@ function PromptStep({
 }
 
 /** Render one editable nutrition row in the review step. */
-function ReviewRowCard({ row, evaluation, index, groups, onChange }: ReviewRowCardProps) {
+function ReviewRowCard({ row, evaluation, index, groups, disabled, onChange }: ReviewRowCardProps) {
   const change = (update: (current: IntakeRow) => IntakeRow) => onChange(index, update);
 
   return (
@@ -195,6 +211,7 @@ function ReviewRowCard({ row, evaluation, index, groups, onChange }: ReviewRowCa
       <label className="block text-sm text-text-2">
         Ingredient
         <select
+          disabled={disabled}
           value={row.targetKey ?? ''}
           onChange={(event) => change((current) => reassignRow(
             current,
@@ -244,7 +261,7 @@ function ReviewRowCard({ row, evaluation, index, groups, onChange }: ReviewRowCa
         <Button
           size="sm"
           variant={row.decision === 'create' ? 'primary' : 'secondary'}
-          disabled={row.item.errors.length > 0 || !row.targetKey}
+          disabled={disabled || row.item.errors.length > 0 || !row.targetKey}
           onClick={() => change((current) => ({ ...current, decision: 'create' }))}
         >
           <PackagePlus size={14} /> Create food
@@ -253,6 +270,7 @@ function ReviewRowCard({ row, evaluation, index, groups, onChange }: ReviewRowCa
           <Button
             size="sm"
             variant={row.decision === 'link-existing' ? 'primary' : 'secondary'}
+            disabled={disabled}
             onClick={() => change((current) => ({ ...current, decision: 'link-existing' }))}
           >
             <Link2 size={14} /> Link existing
@@ -261,6 +279,7 @@ function ReviewRowCard({ row, evaluation, index, groups, onChange }: ReviewRowCa
         <Button
           size="sm"
           variant={row.decision === 'skip' ? 'primary' : 'ghost'}
+          disabled={disabled}
           onClick={() => change((current) => ({ ...current, decision: 'skip' }))}
         >
           <SkipForward size={14} /> Skip
@@ -278,6 +297,7 @@ function ReviewRowCard({ row, evaluation, index, groups, onChange }: ReviewRowCa
               nameEdited: true,
             }))}
             error={evaluation.nameError ?? undefined}
+            disabled={disabled}
           />
           <p className="text-xs text-text-3">ID: {evaluation.slug ?? '—'}</p>
           {evaluation.baseBlockers.map((blocker, blockerIndex) => (
@@ -310,11 +330,13 @@ function ReviewRowCard({ row, evaluation, index, groups, onChange }: ReviewRowCa
             type="number"
             min={0}
             value={row.linkGrams}
+            disabled={disabled}
             onChange={(event) => change((current) => ({ ...current, linkGrams: event.target.value }))}
           />
           <Button
             size="sm"
             variant="ghost"
+            disabled={disabled}
             onClick={() => change((current) => ({ ...current, linkGrams: '100' }))}
           >
             Per 100 g
@@ -336,9 +358,9 @@ function ReviewFooter({ rows, evaluations, committing, onClose, onCommit }: Revi
         Skip {rows.filter((row) => row.decision === 'skip').length}
       </span>
       <div className="flex gap-2">
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="ghost" disabled={committing} onClick={onClose}>Cancel</Button>
         <Button
-          disabled={!canCommitIntake(rows, evaluations)}
+          disabled={committing || !canCommitIntake(rows, evaluations)}
           loading={committing}
           onClick={onCommit}
         >
@@ -380,7 +402,11 @@ export default function NutritionIntakeModal({
     () => selectIntakeGroups(recipe, linkAssessments),
     [recipe, linkAssessments],
   );
-  const { batch, remaining } = useMemo(() => limitIntakeGroups(selectedGroups), [selectedGroups]);
+  const [batchOffset, setBatchOffset] = useState(0);
+  const { batch, remaining, offset } = useMemo(
+    () => limitIntakeGroups(selectedGroups, batchOffset),
+    [selectedGroups, batchOffset],
+  );
   const [step, setStep] = useState<'prompt' | 'review' | 'done'>('prompt');
   const [raw, setRaw] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -465,6 +491,16 @@ export default function NutritionIntakeModal({
     )));
   };
 
+  const changeBatch = (nextOffset: number) => {
+    setBatchOffset(nextOffset);
+    setRaw('');
+    setErrors([]);
+    setWarnings([]);
+    setRows([]);
+    setBanner('');
+    setStep('prompt');
+  };
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -477,14 +513,16 @@ export default function NutritionIntakeModal({
           <h2 id="nutrition-intake-title" className="text-lg font-semibold text-text">
             Create Nutrition Tracker foods
           </h2>
-          <Button variant="ghost" onClick={close}>Close</Button>
+          <Button variant="ghost" disabled={committing} onClick={close}>Close</Button>
         </div>
 
         {step === 'prompt' && (
-        <PromptStep
+          <PromptStep
             foods={foods}
             groups={batch}
             prompt={prompt}
+            offset={offset}
+            total={selectedGroups.length}
             remaining={remaining}
             raw={raw}
             errors={errors}
@@ -494,13 +532,15 @@ export default function NutritionIntakeModal({
             onRetryFoods={onRetryFoods}
             onCopyPrompt={copyPrompt}
             onReview={review}
+            onNextBatch={() => changeBatch(offset + MAX_INTAKE_ITEMS)}
+            onPreviousBatch={() => changeBatch(Math.max(0, offset - MAX_INTAKE_ITEMS))}
           />
         )}
 
         {step === 'review' && (
           <>
             <div className="flex justify-between">
-              <Button variant="ghost" onClick={() => setStep('prompt')}>Back to prompt</Button>
+              <Button variant="ghost" disabled={committing} onClick={() => setStep('prompt')}>Back to prompt</Button>
             </div>
             {warnings.length > 0 && (
               <div className="rounded bg-warning/10 p-3 text-sm text-warning">
@@ -512,18 +552,21 @@ export default function NutritionIntakeModal({
                 <TriangleAlert size={16} />{banner}
               </p>
             )}
-            <div className="space-y-3">
-              {rows.map((row, index) => (
-                <ReviewRowCard
-                  key={row.rowId}
-                  row={row}
-                  evaluation={evaluations[index]}
-                  index={index}
-                  groups={batch}
-                  onChange={updateRow}
-                />
-              ))}
-            </div>
+            <fieldset disabled={committing} className="min-w-0 border-0 p-0">
+              <div className="space-y-3">
+                {rows.map((row, index) => (
+                  <ReviewRowCard
+                    key={row.rowId}
+                    row={row}
+                    evaluation={evaluations[index]}
+                    index={index}
+                    groups={batch}
+                    disabled={committing}
+                    onChange={updateRow}
+                  />
+                ))}
+              </div>
+            </fieldset>
             <ReviewFooter
               rows={rows}
               evaluations={evaluations}

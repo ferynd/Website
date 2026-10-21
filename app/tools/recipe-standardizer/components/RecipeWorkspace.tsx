@@ -36,7 +36,7 @@ import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
 import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
-import { applyIntakeLinks, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
+import { applyIntakeLinks, findNoLongerEligible, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
 import { buildTrackerFoodDoc, FoodIdCollisionError, parseTrackerFood } from '../lib/trackerFoods';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
@@ -347,6 +347,14 @@ export default function RecipeWorkspace() {
       return { status: 'error', message: 'The open recipe changed — nothing was written.' };
     }
     const refreshed = refreshPlanLinkTargets(plan, fresh);
+    const currentRecipe = draftRef.current;
+    if (!currentRecipe) return { status: 'error', message: 'No recipe open.' };
+    if (findNoLongerEligible(refreshed.plan, currentRecipe, fresh).length) {
+      return {
+        status: 'error',
+        message: 'Some ingredients were linked to a Nutrition Tracker food while you were reviewing — nothing was written. Close and reopen this dialog to review again.',
+      };
+    }
     if (refreshed.missingIds.length) {
       return {
         status: 'error',

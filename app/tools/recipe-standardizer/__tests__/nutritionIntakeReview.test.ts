@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { assessNutritionLink, confirmNutritionLink, type LinkAssessment, type LinkReviewState } from '../lib/nutritionLink';
 import {
   applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, defaultFoodName, evaluateIntakeRows,
-  findPlanCollisions, initialIntakeRows, limitIntakeGroups, refreshPlanLinkTargets, reassignRow, resolveTarget, selectIntakeGroups,
+  findNoLongerEligible, findPlanCollisions, initialIntakeRows, limitIntakeGroups, refreshPlanLinkTargets, reassignRow, resolveTarget, selectIntakeGroups,
   type IntakeCommitPlan,
   type IntakeRow,
 } from '../lib/nutritionIntakeReview';
@@ -163,8 +163,42 @@ describe('nutrition intake commit plan', () => {
 
   it('limits prompt groups to the parser batch size and reports the remainder', () => {
     const many = Array.from({ length: 101 }, (_, index) => ({ ...groups[0], key: `g${index}` }));
-    expect(limitIntakeGroups(many)).toEqual({ batch: many.slice(0, 100), remaining: 1 });
-    expect(limitIntakeGroups(groups)).toEqual({ batch: groups, remaining: 0 });
+    expect(limitIntakeGroups(many)).toEqual({ batch: many.slice(0, 100), remaining: 1, offset: 0 });
+    expect(limitIntakeGroups(groups)).toEqual({ batch: groups, remaining: 0, offset: 0 });
+  });
+
+  it('returns a later prompt batch and clamps offsets beyond the end', () => {
+    const many = Array.from({ length: 205 }, (_, index) => ({ ...groups[0], key: `g${index}` }));
+    expect(limitIntakeGroups(many, 100)).toMatchObject({ batch: many.slice(100, 200), remaining: 5, offset: 100 });
+    expect(limitIntakeGroups(many, 300)).toMatchObject({ batch: [], remaining: 0, offset: 205 });
+  });
+
+  it('revalidates planned ingredient eligibility against refreshed foods', () => {
+    const recipe = makeRecipe(
+      ingredient('reappeared', 'Butter', 'candidate', 'returned-food'),
+      ingredient('still-missing', 'Bread', 'candidate', 'missing-food'),
+      ingredient('unlinked', 'Oil'),
+    );
+    const plan = {
+      creates: [{
+        foodId: 'new-food',
+        name: 'New food',
+        nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])) as IntakeCommitPlan['creates'][number]['nutrients'],
+        ingredients: ['reappeared', 'unlinked'].map((ingredientId) => ({
+          ingredientId,
+          status: ingredientId === 'unlinked' ? 'unlinked' as const : 'candidate' as const,
+          foodItemId: ingredientId === 'reappeared' ? 'returned-food' : null,
+        })),
+      }],
+      links: [{
+        food: food('existing-food', 'Existing'),
+        gramsPerUnit: 100,
+        ingredients: [{ ingredientId: 'still-missing', status: 'candidate', foodItemId: 'missing-food' }],
+      }],
+      skipped: 0,
+    } satisfies IntakeCommitPlan;
+
+    expect(findNoLongerEligible(plan, recipe, [food('returned-food', 'Butter')])).toEqual(['reappeared']);
   });
 
   it('refreshes link-existing snapshots by ID and reports missing targets without changing creates', () => {

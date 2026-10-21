@@ -1,6 +1,6 @@
 /* Nutrition intake row matching, review, and commit planning. */
 
-import { isValidGramsPerUnit, type LinkAssessment, type LinkReviewState } from './nutritionLink';
+import { assessNutritionLink, isValidGramsPerUnit, type LinkAssessment, type LinkReviewState } from './nutritionLink';
 import { normalizeIngredientName } from './shoppingList';
 import { MAX_INTAKE_ITEMS, type IntakeGroup, type ParsedNutritionItem } from './nutritionIntake';
 import {
@@ -71,10 +71,18 @@ export interface IntakeCommitPlan {
 }
 
 /** Keep one prompt/review batch within the parser's supported item limit. */
-export const limitIntakeGroups = (groups: IntakeGroup[]): { batch: IntakeGroup[]; remaining: number } => ({
-  batch: groups.slice(0, MAX_INTAKE_ITEMS),
-  remaining: Math.max(0, groups.length - MAX_INTAKE_ITEMS),
-});
+export const limitIntakeGroups = (
+  groups: IntakeGroup[],
+  offset = 0,
+): { batch: IntakeGroup[]; remaining: number; offset: number } => {
+  const start = Math.min(groups.length, Math.max(0, Math.floor(offset)));
+  const batch = groups.slice(start, start + MAX_INTAKE_ITEMS);
+  return {
+    batch,
+    remaining: Math.max(0, groups.length - (start + batch.length)),
+    offset: start,
+  };
+};
 
 /** Replace link-existing snapshots with the latest loaded foods before commit. */
 export const refreshPlanLinkTargets = (
@@ -95,6 +103,26 @@ export const refreshPlanLinkTargets = (
     },
     missingIds,
   };
+};
+
+/** Find planned ingredient links that are no longer eligible with the refreshed foods. */
+export const findNoLongerEligible = (
+  plan: IntakeCommitPlan,
+  recipe: Recipe,
+  fresh: TrackerFood[],
+): string[] => {
+  const foodsById = new Map(fresh.map((food) => [food.id, food]));
+  const ineligible = new Set<string>();
+  const members = [...plan.creates, ...plan.links].flatMap((operation) => operation.ingredients);
+
+  for (const member of members) {
+    const ingredient = recipe.ingredients.find((item) => item.id === member.ingredientId);
+    if (!ingredient) continue;
+    const assessment = assessNutritionLink(ingredient.nutritionLink, foodsById);
+    if (!INTAKE_ELIGIBLE_STATES.has(assessment.state)) ineligible.add(ingredient.id);
+  }
+
+  return [...ineligible];
 };
 
 /** Result returned after a nutrition intake commit attempt. */
