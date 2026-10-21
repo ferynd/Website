@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assessNutritionLink, confirmNutritionLink, type LinkAssessment, type LinkReviewState } from '../lib/nutritionLink';
 import {
-  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, defaultFoodName, evaluateIntakeRows,
+  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, collectGuardFoodIds, defaultFoodName, evaluateIntakeRows,
   findNoLongerEligible, findPlanCollisions, initialIntakeRows, limitIntakeGroups, refreshPlanLinkTargets, reassignRow, resolveTarget, selectIntakeGroups,
   type IntakeCommitPlan,
   type IntakeRow,
@@ -199,6 +199,36 @@ describe('nutrition intake commit plan', () => {
     } satisfies IntakeCommitPlan;
 
     expect(findNoLongerEligible(plan, recipe, [food('returned-food', 'Butter')])).toEqual(['reappeared']);
+  });
+
+  it('guards missing candidate targets from reappearing during commit', () => {
+    const recipe = makeRecipe(ingredient('candidate', 'Butter', 'candidate', 'old-food'));
+    const plan = {
+      creates: [{ foodId: 'new-food', name: 'New food', nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])) as IntakeCommitPlan['creates'][number]['nutrients'], ingredients: [{ ingredientId: 'candidate', status: 'candidate', foodItemId: 'old-food' }] }],
+      links: [],
+      skipped: 0,
+    } satisfies IntakeCommitPlan;
+    expect(collectGuardFoodIds(plan, recipe)).toEqual(['old-food']);
+  });
+
+  it('does not guard an unlinked member', () => {
+    const recipe = makeRecipe(ingredient('unlinked', 'Butter'));
+    const plan = {
+      creates: [{ foodId: 'new-food', name: 'New food', nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])) as IntakeCommitPlan['creates'][number]['nutrients'], ingredients: [{ ingredientId: 'unlinked', status: 'unlinked', foodItemId: null }] }],
+      links: [],
+      skipped: 0,
+    } satisfies IntakeCommitPlan;
+    expect(collectGuardFoodIds(plan, recipe)).toEqual([]);
+  });
+
+  it('deduplicates guard IDs in plan order and ignores missing ingredients', () => {
+    const recipe = makeRecipe(ingredient('first', 'Butter', 'candidate', 'old-food'), ingredient('second', 'Bread', 'confirmed', 'old-food'));
+    const plan = {
+      creates: [{ foodId: 'new-food', name: 'New food', nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])) as IntakeCommitPlan['creates'][number]['nutrients'], ingredients: [{ ingredientId: 'first', status: 'candidate', foodItemId: 'old-food' }, { ingredientId: 'gone', status: 'candidate', foodItemId: 'gone-food' }] }],
+      links: [{ food: food('existing', 'Existing'), gramsPerUnit: 100, ingredients: [{ ingredientId: 'second', status: 'confirmed', foodItemId: 'old-food' }] }],
+      skipped: 0,
+    } satisfies IntakeCommitPlan;
+    expect(collectGuardFoodIds(plan, recipe)).toEqual(['old-food']);
   });
 
   it('refreshes link-existing snapshots by ID and reports missing targets without changing creates', () => {

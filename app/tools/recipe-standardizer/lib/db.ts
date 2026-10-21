@@ -43,7 +43,7 @@ import {
 import { db } from './firebase';
 import { parseRecipeJson, type ParseResult } from './schema';
 import type { Recipe, SavedRecipeMeta } from './types';
-import { FoodIdCollisionError, parseTrackerFood, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
+import { FoodIdCollisionError, FoodTargetReappearedError, parseTrackerFood, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
 import { MAX_INTAKE_ITEMS } from './nutritionIntake';
 
 const recipesCol = (uid: string): CollectionReference =>
@@ -123,16 +123,24 @@ export const fetchFoodItems = async (uid: string): Promise<TrackerFood[]> => {
 };
 
 /** Create new tracker foods atomically; never overwrites. */
-export const createFoodItemsIfAbsent = async (uid: string, docs: { id: string; data: TrackerFoodDoc }[]): Promise<void> => {
-  if (!docs.length) return;
-  if (docs.length > MAX_INTAKE_ITEMS) throw new Error(`At most ${MAX_INTAKE_ITEMS} foods can be created at once.`);
+export const createFoodItemsIfAbsent = async (uid: string, docs: { id: string; data: TrackerFoodDoc }[], guardIds: string[] = []): Promise<void> => {
   const ids = docs.map((d) => d.id);
+  const idSet = new Set(ids);
+  const uniqueGuardIds = [...new Set(guardIds.filter((id) => id && !idSet.has(id)))];
+  if (!docs.length && !uniqueGuardIds.length) return;
+  if (docs.length > MAX_INTAKE_ITEMS) throw new Error(`At most ${MAX_INTAKE_ITEMS} foods can be created at once.`);
   if (new Set(ids).size !== ids.length) throw new Error('Duplicate food ids in one batch.');
   await runTransaction(db, async (tx) => {
     const refs = docs.map((d) => doc(foodItemsCol(uid), d.id));
-    const snaps = await Promise.all(refs.map((ref) => tx.get(ref)));
+    const guardRefs = uniqueGuardIds.map((id) => doc(foodItemsCol(uid), id));
+    const [snaps, guardSnaps] = await Promise.all([
+      Promise.all(refs.map((ref) => tx.get(ref))),
+      Promise.all(guardRefs.map((ref) => tx.get(ref))),
+    ]);
     const existing = snaps.filter((snap) => snap.exists()).map((snap) => snap.id);
     if (existing.length) throw new FoodIdCollisionError(existing);
+    const reappeared = guardSnaps.filter((snap) => snap.exists()).map((snap) => snap.id);
+    if (reappeared.length) throw new FoodTargetReappearedError(reappeared);
     refs.forEach((ref, i) => tx.set(ref, docs[i].data));
   });
 };

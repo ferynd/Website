@@ -70,6 +70,23 @@ export interface IntakeCommitPlan {
   skipped: number;
 }
 
+/** Collect current missing target IDs that must stay absent through intake commit. */
+export const collectGuardFoodIds = (plan: IntakeCommitPlan, recipe: Recipe): string[] => {
+  const guarded = new Set<string>();
+  const members = [...plan.creates, ...plan.links].flatMap((operation) => operation.ingredients);
+
+  for (const member of members) {
+    const ingredient = recipe.ingredients.find((item) => item.id === member.ingredientId);
+    if (!ingredient) continue;
+    const { foodItemId, status } = ingredient.nutritionLink;
+    if (typeof foodItemId === 'string' && foodItemId && (status === 'candidate' || status === 'confirmed')) {
+      guarded.add(foodItemId);
+    }
+  }
+
+  return [...guarded];
+};
+
 /** Keep one prompt/review batch within the parser's supported item limit. */
 export const limitIntakeGroups = (
   groups: IntakeGroup[],

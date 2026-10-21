@@ -36,8 +36,8 @@ import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
 import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
-import { applyIntakeLinks, findNoLongerEligible, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
-import { buildTrackerFoodDoc, FoodIdCollisionError, parseTrackerFood } from '../lib/trackerFoods';
+import { applyIntakeLinks, collectGuardFoodIds, findNoLongerEligible, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
+import { buildTrackerFoodDoc, FoodIdCollisionError, FoodTargetReappearedError, parseTrackerFood } from '../lib/trackerFoods';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
 import {
@@ -362,6 +362,7 @@ export default function RecipeWorkspace() {
       };
     }
     const currentPlan = refreshed.plan;
+    const guardIds = collectGuardFoodIds(currentPlan, currentRecipe);
     const collisions = findPlanCollisions(currentPlan, fresh);
     if (collisions.length) {
       return { status: 'conflict', foodIds: collisions, unreadableIds: [] };
@@ -372,8 +373,15 @@ export default function RecipeWorkspace() {
       data: buildTrackerFoodDoc(create.name, create.nutrients, nowIso),
     }));
     try {
-      await createFoodItems(docs);
+      await createFoodItems(docs, guardIds);
     } catch (err) {
+      if (err instanceof FoodTargetReappearedError) {
+        void refreshFoods();
+        return {
+          status: 'error',
+          message: 'A Nutrition Tracker food this review replaces was restored meanwhile — nothing was written. Close and reopen this dialog to review again.',
+        };
+      }
       if (err instanceof FoodIdCollisionError) {
         void refreshFoods();
         return {

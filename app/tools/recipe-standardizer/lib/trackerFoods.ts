@@ -49,6 +49,11 @@ export class FoodIdCollisionError extends Error {
   constructor(readonly foodIds: string[]) { super(`Nutrition Tracker food ID(s) already exist: ${foodIds.join(', ')}`); this.name = 'FoodIdCollisionError'; }
 }
 
+/** Error raised when a tracker food being replaced by intake reappears before commit. */
+export class FoodTargetReappearedError extends Error {
+  constructor(readonly foodIds: string[]) { super(`Nutrition Tracker replacement target(s) reappeared: ${foodIds.join(', ')}`); this.name = 'FoodTargetReappearedError'; }
+}
+
 /** Parsed tracker food with nullable values for incomplete source data. */
 export interface TrackerFood extends FoodItemRef {
   quantity: number | null;

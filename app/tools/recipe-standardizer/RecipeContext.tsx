@@ -48,7 +48,7 @@ interface RecipeContextValue {
   update: (recipeId: string, recipe: Recipe) => Promise<void>;
   remove: (recipeId: string) => Promise<void>;
   loadFoodItems: () => Promise<TrackerFood[]>;
-  createFoodItems: (docs: { id: string; data: TrackerFoodDoc }[]) => Promise<void>;
+  createFoodItems: (docs: { id: string; data: TrackerFoodDoc }[], guardIds?: string[]) => Promise<void>;
 }
 
 const RecipeContext = createContext<RecipeContextValue | undefined>(undefined);
@@ -101,7 +101,7 @@ export function RecipeProvider({ children }: { children: ReactNode }) {
     update: useCallback((recipeId: string, recipe: Recipe) => updateRecipe(requireUid(), recipeId, recipe), [requireUid]),
     remove: useCallback((recipeId: string) => deleteRecipe(requireUid(), recipeId), [requireUid]),
     loadFoodItems: useCallback(() => fetchFoodItems(requireUid()), [requireUid]),
-    createFoodItems: useCallback((docs: { id: string; data: TrackerFoodDoc }[]) => createFoodItemsIfAbsent(requireUid(), docs), [requireUid]),
+    createFoodItems: useCallback((docs: { id: string; data: TrackerFoodDoc }[], guardIds: string[] = []) => createFoodItemsIfAbsent(requireUid(), docs, guardIds), [requireUid]),
   };
 
   return <RecipeContext.Provider value={value}>{children}</RecipeContext.Provider>;
