@@ -38,6 +38,7 @@ import {
   exportAction,
   exportTargetChangedSinceReview,
   findExportCollision,
+  primaryExportTarget,
   roundExportValue,
   selectExportBasis,
   selectMissingExportBasis,
@@ -439,6 +440,22 @@ describe('nutritionExport', () => {
       'recipe-1',
     );
     expect(selectMissingExportBasis(statuses, choice)).toBe('per100gCooked');
+    expect(primaryExportTarget(statuses, choice)).toBe('per100gCooked');
+  });
+
+  it('primaryExportTarget opens the chooser when neither basis is already own', () => {
+    const recipe = butterCookiesRecipe();
+    const foods = sourceFoodsReady();
+    const result = calculateExportNutrition(recipe, foods);
+    const choice = selectExportBasis(recipe, result, 'recipe-1');
+    const statuses = [
+      statusFor(recipe, 'perPortion', payloadFor(recipe, 'perPortion')),
+      statusFor(recipe, 'per100gCooked', payloadFor(recipe, 'per100gCooked')),
+    ];
+    expect(choice.options.perPortion.ok).toBe(true);
+    expect(choice.options.per100gCooked.ok).toBe(true);
+    expect(statuses.every((status) => status.ownership !== 'own')).toBe(true);
+    expect(primaryExportTarget(statuses, choice)).toBe('choose');
   });
 
   it('selectExportBasis falls back to per100gCooked when portion data is missing', () => {
@@ -849,6 +866,32 @@ describe('nutritionExport', () => {
     expect(status.target).toBe('modified');
     expect(exportTargetChangedSinceReview(status, reviewedTarget)).toBe(true);
     expect(exportTargetChangedSinceReview(status, trackerFoodLinkTarget(editedAfterReview))).toBe(false);
+  });
+
+  it('overwrite treats a reviewed target with a different food id as a missing target', () => {
+    const recipe = butterCookiesRecipe();
+    const payload = payloadFor(recipe);
+    const own = ownExport(recipe, payload);
+    const edited = { ...own.food, nutrients: { ...own.food.nutrients, calories: 1 } };
+    const status = statusFor(own.recipe, 'perPortion', payload, foodsReady(edited), own.ref);
+    const reviewedTarget = { ...trackerFoodLinkTarget(edited), id: 'different-food' };
+    const input = {
+      recipe: own.recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion' as const,
+      status,
+      payload,
+      sourceTargets: [],
+      chosenName: '',
+      overwriteTrackerEdits: true,
+      reviewedTarget,
+      partialConfirmed: false,
+      nowIso: '2025-01-02T00:00:00.000Z',
+      nowMs: 8,
+    };
+    expect(reviewedTarget.id).not.toBe(status.targetFood?.id);
+    expect(exportTargetChangedSinceReview(status, reviewedTarget)).toBe(true);
+    expect(() => buildExportCommitRequest(input)).toThrow('The exported tracker food is not available.');
   });
 
   it('partial payload without partialConfirmed throws ExportRequestError', () => {

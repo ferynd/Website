@@ -25,7 +25,7 @@ import {
 import {
   buildExportPayload,
   exportAction,
-  selectMissingExportBasis,
+  primaryExportTarget,
   selectExportBasis,
   type ExportStatus,
 } from '../lib/nutritionExport';
@@ -150,7 +150,6 @@ export default function NutritionExportCard({
     (basis) => `nutrition-export-blocked-${basis}`,
   );
   const noBasisAvailable = choice.preferred === null;
-  const missingBasis = selectMissingExportBasis(statuses, choice);
   return (
     <section
       className="space-y-3 rounded-xl border border-border bg-surface-2 p-4"
@@ -184,7 +183,7 @@ export default function NutritionExportCard({
             .filter((id): id is string => id !== null)
             .join(' ') || undefined
         }
-        onClick={() => onOpen(missingBasis ?? 'choose')}
+        onClick={() => onOpen(primaryExportTarget(statuses, choice))}
       >
         {EXPORT_LABEL}
       </Button>

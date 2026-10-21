@@ -272,6 +272,19 @@ export const selectMissingExportBasis = (
     (basis) => statuses.find((status) => status.basis === basis)?.ownership !== 'own' && choice.options[basis].ok,
   ) ?? null;
 
+/**
+ * Basis opened by the primary export button.
+ * Jump to the missing basis only when this recipe already owns another; otherwise show the chooser
+ * so a first export can still reach every exportable basis.
+ */
+export const primaryExportTarget = (
+  statuses: ExportStatus[],
+  choice: ExportBasisChoice,
+): NutritionExportBasisKey | 'choose' => {
+  const missingBasis = selectMissingExportBasis(statuses, choice);
+  return missingBasis !== null && statuses.some((status) => status.ownership === 'own') ? missingBasis : 'choose';
+};
+
 /** Create a capped, capitalized default tracker food name with its basis suffix intact. */
 export const defaultExportFoodName = (recipeName: string, basis: NutritionExportBasisKey): string => {
   const suffix = EXPORT_NAME_SUFFIX[basis];
@@ -438,6 +451,7 @@ export const exportTargetChangedSinceReview = (
 ): boolean =>
   status.targetFood === null ||
   reviewedTarget === null ||
+  reviewedTarget.id !== status.targetFood.id ||
   linkTargetChanged(status.targetFood, reviewedTarget);
 
 /** Assemble the verified create/update request or throw when review invariants fail. */
@@ -485,7 +499,9 @@ export const buildExportCommitRequest = (input: {
     } else {
       if (!input.overwriteTrackerEdits) throw new ExportRequestError(REQUEST_ERROR_COPY.overwrite);
       expectedTarget = input.reviewedTarget;
-      if (expectedTarget === null) throw new ExportRequestError(REQUEST_ERROR_COPY.missingTarget);
+      if (expectedTarget === null || expectedTarget.id !== ref.foodId) {
+        throw new ExportRequestError(REQUEST_ERROR_COPY.missingTarget);
+      }
     }
   }
   if (sourceTargets.some((target) => target.id === foodId)) {

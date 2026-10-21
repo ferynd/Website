@@ -186,6 +186,19 @@ export default function RecipeWorkspace() {
     }
   };
 
+  /** Refresh tracker foods after a conflict without setting status to loading, which replaced the open review. */
+  const reloadFoodsWithoutLoading = async (): Promise<void> => {
+    const request = ++foodsRequestRef.current;
+    const session = recipeSessionRef.current;
+    try {
+      const items = await loadFoodItems();
+      if (request !== foodsRequestRef.current || session !== recipeSessionRef.current) return;
+      setFoods({ status: 'ready', items, error: '' });
+    } catch {
+      /* Keep the conflict outcome visible when the refresh fails. */
+    }
+  };
+
   const dirty = useMemo(
     () => Boolean(draft && (!currentId || JSON.stringify(draft) !== JSON.stringify(baseline))),
     [draft, baseline, currentId],
@@ -545,6 +558,7 @@ export default function RecipeWorkspace() {
       return { status: 'error', message: EXPORT_WORKSPACE_COPY.dirty };
     }
     const readyFoods: FoodsState = { status: 'ready', items: freshFoods, error: '' };
+    foodsRequestRef.current += 1;
     setFoods(readyFoods);
     const freshResult = calculateExportNutrition(latestRecipe, readyFoods);
     const payloadResult = buildExportPayload(latestRecipe, freshResult, input.basis);
@@ -596,6 +610,14 @@ export default function RecipeWorkspace() {
     try {
       await exportFood(request);
     } catch (error) {
+      if (
+        error instanceof FoodIdCollisionError ||
+        error instanceof ExportTargetChangedError ||
+        error instanceof ExportTargetMissingError ||
+        error instanceof FoodLinkTargetChangedError
+      ) {
+        await reloadFoodsWithoutLoading();
+      }
       if (error instanceof FoodIdCollisionError) return { status: 'collision', foodId: request.foodId };
       if (error instanceof ExportTargetChangedError)
         return { status: 'review-changed', message: EXPORT_WORKSPACE_COPY.targetEdited };

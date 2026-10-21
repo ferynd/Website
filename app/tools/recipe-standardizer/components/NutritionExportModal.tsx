@@ -64,6 +64,7 @@ import {
 } from '../lib/nutritionExportFormat';
 import {
   TRACKER_NUTRIENT_KEYS,
+  fingerprintTrackerFood,
   trackerFoodId,
   validateTrackerFoodName,
   type FoodsState,
@@ -347,7 +348,14 @@ export default function NutritionExportModal({
   const status = statuses.find((item) => item.basis === basis) ?? statuses[0];
   const payload = payloadResult.ok ? payloadResult.payload : null;
   const action = exportAction(status, payloadResult);
-  const reviewIdentity = `${basis}:${payload?.fingerprint ?? payloadResult.ok}:${action}`;
+  const targetFingerprint = status.targetFood === null ? '' : fingerprintTrackerFood(status.targetFood);
+  const reviewIdentity = [
+    basis,
+    payload?.fingerprint ?? payloadResult.ok,
+    action,
+    status.targetFood?.lastUpdated ?? '',
+    targetFingerprint,
+  ].join(':');
   const previousReviewIdentity = useRef(reviewIdentity);
 
   useEffect(() => {
@@ -392,8 +400,10 @@ export default function NutritionExportModal({
             onReviewAgain={() => {
               setPartialConfirmed(false);
               setOverwriteConfirmed(false);
-              const ref = status.ownership === 'own' && action === 'recreate' ? status.ref : null;
-              setName(ref?.foodName ?? defaultExportFoodName(recipe.name, basis));
+              if (outcome.status !== 'collision') {
+                const ref = status.ownership === 'own' && action === 'recreate' ? status.ref : null;
+                setName(ref?.foodName ?? defaultExportFoodName(recipe.name, basis));
+              }
               setOutcome(null);
             }}
           />
