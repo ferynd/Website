@@ -1,7 +1,10 @@
+/* Nutrition Tracker food contracts, parsing, and identifiers. */
+
 import type { FoodItemRef } from './types';
 
 /* CONFIGURATION: Nutrition Tracker nutrient keys (mirror of
    public/tools/CalorieTracker/constants.js allNutrients — parity is tested) */
+/** Nutrient fields stored in Nutrition Tracker food documents. */
 export const TRACKER_NUTRIENT_KEYS = [
   'calories', 'protein', 'carbs', 'fat',
   'fiber', 'potassium', 'magnesium', 'sodium', 'calcium', 'choline',
@@ -10,14 +13,50 @@ export const TRACKER_NUTRIENT_KEYS = [
   'selenium', 'iodine', 'phosphorus', 'iron', 'zinc', 'omega3',
 ] as const;
 
+/** One nutrient field supported by the tracker. */
 export type TrackerNutrientKey = (typeof TRACKER_NUTRIENT_KEYS)[number];
 
+/* CONFIGURATION: tracker food naming */
+/** Maximum accepted display-name length for tracker foods. */
+export const TRACKER_FOOD_NAME_MAX = 80;
+/** Convert a tracker food name to its document ID. */
+export const trackerFoodId = (name: string): string => name.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+/** Validate a display name against tracker naming and ID constraints. */
+export const validateTrackerFoodName = (name: string): string | null => {
+  const trimmed = name.trim();
+  if (!trimmed) return 'Enter a food name.';
+  if (trimmed.length > TRACKER_FOOD_NAME_MAX) return 'Food names are limited to 80 characters.';
+  const id = trackerFoodId(trimmed);
+  if (!/[a-z0-9]/.test(id)) return 'The name needs at least one letter or digit (A–Z, 0–9) for its Nutrition Tracker ID.';
+  if (/^__.*__$/.test(id)) return 'This name maps to a reserved Firestore ID — change the leading/trailing symbols.';
+  return null;
+};
+/** Tracker document shape for a newly created food. */
+export type TrackerFoodDoc = { name: string; quantity: 1; lastUpdated: string } & Record<TrackerNutrientKey, number>;
+/** Build a validated tracker food document with quantity fixed at one. */
+export const buildTrackerFoodDoc = (name: string, nutrients: Record<TrackerNutrientKey, number>, nowIso: string): TrackerFoodDoc => {
+  const doc: Record<string, unknown> = { name: name.trim(), quantity: 1 };
+  TRACKER_NUTRIENT_KEYS.forEach((key) => {
+    const value = nutrients[key];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) throw new Error(`Invalid nutrient value for ${key}.`);
+    doc[key] = value;
+  });
+  doc.lastUpdated = nowIso;
+  return doc as TrackerFoodDoc;
+};
+/** Error raised when one or more requested tracker food IDs already exist. */
+export class FoodIdCollisionError extends Error {
+  constructor(readonly foodIds: string[]) { super(`Nutrition Tracker food ID(s) already exist: ${foodIds.join(', ')}`); this.name = 'FoodIdCollisionError'; }
+}
+
+/** Parsed tracker food with nullable values for incomplete source data. */
 export interface TrackerFood extends FoodItemRef {
   quantity: number | null;
   nutrients: Record<TrackerNutrientKey, number | null>;
   lastUpdated: string | null;
 }
 
+/** Current status and contents of a Nutrition Tracker food load. */
 export interface FoodsState {
   status: 'idle' | 'loading' | 'ready' | 'error';
   items: TrackerFood[];
@@ -31,6 +70,7 @@ const readFiniteNumber = (value: unknown): number | null => {
   return Number.isFinite(number) ? number : null;
 };
 
+/** Parse an untrusted tracker document, returning null when its name is invalid. */
 export const parseTrackerFood = (id: string, data: unknown): TrackerFood | null => {
   if (typeof data !== 'object' || data === null || Array.isArray(data)) return null;
   const record = data as Record<string, unknown>;
@@ -56,6 +96,7 @@ export const parseTrackerFood = (id: string, data: unknown): TrackerFood | null 
   };
 };
 
+/** Create a stable fingerprint for the tracker quantity and nutrient values. */
 export const fingerprintTrackerFood = (
   food: Pick<TrackerFood, 'quantity' | 'nutrients'>,
 ): string => {

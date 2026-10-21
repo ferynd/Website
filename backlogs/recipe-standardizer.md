@@ -16,7 +16,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 
 - Recipe data uses `schemaVersion: 2`; v1 loads through a non-mutating compatibility path.
 - Workflow structure includes typed prep groups, named step results, timeline references, chronology/cycle validation, and a site-owned technique glossary.
-- Each ingredient still carries the existing `nutritionLink` candidate shape (`linked|likely|unlinked`, food ID/name/confidence/review flag). Exact normalized names currently become `linked` automatically; P1 must replace inference-as-confirmation.
+- Each ingredient carries a `nutritionLink` with status `unlinked|candidate|confirmed|no-match` (legacy `linked|likely` read as `candidate`), plus `gramsPerUnit` and a target revision fingerprint for confirmed links. Automatic name matches are only candidates; confirmation is explicit via the LinkEditor, and stale (deleted/renamed/revised) targets are derived on load (P1, PR #163).
 - Recipes remain one private Firestore document at `artifacts/recipe-standardizer/users/{uid}/recipes/{recipeId}`.
 - Nutrition Tracker foods remain at `artifacts/default-app-id/users/{uid}/foodItems/{foodId}`. The accidental namespace is a migration concern tracked by AR-08/AR-16.
 
@@ -49,21 +49,10 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
   - Keep this open until the user or automation confirms production/non-production deployment.
   - **Accept:** owner can complete the flow; another UID cannot read/write the recipe; deployment evidence is recorded.
 
-### P1 — Confirmed links and grams basis
-
-- [p] **Add LinkEditor and revision-ready link state.**
-  > pushed — LinkEditor, candidate/confirmed/no-match + derived stale states, gramsPerUnit, full TrackerFood fetch, tests, docs; checks: npm test, lint, tsc, build pass; commit: ae90b0f; PR: #163
-  - Add `gramsPerUnit`, explicit inferred/confirmed/no-match/stale semantics, and additive parsing defaults.
-  - Fetch full food records needed by later phases while retaining a lightweight matching type.
-  - Badge opens a searchable picker with confirm, choose, unlink/no-match, and gram-basis controls.
-  - Automatic matching remains a candidate until explicit confirmation.
-  - Link edits use the existing update/save-as-new guard.
-  - **Findings:** F-097, F-143.
-  - **Accept:** confirmed link+basis survives save/reload; old recipes load; deleted/renamed targets surface for review; tests cover schema and link state.
-
 ### P2 — Paste-back nutrition intake and safe food creation
 
-- [ ] **Generate one external-ChatGPT prompt, parse strict nutrition JSON, review, and create per-100g foods.** Depends: P1.
+- [p] **Generate one external-ChatGPT prompt, parse strict nutrition JSON, review, and create per-100g foods.** Depends: P1.
+  > in progress — nutrition prompt, strict per-100g parser with bounds, review (accept/skip/reassign/rename/link-existing), create-only tracker food transaction, and auto-confirmed 100 g links implemented; awaiting commit, push, and PR
   - Prompt includes all 24 nutrient keys and canonical units; output schema is versioned JSON only.
   - Parser returns exact-path errors, finite numeric validation, and bounded values.
   - Review table supports accept/skip/reassign before writes.

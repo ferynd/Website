@@ -10,18 +10,20 @@ const MODES = [
 ] as const;
 type IngredientMode = (typeof MODES)[number]['key'];
 
-import { useState } from 'react';
-import { AlertTriangle, BadgeCheck, ChevronDown, CircleSlash, Clock, HeartPulse, Link2, MapPin, Pencil, TriangleAlert } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { AlertTriangle, BadgeCheck, ChevronDown, CircleSlash, Clock, HeartPulse, Link2, MapPin, PackagePlus, Pencil, TriangleAlert } from 'lucide-react';
 import Button from '@/components/Button';
 import { formatAmount } from '../lib/display';
 import type { MatchSummary } from '../lib/nutritionMatch';
 import { assessNutritionLink, type LinkAssessment, type LinkReviewSummary } from '../lib/nutritionLink';
 import type { NutritionLink, Recipe, RecipeIngredient } from '../lib/types';
 import type { FoodsState } from '../lib/trackerFoods';
+import { selectIntakeGroups, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
 import { groupIngredientsForDisplay, type NormalizedWorkflow } from '../lib/workflow';
 import ConsolidatedList from './ConsolidatedList';
 import IngredientEditModal from './IngredientEditModal';
 import NutritionLinkEditor from './NutritionLinkEditor';
+import NutritionIntakeModal from './NutritionIntakeModal';
 
 interface IngredientsViewProps {
   recipe: Recipe;
@@ -34,6 +36,7 @@ interface IngredientsViewProps {
   foods: FoodsState;
   onNutritionLinkChange: (id: string, link: NutritionLink) => void;
   onRefreshFoods: () => void;
+  onCommitIntake: (plan: IntakeCommitPlan) => Promise<IntakeCommitOutcome>;
 }
 
 function NutritionBadge({ ingredient, assessment, onOpen }: { ingredient: RecipeIngredient; assessment: LinkAssessment; onOpen: () => void }) {
@@ -80,14 +83,19 @@ function NutritionBadge({ ingredient, assessment, onOpen }: { ingredient: Recipe
  * Checkbox ticks are shared between the two consolidated modes and survive
  * mode switches (view state only — not persisted).
  */
-export default function IngredientsView({ recipe, workflow, factor, onIngredientChange, onRunNutritionMatch, linkAssessments, linkSummary, foods, onNutritionLinkChange, onRefreshFoods }: IngredientsViewProps) {
+export default function IngredientsView({ recipe, workflow, factor, onIngredientChange, onRunNutritionMatch, linkAssessments, linkSummary, foods, onNutritionLinkChange, onRefreshFoods, onCommitIntake }: IngredientsViewProps) {
   const [mode, setMode] = useState<IngredientMode>('workflow');
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<RecipeIngredient | null>(null);
+  const intakeGroupCount = useMemo(
+    () => selectIntakeGroups(recipe, linkAssessments).length,
+    [recipe, linkAssessments],
+  );
   const [linkEditing, setLinkEditing] = useState<RecipeIngredient | null>(null);
   const [matching, setMatching] = useState(false);
   const [matchMessage, setMatchMessage] = useState('');
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   const toggleChecked = (key: string) => {
     setChecked((prev) => {
@@ -201,6 +209,9 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
             <Button size="sm" variant="secondary" onClick={runMatch} loading={matching} className="inline-flex items-center gap-2">
               <HeartPulse size={16} /> Match against Nutrition Tracker foods
             </Button>
+            <Button size="sm" variant="secondary" onClick={() => { setIntakeOpen(true); if (foods.status !== 'ready') onRefreshFoods(); }} className="inline-flex items-center gap-2">
+              <PackagePlus size={16} /> Create foods with ChatGPT{foods.status === 'ready' ? ` (${intakeGroupCount})` : ''}
+            </Button>
             {matchMessage && <p className="text-xs text-text-2">{matchMessage}</p>}
           </div>
           <p className="flex flex-wrap gap-x-2 text-xs text-text-3">
@@ -260,6 +271,7 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
         const assessment = linkAssessments.get(latestIngredient.id) ?? assessNutritionLink(latestIngredient.nutritionLink, null);
         return <NutritionLinkEditor ingredient={latestIngredient} assessment={assessment} foods={foods} onApply={(link) => { setLinkEditing(null); onNutritionLinkChange(latestIngredient.id, link); }} onCancel={() => setLinkEditing(null)} onRetryFoods={onRefreshFoods} />;
       })()}
+      {intakeOpen && <NutritionIntakeModal recipe={recipe} linkAssessments={linkAssessments} foods={foods} onRetryFoods={onRefreshFoods} onCommit={onCommitIntake} onClose={() => setIntakeOpen(false)} />}
     </div>
   );
 }

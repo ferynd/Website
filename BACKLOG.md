@@ -12,7 +12,7 @@ Backlogs live under `backlogs/`. Use `backlogs/AGENTS.md` to create and maintain
 
 ## Active feature backlogs — default order
 
-1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. P0 is a user-assisted, non-blocking deployment check; default coding continues with P1, then P2–P5. P6/P7 require explicit approval.
+1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. P0 is a user-assisted, non-blocking deployment check; P1 is merged; default coding continues with P2, then P3–P5. P6/P7 require explicit approval.
 
 `backlogs/calorie-tracker.md` currently has no actionable items and is dormant until new work is added.
 

@@ -35,7 +35,9 @@ import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
-import { assessNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
+import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
+import { applyIntakeLinks, findPlanCollisions, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
+import { buildTrackerFoodDoc, FoodIdCollisionError, parseTrackerFood } from '../lib/trackerFoods';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
 import {
@@ -85,7 +87,7 @@ const NO_SCALE: ScaleResult = { factor: 1, label: 'baseline' };
  * SaveChoiceModal (update / save-as-new / cancel).
  */
 export default function RecipeWorkspace() {
-  const { savedRecipes, listError, loadSavedRecipe, saveNew, update, remove, loadFoodItems } = useRecipeTool();
+  const { savedRecipes, listError, loadSavedRecipe, saveNew, update, remove, loadFoodItems, createFoodItems } = useRecipeTool();
 
   const [baseline, setBaseline] = useState<Recipe | null>(null);
   const [draft, setDraft] = useState<Recipe | null>(null);
@@ -331,6 +333,103 @@ export default function RecipeWorkspace() {
     return summary;
   };
 
+  const commitIntake = async (plan: IntakeCommitPlan): Promise<IntakeCommitOutcome> => {
+    const session = recipeSessionRef.current;
+    if (!draftRef.current) return { status: 'error', message: 'No recipe open.' };
+    const fresh = await refreshFoods();
+    if (!fresh) {
+      return {
+        status: 'error',
+        message: 'Could not load Nutrition Tracker foods — nothing was written. Try again.',
+      };
+    }
+    if (session !== recipeSessionRef.current) {
+      return { status: 'error', message: 'The open recipe changed — nothing was written.' };
+    }
+    const collisions = findPlanCollisions(plan, fresh);
+    if (collisions.length) {
+      return { status: 'conflict', foodIds: collisions, unreadableIds: [] };
+    }
+    const nowIso = new Date().toISOString();
+    const docs = plan.creates.map((create) => ({
+      id: create.foodId,
+      data: buildTrackerFoodDoc(create.name, create.nutrients, nowIso),
+    }));
+    try {
+      await createFoodItems(docs);
+    } catch (err) {
+      if (err instanceof FoodIdCollisionError) {
+        void refreshFoods();
+        return {
+          status: 'conflict',
+          foodIds: err.foodIds,
+          unreadableIds: err.foodIds.filter((id) => !fresh.some((food) => food.id === id)),
+        };
+      }
+      return {
+        status: 'error',
+        message: `Could not create foods — nothing was written: ${err instanceof Error ? err.message : 'unknown error'}`,
+      };
+    }
+    const created = docs
+      .map((doc) => parseTrackerFood(doc.id, doc.data))
+      .filter((food): food is NonNullable<typeof food> => food !== null);
+    setFoods((prev) => ({
+      status: 'ready',
+      error: '',
+      items: [...prev.items.filter((food) => !created.some((item) => item.id === food.id)), ...created],
+    }));
+    if (session !== recipeSessionRef.current) {
+      setStatus('Nutrition Tracker foods were created, but the open recipe changed before links could be applied.');
+      return { status: 'created-unlinked', created: created.length };
+    }
+    const current = draftRef.current;
+    if (!current) {
+      return { status: 'created-unlinked', created: created.length };
+    }
+    const nowMs = Date.now();
+    const entries: {
+      expected: IntakeCommitPlan['creates'][number]['ingredients'][number];
+      link: NutritionLink;
+    }[] = [];
+    const currentLink = (id: string) => current.ingredients.find((ingredient) => ingredient.id === id)?.nutritionLink;
+    plan.creates.forEach((create) => {
+      const food = created.find((item) => item.id === create.foodId);
+      if (!food) return;
+      create.ingredients.forEach((expected) => {
+        const previous = currentLink(expected.ingredientId);
+        if (previous) {
+          entries.push({
+            expected,
+            link: confirmNutritionLink(food, 100, nowMs, previous),
+          });
+        }
+      });
+    });
+    plan.links.forEach((link) => {
+      link.ingredients.forEach((expected) => {
+        const previous = currentLink(expected.ingredientId);
+        if (previous) {
+          entries.push({
+            expected,
+            link: confirmNutritionLink(link.food, link.gramsPerUnit, nowMs, previous),
+          });
+        }
+      });
+    });
+    const applied = applyIntakeLinks(current, entries);
+    setDraft(applied.recipe);
+    setStatus(
+      `Created ${created.length} Nutrition Tracker food(s) and confirmed ${applied.applied.length} link(s) — save the recipe to keep the links.${applied.skipped.length ? ` ${applied.skipped.length} ingredient(s) changed meanwhile and were left as they are.` : ''}`,
+    );
+    return {
+      status: 'done',
+      created: created.length,
+      linked: applied.applied.length,
+      skippedIngredients: applied.skipped.length,
+    };
+  };
+
   const jumpTo = (key: PanelKey) => {
     setOpen((prev) => ({ ...prev, [key]: true }));
     requestAnimationFrame(() => {
@@ -511,6 +610,7 @@ export default function RecipeWorkspace() {
                   factor={scale.factor}
                   onIngredientChange={handleIngredientChange}
                   onRunNutritionMatch={runNutritionMatch}
+                  onCommitIntake={commitIntake}
                   linkAssessments={linkAssessments}
                   foods={foods}
                   linkSummary={linkSummary}
