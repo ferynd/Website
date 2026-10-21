@@ -36,7 +36,7 @@ import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
 import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
-import { applyIntakeLinks, findPlanCollisions, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
+import { applyIntakeLinks, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
 import { buildTrackerFoodDoc, FoodIdCollisionError, parseTrackerFood } from '../lib/trackerFoods';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
@@ -346,12 +346,20 @@ export default function RecipeWorkspace() {
     if (session !== recipeSessionRef.current) {
       return { status: 'error', message: 'The open recipe changed — nothing was written.' };
     }
-    const collisions = findPlanCollisions(plan, fresh);
+    const refreshed = refreshPlanLinkTargets(plan, fresh);
+    if (refreshed.missingIds.length) {
+      return {
+        status: 'error',
+        message: 'A Nutrition Tracker food chosen for "Link existing" was deleted — nothing was written. Review the highlighted rows again.',
+      };
+    }
+    const currentPlan = refreshed.plan;
+    const collisions = findPlanCollisions(currentPlan, fresh);
     if (collisions.length) {
       return { status: 'conflict', foodIds: collisions, unreadableIds: [] };
     }
     const nowIso = new Date().toISOString();
-    const docs = plan.creates.map((create) => ({
+    const docs = currentPlan.creates.map((create) => ({
       id: create.foodId,
       data: buildTrackerFoodDoc(create.name, create.nutrients, nowIso),
     }));
@@ -393,7 +401,7 @@ export default function RecipeWorkspace() {
       link: NutritionLink;
     }[] = [];
     const currentLink = (id: string) => current.ingredients.find((ingredient) => ingredient.id === id)?.nutritionLink;
-    plan.creates.forEach((create) => {
+    currentPlan.creates.forEach((create) => {
       const food = created.find((item) => item.id === create.foodId);
       if (!food) return;
       create.ingredients.forEach((expected) => {
@@ -406,7 +414,7 @@ export default function RecipeWorkspace() {
         }
       });
     });
-    plan.links.forEach((link) => {
+    currentPlan.links.forEach((link) => {
       link.ingredients.forEach((expected) => {
         const previous = currentLink(expected.ingredientId);
         if (previous) {

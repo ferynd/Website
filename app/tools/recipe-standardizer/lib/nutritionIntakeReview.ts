@@ -2,7 +2,7 @@
 
 import { isValidGramsPerUnit, type LinkAssessment, type LinkReviewState } from './nutritionLink';
 import { normalizeIngredientName } from './shoppingList';
-import { type IntakeGroup, type ParsedNutritionItem } from './nutritionIntake';
+import { MAX_INTAKE_ITEMS, type IntakeGroup, type ParsedNutritionItem } from './nutritionIntake';
 import {
   TRACKER_NUTRIENT_KEYS,
   trackerFoodId,
@@ -69,6 +69,33 @@ export interface IntakeCommitPlan {
   }[];
   skipped: number;
 }
+
+/** Keep one prompt/review batch within the parser's supported item limit. */
+export const limitIntakeGroups = (groups: IntakeGroup[]): { batch: IntakeGroup[]; remaining: number } => ({
+  batch: groups.slice(0, MAX_INTAKE_ITEMS),
+  remaining: Math.max(0, groups.length - MAX_INTAKE_ITEMS),
+});
+
+/** Replace link-existing snapshots with the latest loaded foods before commit. */
+export const refreshPlanLinkTargets = (
+  plan: IntakeCommitPlan,
+  fresh: TrackerFood[],
+): { plan: IntakeCommitPlan; missingIds: string[] } => {
+  const foodsById = new Map(fresh.map((food) => [food.id, food]));
+  const missingIds = [...new Set(plan.links
+    .map((link) => link.food.id)
+    .filter((id) => !foodsById.has(id)))];
+  return {
+    plan: {
+      ...plan,
+      links: plan.links.flatMap((link) => {
+        const food = foodsById.get(link.food.id);
+        return food ? [{ ...link, food }] : [];
+      }),
+    },
+    missingIds,
+  };
+};
 
 /** Result returned after a nutrition intake commit attempt. */
 export type IntakeCommitOutcome =

@@ -22,6 +22,7 @@ import {
   canCommitIntake,
   evaluateIntakeRows,
   initialIntakeRows,
+  limitIntakeGroups,
   reassignRow,
   selectIntakeGroups,
   type IntakeCommitOutcome,
@@ -50,6 +51,7 @@ interface PromptStepProps {
   foods: FoodsState;
   groups: IntakeGroup[];
   prompt: string;
+  remaining: number;
   raw: string;
   errors: string[];
   copyError: string;
@@ -86,6 +88,7 @@ function PromptStep({
   foods,
   groups,
   prompt,
+  remaining,
   raw,
   errors,
   copyError,
@@ -120,6 +123,11 @@ function PromptStep({
 
       {foods.status === 'ready' && groups.length > 0 && (
         <div className="space-y-3">
+          {remaining > 0 && (
+            <p className="text-sm text-warning">
+              This prompt covers the first 100 ingredients. After creating these foods, open this again for the remaining {remaining}.
+            </p>
+          )}
           <p className="text-sm text-text-2">
             {groups.length} ingredient(s) without a Nutrition Tracker food:
           </p>
@@ -372,6 +380,7 @@ export default function NutritionIntakeModal({
     () => selectIntakeGroups(recipe, linkAssessments),
     [recipe, linkAssessments],
   );
+  const { batch, remaining } = useMemo(() => limitIntakeGroups(selectedGroups), [selectedGroups]);
   const [step, setStep] = useState<'prompt' | 'review' | 'done'>('prompt');
   const [raw, setRaw] = useState('');
   const [errors, setErrors] = useState<string[]>([]);
@@ -385,12 +394,12 @@ export default function NutritionIntakeModal({
   const [copied, setCopied] = useState(false);
 
   const prompt = useMemo(
-    () => buildNutritionPrompt(recipe.name, selectedGroups),
-    [recipe.name, selectedGroups],
+    () => buildNutritionPrompt(recipe.name, batch),
+    [recipe.name, batch],
   );
   const evaluations = useMemo(
-    () => evaluateIntakeRows(rows, selectedGroups, foods.items, unreadableIds),
-    [rows, selectedGroups, foods.items, unreadableIds],
+    () => evaluateIntakeRows(rows, batch, foods.items, unreadableIds),
+    [rows, batch, foods.items, unreadableIds],
   );
 
   const close = useCallback(() => {
@@ -415,7 +424,7 @@ export default function NutritionIntakeModal({
     }
     setWarnings(result.warnings);
     setErrors([]);
-    setRows(initialIntakeRows(result.items, selectedGroups, foods.items, unreadableIds, recipe));
+    setRows(initialIntakeRows(result.items, batch, foods.items, unreadableIds, recipe));
     setStep('review');
   };
 
@@ -423,7 +432,7 @@ export default function NutritionIntakeModal({
     setCommitting(true);
     setBanner('');
     try {
-      const result = await onCommit(buildIntakeCommitPlan(rows, evaluations, selectedGroups, recipe));
+      const result = await onCommit(buildIntakeCommitPlan(rows, evaluations, batch, recipe));
       setOutcome(result);
       if (result.status === 'conflict') {
         setUnreadableIds((previous) => new Set([...previous, ...result.unreadableIds]));
@@ -472,10 +481,11 @@ export default function NutritionIntakeModal({
         </div>
 
         {step === 'prompt' && (
-          <PromptStep
+        <PromptStep
             foods={foods}
-            groups={selectedGroups}
+            groups={batch}
             prompt={prompt}
+            remaining={remaining}
             raw={raw}
             errors={errors}
             copyError={copyError}
@@ -509,7 +519,7 @@ export default function NutritionIntakeModal({
                   row={row}
                   evaluation={evaluations[index]}
                   index={index}
-                  groups={selectedGroups}
+                  groups={batch}
                   onChange={updateRow}
                 />
               ))}

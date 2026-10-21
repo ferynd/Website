@@ -6,7 +6,7 @@ import {
   assertSucceeds,
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { setDoc, doc, getDoc } from 'firebase/firestore';
+import { setDoc, doc, getDoc, runTransaction } from 'firebase/firestore';
 
 // Foundational Firestore rules coverage for AR-02 (F-137/F-041 admin
 // identity, F-138 legacy wildcard, and a baseline default-deny/ownership
@@ -17,6 +17,17 @@ import { setDoc, doc, getDoc } from 'firebase/firestore';
 
 const ADMIN_EMAIL = 'arkkahdarkkahd@gmail.com';
 const PROJECT_ID = 'demo-website-rules-test';
+const TRACKER_NUTRIENT_KEYS = [
+  'calories', 'protein', 'carbs', 'fat', 'fiber', 'potassium', 'magnesium', 'sodium',
+  'calcium', 'choline', 'vitaminB12', 'folate', 'vitaminC', 'vitaminB6', 'vitaminA',
+  'vitaminD', 'vitaminE', 'vitaminK', 'selenium', 'iodine', 'phosphorus', 'iron', 'zinc', 'omega3',
+] as const;
+const trackerFoodDoc = () => ({
+  name: 'Apple',
+  quantity: 1,
+  ...Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])),
+  lastUpdated: '2026-10-20T12:00:00.000Z',
+});
 
 let testEnv: RulesTestEnvironment;
 
@@ -98,6 +109,35 @@ describe('legacy CalorieTracker wildcard pinned to default-app-id — F-138', ()
         name: 'Apple',
       }),
     );
+  });
+
+  it('allows the owner to create a full tracker food through a read-before-write transaction', async () => {
+    const ctx = testEnv.authenticatedContext('user-1', { email_verified: true });
+    const ref = doc(ctx.firestore(), 'artifacts/default-app-id/users/user-1/foodItems/transaction-apple');
+    await assertSucceeds(runTransaction(ctx.firestore(), async (transaction) => {
+      const existing = await transaction.get(ref);
+      if (existing.exists()) throw new Error('Expected a new tracker food ID.');
+      transaction.set(ref, trackerFoodDoc());
+    }));
+  });
+
+  it('denies user-1 creating a food under user-2 with either setDoc or a transaction', async () => {
+    const ctx = testEnv.authenticatedContext('user-1', { email_verified: true });
+    const ref = doc(ctx.firestore(), 'artifacts/default-app-id/users/user-2/foodItems/foreign-apple');
+    await assertFails(setDoc(ref, trackerFoodDoc()));
+    await assertFails(runTransaction(ctx.firestore(), async (transaction) => {
+      const existing = await transaction.get(ref);
+      if (existing.exists()) throw new Error('Expected a new tracker food ID.');
+      transaction.set(ref, trackerFoodDoc());
+    }));
+  });
+
+  it('denies an unauthenticated tracker food create', async () => {
+    const ctx = testEnv.unauthenticatedContext();
+    await assertFails(setDoc(
+      doc(ctx.firestore(), 'artifacts/default-app-id/users/user-1/foodItems/anonymous-apple'),
+      trackerFoodDoc(),
+    ));
   });
 
   it("denies a user reading another user's document under default-app-id", async () => {

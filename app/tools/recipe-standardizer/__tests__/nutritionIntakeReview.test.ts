@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { assessNutritionLink, confirmNutritionLink, type LinkAssessment, type LinkReviewState } from '../lib/nutritionLink';
 import {
   applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, defaultFoodName, evaluateIntakeRows,
-  findPlanCollisions, initialIntakeRows, reassignRow, resolveTarget, selectIntakeGroups,
+  findPlanCollisions, initialIntakeRows, limitIntakeGroups, refreshPlanLinkTargets, reassignRow, resolveTarget, selectIntakeGroups,
+  type IntakeCommitPlan,
   type IntakeRow,
 } from '../lib/nutritionIntakeReview';
 import type { IntakeGroup } from '../lib/nutritionIntake';
@@ -158,6 +159,31 @@ describe('nutrition intake commit plan', () => {
     const current = row(parsedItem(0, 'a'), 'a');
     const plan = buildIntakeCommitPlan([current], evaluateIntakeRows([current], groups, [], new Set()), groups, makeRecipe(ingredient('a', 'Butter'), ingredient('a2', 'butter')));
     expect(findPlanCollisions(plan, [food('butter__per_100_g_', 'Butter (per 100 g)')])).toEqual(['butter__per_100_g_']);
+  });
+
+  it('limits prompt groups to the parser batch size and reports the remainder', () => {
+    const many = Array.from({ length: 101 }, (_, index) => ({ ...groups[0], key: `g${index}` }));
+    expect(limitIntakeGroups(many)).toEqual({ batch: many.slice(0, 100), remaining: 1 });
+    expect(limitIntakeGroups(groups)).toEqual({ batch: groups, remaining: 0 });
+  });
+
+  it('refreshes link-existing snapshots by ID and reports missing targets without changing creates', () => {
+    const stale = food('existing-food', 'Old name');
+    const refreshed = { ...food('existing-food', 'Updated name'), lastUpdated: '2026-01-01T00:00:00.000Z' };
+    const plan = {
+      creates: [{ foodId: 'new-food', name: 'New food', nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])) as TrackerFood['nutrients'], ingredients: [] }],
+      links: [{ food: stale, gramsPerUnit: 100, ingredients: [] }],
+      skipped: 0,
+    } as IntakeCommitPlan;
+
+    const found = refreshPlanLinkTargets(plan, [refreshed]);
+    expect(found.plan.links[0].food).toBe(refreshed);
+    expect(found.plan.creates).toBe(plan.creates);
+    expect(found.missingIds).toEqual([]);
+
+    const missing = refreshPlanLinkTargets(plan, []);
+    expect(missing.missingIds).toEqual(['existing-food']);
+    expect(missing.plan.creates).toBe(plan.creates);
   });
 });
 

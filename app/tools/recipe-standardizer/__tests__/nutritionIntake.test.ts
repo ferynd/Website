@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildNutritionPrompt, NUTRIENT_INTAKE_SPEC, parseNutritionJson } from '../lib/nutritionIntake';
+import { buildNutritionPrompt, MAX_INTAKE_ITEMS, NUTRIENT_INTAKE_SPEC, parseNutritionJson } from '../lib/nutritionIntake';
 import { TRACKER_NUTRIENT_KEYS } from '../lib/trackerFoods';
 import { validRecipeJson } from './fixtures';
 
@@ -32,6 +32,21 @@ describe('nutrition intake prompt', () => {
     const prompt = buildNutritionPrompt('Cake', [group, second]);
     expect(prompt).toContain(JSON.stringify({ ingredientId: 'ing-1', name: 'Butter', note: '1 cup; softened' }));
     expect(prompt).toContain(JSON.stringify({ ingredientId: 'ing-2', name: 'Flour', note: '1 cup; softened' }));
+  });
+
+  it('builds a maximum-sized prompt whose response is accepted by the parser limit', () => {
+    const groups = Array.from({ length: MAX_INTAKE_ITEMS }, (_, index) => ({
+      ...group,
+      key: `ing-${index}`,
+      displayName: `Ingredient ${index}`,
+      ingredientIds: [`ing-${index}`],
+    }));
+    const prompt = buildNutritionPrompt('Cake', groups);
+    const listing = prompt.split('Ingredients (one JSON object per line):\n')[1];
+    expect(listing.split('\n')).toHaveLength(MAX_INTAKE_ITEMS);
+    const response = parseNutritionJson(JSON.stringify(document(groups.map((entry) => item({ ingredientId: entry.key, name: entry.displayName })))));
+    expect(response.ok).toBe(true);
+    if (response.ok) expect(response.items).toHaveLength(MAX_INTAKE_ITEMS);
   });
 
   it('keeps quotes and newlines inside one parseable JSON line', () => {
