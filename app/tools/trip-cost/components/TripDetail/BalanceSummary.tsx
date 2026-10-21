@@ -62,7 +62,7 @@ export default function BalanceSummary({
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-xl font-semibold text-text">Balances</h2>
         {totalSpend > 0 && (
-          <span className="text-xs text-text-3">
+          <span className="text-sm text-text-2">
             Trip total: {formatMoney(totalSpend)}
           </span>
         )}
@@ -116,7 +116,7 @@ export default function BalanceSummary({
               </div>
 
               {/* Breakdown line */}
-              <div className="text-xs text-text-3 mb-2">
+              <div className="text-sm text-text-2 mb-2">
                 Paid for purchases {formatMoney(ledger.paid[p.id] ?? 0)} · Responsible for{' '}
                 {formatMoney(final)}
                 {final !== subtotal && (
@@ -134,13 +134,13 @@ export default function BalanceSummary({
 
               {!isNeutral && (
                 <div className="space-y-2 mt-2">
-                  <div className="flex gap-2">
+                  <div className="flex min-w-0 flex-wrap gap-2">
                     <Select
                       value={forms[p.id]?.payeeId || ''}
                       onChange={(e) =>
                         handleChange(p.id, 'payeeId', e.target.value)
                       }
-                      className="flex-1 px-2 py-1"
+                      className="min-w-0 flex-1 px-2 py-1"
                     >
                       <option value="">Select recipient...</option>
                       {participants
@@ -158,7 +158,7 @@ export default function BalanceSummary({
                       }
                       type="number"
                       step="0.01"
-                      className="px-2 py-1 w-24"
+                      className="min-w-0 w-20 shrink-0 px-2 py-1"
                       placeholder="Amount"
                     />
                     <Button

@@ -117,7 +117,7 @@ export default function TripSettings({
   );
 
   return (
-    <section className="bg-surface-1 rounded-lg shadow">
+    <section className="w-full min-w-0 overflow-hidden bg-surface-1 rounded-lg shadow">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between p-4 hover:bg-surface-2 transition-colors"

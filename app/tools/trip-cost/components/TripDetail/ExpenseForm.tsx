@@ -7,7 +7,7 @@ import Select from '@/components/Select';
 import { useTrip } from '../../TripContext';
 import { EXPENSE_CATEGORIES, CURRENCY_SYMBOL } from '../../constants';
 
-export default function ExpenseForm() {
+export default function ExpenseForm({ onSaved, onCancel }: { onSaved?: () => void; onCancel?: () => void } = {}) {
   const { participants, trip, newExpense, setNewExpense, addExpense } = useTrip();
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -79,6 +79,7 @@ export default function ExpenseForm() {
 
     try {
       await addExpense(newExpense);
+      onSaved?.();
     } catch (err: unknown) {
       if (err instanceof Error) setError(err.message);
       else setError('An unexpected error occurred');
@@ -114,7 +115,7 @@ export default function ExpenseForm() {
     trip?.defaultSplit && Object.keys(trip.defaultSplit).length > 0;
 
   return (
-    <form onSubmit={submit} className="bg-surface-1 p-4 rounded-lg shadow">
+    <form onSubmit={submit} className="min-w-0 w-full">
       <h2 className="text-lg font-semibold mb-3 text-text">Add Expense</h2>
 
       <div className="space-y-3">
@@ -173,7 +174,7 @@ export default function ExpenseForm() {
                   type="number"
                   step="0.01"
                   min="0"
-                  className="p-1 w-24"
+                  className="min-w-0 w-20"
                   value={newExpense.paidBy[p.id] || ''}
                   onChange={(e) =>
                     setNewExpense({
@@ -393,6 +394,7 @@ export default function ExpenseForm() {
       >
         {isSubmitting ? 'Adding...' : 'Add Expense'}
       </Button>
+      {onCancel && <Button type="button" variant="ghost" className="mt-2 w-full" onClick={onCancel}>Cancel</Button>}
     </form>
   );
 }

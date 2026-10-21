@@ -7,33 +7,62 @@
 
 import React, { useEffect, useRef } from 'react';
 import Button from '@/components/Button';
+import { isTopModalLayer, registerModalLayer, unregisterModalLayer } from '../ui/Dialog';
 
-export default function ConfirmDeleteModal({
-  itemType,
-  onConfirm,
-  onCancel,
-  error = null,
-  busy = false,
-}: {
+interface ConfirmDeleteModalProps {
   itemType: string;
   onConfirm: () => void;
   onCancel: () => void;
   /** Shown when the confirmed deletion was rejected; the modal stays open. */
   error?: string | null;
   busy?: boolean;
-}) {
+}
+
+/** Confirmation modal shown above open Trip Cost detail sheets. */
+export default function ConfirmDeleteModal({
+  itemType,
+  onConfirm,
+  onCancel,
+  error = null,
+  busy = false,
+}: ConfirmDeleteModalProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const layer = useRef<symbol | null>(null);
   useEffect(() => {
+    const token = registerModalLayer();
+    layer.current = token;
     btnRef.current?.focus();
+    return () => {
+      unregisterModalLayer(token);
+      layer.current = null;
+    };
   }, []);
   return (
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-title"
-      className="fixed inset-0 flex items-center justify-center bg-black/50"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50"
       onClick={(e) => e.target === e.currentTarget && onCancel()}
-      onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') {
+          if (!layer.current || !isTopModalLayer(layer.current)) return;
+          e.preventDefault();
+          e.stopPropagation();
+          onCancel();
+          return;
+        }
+        if (e.key === 'Tab' && layer.current && isTopModalLayer(layer.current)) {
+          if (e.shiftKey && document.activeElement === btnRef.current) {
+            e.preventDefault();
+            cancelRef.current?.focus();
+          } else if (!e.shiftKey && document.activeElement === cancelRef.current) {
+            e.preventDefault();
+            btnRef.current?.focus();
+          }
+        }
+      }}
       tabIndex={-1}
     >
       <div className="bg-surface-1 p-4 rounded shadow space-y-4">
@@ -55,6 +84,7 @@ export default function ConfirmDeleteModal({
             Delete
           </Button>
           <Button
+            ref={cancelRef}
             onClick={onCancel}
             variant="ghost"
             size="sm"
