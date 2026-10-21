@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyNutritionMatches, matchIngredientName, nameSimilarity } from '../lib/nutritionMatch';
+import { applyNutritionMatches, matchIngredientName, nameSimilarity, rankFoodsForQuery } from '../lib/nutritionMatch';
+import { candidateLink, confirmNutritionLink, noMatchLink } from '../lib/nutritionLink';
 import { parseRecipeJson } from '../lib/schema';
 import type { FoodItemRef, Recipe } from '../lib/types';
 import { validRecipeJson } from './fixtures';
@@ -31,16 +32,18 @@ describe('nameSimilarity', () => {
 });
 
 describe('matchIngredientName', () => {
-  it('links exact matches without review', () => {
+  it('exact matches are candidates that still need confirmation', () => {
     const link = matchIngredientName('all purpose flour', foods);
-    expect(link.status).toBe('linked');
+    expect(link.status).toBe('candidate');
     expect(link.foodItemId).toBe('food-flour');
-    expect(link.needsUserReview).toBe(false);
+    expect(link.matchConfidence).toBe(1);
+    expect(link.needsUserReview).toBe(true);
+    expect(link.gramsPerUnit).toBeNull();
   });
 
-  it('marks close matches as likely and flags them for review', () => {
+  it('marks close matches as candidates and flags them for review', () => {
     const link = matchIngredientName('unsalted butter', foods);
-    expect(link.status).toBe('likely');
+    expect(link.status).toBe('candidate');
     expect(link.foodItemId).toBe('food-butter');
     expect(link.needsUserReview).toBe(true);
   });
@@ -55,17 +58,37 @@ describe('matchIngredientName', () => {
 describe('applyNutritionMatches', () => {
   it('matches every ingredient and reports a summary', () => {
     const { recipe: matched, summary } = applyNutritionMatches(recipe(), foods);
-    expect(summary.linked + summary.likely + summary.unlinked).toBe(3);
-    expect(matched.ingredients.find((i) => i.id === 'ing-flour')?.nutritionLink.status).toBe('linked');
+    expect(summary.candidates + summary.unlinked + summary.confirmed + summary.noMatch).toBe(3);
+    expect(matched.ingredients.find((i) => i.id === 'ing-flour')?.nutritionLink.status).toBe('candidate');
     expect(matched.ingredients.find((i) => i.id === 'ing-chocolate')?.nutritionLink.status).toBe('unlinked');
   });
 
-  it('never downgrades an already-confirmed linked ingredient', () => {
+  it('keeps confirmed and no-match links and re-matches candidates', () => {
     const base = recipe();
-    base.ingredients[0].nutritionLink = {
-      status: 'linked', foodItemId: 'food-custom', matchedName: 'My Chocolate', matchConfidence: 1, needsUserReview: false,
-    };
-    const { recipe: matched } = applyNutritionMatches(base, []);
-    expect(matched.ingredients[0].nutritionLink.foodItemId).toBe('food-custom');
+    const food = { id: 'food-custom', name: 'My Chocolate', quantity: 1, nutrients: Object.fromEntries(
+      ['calories','protein','carbs','fat','fiber','potassium','magnesium','sodium','calcium','choline','vitaminB12','folate','vitaminC','vitaminB6','vitaminA','vitaminD','vitaminE','vitaminK','selenium','iodine','phosphorus','iron','zinc','omega3'].map((key) => [key, 1]),
+    ) as never, lastUpdated: 'now' };
+    const confirmed = confirmNutritionLink(food, 50, 1, base.ingredients[0].nutritionLink);
+    base.ingredients[0].nutritionLink = confirmed;
+    base.ingredients[1].nutritionLink = noMatchLink();
+    base.ingredients[2].nutritionLink = candidateLink({ id: 'old-butter', name: 'Old Butter' }, 0.7);
+    const { recipe: matched } = applyNutritionMatches(base, [
+      { id: 'food-chocolate', name: 'dark chocolate' },
+      { id: 'food-flour', name: 'all-purpose flour' },
+      { id: 'food-butter', name: 'Butter' },
+    ]);
+    expect(matched.ingredients[0].nutritionLink).toEqual(confirmed);
+    expect(matched.ingredients[1].nutritionLink.status).toBe('no-match');
+    expect(matched.ingredients[2].nutritionLink).toMatchObject({ status: 'candidate', foodItemId: 'food-butter' });
+  });
+});
+
+describe('rankFoodsForQuery', () => {
+  it('sorts empty queries alphabetically and applies the limit', () => {
+    expect(rankFoodsForQuery('', foods, 2).map((food) => food.name)).toEqual(['All Purpose Flour', 'Butter']);
+  });
+  it('includes substring hits, excludes unrelated foods, and sorts by score', () => {
+    expect(rankFoodsForQuery('flour', foods).map((food) => food.name)).toEqual(['All Purpose Flour']);
+    expect(rankFoodsForQuery('butter', foods)[0].name).toBe('Butter');
   });
 });

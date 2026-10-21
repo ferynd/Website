@@ -7,7 +7,8 @@
 import { useState } from 'react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
-import { UNLINKED_NUTRITION, type RecipeIngredient } from '../lib/types';
+import { linkAfterRename } from '../lib/nutritionLink';
+import type { RecipeIngredient } from '../lib/types';
 
 interface IngredientEditModalProps {
   ingredient: RecipeIngredient;
@@ -20,8 +21,8 @@ interface IngredientEditModalProps {
  * or substitution here flows through every structured display — sections,
  * step chips, and the shopping modes. Step prose is handled separately: a
  * rename opens StepTextReviewModal so affected instruction text can be
- * updated too instead of going stale. Renaming also resets a non-confirmed
- * nutrition link so a stale match is never carried onto a different food.
+ * updated too instead of going stale. Renaming demotes a confirmed nutrition
+ * link to a candidate for the same food with its gram basis cleared.
  */
 export default function IngredientEditModal({ ingredient, onSave, onCancel }: IngredientEditModalProps) {
   const [displayName, setDisplayName] = useState(ingredient.displayName);
@@ -57,7 +58,7 @@ export default function IngredientEditModal({ ingredient, onSave, onCancel }: In
       groceryCategory: groceryCategory.trim(),
       substitutionNotes: substitutionNotes.trim(),
       optional,
-      nutritionLink: renamed ? { ...UNLINKED_NUTRITION } : ingredient.nutritionLink,
+      nutritionLink: renamed ? linkAfterRename(ingredient.nutritionLink) : ingredient.nutritionLink,
     });
   };
 

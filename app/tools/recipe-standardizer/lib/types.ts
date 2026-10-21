@@ -24,11 +24,10 @@ export const RECIPE_SCHEMA_VERSION = 2;
  * fields defaulted; lib/workflow.ts derives a conservative view model so old
  * recipes render through the same components.
  *
- * Nutrition integration: each ingredient carries a `nutritionLink` that can
- * point at a CalorieTracker saved food item
- * (`artifacts/default-app-id/users/{uid}/foodItems/{foodItemId}`). Only the
- * link is recorded (matched/likely/unlinked); computing recipe nutrition from
- * linked items is a documented follow-up.
+ * Nutrition links can be unlinked, suggested candidates, explicitly
+ * confirmed with a grams-per-unit basis, or explicitly marked no-match.
+ * Deleted, renamed, and revised targets are derived at review time and are
+ * never written merely by loading a recipe.
  */
 
 export type SectionType = 'prep' | 'execution' | 'combined';
@@ -45,16 +44,29 @@ export interface RecipeSection {
   notes: string;
 }
 
-export type NutritionLinkStatus = 'linked' | 'likely' | 'unlinked';
+/* CONFIGURATION: gram-basis bounds */
+export const MAX_GRAMS_PER_UNIT = 10000;
+
+export type NutritionLinkStatus = 'unlinked' | 'candidate' | 'confirmed' | 'no-match';
 
 export interface NutritionLink {
   status: NutritionLinkStatus;
-  /** CalorieTracker foodItems doc id when linked/likely. */
+  /** Tracker foodItems doc id — set for candidate/confirmed, null otherwise. */
   foodItemId: string | null;
+  /** Target food name when matched/confirmed (rename detection baseline). */
   matchedName: string | null;
-  /** 0..1 similarity score from the matcher. */
+  /** 0..1 matcher score for automatic candidates; null for manual picks. */
   matchConfidence: number | null;
+  /** Derived: true for unlinked/candidate. */
   needsUserReview: boolean;
+  /** Grams represented by ONE tracker unit. Confirmed only. */
+  gramsPerUnit: number | null;
+  /** Epoch ms of explicit confirmation. Confirmed only. */
+  confirmedAtMs: number | null;
+  /** Target food lastUpdated at confirmation (provenance). Confirmed only. */
+  targetRevision: string | null;
+  /** Food nutrient fingerprint at confirmation (revision check). */
+  targetFingerprint: string | null;
 }
 
 export const UNLINKED_NUTRITION: NutritionLink = {
@@ -63,7 +75,14 @@ export const UNLINKED_NUTRITION: NutritionLink = {
   matchedName: null,
   matchConfidence: null,
   needsUserReview: true,
+  gramsPerUnit: null,
+  confirmedAtMs: null,
+  targetRevision: null,
+  targetFingerprint: null,
 };
+
+/** Lightweight shape used for name matching. */
+export interface FoodItemRef { id: string; name: string; }
 
 export interface RecipeIngredient {
   id: string;
@@ -234,8 +253,3 @@ export interface SavedRecipeMeta {
   ingredientCount: number;
 }
 
-/** Minimal shape of a CalorieTracker saved food item used for matching. */
-export interface FoodItemRef {
-  id: string;
-  name: string;
-}

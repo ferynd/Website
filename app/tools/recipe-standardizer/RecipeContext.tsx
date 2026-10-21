@@ -33,7 +33,8 @@ import {
   watchRecipeList,
 } from './lib/db';
 import type { ParseResult } from './lib/schema';
-import type { FoodItemRef, Recipe, SavedRecipeMeta } from './lib/types';
+import type { Recipe, SavedRecipeMeta } from './lib/types';
+import type { TrackerFood } from './lib/trackerFoods';
 
 interface RecipeContextValue {
   user: User | null;
@@ -45,7 +46,7 @@ interface RecipeContextValue {
   saveNew: (recipe: Recipe) => Promise<string>;
   update: (recipeId: string, recipe: Recipe) => Promise<void>;
   remove: (recipeId: string) => Promise<void>;
-  loadFoodItems: () => Promise<FoodItemRef[]>;
+  loadFoodItems: () => Promise<TrackerFood[]>;
 }
 
 const RecipeContext = createContext<RecipeContextValue | undefined>(undefined);

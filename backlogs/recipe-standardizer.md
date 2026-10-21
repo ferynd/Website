@@ -51,7 +51,8 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 
 ### P1 — Confirmed links and grams basis
 
-- [ ] **Add LinkEditor and revision-ready link state.**
+- [p] **Add LinkEditor and revision-ready link state.**
+  > pushed — LinkEditor, candidate/confirmed/no-match + derived stale states, gramsPerUnit, full TrackerFood fetch, tests, docs; checks: npm test, lint, tsc, build pass; commit: ae90b0f; PR: #163
   - Add `gramsPerUnit`, explicit inferred/confirmed/no-match/stale semantics, and additive parsing defaults.
   - Fetch full food records needed by later phases while retaining a lightweight matching type.
   - Badge opens a searchable picker with confirm, choose, unlink/no-match, and gram-basis controls.

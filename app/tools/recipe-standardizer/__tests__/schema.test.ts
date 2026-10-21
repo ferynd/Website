@@ -201,6 +201,16 @@ describe('parseRecipeJson — schema versions and the v2 workflow model', () => 
     });
   });
 
+  it('loads a legacy linked v1 ingredient as a candidate without warnings', () => {
+    const raw = validRecipeJson();
+    raw.ingredients[0].nutritionLink = { status: 'linked', foodItemId: 'legacy-food', matchedName: 'Butter', matchConfidence: 1, needsUserReview: false } as never;
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.warnings).toEqual([]);
+    expect(result.recipe.ingredients[0].nutritionLink).toMatchObject({ status: 'candidate', foodItemId: 'legacy-food', needsUserReview: true, gramsPerUnit: null });
+  });
+
   it('parses the v2 fixture cleanly', () => {
     const result = parseObject(validV2RecipeJson());
     expect(result.ok).toBe(true);
@@ -226,6 +236,21 @@ describe('parseRecipeJson — schema versions and the v2 workflow model', () => 
     result.recipe.ingredients.forEach((ing) => {
       expect(ing.nutritionLink).toEqual(UNLINKED_NUTRITION);
     });
+  });
+
+  it('round-trips a confirmed link and its gram basis through the JSON load path', () => {
+    const raw = validV2RecipeJson();
+    (raw.ingredients[0] as Record<string, unknown>).nutritionLink = {
+      status: 'confirmed', foodItemId: 'food-butter', matchedName: 'Butter', matchConfidence: null,
+      needsUserReview: false, gramsPerUnit: 14, confirmedAtMs: 123, targetRevision: 'rev-1', targetFingerprint: 'abc123',
+    } as never;
+    const initial = parseObject(raw);
+    expect(initial.ok).toBe(true);
+    if (!initial.ok) return;
+    const roundTrip = parseRecipeJson(JSON.stringify(initial.recipe));
+    expect(roundTrip.ok).toBe(true);
+    if (!roundTrip.ok) return;
+    expect(roundTrip.recipe).toEqual(initial.recipe);
   });
 
   it('warns on technique ids outside the glossary and overrides', () => {
