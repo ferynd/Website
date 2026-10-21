@@ -14,6 +14,7 @@ import {
   factorFromServings,
   factorFromTargetWeight,
   formatFactor,
+  isScaleActive,
   referenceWeightG,
   type ScaleResult,
 } from '../lib/scaling';
@@ -42,6 +43,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
 
   const refWeight = referenceWeightG(recipe);
   const baseline = recipe.servings.baselineServings;
+  const scaleActive = isScaleActive(scale);
 
   const apply = (result: ScaleResult | null, failureHint: string) => {
     if (!result) {
@@ -58,9 +60,9 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
         <Scale size={18} className="text-accent" />
         <p className="text-sm text-text">
           Current scale: <span className="font-semibold">{formatFactor(scale.factor)}</span>
-          {scale.factor !== 1 && <span className="text-text-3"> — {scale.label}</span>}
+          {scaleActive && <span className="text-text-3"> — {scale.label}</span>}
         </p>
-        {scale.factor !== 1 && (
+        {scaleActive && (
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="ghost" onClick={() => onScaleChange({ factor: 1, label: 'baseline' })} className="inline-flex items-center gap-1">
               <RotateCcw size={14} /> Reset to 1×

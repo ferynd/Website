@@ -35,6 +35,11 @@ export interface ScaleResult {
   portionOverride?: PortionOverride;
 }
 
+/** Whether the working copy has an active scale, including portion-only overrides. */
+export const isScaleActive = (scale: ScaleResult): boolean => (
+  scale.factor !== 1 || scale.portionOverride !== undefined
+);
+
 const isPositive = (v: number | null | undefined): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v > 0;
 

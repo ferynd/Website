@@ -8,6 +8,7 @@ import {
   factorFromPortions,
   factorFromServings,
   factorFromTargetWeight,
+  isScaleActive,
   referenceWeightG,
   referenceWeightSource,
   scaleEquivalentText,
@@ -50,6 +51,12 @@ describe('scale factor derivation', () => {
 
   it('records the requested portion count and size as a portion override', () => {
     expect(factorFromPortions(10, 150, 1000)?.portionOverride).toEqual({ count: 10, sizeG: 150 });
+  });
+
+  it('treats a factor-one portion override as an active scale', () => {
+    expect(isScaleActive({ factor: 1, label: 'baseline' })).toBe(false);
+    expect(isScaleActive(factorFromPortions(12, 90, 1080)!)).toBe(true);
+    expect(isScaleActive({ factor: 2, label: 'batch 2×' })).toBe(true);
   });
 
   it.each([

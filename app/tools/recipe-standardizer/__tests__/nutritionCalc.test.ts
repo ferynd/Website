@@ -434,9 +434,23 @@ describe('nutrition bases', () => {
     expect(calculate(recipe).bases.perServing.unavailableReason).toBe('no-servings');
   });
 
-  it('prefers portion count and reports a saved size when present', () => {
+  it('derives portion size from final weight and count', () => {
     const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: 8, portionSizeG: 75 });
-    expect(calculate(recipe).bases.perPortion).toMatchObject({ portionMode: 'count', portionCount: 8, portionSizeG: 75 });
+    expect(calculate(recipe).bases.perPortion).toMatchObject({ portionMode: 'count', portionCount: 8, portionSizeG: 125, finalWeightG: 1000 });
+  });
+
+  it('ignores an inconsistent stored size in count mode', () => {
+    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: 8, portionSizeG: 75 });
+    expect(calculate(recipe).bases.perPortion.portionSizeG).not.toBe(75);
+  });
+
+  it('leaves count-mode portion size null without final weight', () => {
+    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: 8, portionSizeG: 75 }, { estimatedFinalWeightG: null, actualFinalWeightG: null, yieldNotes: '' });
+    expect(calculate(recipe).bases.perPortion).toMatchObject({ portionMode: 'count', portionSizeG: null, finalWeightG: null, weightSource: null, estimated: false });
+  });
+
+  it('marks count-mode size as estimated when using estimated final weight', () => {
+    expect(calculate(baseRecipe()).bases.perPortion).toMatchObject({ portionMode: 'count', portionSizeG: 125, finalWeightG: 1000, weightSource: 'estimated', estimated: true });
   });
 
   it('falls back to portion size over final weight and flags an estimated weight', () => {

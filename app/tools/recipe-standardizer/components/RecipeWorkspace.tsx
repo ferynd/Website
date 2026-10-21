@@ -638,30 +638,6 @@ export default function RecipeWorkspace() {
             </AccordionSection>
 
             <AccordionSection
-              ref={(el) => { panelRefs.current.nutrition = el; }}
-              title={PANEL_LABELS.nutrition}
-              icon={PANEL_ICONS.nutrition}
-              subtitle={nutrition ? nutritionPanelSubtitle(nutrition) : undefined}
-              open={open.nutrition}
-              onToggle={() => togglePanel('nutrition')}
-            >
-              {nutrition && (
-                <NutritionPanel
-                  recipe={draft}
-                  result={nutrition}
-                  scale={scale}
-                  foods={foods}
-                  linkAssessments={linkAssessments}
-                  onNutritionLinkChange={handleNutritionLinkChange}
-                  onIngredientChange={handleIngredientChange}
-                  onCommitIntake={commitIntake}
-                  onRefreshFoods={() => { void refreshFoods(); }}
-                  onReviewIngredients={() => jumpTo('ingredients')}
-                />
-              )}
-            </AccordionSection>
-
-            <AccordionSection
               ref={(el) => { panelRefs.current.ingredients = el; }}
               title={PANEL_LABELS.ingredients}
               icon={PANEL_ICONS.ingredients}
@@ -746,6 +722,30 @@ export default function RecipeWorkspace() {
                   />
                 ))}
               </div>
+            </AccordionSection>
+
+            <AccordionSection
+              ref={(el) => { panelRefs.current.nutrition = el; }}
+              title={PANEL_LABELS.nutrition}
+              icon={PANEL_ICONS.nutrition}
+              subtitle={nutrition ? nutritionPanelSubtitle(nutrition) : undefined}
+              open={open.nutrition}
+              onToggle={() => togglePanel('nutrition')}
+            >
+              {nutrition && (
+                <NutritionPanel
+                  recipe={draft}
+                  result={nutrition}
+                  scale={scale}
+                  foods={foods}
+                  linkAssessments={linkAssessments}
+                  onNutritionLinkChange={handleNutritionLinkChange}
+                  onIngredientChange={handleIngredientChange}
+                  onCommitIntake={commitIntake}
+                  onRefreshFoods={() => { void refreshFoods(); }}
+                  onReviewIngredients={() => jumpTo('ingredients')}
+                />
+              )}
             </AccordionSection>
 
             <AccordionSection

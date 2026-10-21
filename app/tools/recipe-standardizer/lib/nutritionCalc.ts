@@ -463,7 +463,10 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       {
         portionMode: 'count',
         portionCount: portionCount * factor,
-        portionSizeG: positiveFinite(portionSizeG) ? portionSizeG : null,
+        portionSizeG: referenceWeight === null ? null : referenceWeight / portionCount,
+        finalWeightG: referenceWeight === null ? null : referenceWeight * factor,
+        weightSource: referenceWeight === null ? null : weightSource,
+        estimated: referenceWeight !== null && weightSource === 'estimated',
       },
     );
   } else if (positiveFinite(portionSizeG) && referenceWeight !== null) {

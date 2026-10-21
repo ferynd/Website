@@ -225,6 +225,7 @@ describe('exclusion copy and basis copy', () => {
     [basis('perServing', { servings: 4 }), '1 of 4 servings'],
     [basis('perPortion', { portionMode: 'override', portionCount: 10, portionSizeG: 150 }), '1 of 10 portions of ~150 g'],
     [basis('perPortion', { portionMode: 'count', portionCount: 8, portionSizeG: 50 }), '1 of 8 portions · ~50 g each'],
+    [basis('perPortion', { portionMode: 'count', portionCount: 8, portionSizeG: null }), '1 of 8 portions'],
     [basis('perPortion', { portionMode: 'size', portionSizeG: 100, finalWeightG: 1000 }), 'One 100 g portion of a 1000 g batch'],
     [basis('per100gCooked', { finalWeightG: 900, estimated: true }), 'Final weight 900 g (estimated)'],
   ])('captions the %s basis', (value, expected) => {
