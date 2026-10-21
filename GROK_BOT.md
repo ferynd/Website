@@ -265,6 +265,8 @@ For each backlog item, the orchestrator keeps a run record **outside the repo** 
 
 ## Changelog
 
+- **2026-10-20** — Workers Builds failed from 7:48 PM CDT (00:48Z Oct 21) because Next.js 15 passed OpenNext's 2-year support check. PR #165 adds `--dangerouslyUseUnsupportedNextVersion` to the `cf:*` scripts as a stopgap until the Next 16 upgrade. Added a known-quirk note.
+
 - **2026-10-20** — Hosting and release: PR #161 merged, and the Firestore AR-03 rules are deployed and verified live (current ruleset `aa808b96`). PR #160 merged (`d6503ab`). jamesberto.com and www moved from Pages to the Worker at 5:13 PM CDT with no measured downtime. Workers Builds is connected to deploy `main`. Pages auto-deploys are paused. Added the rollback paths, the token note (expires Oct 31), and deploy quirks (the `--message` slug, moving the CalorieTracker `node_modules` aside).
 
 - **2026-10-20** — Added Grok Build 1.0.62 as a second implementer (verified flags, sandbox, headless usage), the model selection policy (lowest fitting tier, always pinned, recorded in PRs), the scripted plan handoff (`plan.json` → `PLAN.md` with validation), and per-item run records for execution recovery. Noted the Codex "out of credits" failure mode.
