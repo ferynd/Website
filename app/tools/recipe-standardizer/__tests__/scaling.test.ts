@@ -49,6 +49,10 @@ describe('scale factor derivation', () => {
     expect(factorFromPortions(12, 90, null)).toBeNull();
   });
 
+  it('snaps a near-one fractional portion factor to exactly one', () => {
+    expect(factorFromPortions(3, 333.3333333333333, 1000)?.factor).toBe(1);
+  });
+
   it('records the requested portion count and size as a portion override', () => {
     expect(factorFromPortions(10, 150, 1000)?.portionOverride).toEqual({ count: 10, sizeG: 150 });
   });
@@ -176,7 +180,8 @@ describe('applyScaleToRecipe', () => {
     const base = recipe();
     base.yield.actualFinalWeightG = 1000;
     const original = structuredClone(base);
-    const scaled = applyScaleToRecipe(base, 1, { count: 10, sizeG: 150 });
+    const scale = factorFromPortions(10, 100, 1000)!;
+    const scaled = applyScaleToRecipe(base, scale.factor, scale.portionOverride);
 
     expect(scaled).not.toBe(base);
     expect(scaled.ingredients).toEqual(original.ingredients);
@@ -184,7 +189,7 @@ describe('applyScaleToRecipe', () => {
     expect(scaled.servings).toEqual({
       ...original.servings,
       portionCount: 10,
-      portionSizeG: 150,
+      portionSizeG: 100,
     });
     expect(base).toEqual(original);
   });

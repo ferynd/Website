@@ -419,7 +419,7 @@ export default function NutritionPanel({
       {showValues && (
         <div className="space-y-3">
           <BasisSelector basisKey={selectedBasis} result={result} onChange={setBasis} />
-          <BasisCaption basis={selected} factor={scale.factor} />
+          <BasisCaption basis={selected} factor={result.factor} />
           {selected.available && (
             <>
               <MacroTiles basis={selected} />

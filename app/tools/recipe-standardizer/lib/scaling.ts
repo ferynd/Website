@@ -3,6 +3,8 @@
 /* ------------------------------------------------------------ */
 /** Below this many grams, scaled quantities show one decimal place. */
 const FINE_GRAM_THRESHOLD = 10;
+/** Treat near-one portion calculations as an exact 1× scale. */
+const FACTOR_ONE_EPSILON = 1e-9;
 
 /**
  * Pure scaling math for the Recipe Standardizer.
@@ -85,7 +87,8 @@ export const factorFromTargetWeight = (
   refWeightG: number | null,
 ): ScaleResult | null => {
   if (!isPositive(targetWeightG) || !isPositive(refWeightG)) return null;
-  const factor = targetWeightG / refWeightG;
+  const rawFactor = targetWeightG / refWeightG;
+  const factor = Math.abs(rawFactor - 1) < FACTOR_ONE_EPSILON ? 1 : rawFactor;
   return { factor, label: `${Math.round(targetWeightG)} g final weight (${formatFactor(factor)})` };
 };
 
