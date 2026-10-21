@@ -3,7 +3,7 @@
 /* ------------------------------------------------------------ */
 /** Below this many grams, scaled quantities show one decimal place. */
 const FINE_GRAM_THRESHOLD = 10;
-/** Treat near-one portion calculations as an exact 1× scale. */
+/** Treat scale calculations sufficiently close to one as an exact 1× scale. */
 const FACTOR_ONE_EPSILON = 1e-9;
 
 /**
@@ -45,6 +45,10 @@ export const isScaleActive = (scale: ScaleResult): boolean => (
 const isPositive = (v: number | null | undefined): v is number =>
   typeof v === 'number' && Number.isFinite(v) && v > 0;
 
+const snapFactor = (factor: number): number => (
+  Math.abs(factor - 1) < FACTOR_ONE_EPSILON ? 1 : factor
+);
+
 /** Format a scale factor to at most two decimal places. */
 export const formatFactor = (factor: number): string => {
   const rounded = Math.round(factor * 100) / 100;
@@ -63,7 +67,7 @@ export const factorFromServings = (
   baselineServings: number | null,
 ): ScaleResult | null => {
   if (!isPositive(targetServings) || !isPositive(baselineServings)) return null;
-  const factor = targetServings / baselineServings;
+  const factor = snapFactor(targetServings / baselineServings);
   return { factor, label: `${targetServings} servings (${formatFactor(factor)})` };
 };
 
@@ -87,8 +91,7 @@ export const factorFromTargetWeight = (
   refWeightG: number | null,
 ): ScaleResult | null => {
   if (!isPositive(targetWeightG) || !isPositive(refWeightG)) return null;
-  const rawFactor = targetWeightG / refWeightG;
-  const factor = Math.abs(rawFactor - 1) < FACTOR_ONE_EPSILON ? 1 : rawFactor;
+  const factor = snapFactor(targetWeightG / refWeightG);
   return { factor, label: `${Math.round(targetWeightG)} g final weight (${formatFactor(factor)})` };
 };
 
@@ -100,7 +103,7 @@ export const factorFromPortions = (
 ): ScaleResult | null => {
   if (!isPositive(portionCount) || !isPositive(portionSizeG) || !isPositive(refWeightG)) return null;
   const targetWeightG = portionCount * portionSizeG;
-  const factor = targetWeightG / refWeightG;
+  const factor = snapFactor(targetWeightG / refWeightG);
   return {
     factor,
     label: `${portionCount} × ${Math.round(portionSizeG)} g portions (${formatFactor(factor)})`,
@@ -108,7 +111,6 @@ export const factorFromPortions = (
   };
 };
 
-/** Scale a gram quantity and round to a kitchen-sensible precision. */
 /** Scale and kitchen-round a known gram quantity. */
 export const scaleQuantityG = (quantityG: number | null, factor: number): number | null => {
   if (quantityG === null || !Number.isFinite(quantityG)) return null;

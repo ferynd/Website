@@ -69,6 +69,12 @@ export const NUTRITION_EXCLUSION_REASONS: readonly NutritionExclusionReason[] = 
   'duplicate-id',
 ];
 
+const QUANTITY_REASONS: readonly QuantityExclusionReason[] = [
+  'missing-quantity',
+  'zero-quantity',
+  'invalid-quantity',
+];
+
 /** One nutrient amount, with null representing no known contribution. */
 export interface NutrientAmount {
   /** Null means no counted ingredient provides this nutrient. */
@@ -218,10 +224,11 @@ export const linkExclusionReason = (
 
 /** Calculate each per-nutrient baseline contribution, returning null on numeric overflow. */
 export const computeBaseContributions = (
-  grams: number,
-  food: TrackerFood,
-  gramsPerUnit: number,
+  grams: number | null,
+  food: TrackerFood | null,
+  gramsPerUnit: number | null,
 ): Record<TrackerNutrientKey, number | null> | null => {
+  if (grams === null || food === null || !isValidGramsPerUnit(gramsPerUnit)) return null;
   const contributions = {} as Record<TrackerNutrientKey, number | null>;
   for (const key of TRACKER_NUTRIENT_KEYS) {
     const value = food.nutrients[key];
@@ -289,8 +296,13 @@ const rowFor = (
   reasons: NutritionExclusionReason[],
   assessment: LinkAssessment,
 ): ExcludedIngredient => {
-  const linkReasons = reasons.filter((reason) => !['missing-quantity', 'zero-quantity', 'invalid-quantity'].includes(reason));
-  const quantityReasons = reasons.filter((reason) => ['missing-quantity', 'zero-quantity', 'invalid-quantity'].includes(reason));
+  const quantityReasons = reasons.filter((reason) => QUANTITY_REASONS.includes(reason as QuantityExclusionReason));
+  const linkReasons = reasons.filter((reason) => (
+    reason !== 'duplicate-id' && !QUANTITY_REASONS.includes(reason as QuantityExclusionReason)
+  ));
+  const orderedReasons: NutritionExclusionReason[] = reasons.includes('duplicate-id')
+    ? ['duplicate-id']
+    : [...linkReasons, ...quantityReasons];
   return {
     ingredientId: ingredient.id,
     index,
@@ -298,7 +310,7 @@ const rowFor = (
     optional: ingredient.optional,
     scaledGrams,
     equivalent: ingredient.equivalent,
-    reasons: [...linkReasons, ...quantityReasons],
+    reasons: orderedReasons,
     matchedName: ingredient.nutritionLink.matchedName,
     currentName: assessment.currentName,
     canEditLink: linkReasons.some((reason) => reason !== 'foods-unavailable'),
@@ -342,18 +354,21 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     if (linkReason !== null) reasons.push(linkReason);
     if (quantityReason !== null) reasons.push(quantityReason);
     let contributions: Record<TrackerNutrientKey, number | null> | null = null;
-    if (reasons.length === 0 && grams !== null && assessment.food !== null) {
-      const gramsPerUnit = ingredient.nutritionLink.gramsPerUnit;
-      if (!isValidGramsPerUnit(gramsPerUnit)) {
-        reasons.push('invalid-basis');
-      } else {
-        contributions = computeBaseContributions(grams, assessment.food, gramsPerUnit);
-        if (contributions === null) reasons.push('invalid-basis');
-      }
+    if (reasons.length === 0) {
+      contributions = computeBaseContributions(
+        grams,
+        assessment.food,
+        ingredient.nutritionLink.gramsPerUnit,
+      );
+      if (contributions === null) reasons.push('invalid-basis');
     }
-    const gramsPerUnit = ingredient.nutritionLink.gramsPerUnit;
-    if (reasons.length > 0 || contributions === null || assessment.food === null || grams === null || !isValidGramsPerUnit(gramsPerUnit)) {
+    if (reasons.length > 0) {
       excluded.push(rowFor(ingredient, index, grams === null ? null : grams * factor, reasons, assessment));
+      return;
+    }
+    const gramsPerUnit = ingredient.nutritionLink.gramsPerUnit ?? Number.NaN;
+    if (contributions === null || assessment.food === null || grams === null) {
+      excluded.push(rowFor(ingredient, index, grams === null ? null : grams * factor, ['invalid-basis'], assessment));
       return;
     }
     included.push({
@@ -391,11 +406,12 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
         hasValue = true;
       }
     }
-    const safeSum = Number.isFinite(sum) ? sum : null;
-    if (missingFromIngredientIds.length > 0) nutrientGaps.push(key);
+    const sumOverflowed = !Number.isFinite(sum);
+    const safeSum = sumOverflowed ? null : sum;
+    if (missingFromIngredientIds.length > 0 || sumOverflowed) nutrientGaps.push(key);
     baseAmounts[key] = {
       value: hasValue ? safeSum : null,
-      isLowerBound: status !== 'complete' || missingFromIngredientIds.length > 0,
+      isLowerBound: status !== 'complete' || missingFromIngredientIds.length > 0 || sumOverflowed,
       missingFromIngredientIds,
     };
   }
@@ -466,9 +482,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
         portionSizeG: referenceWeight === null ? null : referenceWeight / portionCount,
         finalWeightG: referenceWeight === null ? null : referenceWeight * factor,
         weightSource: referenceWeight === null ? null : weightSource,
-        estimated: referenceWeight !== null && (
-          weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1)
-        ),
+        estimated: weightSource === 'estimated',
       },
     );
   } else if (positiveFinite(portionSizeG) && referenceWeight !== null) {

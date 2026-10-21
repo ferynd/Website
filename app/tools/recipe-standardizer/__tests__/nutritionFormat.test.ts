@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allNutrients, nutrients } from '../../../../public/tools/CalorieTracker/constants.js';
 import {
-  NUTRITION_EXCLUSION_REASONS,
   type NutritionCoverage,
   type NutritionBasis,
   type RecipeNutritionResult,
@@ -194,10 +193,28 @@ describe('coverage display', () => {
 });
 
 describe('exclusion copy and basis copy', () => {
-  it('provides copy for every exclusion reason', () => {
-    for (const reason of NUTRITION_EXCLUSION_REASONS) {
-      expect(describeExclusionReason(reason, {})).toBeTruthy();
-    }
+  it.each([
+    ['unlinked', {}, 'Not linked to a Nutrition Tracker food.'],
+    ['no-match', {}, 'Marked as having no Nutrition Tracker match.'],
+    ['candidate', {}, 'Suggested match "Milk" isn\'t confirmed — confirm it with a gram basis to count it.'],
+    ['candidate-missing', {}, 'The suggested food "Milk" no longer exists in the Nutrition Tracker.'],
+    ['stale-missing', {}, 'Needs review: the confirmed food "Milk" was deleted from the Nutrition Tracker.'],
+    ['stale-renamed', {}, 'Needs review: the confirmed food was renamed from "Milk" to "Oat Milk".'],
+    ['stale-revised', {}, 'Needs review: "Milk" changed in the Nutrition Tracker since you confirmed it.'],
+    ['unverifiable-target', {}, 'Confirmed without change tracking — re-confirm the link to count it.'],
+    ['invalid-basis', {}, 'The grams in one Nutrition Tracker unit are missing or invalid — re-confirm the link.'],
+    ['foods-unavailable', {}, "Confirmed, but Nutrition Tracker foods aren't loaded, so the link can't be checked."],
+    ['missing-quantity', { equivalent: '2 cloves' }, 'No gram weight (listed as "2 cloves") — add grams to count it.'],
+    ['missing-quantity', {}, 'No gram weight — add grams to count it.'],
+    ['zero-quantity', {}, 'Weight is 0 g — enter the real gram weight to count it.'],
+    ['invalid-quantity', {}, "The gram weight isn't a valid amount — edit the ingredient."],
+    ['duplicate-id', {}, 'Duplicate ingredient entry (same id as an earlier row) — not counted.'],
+  ] satisfies Array<[NutritionExclusionReason, { equivalent?: string }, string]>)('matches the copy table for %s', (reason, row, expected) => {
+    expect(describeExclusionReason(reason, {
+      ...row,
+      matchedName: 'Milk',
+      currentName: 'Oat Milk',
+    })).toBe(expected);
   });
 
   it('interpolates stale matched and current names and falls back for null names', () => {

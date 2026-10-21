@@ -99,8 +99,10 @@ function CoverageSummary({ result, scale, onRefreshFoods }: PanelDisplayProps & 
         {!isLoading && !complete && !partial ? <Info size={18} className="mt-0.5 text-text-3" /> : null}
         <div className="min-w-0 flex-1 space-y-1">
           <p className="font-semibold text-text">{coverageHeadline(result)}</p>
-          <p className="text-sm text-text-2">{coverageDetail(result)}</p>
-          {nutrientGapNote(result.coverage) && (
+          {result.foodsStatus === 'ready' && (
+            <p className="text-sm text-text-2">{coverageDetail(result)}</p>
+          )}
+          {result.foodsStatus === 'ready' && nutrientGapNote(result.coverage) && (
             <p className="text-sm text-warning">{nutrientGapNote(result.coverage)}</p>
           )}
           {result.factor !== 1 && (
@@ -187,7 +189,7 @@ function MacroTiles({ basis }: { basis: NutritionBasis }) {
         if (amount === undefined) return null;
         return (
           <div key={key} className="rounded-lg border border-border bg-surface-1 p-3">
-            <p className="text-xs text-text-3">{key === 'carbs' ? 'Carbs' : key[0].toUpperCase() + key.slice(1)}</p>
+            <p className="text-xs text-text-3">{nutrientLabel(key)}</p>
             <p className="tabular-nums text-lg font-semibold text-text" title={amount.isLowerBound ? 'at least' : undefined}>
               {formatNutrientAmount(key, amount)}
             </p>
@@ -447,7 +449,7 @@ export default function NutritionPanel({
         result={result}
         onEditLink={(id) => {
           setLinkEditingId(id);
-          if (foods.status !== 'ready') onRefreshFoods();
+          if (foods.status === 'idle' || foods.status === 'error') onRefreshFoods();
         }}
         onEditIngredient={setQuantityEditingId}
       />

@@ -338,6 +338,21 @@ describe('missing nutrient data', () => {
     expect(result.coverage.status).toBe('complete');
     expect(result.coverage.nutrientGaps).toContain('calories');
   });
+
+  it('reports a nutrient gap when finite contributions overflow while summing', () => {
+    const huge = food('huge', 'Huge', { calories: 1e308 });
+    const result = calculate(recipeOf([
+      ingredient('first', 1, confirmed(huge, 1)),
+      ingredient('second', 1, confirmed(huge, 1)),
+    ]), ready([huge]));
+
+    expect(result.coverage.nutrientGaps).toContain('calories');
+    expect(result.bases.total.amounts?.calories).toMatchObject({
+      value: null,
+      isLowerBound: true,
+      missingFromIngredientIds: [],
+    });
+  });
 });
 
 describe('workflow rows and duplicate identifiers', () => {
@@ -361,8 +376,17 @@ describe('workflow rows and duplicate identifiers', () => {
       ingredient('duplicate', 30, confirmed(BUTTER, 100)),
     ]));
     expect(result.coverage.includedCount).toBe(1);
-    expect(result.excluded[0].reasons).toEqual(['duplicate-id']);
+    expect(result.included[0]).toMatchObject({ index: 0, ingredientId: 'duplicate' });
+    expect(result.excluded[0]).toMatchObject({
+      index: 1,
+      ingredientId: 'duplicate',
+      reasons: ['duplicate-id'],
+      canEditLink: false,
+      canEditQuantity: false,
+    });
     expect(result.coverage.knownGrams).toBe(40);
+    expect(result.bases.total.amounts?.calories.value).toBe(36.4);
+    expect(result.coverage.status).toBe('partial');
   });
 
   it('preserves included and excluded rows with their recipe indexes', () => {
@@ -453,7 +477,7 @@ describe('nutrition bases', () => {
     expect(calculate(baseRecipe()).bases.perPortion).toMatchObject({ portionMode: 'count', portionSizeG: 125, finalWeightG: 1000, weightSource: 'estimated', estimated: true });
   });
 
-  it('marks count-mode size as projected when measured final weight is scaled', () => {
+  it('does not mark count-mode nutrition estimated when measured weight is scaled', () => {
     const recipe = recipeOf(
       baseRecipe().ingredients,
       undefined,
@@ -463,8 +487,40 @@ describe('nutrition bases', () => {
       portionMode: 'count',
       finalWeightG: 1800,
       weightSource: 'actual',
-      estimated: true,
+      estimated: false,
     });
+  });
+
+  it('marks a portion override estimated when the reference weight is estimated', () => {
+    const result = calculateRecipeNutrition({
+      recipe: baseRecipe(),
+      foods: ready([FLOUR, BUTTER, EGG]),
+      scale: { factor: 1.5, portionOverride: { count: 10, sizeG: 150 } },
+    });
+    expect(result.bases.perPortion).toMatchObject({ portionMode: 'override', estimated: true });
+  });
+
+  it('falls back to count mode when the portion override count is invalid', () => {
+    const result = calculateRecipeNutrition({
+      recipe: baseRecipe(),
+      foods: ready([FLOUR, BUTTER, EGG]),
+      scale: { factor: 1, portionOverride: { count: 0, sizeG: 150 } },
+    });
+    expect(result.bases.perPortion).toMatchObject({ portionMode: 'count', portionCount: 8 });
+  });
+
+  it('uses a portion override at exactly 1×', () => {
+    const result = calculateRecipeNutrition({
+      recipe: baseRecipe(),
+      foods: ready([FLOUR, BUTTER, EGG]),
+      scale: { factor: 1, portionOverride: { count: 10, sizeG: 150 } },
+    });
+    expect(result.bases.perPortion).toMatchObject({
+      portionMode: 'override',
+      portionCount: 10,
+      portionSizeG: 150,
+    });
+    expect(result.bases.perPortion.amounts?.calories.value).toBe(284.525);
   });
 
   it('falls back to portion size over final weight and flags an estimated weight', () => {
