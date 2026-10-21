@@ -6,7 +6,6 @@ const EXPORT_LABEL = 'Export to Nutrition Tracker';
 const UPDATE_LABEL = 'Update tracker food';
 const RECREATE_LABEL = 'Create it again';
 const CARD_DESCRIPTION = 'Save this recipe as a food you can log in the Nutrition Tracker.';
-const FOREIGN_NOTE = 'This food belongs to another copy of the recipe. Exporting creates a new food.';
 const SCALE_NOTE = "Exports always use the recipe at 1×; the working scale doesn't change the tracker food.";
 const PARTIAL_LABEL = 'partial';
 
@@ -17,16 +16,20 @@ const PARTIAL_LABEL = 'partial';
 
 import { PackagePlus } from 'lucide-react';
 import Button from '@/components/Button';
-import { describeExportStatus, exportDisabledReason } from '../lib/nutritionExportFormat';
+import {
+  describeExportBlocks,
+  describeExportStatus,
+  exportDisabledReason,
+  EXPORT_BASIS_LABELS,
+} from '../lib/nutritionExportFormat';
 import {
   buildExportPayload,
   exportAction,
+  selectMissingExportBasis,
   selectExportBasis,
   type ExportStatus,
 } from '../lib/nutritionExport';
-import { EXPORT_BASIS_LABELS } from '../lib/nutritionExportFormat';
-import { describeExportBlock } from '../lib/nutritionExportFormat';
-import type { NutritionExportBasisKey } from '../lib/types';
+import { NUTRITION_EXPORT_BASIS_KEYS, type NutritionExportBasisKey } from '../lib/types';
 import type { FoodsState } from '../lib/trackerFoods';
 import type { RecipeNutritionResult } from '../lib/nutritionCalc';
 import type { Recipe } from '../lib/types';
@@ -100,9 +103,7 @@ function ExportRow({
         ) : null}
         <StatusPill status={status} />
       </div>
-      {status.ownership === 'foreign' ? (
-        <p className="text-sm text-text-3">{FOREIGN_NOTE}</p>
-      ) : (
+      {status.ownership === 'foreign' ? null : (
         <>
           <Button
             size="sm"
@@ -144,12 +145,12 @@ export default function NutritionExportCard({
       return [status.basis, exportAction(status, payload)];
     }),
   );
-  const blockedReasons = statuses.flatMap((status) => {
-    const option = choice.options[status.basis];
-    return option.ok ? [] : [describeExportBlock(option.reason, status.basis, option.overCapKeys)];
-  });
-  const blockedReasonIds = blockedReasons.map((_, index) => `nutrition-export-blocked-${index}`);
+  const blockedReasons = describeExportBlocks(choice.options);
+  const blockedReasonIds = NUTRITION_EXPORT_BASIS_KEYS.filter((basis) => blockedReasons[basis] !== null).map(
+    (basis) => `nutrition-export-blocked-${basis}`,
+  );
   const noBasisAvailable = choice.preferred === null;
+  const missingBasis = selectMissingExportBasis(statuses, choice);
   return (
     <section
       className="space-y-3 rounded-xl border border-border bg-surface-2 p-4"
@@ -170,7 +171,7 @@ export default function NutritionExportCard({
               status={status}
               action={basisActions.get(status.basis) ?? 'blocked'}
               disabled={disabledReason !== null || basisActions.get(status.basis) === 'blocked'}
-              disabledReason={disabledReason ?? blockedReasons[statuses.indexOf(status)] ?? null}
+              disabledReason={disabledReason ?? blockedReasons[status.basis]}
               onOpen={onOpen}
             />
           ))}
@@ -183,7 +184,7 @@ export default function NutritionExportCard({
             .filter((id): id is string => id !== null)
             .join(' ') || undefined
         }
-        onClick={() => onOpen('choose')}
+        onClick={() => onOpen(missingBasis ?? 'choose')}
       >
         {EXPORT_LABEL}
       </Button>
@@ -192,11 +193,13 @@ export default function NutritionExportCard({
           {disabledReason}
         </p>
       ) : null}
-      {blockedReasons.map((reason, index) => (
-        <p id={blockedReasonIds[index]} key={`${index}-${reason}`} className="text-sm text-text-3">
-          {reason}
-        </p>
-      ))}
+      {NUTRITION_EXPORT_BASIS_KEYS.map((basis) =>
+        blockedReasons[basis] === null ? null : (
+          <p id={`nutrition-export-blocked-${basis}`} key={basis} className="text-sm text-text-3">
+            {blockedReasons[basis]}
+          </p>
+        ),
+      )}
       {scaleActive ? <p className="text-sm text-text-3">{SCALE_NOTE}</p> : null}
     </section>
   );

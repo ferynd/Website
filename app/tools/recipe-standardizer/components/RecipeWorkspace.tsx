@@ -57,8 +57,14 @@ import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
 import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
 import { applyIntakeLinks, collectGuardFoodIds, collectLinkTargets, findNoLongerEligible, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
-import { buildTrackerFoodDoc, FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, parseTrackerFood } from '../lib/trackerFoods';
-import { trackerFoodId } from '../lib/trackerFoods';
+import {
+  buildTrackerFoodDoc,
+  FoodIdCollisionError,
+  FoodLinkTargetChangedError,
+  FoodTargetReappearedError,
+  parseTrackerFood,
+  trackerFoodId,
+} from '../lib/trackerFoods';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
 import { calculateRecipeNutrition } from '../lib/nutritionCalc';
@@ -69,6 +75,7 @@ import {
   collectExportSourceTargets,
   deriveExportStatuses,
   exportAction,
+  exportTargetChangedSinceReview,
   findExportCollision,
   ExportRequestError,
   type ExportCommitInput,
@@ -314,9 +321,10 @@ export default function RecipeWorkspace() {
   };
 
   const persistNew = async (recipe: Recipe) => {
-    const id = await saveNew(recipe);
-    setBaseline(recipe);
-    setDraft(recipe);
+    const cleanRecipe = withoutNutritionExports(recipe).recipe;
+    const id = await saveNew(cleanRecipe);
+    setBaseline(cleanRecipe);
+    setDraft(cleanRecipe);
     setCurrentId(id);
     setStatus(`Saved “${recipe.name}”.`);
   };
@@ -522,8 +530,10 @@ export default function RecipeWorkspace() {
     const current = draftRef.current;
     if (!current || !currentId) return { status: 'error', message: EXPORT_WORKSPACE_COPY.unsaved };
     if (dirty) return { status: 'error', message: EXPORT_WORKSPACE_COPY.dirty };
-    const freshFoods = await refreshFoods();
-    if (freshFoods === null) {
+    let freshFoods: import('../lib/trackerFoods').TrackerFood[];
+    try {
+      freshFoods = await loadFoodItems();
+    } catch {
       return { status: 'error', message: EXPORT_WORKSPACE_COPY.foodsUnavailable };
     }
     if (session !== recipeSessionRef.current) {
@@ -535,6 +545,7 @@ export default function RecipeWorkspace() {
       return { status: 'error', message: EXPORT_WORKSPACE_COPY.dirty };
     }
     const readyFoods: FoodsState = { status: 'ready', items: freshFoods, error: '' };
+    setFoods(readyFoods);
     const freshResult = calculateExportNutrition(latestRecipe, readyFoods);
     const payloadResult = buildExportPayload(latestRecipe, freshResult, input.basis);
     if (!payloadResult.ok || payloadResult.payload.fingerprint !== input.reviewedFingerprint) {
@@ -543,6 +554,12 @@ export default function RecipeWorkspace() {
     const freshStatuses = deriveExportStatuses(latestRecipe, currentId, freshResult, readyFoods);
     const freshStatus = freshStatuses.find((item) => item.basis === input.basis);
     if (freshStatus === undefined) return { status: 'error', message: EXPORT_WORKSPACE_COPY.verifyFailed };
+    if (
+      input.reviewedAction === 'update-overwrite-tracker-edits' &&
+      exportTargetChangedSinceReview(freshStatus, input.reviewedTarget)
+    ) {
+      return { status: 'review-changed', message: EXPORT_WORKSPACE_COPY.targetChanged };
+    }
     const freshAction = exportAction(freshStatus, payloadResult);
     if (freshAction !== input.reviewedAction) {
       return { status: 'review-changed', message: EXPORT_WORKSPACE_COPY.targetChanged };
@@ -562,6 +579,7 @@ export default function RecipeWorkspace() {
         sourceTargets: collectExportSourceTargets(freshResult, freshFoods),
         chosenName: input.chosenName,
         overwriteTrackerEdits: input.overwriteTrackerEdits,
+        reviewedTarget: input.reviewedTarget,
         partialConfirmed: input.partialConfirmed,
         nowIso: new Date().toISOString(),
         nowMs: Date.now(),
@@ -578,7 +596,6 @@ export default function RecipeWorkspace() {
     try {
       await exportFood(request);
     } catch (error) {
-      void refreshFoods();
       if (error instanceof FoodIdCollisionError) return { status: 'collision', foodId: request.foodId };
       if (error instanceof ExportTargetChangedError)
         return { status: 'review-changed', message: EXPORT_WORKSPACE_COPY.targetEdited };

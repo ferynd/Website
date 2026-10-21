@@ -4,32 +4,6 @@ export const EXPORT_BASIS_LABELS: Record<NutritionExportBasisKey, string> = {
   perPortion: 'Per portion',
   per100gCooked: 'Per 100 g cooked',
 };
-const NUTRIENT_LABELS: Record<TrackerNutrientKey, string> = {
-  calories: 'Calories',
-  protein: 'Protein',
-  carbs: 'Carbs',
-  fat: 'Fat',
-  fiber: 'Fiber',
-  potassium: 'Potassium',
-  magnesium: 'Magnesium',
-  sodium: 'Sodium',
-  calcium: 'Calcium',
-  choline: 'Choline',
-  vitaminB12: 'Vitamin B12',
-  folate: 'Folate',
-  vitaminC: 'Vitamin C',
-  vitaminB6: 'Vitamin B6',
-  vitaminA: 'Vitamin A',
-  vitaminD: 'Vitamin D',
-  vitaminE: 'Vitamin E',
-  vitaminK: 'Vitamin K',
-  selenium: 'Selenium',
-  iodine: 'Iodine',
-  phosphorus: 'Phosphorus',
-  iron: 'Iron',
-  zinc: 'Zinc',
-  omega3: 'Omega-3',
-};
 const STALE_SUFFIX = ' · tracker food out of date';
 const UNSAVED_REASON = 'Save the recipe to export it — exports use the saved recipe at 1×.';
 const DIRTY_REASON = 'Save your changes first — the tracker food must match the saved recipe.';
@@ -61,6 +35,7 @@ const EXPORT_COPY = {
   lowerBound: 'Lower-bound nutrients:',
   partialTail: "The tracker food will under-count, and the Nutrition Tracker can't show “at least” values.",
   zeroFilledLead: 'Saved as 0 because no counted ingredient has data:',
+  createdQuantityMeaning: 'Log it there with quantity 1 = one portion / 100 g.',
   created: 'Created',
   updated: 'Updated',
   collision: 'A Nutrition Tracker food already uses this name. Choose another name.',
@@ -72,9 +47,32 @@ const EXPORT_COPY = {
  */
 
 import type { FoodsState, TrackerNutrientKey } from './trackerFoods';
-import type { ExportBlockReason, ExportCommitOutcome, ExportPayload, ExportStatus } from './nutritionExport';
+import { nutrientLabel } from './nutritionFormat';
+import type {
+  ExportBasisChoice,
+  ExportBlockReason,
+  ExportCommitOutcome,
+  ExportPayload,
+  ExportStatus,
+} from './nutritionExport';
 import { TRACKER_NUTRIENT_KEYS } from './trackerFoods';
 import type { NutritionExportBasisKey } from './types';
+import { NUTRITION_EXPORT_BASIS_KEYS } from './types';
+
+/** Build blocked copy by basis so each row and description keeps its own reason. */
+export const describeExportBlocks = (
+  options: ExportBasisChoice['options'],
+): Record<NutritionExportBasisKey, string | null> => {
+  const reasons: Record<NutritionExportBasisKey, string | null> = {
+    perPortion: null,
+    per100gCooked: null,
+  };
+  for (const basis of NUTRITION_EXPORT_BASIS_KEYS) {
+    const option = options[basis];
+    if (!option.ok) reasons[basis] = describeExportBlock(option.reason, basis, option.overCapKeys);
+  }
+  return reasons;
+};
 
 /** Explain why a basis is blocked. */
 export const describeExportBlock = (
@@ -94,7 +92,7 @@ export const describeExportBlock = (
     case 'estimated-final-weight':
       return EXPORT_COPY.estimatedWeight;
     case 'over-tracker-cap':
-      return `These values exceed Nutrition Tracker limits: ${overCapKeys.map((key) => NUTRIENT_LABELS[key]).join(', ')}.`;
+      return `These values exceed Nutrition Tracker limits: ${overCapKeys.map(nutrientLabel).join(', ')}.`;
     case 'non-finite':
       return EXPORT_COPY.nonFinite;
     default: {
@@ -143,7 +141,7 @@ export const partialExportWarning = (payload: ExportPayload): string => {
       ? ''
       : ` ${EXPORT_COPY.notCounted} ${payload.excludedNames.join(', ')}.`;
   const lowerBounds = TRACKER_NUTRIENT_KEYS.filter((key) => payload.lowerBoundKeys.includes(key)).map(
-    (key) => NUTRIENT_LABELS[key],
+    nutrientLabel,
   );
   const lowerBoundCopy =
     lowerBounds.length === 0 ? '' : ` ${EXPORT_COPY.lowerBound} ${lowerBounds.join(', ')}.`;
@@ -154,7 +152,7 @@ export const partialExportWarning = (payload: ExportPayload): string => {
 export const zeroFilledNote = (payload: ExportPayload): string => {
   if (payload.zeroFilledKeys.length === 0) return '';
   const labels = TRACKER_NUTRIENT_KEYS.filter((key) => payload.zeroFilledKeys.includes(key)).map(
-    (key) => NUTRIENT_LABELS[key],
+    nutrientLabel,
   );
   return `${EXPORT_COPY.zeroFilledLead} ${labels.join(', ')}.`;
 };
@@ -180,7 +178,7 @@ export const describeExportOutcome = (outcome: ExportCommitOutcome): string => {
   switch (outcome.status) {
     case 'done':
       return outcome.mode === 'create'
-        ? `${EXPORT_COPY.created} “${outcome.foodName}” in the Nutrition Tracker.`
+        ? `${EXPORT_COPY.created} “${outcome.foodName}” in the Nutrition Tracker. ${EXPORT_COPY.createdQuantityMeaning}`
         : `${EXPORT_COPY.updated} “${outcome.foodName}”.`;
     case 'collision':
       return EXPORT_COPY.collision;

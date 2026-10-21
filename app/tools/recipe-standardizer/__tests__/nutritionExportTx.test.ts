@@ -110,13 +110,14 @@ const makeRequest = (basis: 'perPortion' | 'per100gCooked' = 'perPortion'): Expo
     sourceTargets: [],
     chosenName: basis === 'perPortion' ? 'Butter cookies (per portion)' : 'Butter cookies (per 100 g cooked)',
     overwriteTrackerEdits: false,
+    reviewedTarget: null,
     partialConfirmed: false,
     nowIso: '2025-01-01T00:00:00.000Z',
     nowMs: 5,
   });
 };
 
-const recipeDoc = (request: ExportCommitRequest, extra: Record<string, unknown> = {}) => ({
+const recipeDoc = (extra: Record<string, unknown> = {}) => ({
   name: 'Butter cookies',
   recipe: { ...butterCookiesRecipe(), ...extra },
   updatedAt: 'old',
@@ -131,7 +132,7 @@ const run = async (request: ExportCommitRequest, store: Map<string, unknown>) =>
 };
 
 const seed = (request: ExportCommitRequest, targetPresent = false) => {
-  const store = new Map<string, unknown>([[RECIPE_PATH, recipeDoc(request)]]);
+  const store = new Map<string, unknown>([[RECIPE_PATH, recipeDoc()]]);
   if (targetPresent) store.set(FOOD_PATH(request.foodId), request.doc);
   return store;
 };
@@ -193,12 +194,13 @@ describe('nutritionExportTx', () => {
       sourceTargets: [],
       chosenName: '',
       overwriteTrackerEdits: false,
+      reviewedTarget: null,
       partialConfirmed: false,
       nowIso: '2025-02-01T00:00:00.000Z',
       nowMs: 6,
     });
     const store = new Map<string, unknown>([
-      [RECIPE_PATH, { ...recipeDoc(request), recipe: withRef }],
+      [RECIPE_PATH, { ...recipeDoc(), recipe: withRef }],
       [FOOD_PATH(request.foodId), create.doc],
     ]);
     await run(request, store);

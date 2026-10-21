@@ -14,10 +14,11 @@ const BLOCK_REASONS = [
  */
 
 import { describe, expect, it } from 'vitest';
-import { butterCookiesRecipe, exportedRef, sourceFoodsReady } from './exportFixtures';
+import { butterCookiesRecipe, exportedRef, gapFoodsReady, gapRecipe, sourceFoodsReady } from './exportFixtures';
 import { buildExportPayload, calculateExportNutrition, type ExportStatus } from '../lib/nutritionExport';
 import {
   describeExportBlock,
+  describeExportBlocks,
   describeExportOutcome,
   describeExportStatus,
   exportDisabledReason,
@@ -50,6 +51,22 @@ const status = (overrides: Partial<ExportStatus> = {}): ExportStatus => ({
 });
 
 describe('nutritionExportFormat', () => {
+  it('keeps each blocked explanation attached to its export basis', () => {
+    const blocks = describeExportBlocks({
+      perPortion: {
+        ok: true,
+        payload: completePayload(),
+      },
+      per100gCooked: {
+        ok: false,
+        reason: 'no-final-weight',
+        overCapKeys: [],
+      },
+    });
+    expect(blocks.perPortion).toBeNull();
+    expect(blocks.per100gCooked).toContain('Per 100 g cooked needs a measured cooked weight');
+  });
+
   it.each(BLOCK_REASONS)('describeExportBlock covers every ExportBlockReason', (reason) => {
     const copy = describeExportBlock(reason, 'perPortion', ['calories']);
     expect(copy.length).toBeGreaterThan(10);
@@ -112,6 +129,19 @@ describe('nutritionExportFormat', () => {
     );
   });
 
+  it('zero-filled nutrients are disclosed for a complete-coverage export', () => {
+    const recipe = gapRecipe();
+    const result = buildExportPayload(
+      recipe,
+      calculateExportNutrition(recipe, gapFoodsReady()),
+      'perPortion',
+    );
+    if (!result.ok) throw new Error('Expected complete-coverage export payload.');
+    expect(result.payload.coverage).toBe('complete');
+    expect(result.payload.zeroFilledKeys).toContain('vitaminD');
+    expect(zeroFilledNote(result.payload)).toContain('Vitamin D');
+  });
+
   it('exportSubtitleSuffix is empty when nothing is stale and set when any own export is stale', () => {
     expect(exportSubtitleSuffix([status()])).toBe('');
     expect(exportSubtitleSuffix([status({ stale: true, recipe: 'changed' })])).toBe(
@@ -136,6 +166,9 @@ describe('nutritionExportFormat', () => {
   it('describeExportOutcome covers done(create/update), collision, review-changed, error', () => {
     expect(describeExportOutcome({ status: 'done', mode: 'create', foodName: 'Cookies' })).toContain(
       'Created “Cookies”',
+    );
+    expect(describeExportOutcome({ status: 'done', mode: 'create', foodName: 'Cookies' })).toContain(
+      'quantity 1 = one portion / 100 g',
     );
     expect(describeExportOutcome({ status: 'done', mode: 'update', foodName: 'Cookies' })).toBe(
       'Updated “Cookies”.',

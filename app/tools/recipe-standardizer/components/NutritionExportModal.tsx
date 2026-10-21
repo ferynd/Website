@@ -37,7 +37,7 @@ const EXPORT_COPY = {
  * The parent revalidates every reviewed value before the transaction starts.
  */
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Button from '@/components/Button';
 import { formatNutrientAmount, nutrientLabel } from '../lib/nutritionFormat';
 import {
@@ -47,6 +47,8 @@ import {
   exportAction,
   findExportCollision,
   selectExportBasis,
+  TRACKER_EXPORT_QUANTITY,
+  trackerFoodLinkTarget,
   type ExportAction,
   type ExportCommitInput,
   type ExportCommitOutcome,
@@ -141,7 +143,6 @@ function PartialWarning({
   return (
     <section className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
       <p>{partialExportWarning(payload)}</p>
-      {zeroFilledNote(payload) ? <p>{zeroFilledNote(payload)}</p> : null}
       <label className="flex items-center gap-2">
         <input type="checkbox" checked={confirmed} onChange={(event) => onChange(event.target.checked)} />
         <span>{EXPORT_COPY.partialConfirm}</span>
@@ -269,12 +270,13 @@ function ReviewStep({
           {diff.changes.length === 0 && !diff.quantityChanged ? <p>{EXPORT_COPY.noChanges}</p> : null}
           {diff.quantityChanged ? (
             <p>
-              {EXPORT_COPY.quantityLabel} {status.targetFood?.quantity ?? EXPORT_COPY.unknown} → 1
+              {EXPORT_COPY.quantityLabel} {status.targetFood?.quantity ?? EXPORT_COPY.unknown} →{' '}
+              {TRACKER_EXPORT_QUANTITY}
             </p>
           ) : null}
           {diff.changes.map((change) => (
             <p key={change.key}>
-              {nutrientLabel(change.key)}: {change.before ?? 'unknown'} → {change.after}
+              {nutrientLabel(change.key)}: {change.before ?? EXPORT_COPY.unknown} → {change.after}
             </p>
           ))}
           <p className="pt-1 text-text-3">{EXPORT_COPY.pastLogsNote}</p>
@@ -283,6 +285,7 @@ function ReviewStep({
       {payload.coverage === 'partial' ? (
         <PartialWarning payload={payload} confirmed={partialConfirmed} onChange={onPartialChange} />
       ) : null}
+      {zeroFilledNote(payload) ? <p className="text-sm text-text-2">{zeroFilledNote(payload)}</p> : null}
       {action === 'update-overwrite-tracker-edits' ? (
         <TrackerEditsWarning
           checked={overwriteConfirmed}
@@ -342,6 +345,47 @@ export default function NutritionExportModal({
   const [submitting, setSubmitting] = useState(false);
   const payloadResult = buildExportPayload(recipe, result, basis);
   const status = statuses.find((item) => item.basis === basis) ?? statuses[0];
+  const payload = payloadResult.ok ? payloadResult.payload : null;
+  const action = exportAction(status, payloadResult);
+  const reviewIdentity = `${basis}:${payload?.fingerprint ?? payloadResult.ok}:${action}`;
+  const previousReviewIdentity = useRef(reviewIdentity);
+
+  useEffect(() => {
+    if (previousReviewIdentity.current === reviewIdentity) return;
+    previousReviewIdentity.current = reviewIdentity;
+    setPartialConfirmed(false);
+    setOverwriteConfirmed(false);
+    const ref = status.ownership === 'own' && action === 'recreate' ? status.ref : null;
+    setName(ref?.foodName ?? defaultExportFoodName(recipe.name, basis));
+  }, [action, basis, recipe.name, reviewIdentity, status]);
+
+  if (outcome) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="nutrition-export-title"
+      >
+        <div className="w-full max-w-xl space-y-4 rounded-xl border border-border bg-surface-1 p-5">
+          <h2 id="nutrition-export-title" className="text-lg font-semibold">
+            {DIALOG_TITLE}
+          </h2>
+          <OutcomeStep
+            outcome={outcome}
+            onClose={onClose}
+            onReviewAgain={() => {
+              setPartialConfirmed(false);
+              setOverwriteConfirmed(false);
+              const ref = status.ownership === 'own' && action === 'recreate' ? status.ref : null;
+              setName(ref?.foodName ?? defaultExportFoodName(recipe.name, basis));
+              setOutcome(null);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
   if (!payloadResult.ok) {
     return (
       <div
@@ -360,8 +404,7 @@ export default function NutritionExportModal({
       </div>
     );
   }
-  const payload = payloadResult.payload;
-  const action = exportAction(status, payloadResult);
+  if (payload === null) return null;
   const nameInvalid =
     (action === 'create' || action === 'recreate') && validateTrackerFoodName(name) !== null;
   const collision =
@@ -380,6 +423,7 @@ export default function NutritionExportModal({
       basis,
       reviewedFingerprint: payload.fingerprint,
       reviewedAction: action,
+      reviewedTarget: status.targetFood === null ? null : trackerFoodLinkTarget(status.targetFood),
       chosenName: name,
       partialConfirmed,
       overwriteTrackerEdits: overwriteConfirmed,
@@ -410,11 +454,8 @@ export default function NutritionExportModal({
             {EXPORT_COPY.cancel}
           </Button>
         </div>
-        {outcome ? (
-          <OutcomeStep outcome={outcome} onClose={onClose} onReviewAgain={() => setOutcome(null)} />
-        ) : (
-          <>
-            {initialBasis === 'choose' ? (
+        <>
+          {initialBasis === 'choose' ? (
               <BasisStep
                 recipe={recipe}
                 result={result}
@@ -455,9 +496,8 @@ export default function NutritionExportModal({
               >
                 {submitting ? EXPORT_COPY.saving : buttonLabel}
               </Button>
-            </div>
-          </>
-        )}
+          </div>
+        </>
       </div>
     </div>
   );

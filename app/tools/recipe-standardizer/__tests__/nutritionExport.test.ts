@@ -36,9 +36,12 @@ import {
   deriveExportStatus,
   diffExportNutrients,
   exportAction,
+  exportTargetChangedSinceReview,
   findExportCollision,
   roundExportValue,
   selectExportBasis,
+  selectMissingExportBasis,
+  trackerFoodLinkTarget,
   ExportRequestError,
   TRACKER_EXPORT_QUANTITY,
 } from '../lib/nutritionExport';
@@ -124,13 +127,27 @@ describe('nutritionExport', () => {
   it('payload is independent of the working scale', () => {
     const recipe = butterCookiesRecipe();
     const foods = sourceFoodsReady();
+    const unscaledResult = calculateExportNutrition(recipe, foods);
     const workingCopy = calculateRecipeNutrition({
       recipe,
       foods,
       scale: { factor: 2, portionOverride: undefined },
     });
     expect(workingCopy.factor).toBe(2);
-    expect(payloadFor(recipe).nutrients.calories).toBe(440);
+    expect(workingCopy.bases.total.amounts?.calories.value).not.toBe(
+      unscaledResult.bases.total.amounts?.calories.value,
+    );
+    const exportResult = buildExportPayload(recipe, calculateExportNutrition(recipe, foods), 'perPortion');
+    expect(exportResult.ok && exportResult.payload.nutrients.calories).toBe(440);
+    expect(unscaledResult.bases.total.amounts?.calories.value).toBe(1760);
+  });
+
+  it('count-mode per portion does not store estimated weight as measured export context', () => {
+    const recipe = estimatedOnly();
+    const payload = payloadFor(recipe);
+    expect(payload.portionCount).toBe(4);
+    expect(payload.portionSizeG).toBeNull();
+    expect(payload.finalWeightG).toBeNull();
   });
 
   it('per-100g is blocked as estimated-final-weight when only an estimate exists', () => {
@@ -281,7 +298,7 @@ describe('nutritionExport', () => {
         coverage: 'partial',
         includedCount: 2,
         totalCount: 3,
-        coveragePercent: '79%',
+        coveragePercent: '78%',
         excludedNames: ['sugar'],
       },
     });
@@ -306,6 +323,23 @@ describe('nutritionExport', () => {
       'recipe-1',
     );
     expect(choice.preferred).toBe('perPortion');
+  });
+
+  it('primary export selection prefers the exportable basis without an own reference', () => {
+    const recipe = butterCookiesRecipe();
+    const portionPayload = payloadFor(recipe, 'perPortion');
+    const own = ownExport(recipe, portionPayload, 'perPortion');
+    const cookedPayload = payloadFor(recipe, 'per100gCooked');
+    const statuses = [
+      statusFor(own.recipe, 'perPortion', portionPayload, foodsReady(own.food), own.ref),
+      statusFor(own.recipe, 'per100gCooked', cookedPayload, foodsReady(own.food), undefined),
+    ];
+    const choice = selectExportBasis(
+      own.recipe,
+      calculateExportNutrition(own.recipe, sourceFoodsReady()),
+      'recipe-1',
+    );
+    expect(selectMissingExportBasis(statuses, choice)).toBe('per100gCooked');
   });
 
   it('selectExportBasis falls back to per100gCooked when portion data is missing', () => {
@@ -484,15 +518,36 @@ describe('nutritionExport', () => {
       name: 'New name',
       activeSteps: own.recipe.activeSteps.map((step) => ({ ...step, text: 'Bake until done.' })),
     };
+    const editedPayload = buildExportPayload(
+      edited,
+      calculateExportNutrition(edited, sourceFoodsReady()),
+      'perPortion',
+    );
     const status = deriveExportStatus({
       basis: 'perPortion',
       ref: own.ref,
       recipeId: 'recipe-1',
-      payload: { ok: true, payload },
+      payload: editedPayload,
       foods: foodsReady(own.food),
     });
     expect(status).toMatchObject({ recipe: 'current', stale: false });
     expect(edited.name).toBe('New name');
+  });
+
+  it('coverage and included counts mark an otherwise identical nutrition snapshot changed', () => {
+    const recipe = butterCookiesRecipe();
+    const payload = payloadFor(recipe);
+    const own = ownExport(recipe, payload);
+    const ref = { ...own.ref, coverage: 'partial' as const, includedCount: 2, totalCount: 3 };
+    const status = deriveExportStatus({
+      basis: 'perPortion',
+      ref,
+      recipeId: 'recipe-1',
+      payload: { ok: true, payload },
+      foods: foodsReady(own.food),
+    });
+    expect(payload.fingerprint).toBe(ref.nutritionFingerprint);
+    expect(status).toMatchObject({ recipe: 'changed', stale: true });
   });
 
   it.each([
@@ -617,6 +672,7 @@ describe('nutritionExport', () => {
       sourceTargets: [],
       chosenName: 'Butter cookies (per portion)',
       overwriteTrackerEdits: false,
+      reviewedTarget: null,
       partialConfirmed: false,
       nowIso: '2025-01-01T00:00:00.000Z',
       nowMs: 7,
@@ -643,6 +699,7 @@ describe('nutritionExport', () => {
       sourceTargets: [],
       chosenName: 'ignored',
       overwriteTrackerEdits: false,
+      reviewedTarget: null,
       partialConfirmed: false,
       nowIso: '2025-01-02T00:00:00.000Z',
       nowMs: 8,
@@ -670,13 +727,29 @@ describe('nutritionExport', () => {
       sourceTargets: [],
       chosenName: '',
       overwriteTrackerEdits: false,
+      reviewedTarget: trackerFoodLinkTarget(own.food),
       partialConfirmed: false,
       nowIso: '2025-01-02T00:00:00.000Z',
       nowMs: 8,
     };
     expect(() => buildExportCommitRequest(input)).toThrow(ExportRequestError);
     const request = buildExportCommitRequest({ ...input, overwriteTrackerEdits: true });
-    expect(request.expectedTarget?.fingerprint).toBe(fingerprintTrackerFood(edited));
+    expect(request.expectedTarget?.fingerprint).toBe(fingerprintTrackerFood(own.food));
+  });
+
+  it('overwrite target must still match the identity captured during review', () => {
+    const recipe = butterCookiesRecipe();
+    const payload = payloadFor(recipe);
+    const own = ownExport(recipe, payload);
+    const reviewedTarget = trackerFoodLinkTarget(own.food);
+    const editedAfterReview = {
+      ...own.food,
+      nutrients: { ...own.food.nutrients, calories: (own.food.nutrients.calories ?? 0) + 1 },
+    };
+    const status = statusFor(own.recipe, 'perPortion', payload, foodsReady(editedAfterReview), own.ref);
+    expect(status.target).toBe('modified');
+    expect(exportTargetChangedSinceReview(status, reviewedTarget)).toBe(true);
+    expect(exportTargetChangedSinceReview(status, trackerFoodLinkTarget(editedAfterReview))).toBe(false);
   });
 
   it('partial payload without partialConfirmed throws ExportRequestError', () => {
@@ -692,6 +765,7 @@ describe('nutritionExport', () => {
         sourceTargets: [],
         chosenName: 'Butter cookies (per portion)',
         overwriteTrackerEdits: false,
+        reviewedTarget: null,
         partialConfirmed: false,
         nowIso: 'now',
         nowMs: 1,
@@ -712,6 +786,7 @@ describe('nutritionExport', () => {
         sourceTargets: [],
         chosenName: '東京',
         overwriteTrackerEdits: false,
+        reviewedTarget: null,
         partialConfirmed: false,
         nowIso: 'now',
         nowMs: 1,
@@ -739,6 +814,7 @@ describe('nutritionExport', () => {
         ],
         chosenName: 'Butter cookies (per portion)',
         overwriteTrackerEdits: false,
+        reviewedTarget: null,
         partialConfirmed: false,
         nowIso: 'now',
         nowMs: 1,
@@ -758,6 +834,7 @@ describe('nutritionExport', () => {
       sourceTargets: [],
       chosenName: 'Butter cookies (per portion)',
       overwriteTrackerEdits: false,
+      reviewedTarget: null,
       partialConfirmed: false,
       nowIso: 'now',
       nowMs: 1,
@@ -779,6 +856,7 @@ describe('nutritionExport', () => {
       sourceTargets: [],
       chosenName: 'Butter cookies (per portion)',
       overwriteTrackerEdits: false,
+      reviewedTarget: null,
       partialConfirmed: false,
       nowIso: '2025-01-01T00:00:00.000Z',
       nowMs: 99,

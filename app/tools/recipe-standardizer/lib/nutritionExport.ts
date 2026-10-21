@@ -133,6 +133,8 @@ export interface ExportCommitInput {
   basis: NutritionExportBasisKey;
   reviewedFingerprint: string;
   reviewedAction: ExportAction;
+  /** Tracker target identity visible when the review was opened. */
+  reviewedTarget: LinkTarget | null;
   chosenName: string;
   partialConfirmed: boolean;
   overwriteTrackerEdits: boolean;
@@ -172,7 +174,7 @@ const blocked = (reason: ExportBlockReason): ExportPayloadResult => ({
 
 /** Build one export payload while enforcing measured-weight, coverage, and tracker bounds. */
 export const buildExportPayload = (
-  recipe: Recipe,
+  _recipe: Recipe,
   result: RecipeNutritionResult,
   basis: NutritionExportBasisKey,
 ): ExportPayloadResult => {
@@ -224,15 +226,13 @@ export const buildExportPayload = (
       includedCount: result.coverage.includedCount,
       totalCount: result.coverage.totalCount,
       coveragePercent:
-        result.coverage.status === 'partial' && result.coverage.knownGrams > 0
-          ? `${Math.round((result.coverage.coveredGrams / result.coverage.knownGrams) * 100)}%`
-          : formatCoveragePercent(result.coverage),
+        formatCoveragePercent(result.coverage),
       lowerBoundKeys,
       zeroFilledKeys,
       excludedNames: result.excluded.map((row) => row.displayName),
       portionCount: selected.portionCount,
-      portionSizeG: selected.portionSizeG,
-      finalWeightG: selected.finalWeightG,
+      portionSizeG: selected.weightSource === 'actual' ? selected.portionSizeG : null,
+      finalWeightG: selected.weightSource === 'actual' ? selected.finalWeightG : null,
     },
   };
 };
@@ -257,6 +257,15 @@ export const selectExportBasis = (
   if (options.per100gCooked.ok) return { preferred: 'per100gCooked', options };
   return { preferred: null, options };
 };
+
+/** Choose the first exportable basis without an own reference for the primary export button. */
+export const selectMissingExportBasis = (
+  statuses: ExportStatus[],
+  choice: ExportBasisChoice,
+): NutritionExportBasisKey | null =>
+  NUTRITION_EXPORT_BASIS_KEYS.find(
+    (basis) => statuses.find((status) => status.basis === basis)?.ownership !== 'own' && choice.options[basis].ok,
+  ) ?? null;
 
 /** Create a capped, capitalized default tracker food name with its basis suffix intact. */
 export const defaultExportFoodName = (recipeName: string, basis: NutritionExportBasisKey): string => {
@@ -320,7 +329,14 @@ export const deriveExportStatus = (input: {
         : 'unchanged';
   let recipeStatus: ExportStatus['recipe'] = 'current';
   if (!payload.ok) recipeStatus = 'unavailable';
-  else if (payload.payload.fingerprint !== ref.nutritionFingerprint) recipeStatus = 'changed';
+  else if (
+    payload.payload.fingerprint !== ref.nutritionFingerprint ||
+    payload.payload.coverage !== ref.coverage ||
+    payload.payload.includedCount !== ref.includedCount ||
+    payload.payload.totalCount !== ref.totalCount
+  ) {
+    recipeStatus = 'changed';
+  }
   const stale =
     recipeStatus === 'changed' ||
     recipeStatus === 'unavailable' ||
@@ -402,6 +418,23 @@ export const collectExportSourceTargets = (
   return [...targets.values()];
 };
 
+/** Capture the revision identity of the tracker food shown in the review. */
+export const trackerFoodLinkTarget = (food: TrackerFood): LinkTarget => ({
+  id: food.id,
+  fingerprint: fingerprintTrackerFood(food),
+  normalizedName: normalizeIngredientName(food.name),
+  lastUpdated: food.lastUpdated,
+});
+
+/** Check whether an overwrite target differs from the identity captured during review. */
+export const exportTargetChangedSinceReview = (
+  status: ExportStatus,
+  reviewedTarget: LinkTarget | null,
+): boolean =>
+  status.targetFood === null ||
+  reviewedTarget === null ||
+  linkTargetChanged(status.targetFood, reviewedTarget);
+
 /** Assemble the verified create/update request or throw when review invariants fail. */
 export const buildExportCommitRequest = (input: {
   recipe: Recipe;
@@ -412,6 +445,7 @@ export const buildExportCommitRequest = (input: {
   sourceTargets: LinkTarget[];
   chosenName: string;
   overwriteTrackerEdits: boolean;
+  reviewedTarget: LinkTarget | null;
   partialConfirmed: boolean;
   nowIso: string;
   nowMs: number;
@@ -445,12 +479,8 @@ export const buildExportCommitRequest = (input: {
       expectedTarget = exportLinkTarget(ref);
     } else {
       if (!input.overwriteTrackerEdits) throw new ExportRequestError(REQUEST_ERROR_COPY.overwrite);
-      expectedTarget = {
-        id: targetFood.id,
-        fingerprint: fingerprintTrackerFood(targetFood),
-        normalizedName: normalizeIngredientName(targetFood.name),
-        lastUpdated: targetFood.lastUpdated,
-      };
+      expectedTarget = input.reviewedTarget;
+      if (expectedTarget === null) throw new ExportRequestError(REQUEST_ERROR_COPY.missingTarget);
     }
   }
   if (sourceTargets.some((target) => target.id === foodId)) {
