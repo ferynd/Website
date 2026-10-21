@@ -61,6 +61,8 @@ All tools are installed under `~/.local` (no sudo); `~/.local/bin` is on `PATH`.
 
 ### Known quirks
 
+- Next.js 15 left its support window on 2026-10-21. OpenNext then refuses to build it, so the `cf:*` scripts pass `--dangerouslyUseUnsupportedNextVersion`. Running `npx opennextjs-cloudflare build` by hand needs the flag too. Remove it after the Next 16 upgrade.
+
 - Codex 0.163.0 has **no `--full-auto`**; use `--sandbox workspace-write`.
 - Always redirect stdin (`</dev/null`) for headless `claude` / `codex` / `grok` runs, or they may hang waiting for input (confirmed again for `codex exec` on 2026-10-20).
 - If Codex reports `Your workspace is out of credits`, the ChatGPT workspace has run out of Codex usage. Fall back to Grok Build, or wait for credits to reset.

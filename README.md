@@ -507,7 +507,7 @@ The project deploys to **Cloudflare Workers** via the [OpenNext Cloudflare adapt
 
 **Exact build/deploy commands:**
 
-- `npm run cf:build` — runs `opennextjs-cloudflare build`; produces `.open-next/worker.js` and `.open-next/assets/`. This is the command Cloudflare's dashboard build step should run (do **not** use `npm run build` alone as the Cloudflare build command — that only produces `.next/`, not a deployable Worker).
+- `npm run cf:build` — runs `opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion` (Next.js 15 left its 2-year support window on 2026-10-21 and OpenNext refuses to build it without this flag; remove the flag after the Next 16 upgrade); produces `.open-next/worker.js` and `.open-next/assets/`. This is the command Cloudflare's dashboard build step should run (do **not** use `npm run build` alone as the Cloudflare build command — that only produces `.next/`, not a deployable Worker).
 - `npm run cf:preview` — builds, then runs `opennextjs-cloudflare preview` (local Workers runtime via `wrangler dev`) for a production-equivalent smoke test before deploying.
 - `npm run cf:deploy` — builds, then runs `opennextjs-cloudflare deploy` (`wrangler deploy` under the hood). Requires `wrangler login` or `CLOUDFLARE_API_TOKEN`/`CLOUDFLARE_ACCOUNT_ID` in the environment.
 
