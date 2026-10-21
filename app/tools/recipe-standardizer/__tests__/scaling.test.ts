@@ -9,6 +9,7 @@ import {
   factorFromServings,
   factorFromTargetWeight,
   referenceWeightG,
+  referenceWeightSource,
   scaleEquivalentText,
   scaleQuantityG,
 } from '../lib/scaling';
@@ -45,6 +46,26 @@ describe('scale factor derivation', () => {
     expect(factorFromTargetWeight(500, null)).toBeNull();
     expect(factorFromPortions(12, 90, 1080)?.factor).toBe(1);
     expect(factorFromPortions(12, 90, null)).toBeNull();
+  });
+
+  it('records the requested portion count and size as a portion override', () => {
+    expect(factorFromPortions(10, 150, 1000)?.portionOverride).toEqual({ count: 10, sizeG: 150 });
+  });
+
+  it.each([
+    ['multiplier', factorFromMultiplier(2)],
+    ['servings', factorFromServings(8, 4)],
+    ['target-weight', factorFromTargetWeight(500, 250)],
+  ])('does not set a portion override for %s scaling', (_mode, result) => {
+    expect(result?.portionOverride).toBeUndefined();
+  });
+
+  it('reports whether the reference weight is actual, estimated, or missing', () => {
+    const base = recipe();
+    expect(referenceWeightSource(base)).toBe('estimated');
+    expect(referenceWeightSource({ ...base, yield: { ...base.yield, actualFinalWeightG: 900 } })).toBe('actual');
+    expect(referenceWeightSource({ ...base, yield: { ...base.yield, actualFinalWeightG: 0 } })).toBe('estimated');
+    expect(referenceWeightSource({ ...base, yield: { ...base.yield, estimatedFinalWeightG: 0 } })).toBeNull();
   });
 });
 
@@ -123,5 +144,24 @@ describe('applyScaleToRecipe', () => {
     const link = confirmNutritionLink(trackerFood, 100, 123, base.ingredients[0].nutritionLink);
     base.ingredients[0].nutritionLink = link;
     expect(applyScaleToRecipe(base, 2).ingredients[0].nutritionLink).toEqual(link);
+  });
+
+  it('scales portion count and keeps portion size when baking', () => {
+    const base = recipe();
+    const scaled = applyScaleToRecipe(base, 2);
+    expect(scaled.servings.portionCount).toBe(48);
+    expect(scaled.servings.portionSizeG).toBe(45);
+  });
+
+  it('keeps a null portion count null when baking', () => {
+    const base = recipe();
+    base.servings.portionCount = null;
+    expect(applyScaleToRecipe(base, 2).servings.portionCount).toBeNull();
+  });
+
+  it('applies the portions-mode count and size when baking', () => {
+    const scaled = applyScaleToRecipe(recipe(), 1.5, { count: 10, sizeG: 150 });
+    expect(scaled.servings.portionCount).toBe(10);
+    expect(scaled.servings.portionSizeG).toBe(150);
   });
 });

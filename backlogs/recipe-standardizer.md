@@ -52,7 +52,8 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 
 ### P3 — Recipe nutrition calculation and display
 
-- [ ] **Compute totals with honest coverage and source-state handling.** Depends: P1; P2 for full coverage.
+- [p] **Compute totals with honest coverage and source-state handling.** Depends: P1; P2 for full coverage.
+  > in progress — pure calculator (lib/nutritionCalc.ts), display formatting (lib/nutritionFormat.ts), Nutrition panel after Execution with live scaling, bake-scale portion fix, docs; commit/PR pending.
   - Pure calculator returns totals, covered/total grams, and explicit uncomputable reasons.
   - Support total, per serving, per portion, and per 100g cooked; label estimated final-weight use and raw-ingredient assumptions.
   - Missing/deleted/renamed/revised foods never silently become zero or trusted.

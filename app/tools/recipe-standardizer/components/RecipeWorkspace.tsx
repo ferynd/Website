@@ -3,7 +3,7 @@
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: accordion panel registry                       */
 /* ------------------------------------------------------------ */
-const PANEL_KEYS = ['overview', 'ingredients', 'prep', 'execution', 'scaling', 'json'] as const;
+const PANEL_KEYS = ['overview', 'ingredients', 'prep', 'execution', 'nutrition', 'scaling', 'json'] as const;
 type PanelKey = (typeof PANEL_KEYS)[number];
 
 const PANEL_LABELS: Record<PanelKey, string> = {
@@ -11,6 +11,7 @@ const PANEL_LABELS: Record<PanelKey, string> = {
   ingredients: 'Ingredients',
   prep: 'Prep',
   execution: 'Execution',
+  nutrition: 'Nutrition',
   scaling: 'Scaling',
   json: 'JSON',
 };
@@ -18,6 +19,7 @@ const PANEL_LABELS: Record<PanelKey, string> = {
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   BookOpen,
+  Apple,
   ChefHat,
   Check,
   ClipboardCopy,
@@ -40,6 +42,8 @@ import { applyIntakeLinks, collectGuardFoodIds, collectLinkTargets, findNoLonger
 import { buildTrackerFoodDoc, FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, parseTrackerFood } from '../lib/trackerFoods';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
+import { calculateRecipeNutrition } from '../lib/nutritionCalc';
+import { nutritionPanelSubtitle } from '../lib/nutritionFormat';
 import {
   applyStepTextUpdates,
   findAffectedSteps,
@@ -60,12 +64,14 @@ import SaveChoiceModal from './SaveChoiceModal';
 import ScalingPanel from './ScalingPanel';
 import StepTextReviewModal from './StepTextReviewModal';
 import WorkflowTimeline from './WorkflowTimeline';
+import NutritionPanel from './NutritionPanel';
 
 const PANEL_ICONS: Record<PanelKey, React.ReactNode> = {
   overview: <Info size={18} />,
   ingredients: <ListChecks size={18} />,
   prep: <ClipboardList size={18} />,
   execution: <ChefHat size={18} />,
+  nutrition: <Apple size={18} />,
   scaling: <Scale size={18} />,
   json: <FileJson size={18} />,
 };
@@ -104,7 +110,7 @@ export default function RecipeWorkspace() {
   // Only Overview (and its timeline) starts open — the working panels are a
   // tap away via the sticky nav, keeping the default view phone-concise.
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
-    overview: true, ingredients: false, prep: false, execution: false, scaling: false, json: false,
+    overview: true, ingredients: false, prep: false, execution: false, nutrition: false, scaling: false, json: false,
   });
   const panelRefs = useRef<Partial<Record<PanelKey, HTMLElement | null>>>({});
   // Latest committed draft, for async flows that must not act on a stale closure.
@@ -310,8 +316,8 @@ export default function RecipeWorkspace() {
   };
 
   const handleBakeScale = () => {
-    if (!draft || scale.factor === 1) return;
-    setDraft(applyScaleToRecipe(draft, scale.factor));
+    if (!draft || (scale.factor === 1 && !scale.portionOverride)) return;
+    setDraft(applyScaleToRecipe(draft, scale.factor, scale.portionOverride));
     setScale(NO_SCALE);
     setStatus(`Baked ${scale.label} into the working copy — save to keep it.`);
   };
@@ -490,6 +496,10 @@ export default function RecipeWorkspace() {
     ingredient.id, assessNutritionLink(ingredient.nutritionLink, foodsById),
   ])), [draft, foodsById]);
   const linkSummary = useMemo(() => summarizeLinkReview(linkAssessments.values()), [linkAssessments]);
+  const nutrition = useMemo(
+    () => (draft ? calculateRecipeNutrition({ recipe: draft, foods, scale }) : null),
+    [draft, foods, scale],
+  );
   const handleNutritionLinkChange = (ingredientId: string, link: NutritionLink) => setDraft((prev) => prev ? {
     ...prev,
     ingredients: prev.ingredients.map((ingredient) => ingredient.id === ingredientId ? { ...ingredient, nutritionLink: link } : ingredient),
@@ -625,6 +635,30 @@ export default function RecipeWorkspace() {
                   </div>
                 )}
               </div>
+            </AccordionSection>
+
+            <AccordionSection
+              ref={(el) => { panelRefs.current.nutrition = el; }}
+              title={PANEL_LABELS.nutrition}
+              icon={PANEL_ICONS.nutrition}
+              subtitle={nutrition ? nutritionPanelSubtitle(nutrition) : undefined}
+              open={open.nutrition}
+              onToggle={() => togglePanel('nutrition')}
+            >
+              {nutrition && (
+                <NutritionPanel
+                  recipe={draft}
+                  result={nutrition}
+                  scale={scale}
+                  foods={foods}
+                  linkAssessments={linkAssessments}
+                  onNutritionLinkChange={handleNutritionLinkChange}
+                  onIngredientChange={handleIngredientChange}
+                  onCommitIntake={commitIntake}
+                  onRefreshFoods={() => { void refreshFoods(); }}
+                  onReviewIngredients={() => jumpTo('ingredients')}
+                />
+              )}
             </AccordionSection>
 
             <AccordionSection
