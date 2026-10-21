@@ -171,4 +171,21 @@ describe('applyScaleToRecipe', () => {
     expect(scaled.servings.portionCount).toBe(10);
     expect(scaled.servings.portionSizeG).toBe(150);
   });
+
+  it('bakes a 1× portion override without scaling any other recipe values', () => {
+    const base = recipe();
+    base.yield.actualFinalWeightG = 1000;
+    const original = structuredClone(base);
+    const scaled = applyScaleToRecipe(base, 1, { count: 10, sizeG: 150 });
+
+    expect(scaled).not.toBe(base);
+    expect(scaled.ingredients).toEqual(original.ingredients);
+    expect(scaled.yield).toEqual(original.yield);
+    expect(scaled.servings).toEqual({
+      ...original.servings,
+      portionCount: 10,
+      portionSizeG: 150,
+    });
+    expect(base).toEqual(original);
+  });
 });

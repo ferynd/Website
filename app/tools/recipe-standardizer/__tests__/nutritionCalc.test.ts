@@ -453,6 +453,20 @@ describe('nutrition bases', () => {
     expect(calculate(baseRecipe()).bases.perPortion).toMatchObject({ portionMode: 'count', portionSizeG: 125, finalWeightG: 1000, weightSource: 'estimated', estimated: true });
   });
 
+  it('marks count-mode size as projected when measured final weight is scaled', () => {
+    const recipe = recipeOf(
+      baseRecipe().ingredients,
+      undefined,
+      { estimatedFinalWeightG: 1000, actualFinalWeightG: 900, yieldNotes: '' },
+    );
+    expect(calculate(recipe, ready([FLOUR, BUTTER, EGG]), 2).bases.perPortion).toMatchObject({
+      portionMode: 'count',
+      finalWeightG: 1800,
+      weightSource: 'actual',
+      estimated: true,
+    });
+  });
+
   it('falls back to portion size over final weight and flags an estimated weight', () => {
     const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: null, portionSizeG: 100 });
     expect(calculate(recipe).bases.perPortion).toMatchObject({ portionMode: 'size', estimated: true });
@@ -468,9 +482,18 @@ describe('nutrition bases', () => {
     expect(calculate(recipe).bases.perPortion.unavailableReason).toBe('no-portion-data');
   });
 
-  it('uses actual final weight without an estimated flag', () => {
+  it('uses actual final weight without an estimated flag at 1×', () => {
     const recipe = recipeOf(baseRecipe().ingredients, undefined, { estimatedFinalWeightG: 1000, actualFinalWeightG: 900, yieldNotes: '' });
     expect(calculate(recipe).bases.per100gCooked).toMatchObject({ estimated: false, weightSource: 'actual', finalWeightG: 900 });
+  });
+
+  it('marks actual final weight as projected when scaled', () => {
+    const recipe = recipeOf(baseRecipe().ingredients, undefined, { estimatedFinalWeightG: 1000, actualFinalWeightG: 900, yieldNotes: '' });
+    expect(calculate(recipe, ready([FLOUR, BUTTER, EGG]), 2).bases.per100gCooked).toMatchObject({
+      estimated: true,
+      weightSource: 'actual',
+      finalWeightG: 1800,
+    });
   });
 
   it('uses estimated final weight when actual weight is unavailable', () => {

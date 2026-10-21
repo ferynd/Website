@@ -119,6 +119,7 @@ export default function RecipeWorkspace() {
   // Bumped whenever a different recipe (or none) becomes current, so an
   // in-flight nutrition match can detect that its result no longer applies.
   const recipeSessionRef = useRef(0);
+  const [recipeSession, setRecipeSession] = useState(0);
   const foodsRequestRef = useRef(0);
 
   const refreshFoods = async (): Promise<import('../lib/trackerFoods').TrackerFood[] | null> => {
@@ -155,6 +156,7 @@ export default function RecipeWorkspace() {
 
   const openRecipe = (recipe: Recipe, id: string | null, importWarnings: string[]) => {
     recipeSessionRef.current += 1;
+    setRecipeSession(recipeSessionRef.current);
     setBaseline(recipe);
     setDraft(recipe);
     setCurrentId(id);
@@ -732,8 +734,10 @@ export default function RecipeWorkspace() {
               open={open.nutrition}
               onToggle={() => togglePanel('nutrition')}
             >
+              {/* Session key resets panel-local choices only when a recipe is opened or imported. */}
               {nutrition && (
                 <NutritionPanel
+                  key={recipeSession}
                   recipe={draft}
                   result={nutrition}
                   scale={scale}

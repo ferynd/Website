@@ -231,6 +231,24 @@ describe('exclusion copy and basis copy', () => {
   ])('captions the %s basis', (value, expected) => {
     expect(describeBasisCaption(value, 1)).toBe(expected);
   });
+
+  it('labels a scaled measured cooked weight as a projection', () => {
+    const actualWeight = basis('per100gCooked', {
+      finalWeightG: 1800,
+      weightSource: 'actual',
+      estimated: true,
+    });
+    expect(describeBasisCaption(actualWeight, 2)).toBe('Final weight 1800 g (scaled from measured)');
+  });
+
+  it('labels an unscaled actual cooked weight as measured', () => {
+    const actualWeight = basis('per100gCooked', {
+      finalWeightG: 900,
+      weightSource: 'actual',
+      estimated: false,
+    });
+    expect(describeBasisCaption(actualWeight, 1)).toBe('Final weight 900 g (measured)');
+  });
 });
 
 describe('panel status helpers', () => {

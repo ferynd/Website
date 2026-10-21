@@ -205,35 +205,48 @@ export const applyScaleToRecipe = (
   recipe: Recipe,
   factor: number,
   portionOverride?: PortionOverride,
-): Recipe => ({
-  ...recipe,
-  servings: {
-    ...recipe.servings,
-    baselineServings:
-      recipe.servings.baselineServings === null
-        ? null
-        : Math.round(recipe.servings.baselineServings * factor * 100) / 100,
-    currentServings: null,
-    portionCount:
-      portionOverride !== undefined
-        ? portionOverride.count
-        : recipe.servings.portionCount === null
+): Recipe => {
+  if (factor === 1 && portionOverride !== undefined) {
+    return {
+      ...recipe,
+      servings: {
+        ...recipe.servings,
+        portionCount: portionOverride.count,
+        portionSizeG: portionOverride.sizeG,
+      },
+    };
+  }
+
+  return {
+    ...recipe,
+    servings: {
+      ...recipe.servings,
+      baselineServings:
+        recipe.servings.baselineServings === null
           ? null
-          : Math.round(recipe.servings.portionCount * factor * 100) / 100,
-    portionSizeG: portionOverride?.sizeG ?? recipe.servings.portionSizeG,
-  },
-  yield: {
-    ...recipe.yield,
-    estimatedFinalWeightG: scaleQuantityG(
-      referenceWeightG(recipe) ?? recipe.yield.estimatedFinalWeightG,
-      factor,
-    ),
-    actualFinalWeightG: null,
-    yieldNotes: recipe.yield.yieldNotes,
-  },
-  ingredients: recipe.ingredients.map((ing) => ({
-    ...ing,
-    quantityG: scaleQuantityG(ing.quantityG, factor),
-    equivalent: scaleEquivalentText(ing.equivalent, factor) ?? ing.equivalent,
-  })),
-});
+          : Math.round(recipe.servings.baselineServings * factor * 100) / 100,
+      currentServings: null,
+      portionCount:
+        portionOverride !== undefined
+          ? portionOverride.count
+          : recipe.servings.portionCount === null
+            ? null
+            : Math.round(recipe.servings.portionCount * factor * 100) / 100,
+      portionSizeG: portionOverride?.sizeG ?? recipe.servings.portionSizeG,
+    },
+    yield: {
+      ...recipe.yield,
+      estimatedFinalWeightG: scaleQuantityG(
+        referenceWeightG(recipe) ?? recipe.yield.estimatedFinalWeightG,
+        factor,
+      ),
+      actualFinalWeightG: null,
+      yieldNotes: recipe.yield.yieldNotes,
+    },
+    ingredients: recipe.ingredients.map((ing) => ({
+      ...ing,
+      quantityG: scaleQuantityG(ing.quantityG, factor),
+      equivalent: scaleEquivalentText(ing.equivalent, factor) ?? ing.equivalent,
+    })),
+  };
+};

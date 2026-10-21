@@ -437,7 +437,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       ? availableBasis('per100gCooked', mapAmounts(baseAmounts, (value) => (value * 100) / referenceWeight), {
         finalWeightG: referenceWeight * factor,
         weightSource,
-        estimated: weightSource === 'estimated',
+        estimated: weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1),
       })
       : emptyBasis('per100gCooked', 'no-final-weight'),
   };
@@ -453,7 +453,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
         portionSizeG: override.sizeG,
         finalWeightG: referenceWeight === null ? null : referenceWeight * factor,
         weightSource,
-        estimated: weightSource === 'estimated',
+        estimated: weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1),
       },
     );
   } else if (positiveFinite(portionCount)) {
@@ -466,7 +466,9 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
         portionSizeG: referenceWeight === null ? null : referenceWeight / portionCount,
         finalWeightG: referenceWeight === null ? null : referenceWeight * factor,
         weightSource: referenceWeight === null ? null : weightSource,
-        estimated: referenceWeight !== null && weightSource === 'estimated',
+        estimated: referenceWeight !== null && (
+          weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1)
+        ),
       },
     );
   } else if (positiveFinite(portionSizeG) && referenceWeight !== null) {
@@ -478,7 +480,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
         portionSizeG,
         finalWeightG: referenceWeight * factor,
         weightSource,
-        estimated: weightSource === 'estimated',
+        estimated: weightSource === 'estimated' || (weightSource === 'actual' && factor !== 1),
       },
     );
   } else if (positiveFinite(portionSizeG)) {

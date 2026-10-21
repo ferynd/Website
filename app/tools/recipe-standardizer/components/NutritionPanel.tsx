@@ -35,6 +35,8 @@ import { assessNutritionLink, type LinkAssessment } from '../lib/nutritionLink';
 import {
   BASIS_LABELS,
   describeBasisCaption,
+  ESTIMATED_FINAL_WEIGHT_LABEL,
+  PROJECTED_FINAL_WEIGHT_LABEL,
   describeBasisUnavailable,
   describeExclusionReason,
   exclusionTone,
@@ -165,7 +167,13 @@ function BasisCaption({ basis, factor }: { basis: NutritionBasis; factor: number
   return (
     <div className="flex flex-wrap items-center gap-2 text-sm text-text-2">
       <span>{describeBasisCaption(basis, factor)}</span>
-      {basis.estimated && <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">Estimated final weight</span>}
+      {basis.estimated && (
+        <span className="rounded-full bg-warning/10 px-2 py-0.5 text-xs text-warning">
+          {basis.weightSource === 'actual' && factor !== 1
+            ? PROJECTED_FINAL_WEIGHT_LABEL
+            : ESTIMATED_FINAL_WEIGHT_LABEL}
+        </span>
+      )}
     </div>
   );
 }

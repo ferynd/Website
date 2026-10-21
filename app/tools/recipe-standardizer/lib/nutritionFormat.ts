@@ -16,6 +16,10 @@ export const NUTRIENT_DISPLAY_GROUPS = [
 export const LOWER_BOUND_PREFIX = '≥ ';
 /** Placeholder for unavailable nutrient data. */
 export const EMPTY_VALUE = '—';
+/** Chip copy for a final weight supplied as an estimate. */
+export const ESTIMATED_FINAL_WEIGHT_LABEL = 'Estimated final weight';
+/** Chip copy for a measured final weight projected by the current scale. */
+export const PROJECTED_FINAL_WEIGHT_LABEL = 'Projected final weight';
 /** Human-readable labels for selectable nutrition bases. */
 export const BASIS_LABELS = {
   total: 'Total',
@@ -163,6 +167,9 @@ export const describeBasisCaption = (basis: NutritionBasis, factor: number): str
       }
       return 'Per portion';
     case 'per100gCooked':
+      if (basis.weightSource === 'actual' && factor !== 1) {
+        return `Final weight ${formatWholeGrams(basis.finalWeightG ?? 0)} (scaled from measured)`;
+      }
       return `Final weight ${formatWholeGrams(basis.finalWeightG ?? 0)} (${basis.estimated ? 'estimated' : 'measured'})`;
     default: {
       const exhaustive: never = basis.key;
