@@ -38,7 +38,7 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P2 — Draft, payment, and participant logic
 
 - [p] **Pure draft/validation helpers wired into `TripContext`; no layout change.** Depends: TC-P1.
-  > in progress — helpers, `TripContext` wiring, tests, and docs done; remaining: build, commit, push, PR
+  > pushed — `utils/expenseDraft.ts`, `utils/payment.ts`, `utils/participants.ts` wired into `TripContext` (exact-cent new writes per C5, payment validation per C10, id-preserving account linking per D3; unedited legacy money fields saved verbatim); no layout, rules, schema, or data changes; checks: npm test (1963), lint, tsc, build pass; commit: 1aeb666; PR: #170
   - `utils/expenseDraft.ts` (`expenseToDraft`, `validateDraft` → errors + preview, `draftToExpenseFields`, trip-default application/renormalization per D2), `utils/payment.ts` (`validatePayment`), `utils/participants.ts` (`linkParticipantAccount`, `participantIdsFor`).
   - New writes require exact cent sums (C5) and valid payments (C10: amount > 0 in whole cents, payer ≠ payee, both known).
   - **Accept:** every split method; explicit zero vs excluded; $↔% conversion; exact-cent validation; legacy round-trip leaves stored values unchanged; payment validation cases (negative, zero, fractional cent, self, unknown); linking keeps the id, refuses a uid already linked elsewhere in the trip, recomputes `participantIds`.
