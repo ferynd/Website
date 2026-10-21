@@ -33,6 +33,7 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -42,7 +43,8 @@ import {
 import { db } from './firebase';
 import { parseRecipeJson, type ParseResult } from './schema';
 import type { Recipe, SavedRecipeMeta } from './types';
-import { parseTrackerFood, type TrackerFood } from './trackerFoods';
+import { FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, isValidFirestoreDocId, linkTargetChanged, parseTrackerFood, type LinkTarget, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
+import { MAX_INTAKE_ITEMS } from './nutritionIntake';
 
 const recipesCol = (uid: string): CollectionReference =>
   collection(db, ROOT_COLLECTION, APP_ID, 'users', uid, 'recipes');
@@ -112,10 +114,57 @@ export const deleteRecipe = async (uid: string, recipeId: string): Promise<void>
   await deleteDoc(doc(recipesCol(uid), recipeId));
 };
 
-/** Fetch full read-only food records for linking and later nutrition math; never writes. */
+/** Fetch full food records for linking and later nutrition math. This module creates foods but never updates or deletes existing tracker foods. */
 export const fetchFoodItems = async (uid: string): Promise<TrackerFood[]> => {
   const snap = await getDocs(foodItemsCol(uid));
   return snap.docs
     .map((docSnap) => parseTrackerFood(docSnap.id, docSnap.data()))
     .filter((food): food is TrackerFood => food !== null);
+};
+
+/** Create new tracker foods atomically; never overwrites. */
+export const createFoodItemsIfAbsent = async (
+  uid: string,
+  docs: { id: string; data: TrackerFoodDoc }[],
+  guardIds: string[] = [],
+  linkTargets: LinkTarget[] = [],
+): Promise<void> => {
+  const ids = docs.map((d) => d.id);
+  const invalidIds = ids.filter((id) => !isValidFirestoreDocId(id));
+  if (invalidIds.length) throw new Error(`Invalid food document ID(s): ${invalidIds.join(', ')}`);
+  const invalidLinkIds = [...new Set(linkTargets.map(({ id }) => id).filter((id) => !isValidFirestoreDocId(id)))];
+  if (invalidLinkIds.length) throw new FoodLinkTargetChangedError(invalidLinkIds);
+  const idSet = new Set(ids);
+  const uniqueGuardIds = [...new Set(guardIds.filter((id) => isValidFirestoreDocId(id) && !idSet.has(id)))];
+  const linkTargetsById = new Map<string, LinkTarget>();
+  for (const target of linkTargets) {
+    if (!linkTargetsById.has(target.id)) linkTargetsById.set(target.id, target);
+  }
+  const uniqueLinkTargets = [...linkTargetsById.values()];
+  if (!docs.length && !uniqueGuardIds.length && !uniqueLinkTargets.length) return;
+  if (docs.length > MAX_INTAKE_ITEMS) throw new Error(`At most ${MAX_INTAKE_ITEMS} foods can be created at once.`);
+  if (new Set(ids).size !== ids.length) throw new Error('Duplicate food ids in one batch.');
+  await runTransaction(db, async (tx) => {
+    const refs = docs.map((d) => doc(foodItemsCol(uid), d.id));
+    const guardRefs = uniqueGuardIds.map((id) => doc(foodItemsCol(uid), id));
+    const linkRefs = uniqueLinkTargets.map(({ id }) => doc(foodItemsCol(uid), id));
+    const [snaps, guardSnaps, linkSnaps] = await Promise.all([
+      Promise.all(refs.map((ref) => tx.get(ref))),
+      Promise.all(guardRefs.map((ref) => tx.get(ref))),
+      Promise.all(linkRefs.map((ref) => tx.get(ref))),
+    ]);
+    const existing = snaps.filter((snap) => snap.exists()).map((snap) => snap.id);
+    if (existing.length) throw new FoodIdCollisionError(existing);
+    const reappeared = guardSnaps.filter((snap) => snap.exists()).map((snap) => snap.id);
+    if (reappeared.length) throw new FoodTargetReappearedError(reappeared);
+    const changedLinks = linkSnaps.flatMap((snap, index) => {
+      const expected = uniqueLinkTargets[index];
+      if (!snap.exists()) return [expected.id];
+      const parsed = parseTrackerFood(snap.id, snap.data());
+      if (linkTargetChanged(parsed, expected)) return [expected.id];
+      return [];
+    });
+    if (changedLinks.length) throw new FoodLinkTargetChangedError(changedLinks);
+    refs.forEach((ref, i) => tx.set(ref, docs[i].data));
+  });
 };

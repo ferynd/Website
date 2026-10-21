@@ -27,6 +27,7 @@ import { auth } from './lib/firebase';
 import {
   deleteRecipe,
   fetchFoodItems,
+  createFoodItemsIfAbsent,
   loadRecipe,
   saveNewRecipe,
   updateRecipe,
@@ -34,7 +35,7 @@ import {
 } from './lib/db';
 import type { ParseResult } from './lib/schema';
 import type { Recipe, SavedRecipeMeta } from './lib/types';
-import type { TrackerFood } from './lib/trackerFoods';
+import type { LinkTarget, TrackerFood, TrackerFoodDoc } from './lib/trackerFoods';
 
 interface RecipeContextValue {
   user: User | null;
@@ -47,6 +48,7 @@ interface RecipeContextValue {
   update: (recipeId: string, recipe: Recipe) => Promise<void>;
   remove: (recipeId: string) => Promise<void>;
   loadFoodItems: () => Promise<TrackerFood[]>;
+  createFoodItems: (docs: { id: string; data: TrackerFoodDoc }[], guardIds?: string[], linkTargets?: LinkTarget[]) => Promise<void>;
 }
 
 const RecipeContext = createContext<RecipeContextValue | undefined>(undefined);
@@ -99,6 +101,7 @@ export function RecipeProvider({ children }: { children: ReactNode }) {
     update: useCallback((recipeId: string, recipe: Recipe) => updateRecipe(requireUid(), recipeId, recipe), [requireUid]),
     remove: useCallback((recipeId: string) => deleteRecipe(requireUid(), recipeId), [requireUid]),
     loadFoodItems: useCallback(() => fetchFoodItems(requireUid()), [requireUid]),
+    createFoodItems: useCallback((docs: { id: string; data: TrackerFoodDoc }[], guardIds: string[] = [], linkTargets: LinkTarget[] = []) => createFoodItemsIfAbsent(requireUid(), docs, guardIds, linkTargets), [requireUid]),
   };
 
   return <RecipeContext.Provider value={value}>{children}</RecipeContext.Provider>;
