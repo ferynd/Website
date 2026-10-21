@@ -24,19 +24,13 @@ import type {
   Expense,
   Payment,
   AuditEntry,
-  Balance,
-  CappedBalance,
   ExpenseDraft,
   UserProfile,
   SpendCap,
   OverageSplit,
   DefaultSplit,
 } from './pageTypes';
-import {
-  calculateBalances,
-  calculateSettlements,
-  applySpendCaps,
-} from './utils/calc';
+import { buildLedger, type Ledger } from './utils/ledger';
 
 interface TripContextValue {
   trip: Trip | null;
@@ -44,9 +38,8 @@ interface TripContextValue {
   expenses: Expense[];
   payments: Payment[];
   auditEntries: AuditEntry[];
-  balances: Balance[];
-  cappedBalances: CappedBalance[];
-  settlements: { from: string; to: string; amount: number }[];
+  /** Cents-exact ledger: allocations, caps, balances, problems, settlements. */
+  ledger: Ledger;
   newExpense: ExpenseDraft;
   setNewExpense: React.Dispatch<React.SetStateAction<ExpenseDraft>>;
   addParticipant: (
@@ -133,24 +126,16 @@ export const TripProvider = ({
     [trip]
   );
 
-  const balances = useMemo(
-    () => calculateBalances(participants, expenses, payments),
-    [participants, expenses, payments]
-  );
-
-  const cappedBalances = useMemo(
+  const ledger = useMemo(
     () =>
-      applySpendCaps(
-        balances,
-        trip?.spendCaps || [],
-        trip?.overageSplit || { type: 'even' }
-      ),
-    [balances, trip?.spendCaps, trip?.overageSplit]
-  );
-
-  const settlements = useMemo(
-    () => calculateSettlements(cappedBalances),
-    [cappedBalances]
+      buildLedger({
+        participants,
+        expenses,
+        payments,
+        spendCaps: trip?.spendCaps,
+        overageSplit: trip?.overageSplit,
+      }),
+    [participants, expenses, payments, trip?.spendCaps, trip?.overageSplit]
   );
 
   const addParticipant = async (
@@ -497,9 +482,7 @@ export const TripProvider = ({
     expenses,
     payments,
     auditEntries,
-    balances,
-    cappedBalances,
-    settlements,
+    ledger,
     newExpense,
     setNewExpense,
     addParticipant,

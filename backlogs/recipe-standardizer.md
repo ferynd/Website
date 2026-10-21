@@ -37,6 +37,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 - Extend recipe-side `NutritionLink` with `gramsPerUnit: number | null`.
 - Ingredient contribution = `ingredient.quantityG × storedNutrient / gramsPerUnit`.
 - Recipe-created foods use a per-100g basis, so `gramsPerUnit = 100`.
+- P4 (PR #168) exports a recipe as one tracker food per portion or per 100 g cooked (single transaction, create-only or verified own-target update) with a `recipe.nutritionExports` back-reference + snapshot hash and stale/edited/deleted indicators.
 - Existing foods require explicit user-entered gram basis. Unknown basis is excluded from nutrition math and surfaced.
 - Nutrition references must eventually record source revision/lifecycle provenance; do not treat a stable ID as proof the food is unchanged.
 
@@ -51,16 +52,6 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
   - Keep this open until the user or automation confirms production/non-production deployment.
   - **Accept:** owner can complete the flow; another UID cannot read/write the recipe; deployment evidence is recorded.
 
-### P4 — Export a recipe as a Nutrition Tracker food
-
-- [p] **Export per portion or per 100g cooked with collision-safe update behavior.** Depends: P3.
-  > pushed — 1× export per portion (preferred) or per 100 g cooked (measured weight required), partial-coverage confirmation, `recipe.nutritionExports` back-ref + snapshot hash, single transaction (create-only or verified own-target update), stale/edited/deleted indicators, docs; no rules change; checks: npm test (1823), lint, tsc, build pass; commit: 576e518; PR: #168
-  - Prefer per portion when portion data exists; otherwise require final weight for per-100g cooked.
-  - Warn before exporting partial coverage, including when every ingredient is linked but a nutrient is a lower bound or zero-filled.
-  - Store export back-reference and nutrition snapshot hash on the recipe, never on the food document.
-  - Re-export offers an explicit update path and stale indicator.
-  - **Accept:** tracker logging multiplies the exported basis correctly; recipe changes show stale export; collision/update tests pass.
-
 ### P5 — Hardening, migrations, docs, and remaining touched-code findings
 
 - [ ] **Complete rollout hardening before optional features.** Depends: P4.
@@ -70,6 +61,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
   - Plan and document migration from `default-app-id` rather than making the accidental namespace permanent.
   - Persist ingredient checklist state in a versioned, per-recipe local store if still desired.
   - Update README, Architecture, Security, tool copy, and cross-tool contracts.
+  - Carried from P4 review (PR #168, Codex P2 on 5009f5f): disable the Export button when no *missing* basis is exportable (`NutritionExportCard.tsx:180`; base it on `selectMissingExportBasis`), plus component tests for the export modal fixes.
   - **Findings:** F-093, F-096, F-141; confirm F-097/F-143 closure.
   - **Accept:** migration fixtures, concurrent-save tests, baked-equivalent tests, docs, and end-to-end export smoke pass.
 

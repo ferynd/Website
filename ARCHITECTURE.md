@@ -133,20 +133,24 @@ public/
 - **Config:** `app/tools/trip-cost/firebaseConfig.ts` (admin email `arkkahdarkkahd@gmail.com`).
 - **DB helpers:** `app/tools/trip-cost/db.ts` set constants `APP_COLLECTION = 'artifacts'`, `APP_ID = 'trip-cost'` with helpers for `users`, `trips`, and `trips/<id>/audit`.
 - **State:** `TripContext.tsx` subscribes to Firestore with `onSnapshot` to keep trip, expenses, payments, etc. in sync.
-- **UI:** `components/AuthForm.tsx`, `TripList.tsx`, and `components/TripDetail/**` (Participants, ExpenseForm, ExpensesList, BalanceSummary, PaymentHistory, SettlementSuggestions, ConfirmDeleteModal, AuditLog).
-- **Calculations:** `utils/calc.ts` contains pure helpers for totals, balances, and settlements.
+- **UI:** `components/AuthForm.tsx`, `TripList.tsx`, and `components/TripDetail/**` (Participants, ExpenseForm, ExpensesList, BalanceSummary with LedgerProblems, PaymentHistory, SettlementSuggestions, ConfirmDeleteModal, AuditLog).
+- **Calculations:** `utils/ledger.ts` (`buildLedger`, exposed as `TripContext.ledger`) is the source of truth for totals and balances, in integer cents (`utils/money.ts`):
+  - `allocateExpense` splits each expense exactly (largest remainder, ties by `splitParticipants` order) and returns explicit problems for unknown travelers, empty splits, payer gaps, and split gaps outside the legacy tolerance.
+  - `applyBudgetCaps` caps expense subtotals only, cascading over-cap costs to everyone not at their cap (evenly or by manual overage shares, with a flagged even fallback). It returns transfer rows (capped traveler → absorber, attributed in proportion to each absorber's net increase) and any amount nobody can absorb.
+  - Remaining = final responsibility − paid for purchases − reimbursements sent + reimbursements received. `calculateSettlements` suggests id-keyed payments and pauses while costs are unallocated or balances don't net to zero.
+  - `utils/ledgerLabels.ts` holds cap-row labels, Owes / Is owed / Settled copy, and problem messages.
+  - `utils/calc.ts` keeps the legacy balance/cap/settlement helpers (no longer used by the UI; removal planned in TC-P5) and `groupExpensesByCategory` for the expense list.
 - **Trip Planner:** `app/tools/trip-planner/page.tsx` composes the planner shell while `PlanContext.tsx` wires Firebase Auth + Firestore listeners. Supporting modules under `app/tools/trip-planner/lib/` initialize Firebase, expose typed DB helpers, and compress uploads for Storage. Timeline/ideas/settings/map components consume the context for realtime data and CRUD.
 
 ## Data Model (Firestore high-level)
 Rooted at `artifacts/trip-cost/`:
 ```
-users/{{uid}}
-trips/{{tripId}}
-trips/{{tripId}}/participants/{{participantId}}
-trips/{{tripId}}/expenses/{{expenseId}}
-trips/{{tripId}}/payments/{{paymentId}}
-trips/{{tripId}}/audit/{{logId}}
+users/{uid}
+trips/{tripId}          # participants[], participantIds[], expenses[], payments[],
+                        # spendCaps?, overageSplit?, defaultSplit? (arrays on the doc)
+trips/{tripId}/audit/{logId}
 ```
+Participants, expenses, and payments are arrays on the trip document, not subcollections; every mutation rewrites the whole array (AR-09). Amounts are stored in dollars and converted to cents only in the ledger.
 Authority is enforced by Firestore Security Rules (see SECURITY.md).
 
 ## Build & Tooling
