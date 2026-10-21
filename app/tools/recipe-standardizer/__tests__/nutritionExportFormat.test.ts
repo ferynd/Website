@@ -129,16 +129,23 @@ describe('nutritionExportFormat', () => {
     );
   });
 
-  it('zero-filled nutrients are disclosed for a complete-coverage export', () => {
+  it('nutrient gaps on a fully linked recipe use partial coverage and name the missing nutrients', () => {
     const recipe = gapRecipe();
     const result = buildExportPayload(
       recipe,
       calculateExportNutrition(recipe, gapFoodsReady()),
       'perPortion',
     );
-    if (!result.ok) throw new Error('Expected complete-coverage export payload.');
-    expect(result.payload.coverage).toBe('complete');
+    if (!result.ok) throw new Error('Expected export payload for a fully linked recipe.');
+    expect(result.payload.coverage).toBe('partial');
+    expect(result.payload.includedCount).toBe(result.payload.totalCount);
     expect(result.payload.zeroFilledKeys).toContain('vitaminD');
+    expect(result.payload.lowerBoundKeys).toContain('fiber');
+    const warning = partialExportWarning(result.payload);
+    expect(warning).toContain('linked foods omit some nutrients');
+    expect(warning).toContain('Fiber');
+    expect(warning).toContain('Vitamin D');
+    expect(warning).not.toContain(`${result.payload.includedCount} of ${result.payload.totalCount}`);
     expect(zeroFilledNote(result.payload)).toContain('Vitamin D');
   });
 

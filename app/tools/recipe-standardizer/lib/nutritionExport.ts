@@ -215,7 +215,12 @@ export const buildExportPayload = (
   }
   if (overCapKeys.length > 0) return { ok: false, reason: 'over-tracker-cap', overCapKeys };
   const fingerprint = fingerprintTrackerFood({ quantity: TRACKER_EXPORT_QUANTITY, nutrients });
-  const coverage = result.coverage.status === 'complete' ? 'complete' : 'partial';
+  // Ingredient-row coverage can be complete while a linked food omits a nutrient.
+  // Those values are lower bounds or zero-filled, so the export still needs confirmation.
+  const coverage =
+    result.coverage.status !== 'complete' || lowerBoundKeys.length > 0 || zeroFilledKeys.length > 0
+      ? 'partial'
+      : 'complete';
   return {
     ok: true,
     payload: {

@@ -37,7 +37,7 @@ const EXPORT_COPY = {
  * The parent revalidates every reviewed value before the transaction starts.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Button from '@/components/Button';
 import { formatNutrientAmount, nutrientLabel } from '../lib/nutritionFormat';
 import {
@@ -60,7 +60,6 @@ import {
   describeExportOutcome,
   exportQuantityHint,
   partialExportWarning,
-  zeroFilledNote,
   EXPORT_BASIS_LABELS,
 } from '../lib/nutritionExportFormat';
 import {
@@ -285,7 +284,6 @@ function ReviewStep({
       {payload.coverage === 'partial' ? (
         <PartialWarning payload={payload} confirmed={partialConfirmed} onChange={onPartialChange} />
       ) : null}
-      {zeroFilledNote(payload) ? <p className="text-sm text-text-2">{zeroFilledNote(payload)}</p> : null}
       {action === 'update-overwrite-tracker-edits' ? (
         <TrackerEditsWarning
           checked={overwriteConfirmed}
@@ -301,10 +299,12 @@ function OutcomeStep({
   outcome,
   onClose,
   onReviewAgain,
+  closeDisabled,
 }: {
   outcome: ExportCommitOutcome;
   onClose: () => void;
   onReviewAgain: () => void;
+  closeDisabled: boolean;
 }) {
   return (
     <div className="space-y-4" role="status">
@@ -313,7 +313,7 @@ function OutcomeStep({
         <Button onClick={onReviewAgain}>{EXPORT_COPY.reviewAgain}</Button>
       ) : null}
       {outcome.status !== 'review-changed' && outcome.status !== 'collision' ? (
-        <Button onClick={onClose}>{EXPORT_COPY.close}</Button>
+        <Button disabled={closeDisabled} onClick={onClose}>{EXPORT_COPY.close}</Button>
       ) : null}
     </div>
   );
@@ -359,6 +359,20 @@ export default function NutritionExportModal({
     setName(ref?.foodName ?? defaultExportFoodName(recipe.name, basis));
   }, [action, basis, recipe.name, reviewIdentity, status]);
 
+  // Closing does not cancel the in-flight transaction, so every dismiss path is a no-op while it runs.
+  const requestClose = useCallback(() => {
+    if (submitting) return;
+    onClose();
+  }, [onClose, submitting]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') requestClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [requestClose]);
+
   if (outcome) {
     return (
       <div
@@ -373,7 +387,8 @@ export default function NutritionExportModal({
           </h2>
           <OutcomeStep
             outcome={outcome}
-            onClose={onClose}
+            onClose={requestClose}
+            closeDisabled={submitting}
             onReviewAgain={() => {
               setPartialConfirmed(false);
               setOverwriteConfirmed(false);
@@ -399,7 +414,7 @@ export default function NutritionExportModal({
             {DIALOG_TITLE}
           </h2>
           <p>{describeExportBlock(payloadResult.reason, basis, payloadResult.overCapKeys)}</p>
-          <Button onClick={onClose}>{EXPORT_COPY.close}</Button>
+          <Button disabled={submitting} onClick={requestClose}>{EXPORT_COPY.close}</Button>
         </div>
       </div>
     );
@@ -450,7 +465,7 @@ export default function NutritionExportModal({
           <h2 id="nutrition-export-title" className="text-lg font-semibold">
             {DIALOG_TITLE}
           </h2>
-          <Button variant="ghost" onClick={onClose}>
+          <Button variant="ghost" disabled={submitting} onClick={requestClose}>
             {EXPORT_COPY.cancel}
           </Button>
         </div>
@@ -484,7 +499,7 @@ export default function NutritionExportModal({
               onOverwriteChange={setOverwriteConfirmed}
             />
             <div className="flex justify-end gap-2">
-              <Button variant="ghost" onClick={onClose}>
+              <Button variant="ghost" disabled={submitting} onClick={requestClose}>
                 {EXPORT_COPY.cancel}
               </Button>
               <Button

@@ -56,7 +56,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 - [p] **Export per portion or per 100g cooked with collision-safe update behavior.** Depends: P3.
   > pushed — 1× export per portion (preferred) or per 100 g cooked (measured weight required), partial-coverage confirmation, `recipe.nutritionExports` back-ref + snapshot hash, single transaction (create-only or verified own-target update), stale/edited/deleted indicators, docs; no rules change; checks: npm test (1823), lint, tsc, build pass; commit: 576e518; PR: #168
   - Prefer per portion when portion data exists; otherwise require final weight for per-100g cooked.
-  - Warn before exporting partial coverage.
+  - Warn before exporting partial coverage, including when every ingredient is linked but a nutrient is a lower bound or zero-filled.
   - Store export back-reference and nutrition snapshot hash on the recipe, never on the food document.
   - Re-export offers an explicit update path and stale indicator.
   - **Accept:** tracker logging multiplies the exported basis correctly; recipe changes show stale export; collision/update tests pass.

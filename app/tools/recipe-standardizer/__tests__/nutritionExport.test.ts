@@ -55,6 +55,35 @@ import {
 import type { ExportPayload, ExportStatus } from '../lib/nutritionExport';
 import type { NutritionExportBasisKey, Recipe } from '../lib/types';
 
+/** All ingredients stay linked; only butter is missing fiber. */
+const recipeWithOneNutrientGap = () => {
+  const foods = sourceFoodsReady();
+  const items = foods.items.map((food) => ({ ...food, nutrients: { ...food.nutrients } }));
+  const butter = items.find((food) => food.id === 'butter');
+  if (!butter) throw new Error('Expected butter fixture.');
+  butter.nutrients.fiber = null;
+  const ready = { ...foods, items };
+  const recipe = butterCookiesRecipe();
+  return {
+    foods: ready,
+    recipe: {
+      ...recipe,
+      ingredients: recipe.ingredients.map((ingredient) => {
+        const food = items.find((item) => item.id === ingredient.nutritionLink.foodItemId);
+        return food === undefined
+          ? ingredient
+          : {
+              ...ingredient,
+              nutritionLink: {
+                ...ingredient.nutritionLink,
+                targetFingerprint: fingerprintTrackerFood(food),
+              },
+            };
+      }),
+    },
+  };
+};
+
 const payloadFor = (
   recipe: Recipe,
   basis: NutritionExportBasisKey = 'perPortion',
@@ -267,6 +296,8 @@ describe('nutritionExport', () => {
     if (result.ok) {
       expect(result.payload.nutrients.vitaminD).toBe(0);
       expect(result.payload.zeroFilledKeys).toContain('vitaminD');
+      expect(result.payload.includedCount).toBe(result.payload.totalCount);
+      expect(result.payload.coverage).toBe('partial');
     }
   });
 
@@ -283,6 +314,74 @@ describe('nutritionExport', () => {
     );
     expect(gap.ok && gap.payload.lowerBoundKeys).toContain('fiber');
     expect(partial.ok && partial.payload.lowerBoundKeys).toEqual([...TRACKER_NUTRIENT_KEYS]);
+  });
+
+  it('classifies a fully linked recipe as partial when one food lacks a nutrient', () => {
+    const { recipe, foods } = recipeWithOneNutrientGap();
+    const nutrition = calculateExportNutrition(recipe, foods);
+    expect(nutrition.coverage.status).toBe('complete');
+    const result = buildExportPayload(recipe, nutrition, 'perPortion');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.payload.includedCount).toBe(result.payload.totalCount);
+    expect(result.payload.excludedNames).toEqual([]);
+    expect(result.payload.lowerBoundKeys).toContain('fiber');
+    expect(result.payload.zeroFilledKeys).not.toContain('fiber');
+    expect(result.payload.coverage).toBe('partial');
+
+    const stored = ownExport(recipe, result.payload);
+    const tracked = foodsReady(stored.food);
+    expect(result.payload.fingerprint).toBe(stored.ref.nutritionFingerprint);
+    expect(
+      deriveExportStatus({
+        basis: 'perPortion',
+        ref: stored.ref,
+        recipeId: 'recipe-1',
+        payload: { ok: true, payload: result.payload },
+        foods: tracked,
+      }),
+    ).toMatchObject({ recipe: 'changed', target: 'unchanged', stale: true });
+    expect(
+      deriveExportStatus({
+        basis: 'perPortion',
+        ref: { ...stored.ref, coverage: 'partial' },
+        recipeId: 'recipe-1',
+        payload: { ok: true, payload: result.payload },
+        foods: tracked,
+      }),
+    ).toMatchObject({ recipe: 'current', stale: false });
+
+    const status = statusFor(stored.recipe, 'perPortion', result.payload, tracked, stored.ref);
+    const commitInput = {
+      recipe: stored.recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion' as const,
+      status,
+      payload: result.payload,
+      sourceTargets: [],
+      chosenName: 'ignored',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      nowIso: '2025-01-01T00:00:00.000Z',
+      nowMs: 99,
+    };
+    expect(() => buildExportCommitRequest({ ...commitInput, partialConfirmed: false })).toThrow(
+      ExportRequestError,
+    );
+    expect(buildExportCommitRequest({ ...commitInput, partialConfirmed: true }).nextRef.coverage).toBe(
+      'partial',
+    );
+  });
+
+  it('classifies a fully counted recipe with complete nutrient data as complete', () => {
+    const recipe = butterCookiesRecipe();
+    const nutrition = calculateExportNutrition(recipe, sourceFoodsReady());
+    expect(nutrition.coverage.status).toBe('complete');
+    const payload = payloadFor(recipe);
+    expect(payload.coverage).toBe('complete');
+    expect(payload.lowerBoundKeys).toEqual([]);
+    expect(payload.zeroFilledKeys).toEqual([]);
+    expect(payload.includedCount).toBe(payload.totalCount);
   });
 
   it('partial coverage payload records coverage, counts, percent and excluded names', () => {

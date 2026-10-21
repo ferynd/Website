@@ -126,7 +126,7 @@ This React tool lives under **app/tools/recipe-standardizer/**. The site makes n
 
 The Nutrition panel totals all 24 Nutrition Tracker nutrients from confirmed, current links only. It distinguishes complete from partial coverage (by ingredient count and grams), marks partial totals as lower bounds ("≥"), offers total / per serving / per portion / per 100 g cooked (flagged when it relies on an estimated final weight), follows live scaling, and lists every ingredient it could not count with a reason and a direct link or edit action. Values use raw ingredient data; cooking losses aren't modeled.
 
-Export to the Nutrition Tracker saves the recipe as one food, per portion (preferred when the recipe has portions) or per 100 g cooked (requires the measured cooked weight). Quantity 1 equals one portion or 100 g. Partial coverage needs explicit confirmation. Exports never replace an existing food: re-exporting updates only the food this recipe created, asks first if it was edited in the tracker, and the panel flags exports that are out of date.
+Export to the Nutrition Tracker saves the recipe as one food, per portion (preferred when the recipe has portions) or per 100 g cooked (requires the measured cooked weight). Quantity 1 equals one portion or 100 g. Partial coverage needs explicit confirmation, including when every ingredient is linked but a nutrient is only a lower bound or saved as 0. Exports never replace an existing food: re-exporting updates only the food this recipe created, asks first if it was edited in the tracker, and the panel flags exports that are out of date.
 
 ### Conflict Tracker (Firebase-backed)
 

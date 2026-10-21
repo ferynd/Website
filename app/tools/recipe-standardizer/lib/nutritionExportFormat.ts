@@ -33,6 +33,7 @@ const EXPORT_COPY = {
   counted: 'ingredients are counted',
   notCounted: 'Not counted:',
   lowerBound: 'Lower-bound nutrients:',
+  nutrientGapLead: 'all ingredients are counted, but linked foods omit some nutrients.',
   partialTail: "The tracker food will under-count, and the Nutrition Tracker can't show “at least” values.",
   zeroFilledLead: 'Saved as 0 because no counted ingredient has data:',
   createdQuantityMeaning: 'Log it there with quantity 1 = one portion / 100 g.',
@@ -133,7 +134,16 @@ export const exportQuantityHint = (payload: ExportPayload): string => {
   return `In the Nutrition Tracker, quantity 1 = ${portion}${size}. ${EXPORT_COPY.halfPortionHint}`;
 };
 
-/** Explain partial ingredient coverage and the excluded rows. */
+/** Describe nutrients saved as zero because no counted ingredient provides a value. */
+export const zeroFilledNote = (payload: ExportPayload): string => {
+  if (payload.zeroFilledKeys.length === 0) return '';
+  const labels = TRACKER_NUTRIENT_KEYS.filter((key) => payload.zeroFilledKeys.includes(key)).map(
+    nutrientLabel,
+  );
+  return `${EXPORT_COPY.zeroFilledLead} ${labels.join(', ')}.`;
+};
+
+/** Explain partial ingredient coverage, nutrient gaps, and the excluded rows. */
 export const partialExportWarning = (payload: ExportPayload): string => {
   const percent = payload.coveragePercent === null ? '' : ` (${payload.coveragePercent} of known weight)`;
   const excluded =
@@ -145,16 +155,16 @@ export const partialExportWarning = (payload: ExportPayload): string => {
   );
   const lowerBoundCopy =
     lowerBounds.length === 0 ? '' : ` ${EXPORT_COPY.lowerBound} ${lowerBounds.join(', ')}.`;
-  return `${EXPORT_COPY.partialLead} ${payload.includedCount} of ${payload.totalCount} ${EXPORT_COPY.counted}${percent}.${excluded}${lowerBoundCopy} ${EXPORT_COPY.partialTail}`;
-};
-
-/** Describe nutrients saved as zero because no counted ingredient provides a value. */
-export const zeroFilledNote = (payload: ExportPayload): string => {
-  if (payload.zeroFilledKeys.length === 0) return '';
-  const labels = TRACKER_NUTRIENT_KEYS.filter((key) => payload.zeroFilledKeys.includes(key)).map(
-    nutrientLabel,
-  );
-  return `${EXPORT_COPY.zeroFilledLead} ${labels.join(', ')}.`;
+  const zeroFilled = zeroFilledNote(payload);
+  const zeroFilledCopy = zeroFilled.length === 0 ? '' : ` ${zeroFilled}`;
+  const rowsComplete =
+    payload.totalCount > 0 &&
+    payload.includedCount === payload.totalCount &&
+    payload.excludedNames.length === 0;
+  if (rowsComplete) {
+    return `${EXPORT_COPY.partialLead} ${EXPORT_COPY.nutrientGapLead}${lowerBoundCopy}${zeroFilledCopy} ${EXPORT_COPY.partialTail}`;
+  }
+  return `${EXPORT_COPY.partialLead} ${payload.includedCount} of ${payload.totalCount} ${EXPORT_COPY.counted}${percent}.${excluded}${lowerBoundCopy}${zeroFilledCopy} ${EXPORT_COPY.partialTail}`;
 };
 
 /** Return the accordion suffix when an own export is stale. */
