@@ -3,6 +3,38 @@
 import { normalizeIngredientName } from './shoppingList';
 import type { FoodItemRef } from './types';
 
+/* --- CONFIGURATION: tracker export bounds and name suffixes --- */
+/** Maximum values accepted by the Nutrition Tracker's food editor. */
+export const TRACKER_NUTRIENT_MAX_BOUNDS: Record<TrackerNutrientKey, number> = {
+  calories: 10000,
+  protein: 1000,
+  carbs: 1000,
+  fat: 1000,
+  fiber: 500,
+  potassium: 50000,
+  magnesium: 10000,
+  sodium: 23000,
+  calcium: 25000,
+  choline: 35000,
+  vitaminB12: 10000,
+  folate: 10000,
+  vitaminC: 20000,
+  vitaminB6: 1000,
+  vitaminA: 30000,
+  vitaminD: 1000,
+  vitaminE: 10000,
+  vitaminK: 10000,
+  selenium: 4000,
+  iodine: 11000,
+  phosphorus: 40000,
+  iron: 450,
+  zinc: 400,
+  omega3: 100,
+};
+
+/** Suffixes ignored when checking whether an export name has a usable tracker id. */
+export const TRACKER_NAME_BASIS_SUFFIXES = [' (per 100 g)', ' (per portion)', ' (per 100 g cooked)'] as const;
+
 /* CONFIGURATION: Nutrition Tracker nutrient keys (mirror of
    public/tools/CalorieTracker/constants.js allNutrients — parity is tested) */
 /** Nutrient fields stored in Nutrition Tracker food documents. */
@@ -36,7 +68,15 @@ export const validateTrackerFoodName = (name: string): string | null => {
   const trimmed = name.trim();
   if (!trimmed) return 'Enter a food name.';
   if (trimmed.length > TRACKER_FOOD_NAME_MAX) return 'Food names are limited to 80 characters.';
-  const meaningfulName = trimmed.replace(/\s*\(per 100 g\)\s*$/i, '').trim();
+  let meaningfulName = trimmed;
+  for (const suffix of TRACKER_NAME_BASIS_SUFFIXES) {
+    // Match with or without the leading space, as the original P2 regex did.
+    const bareSuffix = suffix.trim();
+    if (meaningfulName.toLowerCase().endsWith(bareSuffix)) {
+      meaningfulName = meaningfulName.slice(0, -bareSuffix.length).trim();
+      break;
+    }
+  }
   const id = trackerFoodId(meaningfulName);
   if (!/[a-z0-9]/.test(id)) return 'Add Latin letters or digits to the name (the Nutrition Tracker ID only keeps A–Z and 0–9).';
   if (/^__.*__$/.test(id)) return 'This name maps to a reserved Firestore ID — change the leading/trailing symbols.';
@@ -124,9 +164,14 @@ export const fingerprintTrackerFood = (
   const canonical = `q=${food.quantity ?? ''}${TRACKER_NUTRIENT_KEYS
     .map((key) => `;${key}=${food.nutrients[key] ?? ''}`)
     .join('')}`;
+  return fnv1aHex(canonical);
+};
+
+/** Return the stable FNV-1a 32-bit hash used by tracker food fingerprints. */
+export const fnv1aHex = (text: string): string => {
   let hash = 0x811c9dc5;
-  for (let index = 0; index < canonical.length; index += 1) {
-    hash ^= canonical.charCodeAt(index);
+  for (let index = 0; index < text.length; index += 1) {
+    hash ^= text.charCodeAt(index);
     hash = Math.imul(hash, 0x01000193) >>> 0;
   }
   return hash.toString(16).padStart(8, '0');

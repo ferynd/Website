@@ -38,6 +38,7 @@ import {
   setDoc,
   Timestamp,
   type CollectionReference,
+  type DocumentReference,
   type FirestoreError,
 } from 'firebase/firestore';
 import { db } from './firebase';
@@ -45,6 +46,8 @@ import { parseRecipeJson, type ParseResult } from './schema';
 import type { Recipe, SavedRecipeMeta } from './types';
 import { FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, isValidFirestoreDocId, linkTargetChanged, parseTrackerFood, type LinkTarget, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
 import { MAX_INTAKE_ITEMS } from './nutritionIntake';
+import { assertExportRequestIds, runExportTransaction, type ExportTxPort } from './nutritionExportTx';
+import type { ExportCommitRequest } from './nutritionExport';
 
 const recipesCol = (uid: string): CollectionReference =>
   collection(db, ROOT_COLLECTION, APP_ID, 'users', uid, 'recipes');
@@ -114,12 +117,41 @@ export const deleteRecipe = async (uid: string, recipeId: string): Promise<void>
   await deleteDoc(doc(recipesCol(uid), recipeId));
 };
 
-/** Fetch full food records for linking and later nutrition math. This module creates foods but never updates or deletes existing tracker foods. */
+/** Fetch full tracker food records for linking and nutrition math. This module creates foods and updates only a food this recipe previously exported, verifying it in-transaction; it never deletes tracker foods. */
 export const fetchFoodItems = async (uid: string): Promise<TrackerFood[]> => {
   const snap = await getDocs(foodItemsCol(uid));
   return snap.docs
     .map((docSnap) => parseTrackerFood(docSnap.id, docSnap.data()))
     .filter((food): food is TrackerFood => food !== null);
+};
+
+/**
+ * Export a recipe as a tracker food in one transaction. It creates a new food or updates only this
+ * recipe's verified previous export, and writes the recipe back-reference in the same transaction.
+ */
+export const exportRecipeFood = async (uid: string, request: ExportCommitRequest): Promise<void> => {
+  assertExportRequestIds(request);
+  await runTransaction(db, async (transaction) => {
+    const port: ExportTxPort<DocumentReference> = {
+      get: (ref) => transaction.get(ref),
+      set: (ref, data) => {
+        transaction.set(ref, data);
+      },
+      update: (ref, data) => {
+        transaction.update(ref, data);
+      },
+    };
+    await runExportTransaction(
+      port,
+      {
+        food: doc(foodItemsCol(uid), request.foodId),
+        recipe: doc(recipesCol(uid), request.recipeId),
+        sourceFood: (foodId) => doc(foodItemsCol(uid), foodId),
+      },
+      request,
+      serverTimestamp(),
+    );
+  });
 };
 
 /** Create new tracker foods atomically; never overwrites. */

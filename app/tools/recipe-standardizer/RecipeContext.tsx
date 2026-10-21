@@ -26,6 +26,7 @@ import AuthForm from '../trip-cost/components/AuthForm';
 import { auth } from './lib/firebase';
 import {
   deleteRecipe,
+  exportRecipeFood,
   fetchFoodItems,
   createFoodItemsIfAbsent,
   loadRecipe,
@@ -34,6 +35,7 @@ import {
   watchRecipeList,
 } from './lib/db';
 import type { ParseResult } from './lib/schema';
+import type { ExportCommitRequest } from './lib/nutritionExport';
 import type { Recipe, SavedRecipeMeta } from './lib/types';
 import type { LinkTarget, TrackerFood, TrackerFoodDoc } from './lib/trackerFoods';
 
@@ -49,6 +51,8 @@ interface RecipeContextValue {
   remove: (recipeId: string) => Promise<void>;
   loadFoodItems: () => Promise<TrackerFood[]>;
   createFoodItems: (docs: { id: string; data: TrackerFoodDoc }[], guardIds?: string[], linkTargets?: LinkTarget[]) => Promise<void>;
+  /** Export and link one tracker food with an atomic transaction. */
+  exportFood: (request: ExportCommitRequest) => Promise<void>;
 }
 
 const RecipeContext = createContext<RecipeContextValue | undefined>(undefined);
@@ -102,6 +106,7 @@ export function RecipeProvider({ children }: { children: ReactNode }) {
     remove: useCallback((recipeId: string) => deleteRecipe(requireUid(), recipeId), [requireUid]),
     loadFoodItems: useCallback(() => fetchFoodItems(requireUid()), [requireUid]),
     createFoodItems: useCallback((docs: { id: string; data: TrackerFoodDoc }[], guardIds: string[] = [], linkTargets: LinkTarget[] = []) => createFoodItemsIfAbsent(requireUid(), docs, guardIds, linkTargets), [requireUid]),
+    exportFood: useCallback((request: ExportCommitRequest) => exportRecipeFood(requireUid(), request), [requireUid]),
   };
 
   return <RecipeContext.Provider value={value}>{children}</RecipeContext.Provider>;

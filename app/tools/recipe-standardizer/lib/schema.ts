@@ -23,6 +23,7 @@
  *   per-load warning, and nothing is written back to Firestore just because
  *   it was loaded. A v1 recipe becomes a saved v2 recipe only when the user
  *   explicitly saves an edit or a new copy.
+ * - Nutrition export back-references are additive; missing values normalize to an empty map and unreadable refs warn.
  * - Nutrition links are additive: old linked/likely values become candidates;
  *   confirmation fields default to null and nothing is written on load.
  * - v2 parses strictly, including the structural workflow validation in
@@ -34,6 +35,7 @@
 
 import { findUnknownTechniqueIds } from './techniques';
 import { parseNutritionLink } from './nutritionLink';
+import { parseNutritionExports } from './nutritionExportRef';
 import {
   RECIPE_SCHEMA_VERSION,
   type PrepGroup,
@@ -621,6 +623,7 @@ export const parseRecipeJson = (rawText: string): ParseResult => {
     timeline: [...timeline].sort((a, b) => a.order - b.order),
     techniqueOverrides,
     notes: asStringArray(parsed.notes),
+    nutritionExports: parseNutritionExports(parsed.nutritionExports, warnings),
   };
 
   // Structural workflow validation (references, chronology, cycles) runs on

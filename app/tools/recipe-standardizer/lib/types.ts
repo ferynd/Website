@@ -3,6 +3,51 @@
 /* ------------------------------------------------------------ */
 export const RECIPE_SCHEMA_VERSION = 2;
 
+/** Recipe nutrition bases that can be exported as a Nutrition Tracker food. */
+export type NutritionExportBasisKey = 'perPortion' | 'per100gCooked';
+
+/** Export bases in preference order (per portion first). */
+export const NUTRITION_EXPORT_BASIS_KEYS: readonly NutritionExportBasisKey[] = [
+  'perPortion',
+  'per100gCooked',
+];
+
+/**
+ * Back-reference from a recipe to the tracker food it exported. Stored on the recipe only;
+ * the food document never carries recipe metadata.
+ */
+export interface RecipeNutritionExport {
+  /** Export basis represented by this food. */
+  basis: NutritionExportBasisKey;
+  /** Firestore recipe doc id this export belongs to; a mismatch marks the ref foreign. */
+  recipeId: string;
+  /** Tracker foodItems doc id that was written. */
+  foodId: string;
+  /** Food name as written (rename detection baseline). */
+  foodName: string;
+  /** ISO `lastUpdated` written to the food (revision baseline). */
+  foodLastUpdated: string;
+  /** Fingerprint of the written doc and recipe nutrition snapshot. */
+  nutritionFingerprint: string;
+  /** Epoch ms of the export commit. */
+  exportedAtMs: number;
+  /** Coverage at export time (partial exports are lower bounds). */
+  coverage: 'complete' | 'partial';
+  /** Count of ingredients included in the export. */
+  includedCount: number;
+  /** Count of all recipe ingredient rows. */
+  totalCount: number;
+  /** Portions per batch (count mode) or null; display context only. */
+  portionCount: number | null;
+  /** Grams per portion, or null when unavailable. */
+  portionSizeG: number | null;
+  /** Measured final weight used, or null when unavailable. */
+  finalWeightG: number | null;
+}
+
+/** At most one export per basis; absent keys mean never exported. */
+export type RecipeNutritionExports = Partial<Record<NutritionExportBasisKey, RecipeNutritionExport>>;
+
 /**
  * Recipe Standardizer data model.
  *
@@ -28,6 +73,8 @@ export const RECIPE_SCHEMA_VERSION = 2;
  * confirmed with a grams-per-unit basis, or explicitly marked no-match.
  * Deleted, renamed, and revised targets are derived at review time and are
  * never written merely by loading a recipe.
+ * Nutrition exports are back-references only; their staleness is derived and
+ * never written on load.
  */
 
 export type SectionType = 'prep' | 'execution' | 'combined';
@@ -242,6 +289,8 @@ export interface Recipe {
   timeline: TimelineEntry[];
   techniqueOverrides: TechniqueOverride[];
   notes: string[];
+  /** Tracker-food export back-references; older recipes default to an empty map. */
+  nutritionExports: RecipeNutritionExports;
 }
 
 /** A recipe as stored in / loaded from Firestore. */

@@ -56,6 +56,10 @@ import { selectIntakeGroups, type IntakeCommitOutcome, type IntakeCommitPlan } f
 import type { ScaleResult } from '../lib/scaling';
 import type { FoodsState, TrackerNutrientKey } from '../lib/trackerFoods';
 import type { NutritionLink, Recipe, RecipeIngredient } from '../lib/types';
+import type { NutritionExportBasisKey } from '../lib/types';
+import type { ExportCommitInput, ExportCommitOutcome, ExportStatus } from '../lib/nutritionExport';
+import NutritionExportCard from './NutritionExportCard';
+import NutritionExportModal from './NutritionExportModal';
 import IngredientEditModal from './IngredientEditModal';
 import NutritionIntakeModal from './NutritionIntakeModal';
 import NutritionLinkEditor from './NutritionLinkEditor';
@@ -72,6 +76,11 @@ interface NutritionPanelProps {
   onRefreshFoods: () => void;
   onCommitIntake: (plan: IntakeCommitPlan) => Promise<IntakeCommitOutcome>;
   onReviewIngredients: () => void;
+  recipeId: string | null;
+  dirty: boolean;
+  exportResult: RecipeNutritionResult;
+  exportStatuses: ExportStatus[];
+  onCommitExport: (input: ExportCommitInput) => Promise<ExportCommitOutcome>;
 }
 
 interface PanelDisplayProps {
@@ -401,12 +410,18 @@ export default function NutritionPanel({
   onRefreshFoods,
   onCommitIntake,
   onReviewIngredients,
+  recipeId,
+  dirty,
+  exportResult,
+  exportStatuses,
+  onCommitExport,
 }: NutritionPanelProps) {
   const [basis, setBasis] = useState<NutritionBasisKey | null>(null);
   const [tableOpen, setTableOpen] = useState(false);
   const [linkEditingId, setLinkEditingId] = useState<string | null>(null);
   const [quantityEditingId, setQuantityEditingId] = useState<string | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState<NutritionExportBasisKey | 'choose' | null>(null);
   const intakeGroupCount = useMemo(
     () => selectIntakeGroups(recipe, linkAssessments).length,
     [recipe, linkAssessments],
@@ -430,6 +445,16 @@ export default function NutritionPanel({
           )}
         </div>
       )}
+      <NutritionExportCard
+        recipe={recipe}
+        result={exportResult}
+        recipeId={recipeId}
+        dirty={dirty}
+        foods={foods}
+        statuses={exportStatuses}
+        scaleActive={scale.factor !== 1 || scale.portionOverride !== undefined}
+        onOpen={setExportOpen}
+      />
       <div className="flex flex-wrap items-center gap-2">
         {foods.status === 'ready' && intakeGroupCount > 0 && (
           <Button
@@ -469,6 +494,18 @@ export default function NutritionPanel({
         onRefreshFoods={onRefreshFoods}
         onCommitIntake={onCommitIntake}
       />
+      {exportOpen !== null && recipeId !== null ? (
+        <NutritionExportModal
+          recipe={recipe}
+          recipeId={recipeId}
+          foods={foods}
+          result={exportResult}
+          statuses={exportStatuses}
+          initialBasis={exportOpen}
+          onCommit={onCommitExport}
+          onClose={() => setExportOpen(null)}
+        />
+      ) : null}
     </div>
   );
 }
