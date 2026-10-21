@@ -36,8 +36,8 @@ import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
 import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
-import { applyIntakeLinks, collectGuardFoodIds, findNoLongerEligible, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
-import { buildTrackerFoodDoc, FoodIdCollisionError, FoodTargetReappearedError, parseTrackerFood } from '../lib/trackerFoods';
+import { applyIntakeLinks, collectGuardFoodIds, collectLinkTargets, findNoLongerEligible, findPlanCollisions, refreshPlanLinkTargets, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
+import { buildTrackerFoodDoc, FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, parseTrackerFood } from '../lib/trackerFoods';
 import { suggestVersionName } from '../lib/naming';
 import { applyScaleToRecipe, type ScaleResult } from '../lib/scaling';
 import {
@@ -363,6 +363,7 @@ export default function RecipeWorkspace() {
     }
     const currentPlan = refreshed.plan;
     const guardIds = collectGuardFoodIds(currentPlan, currentRecipe);
+    const linkTargets = collectLinkTargets(currentPlan);
     const collisions = findPlanCollisions(currentPlan, fresh);
     if (collisions.length) {
       return { status: 'conflict', foodIds: collisions, unreadableIds: [] };
@@ -373,8 +374,15 @@ export default function RecipeWorkspace() {
       data: buildTrackerFoodDoc(create.name, create.nutrients, nowIso),
     }));
     try {
-      await createFoodItems(docs, guardIds);
+      await createFoodItems(docs, guardIds, linkTargets);
     } catch (err) {
+      if (err instanceof FoodLinkTargetChangedError) {
+        void refreshFoods();
+        return {
+          status: 'error',
+          message: 'A Nutrition Tracker food chosen for "Link existing" changed or was deleted — nothing was written. Review the highlighted rows again.',
+        };
+      }
       if (err instanceof FoodTargetReappearedError) {
         void refreshFoods();
         return {

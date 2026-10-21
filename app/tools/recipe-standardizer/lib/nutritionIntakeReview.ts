@@ -5,6 +5,7 @@ import { normalizeIngredientName } from './shoppingList';
 import { MAX_INTAKE_ITEMS, type IntakeGroup, type ParsedNutritionItem } from './nutritionIntake';
 import {
   TRACKER_NUTRIENT_KEYS,
+  fingerprintTrackerFood,
   isValidFirestoreDocId,
   trackerFoodId,
   validateTrackerFoodName,
@@ -87,6 +88,15 @@ export const collectGuardFoodIds = (plan: IntakeCommitPlan, recipe: Recipe): str
   }
 
   return [...guarded];
+};
+
+/** Capture the refreshed food versions that must remain unchanged through commit. */
+export const collectLinkTargets = (plan: IntakeCommitPlan): { id: string; fingerprint: string }[] => {
+  const targets = new Map<string, string>();
+  for (const link of plan.links) {
+    if (!targets.has(link.food.id)) targets.set(link.food.id, fingerprintTrackerFood(link.food));
+  }
+  return [...targets].map(([id, fingerprint]) => ({ id, fingerprint }));
 };
 
 /** Keep one prompt/review batch within the parser's supported item limit. */

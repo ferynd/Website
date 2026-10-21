@@ -64,6 +64,11 @@ export class FoodTargetReappearedError extends Error {
   constructor(readonly foodIds: string[]) { super(`Nutrition Tracker replacement target(s) reappeared: ${foodIds.join(', ')}`); this.name = 'FoodTargetReappearedError'; }
 }
 
+/** Error raised when a linked tracker food changed or disappeared before commit. */
+export class FoodLinkTargetChangedError extends Error {
+  constructor(readonly foodIds: string[]) { super(`Nutrition Tracker link target(s) changed or were deleted: ${foodIds.join(', ')}`); this.name = 'FoodLinkTargetChangedError'; }
+}
+
 /** Parsed tracker food with nullable values for incomplete source data. */
 export interface TrackerFood extends FoodItemRef {
   quantity: number | null;

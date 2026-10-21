@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { assessNutritionLink, confirmNutritionLink, type LinkAssessment, type LinkReviewState } from '../lib/nutritionLink';
 import {
-  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, collectGuardFoodIds, defaultFoodName, evaluateIntakeRows,
+  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, collectGuardFoodIds, collectLinkTargets, defaultFoodName, evaluateIntakeRows,
   findNoLongerEligible, findPlanCollisions, initialIntakeRows, limitIntakeGroups, refreshPlanLinkTargets, reassignRow, resolveTarget, selectIntakeGroups,
   type IntakeCommitPlan,
   type IntakeRow,
 } from '../lib/nutritionIntakeReview';
 import type { IntakeGroup } from '../lib/nutritionIntake';
-import { TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
+import { fingerprintTrackerFood, TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
 import { UNLINKED_NUTRITION, type NutritionLink, type Recipe } from '../lib/types';
 import type { ParsedNutritionItem } from '../lib/nutritionIntake';
 
@@ -262,6 +262,22 @@ describe('nutrition intake commit plan', () => {
       skipped: 0,
     } satisfies IntakeCommitPlan;
     expect(collectGuardFoodIds(plan, recipe)).toEqual([]);
+  });
+
+  it('collects unique link targets and fingerprints their refreshed food data', () => {
+    const existing = food('existing', 'Existing');
+    const plan = {
+      creates: [],
+      links: [
+        { food: existing, gramsPerUnit: 100, ingredients: [] },
+        { food: existing, gramsPerUnit: 50, ingredients: [] },
+      ],
+      skipped: 0,
+    } satisfies IntakeCommitPlan;
+
+    expect(collectLinkTargets(plan)).toEqual([
+      { id: 'existing', fingerprint: fingerprintTrackerFood(existing) },
+    ]);
   });
 
   it('deduplicates guard IDs in plan order and ignores missing ingredients', () => {

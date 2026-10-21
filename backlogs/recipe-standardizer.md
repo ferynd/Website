@@ -52,7 +52,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 ### P2 — Paste-back nutrition intake and safe food creation
 
 - [p] **Generate one external-ChatGPT prompt, parse strict nutrition JSON, review, and create per-100g foods.** Depends: P1.
-  > pushed — nutrition prompt, strict per-100g parser with bounds, review (create/skip/reassign/rename/link-existing), create-only tracker food transaction, auto-confirmed 100 g links; checks: npm test (1488), test:rules (104), lint, tsc, build pass; commit: edf0700; PR: #164
+  > pushed — nutrition prompt, strict per-100g parser with bounds, review (create/skip/reassign/rename/link-existing), create-only tracker food transaction, auto-confirmed 100 g links; checks: npm test (1489), test:rules (104), lint, tsc, build pass; commit: edf0700; PR: #164
   - Prompt includes all 24 nutrient keys and canonical units; output schema is versioned JSON only.
   - Parser returns exact-path errors, finite numeric validation, and bounded values.
   - Review table supports accept/skip/reassign before writes.
