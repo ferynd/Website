@@ -5,7 +5,7 @@
 /* ------------------------------------------------------------ */
 const TOOL_NAME = 'Recipe Standardizer';
 const TOOL_DESCRIPTION =
-  'Paste a ChatGPT-converted recipe as strict JSON, then stage prep groups, execute with named results, check nutrition, scale, and save — a phone-first kitchen workflow.';
+  'Paste a ChatGPT-converted recipe as strict JSON, then stage prep groups, execute with named results, check nutrition and export it to the Nutrition Tracker, scale, and save — a phone-first kitchen workflow.';
 
 import { CookingPot, LogOut } from 'lucide-react';
 import Nav from '@/components/Nav';

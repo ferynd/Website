@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseRecipeJson } from '../lib/schema';
 import { UNLINKED_NUTRITION } from '../lib/types';
 import { validRecipeJson, validV2RecipeJson } from './fixtures';
+import { exportedRef } from './exportFixtures';
 
 const parseObject = (obj: unknown) => parseRecipeJson(JSON.stringify(obj));
 
@@ -318,4 +319,50 @@ describe('parseRecipeJson — schema versions and the v2 workflow model', () => 
     if (result.ok) return;
     expect(result.errors.some((e) => e.includes('before its producing step'))).toBe(true);
   });
+
+  it('v1 fixture parses with nutritionExports = {} and no new warnings', () => {
+    const result = parseObject(validRecipeJson());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recipe.nutritionExports).toEqual({});
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('v2 recipe saved before P4 (no nutritionExports field) parses with {} and no new warnings', () => {
+    const result = parseObject(validV2RecipeJson());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recipe.nutritionExports).toEqual({});
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('v2 recipe with a valid perPortion ref round-trips through JSON.stringify → parseRecipeJson unchanged', () => {
+    const raw = { ...validV2RecipeJson(), nutritionExports: { perPortion: exportedRef() } };
+    const first = parseObject(raw);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const second = parseRecipeJson(JSON.stringify(first.recipe));
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.recipe.nutritionExports).toEqual(first.recipe.nutritionExports);
+  });
+
+  it('an unreadable ref drops to {} for that basis with one warning and the recipe still loads', () => {
+    const raw = { ...validV2RecipeJson(), nutritionExports: { perPortion: { broken: true } } };
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recipe.nutritionExports).toEqual({});
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('nutritionExports.perPortion');
+  });
+
+  it('schemaVersion stays 2 after parsing a recipe with refs', () => {
+    const raw = { ...validV2RecipeJson(), nutritionExports: { perPortion: exportedRef() } };
+    const result = parseObject(raw);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.recipe.schemaVersion).toBe(2);
+  });
+
 });

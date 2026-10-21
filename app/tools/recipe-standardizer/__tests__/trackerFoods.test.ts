@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { allNutrients, NUTRIENT_MAX_BOUNDS } from '../../../../public/tools/CalorieTracker/constants.js';
 import { buildTrackerFoodDoc, fingerprintTrackerFood, isValidFirestoreDocId, parseTrackerFood, TRACKER_NUTRIENT_KEYS, trackerFoodId, validateTrackerFoodName } from '../lib/trackerFoods';
 import { NUTRIENT_INTAKE_SPEC } from '../lib/nutritionIntake';
+import { TRACKER_NUTRIENT_MAX_BOUNDS } from '../lib/trackerFoods';
 
 const fullFood = () => ({
   name: ' Eggs ', quantity: 2, ...Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key, index) => [key, index + 1])),
@@ -38,6 +39,15 @@ describe('trackerFoods', () => {
     expect(fingerprintTrackerFood(food)).toBe(fingerprintTrackerFood({ quantity: food.quantity, nutrients: food.nutrients }));
   });
 
+  it('fingerprintTrackerFood output is unchanged after the fnv1aHex extraction', () => {
+    const food = parseTrackerFood('egg', fullFood())!;
+    expect(fingerprintTrackerFood(food)).toBe('9418d4fb');
+  });
+
+  it('TRACKER_NUTRIENT_MAX_BOUNDS mirrors CalorieTracker NUTRIENT_MAX_BOUNDS', () => {
+    expect(TRACKER_NUTRIENT_MAX_BOUNDS).toEqual(NUTRIENT_MAX_BOUNDS);
+  });
+
   it('mirrors Tracker food IDs and validates safe names', () => {
     expect(trackerFoodId('Olive Oil')).toBe('olive_oil');
     expect(trackerFoodId(' Flour ')).toBe('flour');
@@ -52,6 +62,18 @@ describe('trackerFoods', () => {
     expect(validateTrackerFoodName('Flour (per 100 g)')).toBeNull();
     expect(validateTrackerFoodName('**x**')).toContain('reserved Firestore ID');
     expect(validateTrackerFoodName('Olive oil')).toBeNull();
+  });
+
+  it.each(['東京 (per portion)', '東京 (per 100 g cooked)', '東京(per 100 g)', '東京(per portion)'])(
+    'validateTrackerFoodName rejects names that are only an export suffix after non-Latin text',
+    (name) => {
+      expect(validateTrackerFoodName(name)).toContain('Add Latin letters or digits');
+    },
+  );
+
+  it('validateTrackerFoodName accepts Butter cookies (per portion) and keeps P2 per-100 g cases passing', () => {
+    expect(validateTrackerFoodName('Butter cookies (per portion)')).toBeNull();
+    expect(validateTrackerFoodName('Flour (per 100 g)')).toBeNull();
   });
 
   it('checks Firestore document ID constraints using UTF-8 byte length', () => {

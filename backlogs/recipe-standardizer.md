@@ -18,6 +18,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 - Workflow structure includes typed prep groups, named step results, timeline references, chronology/cycle validation, and a site-owned technique glossary.
 - Each ingredient carries a `nutritionLink` with status `unlinked|candidate|confirmed|no-match` (legacy `linked|likely` read as `candidate`), plus `gramsPerUnit` and a target revision fingerprint for confirmed links. Automatic name matches are only candidates; confirmation is explicit via the LinkEditor, and stale (deleted/renamed/revised) targets are derived on load (P1, PR #163).
 - P2 (PR #164) adds a paste-back nutrition prompt, strict per-100g parser, review table, and create-only tracker food transaction; accepted rows auto-confirm links with `gramsPerUnit: 100`.
+- P3 (PR #167) adds a pure nutrition calculator (`lib/nutritionCalc.ts`) with covered/total grams and explicit not-counted reasons, display formatting (`lib/nutritionFormat.ts`), and a Nutrition panel after Execution (total, per serving, per portion, per 100g cooked) with live scaling.
 - Recipes remain one private Firestore document at `artifacts/recipe-standardizer/users/{uid}/recipes/{recipeId}`.
 - Nutrition Tracker foods remain at `artifacts/default-app-id/users/{uid}/foodItems/{foodId}`. The accidental namespace is a migration concern tracked by AR-08/AR-16.
 
@@ -50,22 +51,12 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
   - Keep this open until the user or automation confirms production/non-production deployment.
   - **Accept:** owner can complete the flow; another UID cannot read/write the recipe; deployment evidence is recorded.
 
-### P3 — Recipe nutrition calculation and display
-
-- [p] **Compute totals with honest coverage and source-state handling.** Depends: P1; P2 for full coverage.
-  > pushed — pure calculator (lib/nutritionCalc.ts), display formatting (lib/nutritionFormat.ts), Nutrition panel after Execution with live scaling, bake-scale portion fix, docs; checks: npm test (1653), lint, tsc, build pass; commit: bca3e18; PR: #167
-  - Pure calculator returns totals, covered/total grams, and explicit uncomputable reasons.
-  - Support total, per serving, per portion, and per 100g cooked; label estimated final-weight use and raw-ingredient assumptions.
-  - Missing/deleted/renamed/revised foods never silently become zero or trusted.
-  - Add Nutrition panel after Execution with coverage, compact macros, expandable full table, and live-scale support.
-  - **Findings:** F-097, F-143.
-  - **Accept:** complete and partial recipes are clearly distinguished; results scale correctly; stale targets require review; deterministic fixtures pass.
-
 ### P4 — Export a recipe as a Nutrition Tracker food
 
-- [ ] **Export per portion or per 100g cooked with collision-safe update behavior.** Depends: P3.
+- [p] **Export per portion or per 100g cooked with collision-safe update behavior.** Depends: P3.
+  > pushed — 1× export per portion (preferred) or per 100 g cooked (measured weight required), partial-coverage confirmation, `recipe.nutritionExports` back-ref + snapshot hash, single transaction (create-only or verified own-target update), stale/edited/deleted indicators, docs; no rules change; checks: npm test (1823), lint, tsc, build pass; commit: 576e518; PR: #168
   - Prefer per portion when portion data exists; otherwise require final weight for per-100g cooked.
-  - Warn before exporting partial coverage.
+  - Warn before exporting partial coverage, including when every ingredient is linked but a nutrient is a lower bound or zero-filled.
   - Store export back-reference and nutrition snapshot hash on the recipe, never on the food document.
   - Re-export offers an explicit update path and stale indicator.
   - **Accept:** tracker logging multiplies the exported basis correctly; recipe changes show stale export; collision/update tests pass.
