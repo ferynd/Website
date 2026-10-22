@@ -135,6 +135,7 @@ import {
   INITIAL_RECIPE_REVISION,
   LEGACY_RECIPE_REVISION,
   loadedRecipeBlockReason,
+  loadedRecipeOverlapError,
   RecipeRevisionConflictError,
   remoteConflictToShow,
   SAVING_LOAD_REASON,
@@ -489,7 +490,7 @@ export default function RecipeWorkspace() {
     const result = await loadSavedRecipe(recipeId);
     const overlappedReason = blockReason(epochAtStart);
     if (overlappedReason !== null) {
-      setLoadError(overlappedReason);
+      setLoadError(loadedRecipeOverlapError(overlappedReason));
       return;
     }
     if (!result.ok) {
@@ -618,6 +619,8 @@ export default function RecipeWorkspace() {
     baseRevisionRef.current = INITIAL_RECIPE_REVISION;
     setBaseline(cleanRecipe);
     setDraft(cleanRecipe);
+    recipeSessionRef.current += 1;
+    setRecipeSession(recipeSessionRef.current);
     setCurrentId(id);
     setBaseRevision(INITIAL_RECIPE_REVISION);
     setConflict(null);
@@ -978,6 +981,8 @@ export default function RecipeWorkspace() {
             : EXPORT_WORKSPACE_COPY.reviewChanged;
       return { status: 'error', message };
     }
+    writeEpochRef.current += 1;
+    writeInFlightRef.current = true;
     setWriteInFlight(true);
     try {
       await exportFood(request);
@@ -1014,7 +1019,9 @@ export default function RecipeWorkspace() {
         message: VIEW_COPY.nothingWasWritten(error instanceof Error ? error.message : VIEW_COPY.unknownError),
       };
     } finally {
+      writeInFlightRef.current = false;
       setWriteInFlight(false);
+      setLoadError((current) => (current === SAVING_LOAD_REASON ? '' : current));
     }
     const parsedFood = parseTrackerFood(request.foodId, request.doc);
     if (parsedFood !== null) {

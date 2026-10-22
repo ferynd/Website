@@ -154,6 +154,11 @@ export const deriveRemoteRecipeState = (input: RemoteStateInput): RemoteRecipeSt
 
 /** Shown when a library open is refused because this tab is still saving. */
 export const SAVING_LOAD_REASON = 'Saving…';
+const SAVED_DURING_LOAD_REASON = 'Recipe was saving — open it again.';
+
+/** Explain a load rejected after this tab's write finished during the load. */
+export const loadedRecipeOverlapError = (blockReason: string): string =>
+  blockReason === SAVING_LOAD_REASON ? SAVED_DURING_LOAD_REASON : blockReason;
 
 /** Save and Update cannot start a second write over one already in flight. */
 export const saveBlockedWhileWriting = (writeInFlight: boolean): boolean => writeInFlight;

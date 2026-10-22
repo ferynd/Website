@@ -10,6 +10,7 @@ import {
   conflictChoices,
   identityAfterDeleting,
   loadedRecipeBlockReason,
+  loadedRecipeOverlapError,
   remoteConflictToShow,
   SAVING_LOAD_REASON,
   saveBlockedWhileWriting,
@@ -322,6 +323,15 @@ describe('loadedRecipeBlockReason', () => {
   });
   it('allows opening a different recipe after a write finishes', () => {
     expect(loadedRecipeBlockReason(false, 0, 1, 'recipe-2', 'recipe-1')).toBeNull();
+  });
+});
+
+describe('loadedRecipeOverlapError', () => {
+  it('asks the user to reopen when a save finished during the load', () => {
+    expect(loadedRecipeOverlapError(SAVING_LOAD_REASON)).toBe('Recipe was saving — open it again.');
+  });
+  it('preserves other load block reasons', () => {
+    expect(loadedRecipeOverlapError('Another reason')).toBe('Another reason');
   });
 });
 
