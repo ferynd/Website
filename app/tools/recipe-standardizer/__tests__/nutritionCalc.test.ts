@@ -1,3 +1,6 @@
+/* --- CONFIGURATION: nutritionCalc.test contract --- */
+/** Regression coverage for nutritionCalc.test. Fixtures remain local and do not access production data. */
+
 import { describe, expect, it } from 'vitest';
 import {
   calculateRecipeNutrition,
@@ -27,10 +30,29 @@ const food = (
   lastUpdated: '2026-01-01T00:00:00.000Z',
 });
 
-const FLOUR = food('flour', 'Flour', { calories: 364, protein: 10, carbs: 76, fat: 1 });
-const BUTTER = food('butter', 'Butter', { calories: 717, protein: 1, carbs: 0, fat: 81 });
-const EGG = food('egg', 'Egg', { calories: 70, protein: 6, carbs: 0, fat: 5 });
-const ready = (items: TrackerFood[]): FoodsState => ({ status: 'ready', items, error: '' });
+const FLOUR = food('flour', 'Flour', {
+  calories: 364,
+  protein: 10,
+  carbs: 76,
+  fat: 1,
+});
+const BUTTER = food('butter', 'Butter', {
+  calories: 717,
+  protein: 1,
+  carbs: 0,
+  fat: 81,
+});
+const EGG = food('egg', 'Egg', {
+  calories: 70,
+  protein: 6,
+  carbs: 0,
+  fat: 5,
+});
+const ready = (items: TrackerFood[]): FoodsState => ({
+  status: 'ready',
+  items,
+  error: '',
+});
 const NO_SCALE = { factor: 1 } as const;
 
 const confirmed = (item: TrackerFood, gramsPerUnit: number) => (
@@ -47,6 +69,7 @@ const ingredient = (
   displayName: id,
   quantityG,
   equivalent: '',
+  equivalentBakeFactor: null,
   prepNote: '',
   sectionIds: [],
   primarySectionId: '',
@@ -66,11 +89,21 @@ const recipeOf = (
     portionCount: 8,
     portionSizeG: null,
   },
-  yieldData: Recipe['yield'] = { estimatedFinalWeightG: 1000, actualFinalWeightG: null, yieldNotes: '' },
+  yieldData: Recipe['yield'] = {
+    estimatedFinalWeightG: 1000,
+    actualFinalWeightG: null,
+    yieldNotes: '',
+  },
 ): Recipe => {
   const parsed = parseRecipeJson(JSON.stringify(validRecipeJson()));
   if (!parsed.ok) throw new Error('recipe fixture must parse');
-  return { ...parsed.recipe, schemaVersion: 2, ingredients, servings, yield: yieldData };
+  return {
+    ...parsed.recipe,
+    schemaVersion: 2,
+    ingredients,
+    servings,
+    yield: yieldData,
+  };
 };
 
 const baseRecipe = (): Recipe => recipeOf([
@@ -80,7 +113,11 @@ const baseRecipe = (): Recipe => recipeOf([
 ]);
 
 const calculate = (recipe: Recipe, foods: FoodsState = ready([FLOUR, BUTTER, EGG]), factor = 1) => (
-  calculateRecipeNutrition({ recipe, foods, scale: { factor } })
+  calculateRecipeNutrition({
+    recipe,
+    foods,
+    scale: { factor },
+  })
 );
 
 describe('nutrition link exclusions', () => {
@@ -97,21 +134,37 @@ describe('nutrition link exclusions', () => {
   ] as const)('maps %s to %s', (state, expected) => {
     const link = state === 'confirmed' ? confirmed(FLOUR, 100) : { ...UNLINKED_NUTRITION };
     const assessment = state === 'confirmed'
-      ? { state, food: FLOUR, currentName: FLOUR.name } as const
-      : { state, food: null, currentName: null } as const;
+      ? {
+        state,
+        food: FLOUR,
+        currentName: FLOUR.name,
+      } as const
+      : {
+        state,
+        food: null,
+        currentName: null,
+      } as const;
     expect(linkExclusionReason(link, assessment)).toBe(expected);
   });
 
   it('excludes confirmed links without a target fingerprint as unverifiable', () => {
     const link = { ...confirmed(FLOUR, 100), targetFingerprint: null };
-    expect(linkExclusionReason(link, { state: 'confirmed', food: FLOUR, currentName: FLOUR.name })).toBe('unverifiable-target');
+    expect(linkExclusionReason(link, {
+      state: 'confirmed',
+      food: FLOUR,
+      currentName: FLOUR.name,
+    })).toBe('unverifiable-target');
   });
 
   it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY, null, 10001])(
     'excludes an invalid confirmed gram basis %s',
     (gramsPerUnit) => {
       const link = { ...confirmed(FLOUR, 100), gramsPerUnit };
-      expect(linkExclusionReason(link, { state: 'confirmed', food: FLOUR, currentName: FLOUR.name })).toBe('invalid-basis');
+      expect(linkExclusionReason(link, {
+        state: 'confirmed',
+        food: FLOUR,
+        currentName: FLOUR.name,
+      })).toBe('invalid-basis');
     },
   );
 });
@@ -160,7 +213,11 @@ describe('complete recipe coverage', () => {
 
   it('reports complete coverage with equal counted and known grams', () => {
     expect(calculate(baseRecipe()).coverage).toMatchObject({
-      status: 'complete', includedCount: 3, totalCount: 3, coveredGrams: 625, knownGrams: 625,
+      status: 'complete',
+      includedCount: 3,
+      totalCount: 3,
+      coveredGrams: 625,
+      knownGrams: 625,
     });
   });
 
@@ -256,7 +313,11 @@ describe('stale and unverifiable links', () => {
   });
 
   it.each(['idle', 'loading', 'error'] as const)('excludes confirmed rows while foods are %s', (status) => {
-    const foods: FoodsState = { status, items: [], error: '' };
+    const foods: FoodsState = {
+      status,
+      items: [],
+      error: '',
+    };
     expect(calculate(recipeOf([ingredient('row', 50, confirmed(FLOUR, 100))]), foods).excluded[0].reasons).toContain('foods-unavailable');
   });
 
@@ -299,7 +360,11 @@ describe('ingredient quantities and exclusion actions', () => {
   });
 
   it('does not offer link editing for foods-unavailable rows', () => {
-    const foods: FoodsState = { status: 'idle', items: [], error: '' };
+    const foods: FoodsState = {
+      status: 'idle',
+      items: [],
+      error: '',
+    };
     const result = calculate(recipeOf([ingredient('row', 20, confirmed(FLOUR, 100))]), foods);
     expect(result.excluded[0].canEditLink).toBe(false);
   });
@@ -310,7 +375,11 @@ describe('ingredient quantities and exclusion actions', () => {
 
   it('stays partial at full known-gram coverage when an unknown-weight row exists', () => {
     const recipe = recipeOf([ingredient('linked', 20, confirmed(FLOUR, 100)), ingredient('unknown', null)]);
-    expect(calculate(recipe).coverage).toMatchObject({ status: 'partial', coveredGrams: 20, knownGrams: 20 });
+    expect(calculate(recipe).coverage).toMatchObject({
+      status: 'partial',
+      coveredGrams: 20,
+      knownGrams: 20,
+    });
   });
 });
 
@@ -318,7 +387,11 @@ describe('missing nutrient data', () => {
   it('treats null nutrient values as unknown and lowers only that nutrient', () => {
     const incomplete = food('incomplete', 'Incomplete', { calories: null, protein: 10 });
     const result = calculate(recipeOf([ingredient('row', 100, confirmed(incomplete, 100))]), ready([incomplete]));
-    expect(result.bases.total.amounts?.calories).toMatchObject({ value: null, isLowerBound: true, missingFromIngredientIds: ['row'] });
+    expect(result.bases.total.amounts?.calories).toMatchObject({
+      value: null,
+      isLowerBound: true,
+      missingFromIngredientIds: ['row'],
+    });
     expect(result.bases.total.amounts?.protein.isLowerBound).toBe(false);
   });
 
@@ -360,14 +433,26 @@ describe('workflow rows and duplicate identifiers', () => {
     const parsed = parseRecipeJson(JSON.stringify(validV2RecipeJson()));
     if (!parsed.ok) throw new Error('v2 fixture must parse');
     const recipe = parsed.recipe;
-    const result = calculateRecipeNutrition({ recipe, foods: ready([]), scale: NO_SCALE });
+    const result = calculateRecipeNutrition({
+      recipe,
+      foods: ready([]),
+      scale: NO_SCALE,
+    });
     expect(result.coverage.totalCount).toBe(recipe.ingredients.length);
     const withReferences = {
       ...recipe,
-      prepGroups: [...recipe.prepGroups, { ...recipe.prepGroups[0], id: 'added-group', ingredientIds: recipe.ingredients.map((row) => row.id) }],
+      prepGroups: [...recipe.prepGroups, {
+        ...recipe.prepGroups[0],
+        id: 'added-group',
+        ingredientIds: recipe.ingredients.map((row) => row.id),
+      }],
       activeSteps: recipe.activeSteps.map((step) => ({ ...step, result: { id: 'extra-result', name: 'extra' } })),
     };
-    expect(calculateRecipeNutrition({ recipe: withReferences, foods: ready([]), scale: NO_SCALE }).coverage).toEqual(result.coverage);
+    expect(calculateRecipeNutrition({
+      recipe: withReferences,
+      foods: ready([]),
+      scale: NO_SCALE,
+    }).coverage).toEqual(result.coverage);
   });
 
   it('counts the first duplicate id and excludes later rows', () => {
@@ -454,34 +539,79 @@ describe('nutrition bases', () => {
   });
 
   it.each([null, 0])('marks per-serving unavailable without positive baseline servings (%s)', (servings) => {
-    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: servings, currentServings: null, portionCount: null, portionSizeG: null });
+    const recipe = recipeOf(baseRecipe().ingredients, {
+      baselineServings: servings,
+      currentServings: null,
+      portionCount: null,
+      portionSizeG: null,
+    });
     expect(calculate(recipe).bases.perServing.unavailableReason).toBe('no-servings');
   });
 
   it('derives portion size from final weight and count', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: 8, portionSizeG: 75 });
-    expect(calculate(recipe).bases.perPortion).toMatchObject({ portionMode: 'count', portionCount: 8, portionSizeG: 125, finalWeightG: 1000 });
+    const recipe = recipeOf(baseRecipe().ingredients, {
+      baselineServings: 4,
+      currentServings: null,
+      portionCount: 8,
+      portionSizeG: 75,
+    });
+    expect(calculate(recipe).bases.perPortion).toMatchObject({
+      portionMode: 'count',
+      portionCount: 8,
+      portionSizeG: 125,
+      finalWeightG: 1000,
+    });
   });
 
   it('ignores an inconsistent stored size in count mode', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: 8, portionSizeG: 75 });
+    const recipe = recipeOf(baseRecipe().ingredients, {
+      baselineServings: 4,
+      currentServings: null,
+      portionCount: 8,
+      portionSizeG: 75,
+    });
     expect(calculate(recipe).bases.perPortion.portionSizeG).not.toBe(75);
   });
 
   it('leaves count-mode portion size null without final weight', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: 8, portionSizeG: 75 }, { estimatedFinalWeightG: null, actualFinalWeightG: null, yieldNotes: '' });
-    expect(calculate(recipe).bases.perPortion).toMatchObject({ portionMode: 'count', portionSizeG: null, finalWeightG: null, weightSource: null, estimated: false });
+    const recipe = recipeOf(baseRecipe().ingredients, {
+      baselineServings: 4,
+      currentServings: null,
+      portionCount: 8,
+      portionSizeG: 75,
+    }, {
+      estimatedFinalWeightG: null,
+      actualFinalWeightG: null,
+      yieldNotes: '',
+    });
+    expect(calculate(recipe).bases.perPortion).toMatchObject({
+      portionMode: 'count',
+      portionSizeG: null,
+      finalWeightG: null,
+      weightSource: null,
+      estimated: false,
+    });
   });
 
   it('marks count-mode size as estimated when using estimated final weight', () => {
-    expect(calculate(baseRecipe()).bases.perPortion).toMatchObject({ portionMode: 'count', portionSizeG: 125, finalWeightG: 1000, weightSource: 'estimated', estimated: true });
+    expect(calculate(baseRecipe()).bases.perPortion).toMatchObject({
+      portionMode: 'count',
+      portionSizeG: 125,
+      finalWeightG: 1000,
+      weightSource: 'estimated',
+      estimated: true,
+    });
   });
 
   it('does not mark count-mode nutrition estimated when measured weight is scaled', () => {
     const recipe = recipeOf(
       baseRecipe().ingredients,
       undefined,
-      { estimatedFinalWeightG: 1000, actualFinalWeightG: 900, yieldNotes: '' },
+      {
+        estimatedFinalWeightG: 1000,
+        actualFinalWeightG: 900,
+        yieldNotes: '',
+      },
     );
     expect(calculate(recipe, ready([FLOUR, BUTTER, EGG]), 2).bases.perPortion).toMatchObject({
       portionMode: 'count',
@@ -524,27 +654,58 @@ describe('nutrition bases', () => {
   });
 
   it('falls back to portion size over final weight and flags an estimated weight', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: null, portionSizeG: 100 });
+    const recipe = recipeOf(baseRecipe().ingredients, {
+      baselineServings: 4,
+      currentServings: null,
+      portionCount: null,
+      portionSizeG: 100,
+    });
     expect(calculate(recipe).bases.perPortion).toMatchObject({ portionMode: 'size', estimated: true });
   });
 
   it('requires a final weight for size-based portions', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: null, portionSizeG: 100 }, { estimatedFinalWeightG: null, actualFinalWeightG: null, yieldNotes: '' });
+    const recipe = recipeOf(baseRecipe().ingredients, {
+      baselineServings: 4,
+      currentServings: null,
+      portionCount: null,
+      portionSizeG: 100,
+    }, {
+      estimatedFinalWeightG: null,
+      actualFinalWeightG: null,
+      yieldNotes: '',
+    });
     expect(calculate(recipe).bases.perPortion.unavailableReason).toBe('no-final-weight');
   });
 
   it('reports missing portion data when neither count nor size exists', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, { baselineServings: 4, currentServings: null, portionCount: null, portionSizeG: null });
+    const recipe = recipeOf(baseRecipe().ingredients, {
+      baselineServings: 4,
+      currentServings: null,
+      portionCount: null,
+      portionSizeG: null,
+    });
     expect(calculate(recipe).bases.perPortion.unavailableReason).toBe('no-portion-data');
   });
 
   it('uses actual final weight without an estimated flag at 1×', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, undefined, { estimatedFinalWeightG: 1000, actualFinalWeightG: 900, yieldNotes: '' });
-    expect(calculate(recipe).bases.per100gCooked).toMatchObject({ estimated: false, weightSource: 'actual', finalWeightG: 900 });
+    const recipe = recipeOf(baseRecipe().ingredients, undefined, {
+      estimatedFinalWeightG: 1000,
+      actualFinalWeightG: 900,
+      yieldNotes: '',
+    });
+    expect(calculate(recipe).bases.per100gCooked).toMatchObject({
+      estimated: false,
+      weightSource: 'actual',
+      finalWeightG: 900,
+    });
   });
 
   it('marks actual final weight as projected when scaled', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, undefined, { estimatedFinalWeightG: 1000, actualFinalWeightG: 900, yieldNotes: '' });
+    const recipe = recipeOf(baseRecipe().ingredients, undefined, {
+      estimatedFinalWeightG: 1000,
+      actualFinalWeightG: 900,
+      yieldNotes: '',
+    });
     expect(calculate(recipe, ready([FLOUR, BUTTER, EGG]), 2).bases.per100gCooked).toMatchObject({
       estimated: true,
       weightSource: 'actual',
@@ -557,12 +718,20 @@ describe('nutrition bases', () => {
   });
 
   it('ignores an actual final weight of zero and uses the estimate', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, undefined, { estimatedFinalWeightG: 1000, actualFinalWeightG: 0, yieldNotes: '' });
+    const recipe = recipeOf(baseRecipe().ingredients, undefined, {
+      estimatedFinalWeightG: 1000,
+      actualFinalWeightG: 0,
+      yieldNotes: '',
+    });
     expect(calculate(recipe).bases.per100gCooked.weightSource).toBe('estimated');
   });
 
   it('marks cooked-weight basis unavailable when no weight exists', () => {
-    const recipe = recipeOf(baseRecipe().ingredients, undefined, { estimatedFinalWeightG: null, actualFinalWeightG: null, yieldNotes: '' });
+    const recipe = recipeOf(baseRecipe().ingredients, undefined, {
+      estimatedFinalWeightG: null,
+      actualFinalWeightG: null,
+      yieldNotes: '',
+    });
     expect(calculate(recipe).bases.per100gCooked.unavailableReason).toBe('no-final-weight');
   });
 

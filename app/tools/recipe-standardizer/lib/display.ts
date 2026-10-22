@@ -1,6 +1,9 @@
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: none                                           */
-/* ------------------------------------------------------------ */
+/* --- CONFIGURATION: equivalent display suffixes --- */
+/** Shared ingredient formatting. Annotated equivalents are never live-scaled. */
+
+const EQUIVALENT_UNSCALED_SUFFIX = ' at 1×';
+const equivalentStaleSuffix = (factor: number): string =>
+  ` — not rescaled after ${formatFactor(factor)} bake`;
 
 /**
  * Shared display formatting for scaled ingredient amounts.
@@ -9,31 +12,88 @@
  * "at 1×" marker instead of a silently wrong number.
  */
 
-import { formatGrams, scaleEquivalentText, scaleQuantityG } from './scaling';
+import {
+  formatFactor,
+  formatGrams,
+  scaleEquivalentText,
+  scaleQuantityG,
+} from './scaling';
 import type { RecipeIngredient } from './types';
 
-export interface AmountDisplay {
-  /** e.g. "340 g" or "— g" when the ingredient has no weight. */
-  grams: string;
-  /** e.g. "2 cups" — null when the ingredient has no equivalent text. */
-  equivalent: string | null;
-  /** True when the equivalent could not be scaled and shows the 1× text. */
-  equivalentUnscaled: boolean;
-}
+/** Caveat that accompanies an equivalent measure. */
+export type EquivalentNote =
+  | {
+    kind: 'none';
+  }
+  | {
+    kind: 'unscaled';
+  }
+  | {
+    kind: 'stale-after-bake';
+    bakeFactor: number;
+  };
 
-export const formatAmount = (ingredient: RecipeIngredient, factor: number): AmountDisplay => {
-  const grams = formatGrams(scaleQuantityG(ingredient.quantityG, factor));
-  if (!ingredient.equivalent) {
-    return { grams, equivalent: null, equivalentUnscaled: false };
+/** Describe an equivalent without ever live-scaling an annotated old-batch measure. */
+export const describeEquivalent = (
+  ingredient: Pick<RecipeIngredient, 'equivalent' | 'equivalentBakeFactor'>,
+  factor: number,
+): {
+  text: string | null;
+  note: EquivalentNote;
+} => {
+  if (ingredient.equivalent.trim() === '') return { text: null, note: { kind: 'none' } };
+  if (ingredient.equivalentBakeFactor !== null) {
+    return {
+      text: ingredient.equivalent,
+      note: { kind: 'stale-after-bake', bakeFactor: ingredient.equivalentBakeFactor },
+    };
   }
   const scaled = scaleEquivalentText(ingredient.equivalent, factor);
-  if (scaled !== null) {
-    return { grams, equivalent: scaled, equivalentUnscaled: false };
-  }
-  return { grams, equivalent: ingredient.equivalent, equivalentUnscaled: factor !== 1 };
+  return {
+    text: scaled ?? ingredient.equivalent,
+    note: { kind: scaled === null && factor !== 1 ? 'unscaled' : 'none' },
+  };
 };
 
+/** Shared suffix in every ingredient display. */
+export const equivalentSuffix = (note: EquivalentNote): string => {
+  switch (note.kind) {
+    case 'none':
+      return '';
+    case 'unscaled':
+      return EQUIVALENT_UNSCALED_SUFFIX;
+    case 'stale-after-bake':
+      return equivalentStaleSuffix(note.bakeFactor);
+    default: {
+      const exhaustive: never = note;
+      return exhaustive;
+    }
+  }
+};
+
+/** Grams and an optional equivalent with its display caveat. */
+export interface AmountDisplay {
+  grams: string;
+  equivalent: string | null;
+  equivalentNote: EquivalentNote;
+}
+
+/** Format authoritative grams and secondary equivalent text together. */
+export const formatAmount = (ingredient: RecipeIngredient, factor: number): AmountDisplay => {
+  const equivalent = describeEquivalent(ingredient, factor);
+  return {
+    grams: formatGrams(scaleQuantityG(ingredient.quantityG, factor)),
+    equivalent: equivalent.text,
+    equivalentNote: equivalent.note,
+  };
+};
+
+/** Format a library timestamp in the user's locale. */
 export const formatUpdatedAt = (ms: number | null): string => {
   if (!ms) return '';
-  return new Date(ms).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  return new Date(ms).toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
 };

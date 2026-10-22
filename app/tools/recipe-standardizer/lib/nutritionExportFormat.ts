@@ -1,9 +1,17 @@
 /* --- CONFIGURATION: export labels and explanatory copy --- */
+/** Pure export copy and card decisions; only a missing exportable basis enables primary export. */
+
 /** User-facing labels for export bases. */
+
 export const EXPORT_BASIS_LABELS: Record<NutritionExportBasisKey, string> = {
   perPortion: 'Per portion',
   per100gCooked: 'Per 100 g cooked',
 };
+const ALL_EXPORTED_NOTE = 'Every available basis is already exported — use Update on its row to refresh it.';
+/** Primary action label, also used for create/blocked rows. */
+export const EXPORT_LABEL = 'Export to Nutrition Tracker';
+const UPDATE_LABEL = 'Update tracker food';
+const RECREATE_LABEL = 'Create it again';
 const STALE_SUFFIX = ' · tracker food out of date';
 const UNSAVED_REASON = 'Save the recipe to export it — exports use the saved recipe at 1×.';
 const DIRTY_REASON = 'Save your changes first — the tracker food must match the saved recipe.';
@@ -12,21 +20,24 @@ const EXPORT_COPY = {
   noCoverage: 'Count at least one ingredient before exporting nutrition.',
   noPortionData: 'Add a portion count or portion size in Overview to export per portion.',
   noFinalWeightCooked:
-    'Per 100 g cooked needs a measured cooked weight — weigh the finished dish and enter it in Overview.',
+    'Per 100 g cooked needs a measured cooked weight — weigh the finished dish ' +
+    'and enter it in Overview.',
   noFinalWeightPortion:
-    'A measured cooked weight is needed to calculate this portion size — enter it in Overview.',
+    'A measured cooked weight is needed to calculate this portion size — enter ' +
+    'it in Overview.',
   estimatedWeight: 'Enter the measured cooked weight in Overview before exporting this basis.',
   nonFinite: 'The nutrition values could not be represented safely. Review the recipe data.',
   foreign: 'Exported from another copy of this recipe — exporting creates a new food',
   none: 'Not exported',
   current: 'Up to date',
   changed: 'Out of date — recipe nutrition changed since export',
-  unavailable: "Out of date — can't recompute this basis now",
+  unavailable: 'Out of date — can\'t recompute this basis now',
   modified: 'Edited in the Nutrition Tracker since export',
   missing: 'Deleted from the Nutrition Tracker',
-  unknown: "Can't check — Nutrition Tracker foods aren't loaded",
+  unknown: 'Can\'t check — Nutrition Tracker foods aren\'t loaded',
   cookedHint:
-    'In the Nutrition Tracker, quantity 1 = 100 g of the cooked dish. Weigh your serving and log grams ÷ 100 (250 g → 2.5).',
+    'In the Nutrition Tracker, quantity 1 = 100 g of the cooked dish. Weigh your ' +
+    'serving and log grams ÷ 100 (250 g → 2.5).',
   onePortion: 'one portion',
   halfPortionHint: 'Log 0.5 for half a portion.',
   partialLead: 'Partial nutrition:',
@@ -34,7 +45,9 @@ const EXPORT_COPY = {
   notCounted: 'Not counted:',
   lowerBound: 'Lower-bound nutrients:',
   nutrientGapLead: 'all ingredients are counted, but linked foods omit some nutrients.',
-  partialTail: "The tracker food will under-count, and the Nutrition Tracker can't show “at least” values.",
+  partialTail:
+    'The tracker food will under-count, and the Nutrition Tracker can\'t show “at ' +
+    'least” values.',
   zeroFilledLead: 'Saved as 0 because no counted ingredient has data:',
   createdQuantityMeaning: 'Log it there with quantity 1 = one portion / 100 g.',
   created: 'Created',
@@ -57,7 +70,16 @@ import type {
   ExportStatus,
 } from './nutritionExport';
 import { TRACKER_NUTRIENT_KEYS } from './trackerFoods';
-import type { NutritionExportBasisKey } from './types';
+import type { NutritionExportBasisKey, Recipe } from './types';
+import type { RecipeNutritionResult } from './nutritionCalc';
+import {
+  selectExportBasis,
+  selectMissingExportBasis,
+  primaryExportTarget,
+  exportAction,
+  buildExportPayload,
+  type ExportAction,
+} from './nutritionExport';
 import { NUTRITION_EXPORT_BASIS_KEYS } from './types';
 
 /** Build blocked copy by basis so each row and description keeps its own reason. */
@@ -106,7 +128,10 @@ export const describeExportBlock = (
 /** Describe the derived state of an export reference. */
 export const describeExportStatus = (
   status: ExportStatus,
-): { label: string; tone: 'success' | 'warning' | 'error' | 'muted' } => {
+): {
+  label: string;
+  tone: 'success' | 'warning' | 'error' | 'muted';
+} => {
   if (status.ownership === 'foreign') {
     return {
       label: EXPORT_COPY.foreign,
@@ -162,9 +187,11 @@ export const partialExportWarning = (payload: ExportPayload): string => {
     payload.includedCount === payload.totalCount &&
     payload.excludedNames.length === 0;
   if (rowsComplete) {
-    return `${EXPORT_COPY.partialLead} ${EXPORT_COPY.nutrientGapLead}${lowerBoundCopy}${zeroFilledCopy} ${EXPORT_COPY.partialTail}`;
+    return `${EXPORT_COPY.partialLead} ${EXPORT_COPY.nutrientGapLead}${lowerBoundCopy}` +
+      `${zeroFilledCopy} ${EXPORT_COPY.partialTail}`;
   }
-  return `${EXPORT_COPY.partialLead} ${payload.includedCount} of ${payload.totalCount} ${EXPORT_COPY.counted}${percent}.${excluded}${lowerBoundCopy}${zeroFilledCopy} ${EXPORT_COPY.partialTail}`;
+  return `${EXPORT_COPY.partialLead} ${payload.includedCount} of ${payload.totalCount} ` +
+    `${EXPORT_COPY.counted}${percent}.${excluded}${lowerBoundCopy}${zeroFilledCopy} ${EXPORT_COPY.partialTail}`;
 };
 
 /** Return the accordion suffix when an own export is stale. */
@@ -198,6 +225,85 @@ export const describeExportOutcome = (outcome: ExportCommitOutcome): string => {
       return outcome.message;
     default: {
       const exhaustive: never = outcome;
+      return exhaustive;
+    }
+  }
+};
+
+/** Decision model for an exported-basis row. */
+export interface ExportCardRowModel {
+  basis: NutritionExportBasisKey;
+  action: ExportAction;
+  /** Foreign references have no row action. */
+  showButton: boolean;
+  disabled: boolean;
+  disabledReason: string | null;
+}
+
+/** All rendering decisions shared by the card and its pure regression tests. */
+export interface ExportCardModel {
+  primaryDisabled: boolean;
+  primaryTarget: NutritionExportBasisKey | 'choose';
+  /** Explanatory note when all available bases are already owned. */
+  primaryNote: string | null;
+  disabledReason: string | null;
+  blockedReasons: Record<NutritionExportBasisKey, string | null>;
+  /** Reference rows in canonical basis order. */
+  rows: ExportCardRowModel[];
+}
+
+/** The primary export requires a missing exportable basis; owned bases remain reachable on rows. */
+export const buildExportCardModel = (input: {
+  recipe: Recipe;
+  result: RecipeNutritionResult;
+  recipeId: string | null;
+  dirty: boolean;
+  foodsStatus: FoodsState['status'];
+  statuses: ExportStatus[];
+}): ExportCardModel => {
+  const choice = selectExportBasis(input.recipe, input.result, input.recipeId);
+  const missing = selectMissingExportBasis(input.statuses, choice);
+  const disabledReason = exportDisabledReason({
+    saved: input.recipeId !== null,
+    dirty: input.dirty,
+    foodsStatus: input.foodsStatus,
+  });
+  const blockedReasons = describeExportBlocks(choice.options);
+  return {
+    primaryDisabled: disabledReason !== null || missing === null,
+    primaryTarget: primaryExportTarget(input.statuses, choice),
+    primaryNote: disabledReason === null && missing === null &&
+      input.statuses.some((status) => status.ownership === 'own') ? ALL_EXPORTED_NOTE : null,
+    disabledReason,
+    blockedReasons,
+    rows: NUTRITION_EXPORT_BASIS_KEYS.flatMap((basis) => {
+      const status = input.statuses.find((row) => row.basis === basis);
+      if (!status || status.ref === null) return [];
+      const action = exportAction(status, buildExportPayload(input.recipe, input.result, basis));
+      return [{
+        basis,
+        action,
+        showButton: status.ownership !== 'foreign',
+        disabled: disabledReason !== null || action === 'blocked',
+        disabledReason: disabledReason ?? blockedReasons[basis],
+      }];
+    }),
+  };
+};
+
+/** Exhaustive row-action label, matching the export modal's operation. */
+export const exportRowLabel = (action: ExportAction): string => {
+  switch (action) {
+    case 'create':
+    case 'blocked':
+      return EXPORT_LABEL;
+    case 'update':
+    case 'update-overwrite-tracker-edits':
+      return UPDATE_LABEL;
+    case 'recreate':
+      return RECREATE_LABEL;
+    default: {
+      const exhaustive: never = action;
       return exhaustive;
     }
   }

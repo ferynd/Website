@@ -1,8 +1,67 @@
+/* --- CONFIGURATION: ingredient display modes --- */
+/** Ingredient views share equivalent caveats; checklist ticks reset for each recipe session. */
 'use client';
 
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: ingredient display modes                       */
-/* ------------------------------------------------------------ */
+const VIEW_COPY = {
+  confirmCandidate: (name: string) => `confirm? ${name}`,
+  suggestion: 'suggestion',
+  badgeLabel: (name: string, label: string) => `Nutrition link for ${name}: ${label}. Edit link`,
+  notesLabel: (action: string, name: string) => `${action} notes for ${name}`,
+  unlinkedNote:
+    ' For unlinked ingredients, add a matching saved food in the Nutrition ' +
+    'Tracker and re-run matching.',
+  unknownError: 'unknown error',
+
+  notYetChecked: 'Not yet checked',
+  matchSummary: (
+    candidates: number,
+    unlinked: number,
+    confirmed: number,
+    noMatch: number,
+    unlinkedNote: string,
+  ) =>
+    `Matched against Nutrition Tracker foods: ${candidates} candidate(s) to ` +
+    `confirm, ${unlinked} unlinked; ${confirmed} confirmed and ${noMatch} no-match ` +
+    `links kept. Tap a badge to confirm or change a link.${unlinkedNote}`,
+  matchingFailed: (detail: string) => `Matching failed: ${detail}`,
+  optional: 'optional',
+  hide: 'Hide',
+  show: 'Show',
+  prep: 'Prep: ',
+  substitution: 'Substitution: ',
+  conversion: 'Conversion: ',
+  ingredientViewMode: 'Ingredient view mode',
+  matchAgainstNutritionTrackerFoods: 'Match against Nutrition Tracker foods',
+  createFoodsWithChatgpt: 'Create foods with ChatGPT',
+  confirmed: 'confirmed',
+  toConfirm: 'to confirm',
+  needReview: 'need review',
+  unlinked: 'unlinked',
+  noMatch: 'no match',
+  foodsUnverified: 'Couldn\'t check Nutrition Tracker foods — confirmed links are unverified.',
+  retry: 'Retry',
+} as const;
+
+const BADGE_STYLES: Record<LinkAssessment['state'], string> = {
+  confirmed: 'bg-success/10 text-success',
+  'confirmed-unverified': 'bg-surface-1 border border-border text-text-2',
+  candidate: 'bg-warning/10 text-warning',
+  'candidate-missing': 'bg-warning/10 text-warning',
+  'stale-missing': 'bg-error/10 text-error',
+  'stale-renamed': 'bg-error/10 text-error',
+  'stale-revised': 'bg-error/10 text-error',
+  'no-match': 'bg-surface-1 border border-border text-text-3',
+  unlinked: 'bg-surface-1 border border-border text-text-3',
+};
+const BADGE_LABELS = {
+  'candidate-missing': 'candidate missing',
+  'stale-missing': 'review: deleted',
+  'stale-renamed': 'review: renamed',
+  'stale-revised': 'review: changed',
+  'no-match': 'no match',
+  unlinked: 'unlinked',
+} as const;
+
 const MODES = [
   { key: 'workflow', label: 'Recipe Workflow' },
   { key: 'shopping', label: 'Shopping / Pantry' },
@@ -10,8 +69,21 @@ const MODES = [
 ] as const;
 type IngredientMode = (typeof MODES)[number]['key'];
 
+import EquivalentText from './EquivalentText';
 import { useMemo, useState } from 'react';
-import { AlertTriangle, BadgeCheck, ChevronDown, CircleSlash, Clock, HeartPulse, Link2, MapPin, PackagePlus, Pencil, TriangleAlert } from 'lucide-react';
+import {
+  AlertTriangle,
+  BadgeCheck,
+  ChevronDown,
+  CircleSlash,
+  Clock,
+  HeartPulse,
+  Link2,
+  MapPin,
+  PackagePlus,
+  Pencil,
+  TriangleAlert,
+} from 'lucide-react';
 import Button from '@/components/Button';
 import { formatAmount } from '../lib/display';
 import type { MatchSummary } from '../lib/nutritionMatch';
@@ -39,35 +111,52 @@ interface IngredientsViewProps {
   onCommitIntake: (plan: IntakeCommitPlan) => Promise<IntakeCommitOutcome>;
 }
 
-function NutritionBadge({ ingredient, assessment, onOpen }: { ingredient: RecipeIngredient; assessment: LinkAssessment; onOpen: () => void }) {
+function nutritionBadgeLabel(state: LinkAssessment['state'], matchedName: string | null): string {
+  if (state === 'confirmed' || state === 'confirmed-unverified') return matchedName ?? VIEW_COPY.confirmed;
+  if (state === 'candidate') return VIEW_COPY.confirmCandidate(matchedName ?? VIEW_COPY.suggestion);
+  return BADGE_LABELS[state];
+}
+
+function NutritionBadgeIcon({ state }: { state: LinkAssessment['state']; }) {
+  switch (state) {
+    case 'confirmed':
+    case 'confirmed-unverified':
+      return <BadgeCheck size={11} />;
+    case 'stale-missing':
+    case 'stale-renamed':
+    case 'stale-revised':
+    case 'candidate-missing':
+      return <TriangleAlert size={11} />;
+    case 'no-match':
+      return <CircleSlash size={11} />;
+    case 'candidate':
+    case 'unlinked':
+      return <Link2 size={11} />;
+    default: {
+      const exhaustive: never = state;
+      return exhaustive;
+    }
+  }
+}
+
+function NutritionBadge({ ingredient, assessment, onOpen }: {
+  ingredient: RecipeIngredient;
+  assessment: LinkAssessment;
+  onOpen: () => void;
+}) {
   const link = ingredient.nutritionLink;
-  const labels: Record<LinkAssessment['state'], string> = {
-    confirmed: link.matchedName ?? 'confirmed',
-    'confirmed-unverified': link.matchedName ?? 'confirmed',
-    candidate: `confirm? ${link.matchedName ?? 'suggestion'}`,
-    'candidate-missing': 'candidate missing',
-    'stale-missing': 'review: deleted',
-    'stale-renamed': 'review: renamed',
-    'stale-revised': 'review: changed',
-    'no-match': 'no match',
-    unlinked: 'unlinked',
-  };
-  const label = labels[assessment.state];
-  const icon = assessment.state === 'confirmed' || assessment.state === 'confirmed-unverified'
-    ? <BadgeCheck size={11} />
-    : assessment.state.startsWith('stale-') || assessment.state === 'candidate-missing'
-      ? <TriangleAlert size={11} />
-      : assessment.state === 'no-match' ? <CircleSlash size={11} /> : <Link2 size={11} />;
-  const styles = assessment.state === 'confirmed'
-    ? 'bg-success/10 text-success'
-    : assessment.state === 'confirmed-unverified'
-      ? 'bg-surface-1 border border-border text-text-2'
-      : assessment.state === 'candidate' || assessment.state === 'candidate-missing'
-        ? 'bg-warning/10 text-warning'
-        : assessment.state.startsWith('stale-')
-          ? 'bg-error/10 text-error'
-          : 'bg-surface-1 border border-border text-text-3';
-  return <button type="button" onClick={onOpen} title={assessment.state === 'confirmed-unverified' ? 'Not yet checked' : undefined} aria-label={`Nutrition link for ${ingredient.displayName}: ${label}. Edit link`} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs focus-ring max-w-[12rem] truncate ${styles}`}>{icon}<span className="truncate">{label}</span></button>;
+  const label = nutritionBadgeLabel(assessment.state, link.matchedName);
+  const styles = BADGE_STYLES[assessment.state];
+  return <button
+    type="button"
+    onClick={onOpen}
+    title={assessment.state === 'confirmed-unverified' ? VIEW_COPY.notYetChecked : undefined}
+    aria-label={VIEW_COPY.badgeLabel(ingredient.displayName, label)}
+    className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs focus-ring max-w-[12rem] truncate ${styles}`}
+  >
+    <NutritionBadgeIcon state={assessment.state} />
+    <span className="truncate">{label}</span>
+  </button>;
 }
 
 /**
@@ -83,7 +172,19 @@ function NutritionBadge({ ingredient, assessment, onOpen }: { ingredient: Recipe
  * Checkbox ticks are shared between the two consolidated modes and survive
  * mode switches (view state only — not persisted).
  */
-export default function IngredientsView({ recipe, workflow, factor, onIngredientChange, onRunNutritionMatch, linkAssessments, linkSummary, foods, onNutritionLinkChange, onRefreshFoods, onCommitIntake }: IngredientsViewProps) {
+export default function IngredientsView({
+  recipe,
+  workflow,
+  factor,
+  onIngredientChange,
+  onRunNutritionMatch,
+  linkAssessments,
+  linkSummary,
+  foods,
+  onNutritionLinkChange,
+  onRefreshFoods,
+  onCommitIntake,
+}: IngredientsViewProps) {
   const [mode, setMode] = useState<IngredientMode>('workflow');
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
@@ -121,13 +222,19 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
     try {
       const summary = await onRunNutritionMatch();
       const unlinkedNote = summary.unlinked > 0
-        ? ` For unlinked ingredients, add a matching saved food in the Nutrition Tracker and re-run matching.`
+        ? VIEW_COPY.unlinkedNote
         : '';
       setMatchMessage(
-        `Matched against Nutrition Tracker foods: ${summary.candidates} candidate(s) to confirm, ${summary.unlinked} unlinked; ${summary.confirmed} confirmed and ${summary.noMatch} no-match links kept. Tap a badge to confirm or change a link.${unlinkedNote}`,
+        VIEW_COPY.matchSummary(
+          summary.candidates,
+          summary.unlinked,
+          summary.confirmed,
+          summary.noMatch,
+          unlinkedNote,
+        ),
       );
     } catch (err) {
-      setMatchMessage(`Matching failed: ${err instanceof Error ? err.message : 'unknown error'}`);
+      setMatchMessage(VIEW_COPY.matchingFailed(err instanceof Error ? err.message : VIEW_COPY.unknownError));
     } finally {
       setMatching(false);
     }
@@ -144,18 +251,24 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="font-medium tabular-nums text-text">{amount.grams}</span>
           {amount.equivalent && (
-            <span className="text-text-3">({amount.equivalent}{amount.equivalentUnscaled ? ' at 1×' : ''})</span>
+            <span className="text-text-3">
+              <EquivalentText text={amount.equivalent} note={amount.equivalentNote} />
+            </span>
           )}
           <span className="text-text">{ing.displayName}</span>
-          {ing.optional && <span className="text-xs italic text-text-3">optional</span>}
+          {ing.optional && <span className="text-xs italic text-text-3">{VIEW_COPY.optional}</span>}
           <span className="ml-auto flex items-center gap-1.5">
-            <NutritionBadge ingredient={latestIngredient} assessment={assessment} onOpen={() => setLinkEditing(latestIngredient)} />
+            <NutritionBadge
+              ingredient={latestIngredient}
+              assessment={assessment}
+              onOpen={() => setLinkEditing(latestIngredient)}
+            />
             {hasNotes && (
               <button
                 type="button"
                 onClick={() => toggleNotes(ing.id)}
                 aria-expanded={notesOpen}
-                aria-label={`${notesOpen ? 'Hide' : 'Show'} notes for ${ing.displayName}`}
+                aria-label={VIEW_COPY.notesLabel(notesOpen ? VIEW_COPY.hide : VIEW_COPY.show, ing.displayName)}
                 className="rounded p-1 text-text-3 hover:text-accent hover:bg-surface-1 focus-ring"
               >
                 <ChevronDown size={14} className={`transition-transform ${notesOpen ? 'rotate-180' : ''}`} />
@@ -173,9 +286,9 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
         </div>
         {hasNotes && notesOpen && (
           <div className="mt-1.5 space-y-0.5 border-t border-border pt-1.5 text-xs text-text-2">
-            {ing.prepNote && <p>Prep: {ing.prepNote}</p>}
-            {ing.substitutionNotes && <p>Substitution: {ing.substitutionNotes}</p>}
-            {ing.conversionNotes && <p>Conversion: {ing.conversionNotes}</p>}
+            {ing.prepNote && <p>{VIEW_COPY.prep}{ing.prepNote}</p>}
+            {ing.substitutionNotes && <p>{VIEW_COPY.substitution}{ing.substitutionNotes}</p>}
+            {ing.conversionNotes && <p>{VIEW_COPY.conversion}{ing.conversionNotes}</p>}
           </div>
         )}
       </li>
@@ -187,42 +300,64 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
   return (
     <div className="space-y-4">
       {/* Segmented mode control — wraps on narrow screens */}
-      <div className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface-2 p-1 w-fit max-w-full" role="group" aria-label="Ingredient view mode">
+      <div
+        className="flex flex-wrap gap-1 rounded-lg border border-border bg-surface-2 p-1 w-fit max-w-full"
+        role="group"
+        aria-label={VIEW_COPY.ingredientViewMode}
+      >
         {MODES.map(({ key, label }) => (
           <button
             key={key}
             type="button"
             onClick={() => setMode(key)}
             aria-pressed={mode === key}
-            className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors focus-ring ${
-              mode === key ? 'bg-accent text-black' : 'text-text-2 hover:text-text hover:bg-surface-1'
-            }`}
+            className={`rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap transition-colors focus-ring ${mode === key ? 'bg-accent text-black' : 'text-text-2 hover:text-text hover:bg-surface-1'
+              }`}
           >
             {label}
           </button>
         ))}
       </div>
-
       {mode === 'workflow' && (
         <>
           <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" variant="secondary" onClick={runMatch} loading={matching} className="inline-flex items-center gap-2">
-              <HeartPulse size={16} /> Match against Nutrition Tracker foods
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={runMatch}
+              loading={matching}
+              className="inline-flex items-center gap-2"
+            >
+              <HeartPulse size={16} /> {VIEW_COPY.matchAgainstNutritionTrackerFoods}
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => { setIntakeOpen(true); if (foods.status !== 'ready') onRefreshFoods(); }} className="inline-flex items-center gap-2">
-              <PackagePlus size={16} /> Create foods with ChatGPT{foods.status === 'ready' ? ` (${intakeGroupCount})` : ''}
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                setIntakeOpen(true);
+                if (foods.status !== 'ready') onRefreshFoods();
+              }}
+              className="inline-flex items-center gap-2"
+            >
+              <PackagePlus size={16} /> {VIEW_COPY.createFoodsWithChatgpt}{foods.status === 'ready' ? ` (${intakeGroupCount})` : ''}
             </Button>
             {matchMessage && <p className="text-xs text-text-2">{matchMessage}</p>}
           </div>
           <p className="flex flex-wrap gap-x-2 text-xs text-text-3">
-            {linkSummary.confirmed > 0 && <span>{linkSummary.confirmed} confirmed</span>}
-            {linkSummary.candidates > 0 && <span>{linkSummary.candidates} to confirm</span>}
-            {linkSummary.stale > 0 && <span className="text-error">{linkSummary.stale} need review</span>}
-            {linkSummary.unlinked > 0 && <span>{linkSummary.unlinked} unlinked</span>}
-            {linkSummary.noMatch > 0 && <span>{linkSummary.noMatch} no match</span>}
+            {linkSummary.confirmed > 0 && <span>{linkSummary.confirmed} {VIEW_COPY.confirmed}</span>}
+            {linkSummary.candidates > 0 && <span>{linkSummary.candidates} {VIEW_COPY.toConfirm}</span>}
+            {linkSummary.stale > 0 && <span className="text-error">{linkSummary.stale} {VIEW_COPY.needReview}</span>}
+            {linkSummary.unlinked > 0 && <span>{linkSummary.unlinked} {VIEW_COPY.unlinked}</span>}
+            {linkSummary.noMatch > 0 && <span>{linkSummary.noMatch} {VIEW_COPY.noMatch}</span>}
           </p>
-          {foods.status === 'error' && <p className="flex flex-wrap items-center gap-2 text-xs text-warning">Couldn&apos;t check Nutrition Tracker foods — confirmed links are unverified. <Button size="sm" variant="ghost" onClick={onRefreshFoods}>Retry</Button></p>}
-
+          {foods.status === 'error' && <p className="flex flex-wrap items-center gap-2 text-xs text-warning">
+            {VIEW_COPY.foodsUnverified}
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onRefreshFoods}
+            >{VIEW_COPY.retry}</Button>
+          </p>}
           {displayGroups.map((group) => (
             <div key={group.key}>
               <div className="mb-2 space-y-0.5">
@@ -230,10 +365,14 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
                 {(group.destination || group.timingLabel) && (
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-3">
                     {group.timingLabel && (
-                      <span className="inline-flex items-center gap-1"><Clock size={11} /> {group.timingLabel}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock size={11} /> {group.timingLabel}
+                      </span>
                     )}
                     {group.destination && (
-                      <span className="inline-flex items-center gap-1"><MapPin size={11} /> {group.destination}</span>
+                      <span className="inline-flex items-center gap-1">
+                        <MapPin size={11} /> {group.destination}
+                      </span>
                     )}
                   </p>
                 )}
@@ -248,7 +387,6 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
           ))}
         </>
       )}
-
       {mode !== 'workflow' && (
         <ConsolidatedList
           recipe={recipe}
@@ -258,20 +396,39 @@ export default function IngredientsView({ recipe, workflow, factor, onIngredient
           onToggle={toggleChecked}
         />
       )}
-
       {editing && (
         <IngredientEditModal
           ingredient={editing}
-          onSave={(updated) => { setEditing(null); onIngredientChange(updated); }}
+          onSave={(updated) => {
+            setEditing(null);
+            onIngredientChange(updated);
+          }}
           onCancel={() => setEditing(null)}
         />
       )}
       {linkEditing && (() => {
         const latestIngredient = recipe.ingredients.find((candidate) => candidate.id === linkEditing.id) ?? linkEditing;
         const assessment = linkAssessments.get(latestIngredient.id) ?? assessNutritionLink(latestIngredient.nutritionLink, null);
-        return <NutritionLinkEditor ingredient={latestIngredient} assessment={assessment} foods={foods} onApply={(link) => { setLinkEditing(null); onNutritionLinkChange(latestIngredient.id, link); }} onCancel={() => setLinkEditing(null)} onRetryFoods={onRefreshFoods} />;
+        return <NutritionLinkEditor
+          ingredient={latestIngredient}
+          assessment={assessment}
+          foods={foods}
+          onApply={(link) => {
+            setLinkEditing(null);
+            onNutritionLinkChange(latestIngredient.id, link);
+          }}
+          onCancel={() => setLinkEditing(null)}
+          onRetryFoods={onRefreshFoods}
+        />;
       })()}
-      {intakeOpen && <NutritionIntakeModal recipe={recipe} linkAssessments={linkAssessments} foods={foods} onRetryFoods={onRefreshFoods} onCommit={onCommitIntake} onClose={() => setIntakeOpen(false)} />}
+      {intakeOpen && <NutritionIntakeModal
+        recipe={recipe}
+        linkAssessments={linkAssessments}
+        foods={foods}
+        onRetryFoods={onRefreshFoods}
+        onCommit={onCommitIntake}
+        onClose={() => setIntakeOpen(false)}
+      />}
     </div>
   );
 }

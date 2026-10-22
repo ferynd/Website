@@ -1,3 +1,6 @@
+/* --- CONFIGURATION: shoppingList.test contract --- */
+/** Regression coverage for shoppingList.test. Fixtures remain local and do not access production data. */
+
 import { describe, expect, it } from 'vitest';
 import { parseRecipeJson } from '../lib/schema';
 import { buildShoppingItems, groupShoppingItems } from '../lib/shoppingList';
@@ -41,16 +44,20 @@ describe('buildShoppingItems', () => {
     const items = buildShoppingItems(base, 2);
     const chocolate = items.find((i) => i.displayName === 'dark chocolate');
     expect(chocolate?.equivalent).toBe('a generous handful');
-    expect(chocolate?.equivalentUnscaled).toBe(true);
+    expect(chocolate?.equivalentNote.kind).toBe('unscaled');
     // Parseable equivalents scale and are not flagged.
     const flour = items.find((i) => i.displayName === 'all-purpose flour');
     expect(flour?.equivalent).toBe('5 cups');
-    expect(flour?.equivalentUnscaled).toBe(false);
+    expect(flour?.equivalentNote.kind).toBe('none');
   });
 
   it('flags partially unweighed consolidations', () => {
     const base = recipe();
-    base.ingredients.push({ ...base.ingredients[2], id: 'ing-butter-2', quantityG: null });
+    base.ingredients.push({
+      ...base.ingredients[2],
+      id: 'ing-butter-2',
+      quantityG: null,
+    });
     const butter = buildShoppingItems(base, 1).find((i) => i.displayName === 'unsalted butter');
     expect(butter?.totalQuantityG).toBe(225);
     expect(butter?.hasUnweighedPart).toBe(true);
