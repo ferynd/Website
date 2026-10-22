@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useTrip } from '../../TripContext';
@@ -117,13 +118,13 @@ export default function TripSettings({
   );
 
   return (
-    <section className="bg-surface-1 rounded-lg shadow">
+    <section className="w-full min-w-0 overflow-x-clip bg-surface-1 rounded-lg shadow">
       <button
         onClick={() => setExpanded(!expanded)}
         className="w-full flex items-center justify-between p-4 hover:bg-surface-2 transition-colors"
       >
         <h2 className="text-lg font-semibold text-text">Trip Settings</h2>
-        <span className="text-text-3">{expanded ? '▾' : '▸'}</span>
+        {expanded ? <ChevronDown aria-hidden="true" size={16} /> : <ChevronRight aria-hidden="true" size={16} />}
       </button>
 
       {expanded && (
@@ -140,8 +141,8 @@ export default function TripSettings({
             <div className="space-y-2">
               {participants.map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
-                  <span className="flex-1 text-text-2 text-sm">{p.name}</span>
-                  <div className="flex items-center gap-1">
+                  <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2 text-sm">{p.name}</span>
+                  <div className="flex shrink-0 items-center gap-1">
                     <Input
                       type="number"
                       step="0.1"
@@ -191,8 +192,8 @@ export default function TripSettings({
             <div className="space-y-2">
               {participants.map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
-                  <span className="flex-1 text-text-2 text-sm">{p.name}</span>
-                  <div className="flex items-center gap-1">
+                  <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2 text-sm">{p.name}</span>
+                  <div className="flex shrink-0 items-center gap-1">
                     <span className="text-text-3 text-xs">
                       {CURRENCY_SYMBOL}
                     </span>
@@ -247,10 +248,10 @@ export default function TripSettings({
               <div className="space-y-2 mt-2">
                 {participants.map((p) => (
                   <div key={p.id} className="flex items-center gap-2">
-                    <span className="flex-1 text-text-2 text-sm">
+                    <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2 text-sm">
                       {p.name}
                     </span>
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       <Input
                         type="number"
                         step="1"

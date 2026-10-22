@@ -6,6 +6,7 @@
 // None
 
 import React, { useState, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useTrip } from '../../TripContext';
@@ -178,7 +179,7 @@ export default function ParticipantsSection({
   };
 
   return (
-    <section className="bg-surface-1 rounded-lg shadow p-4">
+    <section className="w-full min-w-0 overflow-x-clip bg-surface-1 rounded-lg shadow p-4">
       <h2 className="text-lg font-semibold mb-3 text-text">Participants</h2>
       
       {/* Add Participant Section */}
@@ -305,13 +306,13 @@ export default function ParticipantsSection({
           <li className="text-text-2 italic py-2">No participants yet. Add someone above!</li>
         ) : (
           participants.map((p) => (
-            <li key={p.id} className="flex items-center gap-2 py-2">
+            <li key={p.id} className="flex min-w-0 items-center gap-2 py-2">
               {editingId === p.id ? (
                 <>
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="p-1 flex-1"
+                    className="min-w-0 p-1 flex-1"
                     autoFocus
                   />
                   <Button
@@ -334,7 +335,7 @@ export default function ParticipantsSection({
               ) : (
                 <>
                   <span
-                    className={`flex-1 text-text ${userProfile?.isAdmin ? 'cursor-pointer hover:text-accent' : ''}`}
+                    className={`min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text ${userProfile?.isAdmin ? 'cursor-pointer hover:text-accent' : ''}`}
                     onClick={() =>
                       userProfile?.isAdmin && startEdit(p.id, p.name)
                     }
@@ -351,10 +352,10 @@ export default function ParticipantsSection({
                       onClick={() => onDeleteParticipant(p.id)}
                       variant="ghost"
                       size="sm"
-                      className="text-error hover:text-error/90 px-2 text-xl font-bold h-auto"
+                      className="shrink-0 text-error hover:text-error/90 px-2 text-xl font-bold h-auto"
                       aria-label={`Remove ${p.name}`}
                     >
-                      ×
+                      <X aria-hidden="true" size={16} />
                     </Button>
                   )}
                 </>

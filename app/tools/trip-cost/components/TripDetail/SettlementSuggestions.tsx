@@ -6,6 +6,7 @@
 // None
 
 import React from 'react';
+import { ArrowRight } from 'lucide-react';
 import { useTrip } from '../../TripContext';
 import { makeNameOf, settlementPausedMessage } from '../../utils/ledgerLabels';
 import { formatMoney } from '../../utils/money';
@@ -42,12 +43,12 @@ export default function SettlementSuggestions() {
       <ul className="space-y-2">
         {settlements.map((s) => (
           <li key={`${s.from}-${s.to}`} className="flex items-center p-2 bg-warning/10 rounded-lg border border-warning/20">
-            <div className="flex-1">
+            <div className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
               <span className="font-medium text-text">{nameOf(s.from)}</span>
-              <span className="text-text-3 mx-2">→</span>
+              <span className="mx-2 inline-flex text-text-3"><ArrowRight aria-hidden="true" size={16} /></span>
               <span className="font-medium text-text">{nameOf(s.to)}</span>
             </div>
-            <span className="font-semibold text-warning">
+            <span className="shrink-0 pl-2 text-right font-semibold text-warning">
               {formatMoney(s.cents)}
             </span>
           </li>

@@ -159,6 +159,13 @@ const AMOUNT_TOLERANCE_CENTS = 1;
 const PERCENT_TOLERANCE_POINTS = 0.01;
 const EPSILON = 1e-6;
 
+/** Whether a stored reimbursement is included in ledger totals. */
+export function isValidLedgerPayment(payment: Trip['payments'][number], travelerIds: string[]): boolean {
+  const cents = toCents(payment.amount);
+  return Number.isFinite(cents) && cents > 0 && payment.payerId !== payment.payeeId &&
+    travelerIds.includes(payment.payerId) && travelerIds.includes(payment.payeeId);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Expense allocation                                                 */
 /* ------------------------------------------------------------------ */

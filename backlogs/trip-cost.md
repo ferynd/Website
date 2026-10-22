@@ -35,17 +35,10 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 
 ## Active phases
 
-### TC-P2 — Draft, payment, and participant logic
-
-- [p] **Pure draft/validation helpers wired into `TripContext`; no layout change.** Depends: TC-P1.
-  > pushed — `utils/expenseDraft.ts`, `utils/payment.ts`, `utils/participants.ts` wired into `TripContext` (exact-cent new writes per C5, payment validation per C10, id-preserving account linking per D3; unedited legacy money fields saved verbatim); no layout, rules, schema, or data changes; checks: npm test (1963), lint, tsc, build pass; commit: 1aeb666; PR: #170
-  - `utils/expenseDraft.ts` (`expenseToDraft`, `validateDraft` → errors + preview, `draftToExpenseFields`, trip-default application/renormalization per D2), `utils/payment.ts` (`validatePayment`), `utils/participants.ts` (`linkParticipantAccount`, `participantIdsFor`).
-  - New writes require exact cent sums (C5) and valid payments (C10: amount > 0 in whole cents, payer ≠ payee, both known).
-  - **Accept:** every split method; explicit zero vs excluded; $↔% conversion; exact-cent validation; legacy round-trip leaves stored values unchanged; payment validation cases (negative, zero, fractional cent, self, unknown); linking keeps the id, refuses a uid already linked elsewhere in the trip, recomputes `participantIds`.
-
 ### TC-P3 — Layout and ledger table
 
-- [ ] **Header, tabs, `LedgerTable`, detail sheets, local `Dialog`.** Depends: TC-P1.
+- [p] **Header, tabs, `LedgerTable`, detail sheets, local `Dialog`.** Depends: TC-P1.
+  > pushed — header, tabs, `LedgerTable` (pinned Expense column, labelled cap-adjustment / not-covered / final rows), expense and traveler detail sheets on a local responsive `Dialog`, temporary `ExpenseForm` dialog, `ExpensesList` removed, 390px overflow and small-text fixes; no math, rules, schema, or data changes; checks: npm test (1980), lint, tsc, build pass; commit: 0be3969; PR: #171
   - Expenses tab: header (name, total spending, Add expense, balance strip, problem banner) and a real `<table>` with category groups, expense subtotal, labelled cap-adjustment rows, "Not covered by anyone", and final responsibility. Participants, settings, and audit log move unchanged to the Participants & Settings tab. The old `ExpenseForm` is hosted temporarily in the dialog; `ExpensesList` is removed.
   - Fixes F-019, F-020, F-023 for Trip Cost only.
   - **Accept:** at 390px page `scrollWidth` equals viewport width; the ledger scrolls inside its card with the Expense column pinned; no hover-only actions; adjustment and final rows have text labels; rows open `ExpenseDetailSheet` by keyboard and touch.
