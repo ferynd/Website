@@ -421,6 +421,56 @@ describe('legacy round-trip', () => {
     expect(fields).toStrictEqual({ ...fieldsOf(e), description: 'Hotel' });
   });
 
+  it.each(['percent9999', 'mixedTypes', 'blankShare', 'oddOrder'])(
+    '%s: changing only the payer preserves the stored split verbatim', (name) => {
+      const e = legacy[name];
+      const d = { ...expenseToDraft(e), paidBy: { bob: String(e.totalAmount) } };
+      const fields = save(d, { ...ctx, original: e });
+      expect(fields).toStrictEqual({ ...fieldsOf(e), paidBy: { bob: e.totalAmount } });
+      expect(validateDraft(d, { ...ctx, original: e }).preview?.shares)
+        .toEqual(allocateExpense({ ...e, ...fields }, TRAVELERS).shares);
+    },
+  );
+
+  it.each([
+    [{ bob: '9999.99' }, 'payer-sum'],
+    [{ ghost: '10000' }, 'payer-unknown'],
+    [{ bob: '10000.001' }, 'payer-invalid'],
+    [{}, 'payer-required'],
+  ] as const)('still validates changed payers with an untouched legacy split: %j', (paidBy, code) => {
+    const e = legacy.percent9999;
+    const d = { ...expenseToDraft(e), paidBy };
+    expect(codes(d, { ...ctx, original: e })).toEqual([code]);
+    expect(draftToExpenseFields(d, { ...ctx, original: e }).fields).toBeNull();
+  });
+
+  it('changing only the split preserves untouched legacy total and payers', () => {
+    const e = legacy.payerOffByCent;
+    const d = {
+      ...expenseToDraft(e),
+      splitType: 'manual' as const,
+      manualSplit: manual('amount', { kait: '20', james: '30', bob: '50' }),
+    };
+    expect(save(d, { ...ctx, original: e })).toStrictEqual({
+      ...fieldsOf(e), splitType: 'manual',
+      manualSplit: {
+        kait: { type: 'amount', value: 20 },
+        james: { type: 'amount', value: 30 },
+        bob: { type: 'amount', value: 50 },
+      },
+    });
+    d.manualSplit.bob.value = '49.99';
+    expect(codes(d, { ...ctx, original: e })).toEqual(['split-sum']);
+  });
+
+  it('revalidates legacy splits after the total or split mode changes', () => {
+    const e = legacy.percent9999;
+    expect(codes({ ...expenseToDraft(e), totalAmount: '12000', paidBy: { bob: '12000' } }, { ...ctx, original: e }))
+      .toEqual(['split-sum']);
+    expect(codes({ ...expenseToDraft(e), manualSplitMode: 'amount' }, { ...ctx, original: e }))
+      .toEqual(['split-sum']);
+  });
+
   it('changing a legacy amount requires the split to add up exactly', () => {
     const e = legacy.payerOffByCent;
     expect(codes({ ...expenseToDraft(e), totalAmount: '120' }, { ...ctx, original: e })).toEqual(['payer-sum']);

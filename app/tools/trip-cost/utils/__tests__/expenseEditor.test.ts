@@ -108,8 +108,25 @@ describe('shared editor split methods', () => {
     const zero = setExpenseExplicitZero(original, 'b', true, ids);
     expect(zero.draft.manualSplit.a).toEqual(original.draft.manualSplit.a);
     expect(zero.draft.manualSplit.b.value).toBe('0');
-    expect(setExpenseExplicitZero(zero, 'b', false, ids).draft.manualSplit.b.value).toBe('');
+    expect(Number(setExpenseExplicitZero(zero, 'b', false, ids).draft.manualSplit.b.value)).toBeGreaterThan(0);
   });
+
+  it.each<ExpenseEditorMethod>(['percent', 'amount'])(
+    '%s: unchecking explicit zero restores a positive share instead of saving zero', (method) => {
+      const zero = changeExpenseMethod(setExpenseExplicitZero(ready(), 'b', true, ids), method, ids);
+      expect(allocateExpense(save(zero), ids).shares.b).toBe(0);
+      const restored = setExpenseExplicitZero(zero, 'b', false, ids);
+      expect(Number(restored.draft.manualSplit.b.value)).toBeGreaterThan(0);
+      expect(restored.draft.manualSplit.a).toEqual(zero.draft.manualSplit.a);
+      expect(restored.draft.manualSplit.c).toEqual(zero.draft.manualSplit.c);
+      const result = draftToExpenseFields(restored.draft, { travelerIds: ids });
+      // Custom entries are kept; totals must be corrected before this can save.
+      expect(result.fields).toBeNull();
+      expect(result.errors.map((error) => error.code)).toEqual(['split-sum']);
+      const balanced = changeExpenseMethod(restored, 'equal', ids);
+      expect(Object.values(allocateExpense(save(balanced), ids).shares).every((share) => share > 0)).toBe(true);
+    },
+  );
 
   it.each(['0.01', '10.01', '100.00', '349.99', '9999.99'])(
     '$ ↔ %% conversions keep totals cents-exact for $%s', (amount) => {

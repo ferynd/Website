@@ -124,7 +124,7 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
         {reason || saveError}
       </p>
       <div className="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>Cancel</Button>
         <Button type="submit" form={formId} variant="success" loading={saving} disabled={Boolean(reason)} aria-describedby={reasonId}>
           {saving ? 'Saving…' : status === 'changed' ? 'Save anyway' : 'Save'}
         </Button>
@@ -133,7 +133,7 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
   );
 
   return (
-    <Dialog open title={original ? 'Edit expense' : 'Add expense'} onClose={onClose} footer={footer}>
+    <Dialog open title={original ? 'Edit expense' : 'Add expense'} onClose={onClose} footer={footer} dismissible={!saving}>
       <form id={formId} onSubmit={(event) => void save(event)} className="min-w-0 space-y-5" noValidate>
         {status === 'deleted' && <p role="alert" className="text-sm text-error">This expense was deleted while you were editing. Close this editor to continue.</p>}
         {status === 'changed' && (
