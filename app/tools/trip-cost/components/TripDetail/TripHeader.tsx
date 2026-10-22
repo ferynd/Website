@@ -1,6 +1,7 @@
 "use client";
 
 import React from 'react';
+import { ArrowLeft } from 'lucide-react';
 import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import { balanceChips } from '../../utils/ledgerView';
@@ -21,7 +22,7 @@ export default function TripHeader({ onBack, onAddExpense, onTraveler }: TripHea
   return (
     <header className="min-w-0 rounded-lg bg-surface-1 p-4 shadow">
       <Button onClick={onBack} variant="ghost" className="px-0 text-sm text-accent hover:underline">
-        ← Back to trips
+        <ArrowLeft aria-hidden="true" size={16} /> Back to trips
       </Button>
       <div className="mt-2 flex min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="min-w-0">

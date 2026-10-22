@@ -111,13 +111,13 @@ export default function Dialog({ open, title, onClose, children, footer, dismiss
         className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-1 shadow-xl sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-xl"
       >
         <header className="flex shrink-0 items-center justify-between border-b border-border p-4">
-          <h2 id={titleId} className="text-lg font-semibold text-text">{title}</h2>
+          <h2 id={titleId} className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-lg font-semibold text-text">{title}</h2>
           <button
             type="button"
             onClick={onClose}
             disabled={!dismissible}
             aria-label="Close dialog"
-            className="rounded px-2 py-1 text-text-2 hover:bg-surface-2 disabled:opacity-50"
+            className="shrink-0 rounded px-2 py-1 text-text-2 hover:bg-surface-2 disabled:opacity-50"
           >
             <X aria-hidden="true" size={18} />
           </button>

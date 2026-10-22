@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTrip } from '../../TripContext';
 import { buildLedgerRows, capBadge, explicitZeroLabel } from '../../utils/ledgerView';
 import { formatMoney } from '../../utils/money';
@@ -209,7 +209,7 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
           />
         )}
       </div>
-      {overflows && <p className="px-3 pb-3 text-xs text-text-3">Swipe for more travelers →</p>}
+      {overflows && <p className="flex items-center gap-1 px-3 pb-3 text-xs text-text-3">Swipe for more travelers <ArrowRight aria-hidden="true" size={14} /></p>}
     </section>
   );
 }

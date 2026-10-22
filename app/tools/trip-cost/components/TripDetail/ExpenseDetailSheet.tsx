@@ -7,7 +7,7 @@ import { useTrip } from '../../TripContext';
 import { expenseToDraft } from '../../utils/expenseDraft';
 import { describeProblem, makeNameOf } from '../../utils/ledgerLabels';
 import { formatMoney } from '../../utils/money';
-import { splitMethodLabel } from '../../utils/ledgerView';
+import { expensePayerAmounts, splitMethodLabel } from '../../utils/ledgerView';
 import type { ExpenseDraft, UserProfile } from '../../pageTypes';
 
 interface ExpenseDetailSheetProps {
@@ -134,8 +134,8 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
           <section>
             <h3 className="font-semibold text-text">Paid by</h3>
             <ul>
-              {Object.entries(allocation.payers).map(([id, cents]) => (
-                <li key={id}>{participantName(id)} · {formatMoney(cents)}</li>
+              {Object.entries(expensePayerAmounts(allocation.payers, expense.paidBy ?? {})).map(([id, cents]) => (
+                <li key={id}>{participantName(id) === 'Unknown' ? 'Unknown traveler' : participantName(id)} · {formatMoney(cents)}</li>
               ))}
             </ul>
           </section>

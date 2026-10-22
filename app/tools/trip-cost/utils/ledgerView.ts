@@ -74,6 +74,17 @@ export type LedgerViewRow =
   | UnassignedRow
   | FinalRow;
 
+/** Preserve stored payer amounts omitted from allocation because the traveler was removed. */
+export function expensePayerAmounts(allocated: Record<string, number>, stored: Record<string, number>): Record<string, number> {
+  const result = { ...allocated };
+  for (const [id, amount] of Object.entries(stored)) {
+    if (!Object.hasOwn(result, id) && typeof amount === 'number' && Number.isFinite(amount)) {
+      result[id] = Math.round(amount * 100);
+    }
+  }
+  return result;
+}
+
 /** Summarize recorded payers without mixing purchase amounts into share cells. */
 export function payerSummary(paidBy: Record<string, number>, participants: TripParticipant[]): string {
   const nameOf = makeNameOf(participants);

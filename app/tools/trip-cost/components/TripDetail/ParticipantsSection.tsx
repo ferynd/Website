@@ -6,6 +6,7 @@
 // None
 
 import React, { useState, useEffect, useRef } from 'react';
+import { X } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useTrip } from '../../TripContext';
@@ -354,7 +355,7 @@ export default function ParticipantsSection({
                       className="text-error hover:text-error/90 px-2 text-xl font-bold h-auto"
                       aria-label={`Remove ${p.name}`}
                     >
-                      ×
+                      <X aria-hidden="true" size={16} />
                     </Button>
                   )}
                 </>

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLedger } from '../ledger';
-import { balanceChips, buildLedgerRows, capBadge, explicitZeroLabel, payerSummary, splitMethodLabel } from '../ledgerView';
+import { balanceChips, buildLedgerRows, capBadge, explicitZeroLabel, expensePayerAmounts, payerSummary, splitMethodLabel } from '../ledgerView';
 import type { Expense, TripParticipant } from '../../pageTypes';
 import { OHIO, traveler } from './fixtures/ohio';
 
@@ -84,6 +84,11 @@ describe('ledger view model expense cells and payers', () => {
 
   it('names a removed payer as an unknown traveler', () => {
     expect(payerSummary({ removed: 50 }, participants)).toBe('Paid by Unknown traveler');
+  });
+
+  it('keeps a removed payer visible with their stored amount', () => {
+    expect(expensePayerAmounts({ a: 2500 }, { a: 25, removed: 12.34 }))
+      .toEqual({ a: 2500, removed: 1234 });
   });
 
   it('labels mixed legacy dollar and percentage splits', () => {

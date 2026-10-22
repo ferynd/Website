@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useTrip } from '../../TripContext';
@@ -123,7 +124,7 @@ export default function TripSettings({
         className="w-full flex items-center justify-between p-4 hover:bg-surface-2 transition-colors"
       >
         <h2 className="text-lg font-semibold text-text">Trip Settings</h2>
-        <span className="text-text-3">{expanded ? '▾' : '▸'}</span>
+        {expanded ? <ChevronDown aria-hidden="true" size={16} /> : <ChevronRight aria-hidden="true" size={16} />}
       </button>
 
       {expanded && (
