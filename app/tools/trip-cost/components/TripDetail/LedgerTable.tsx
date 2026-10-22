@@ -29,7 +29,7 @@ function CategoryRow({ row, travelerIds, collapsed, onToggleCategory }: LedgerRo
   if (row.type !== 'category') return null;
   return (
     <tr className="border-b border-border bg-surface-2">
-      <th scope="row" className="sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] bg-surface-2 px-3 py-2 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]">
+      <th scope="row" className="sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] border-r border-r-border bg-surface-2 px-3 py-2 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]">
         <button
           type="button"
           aria-expanded={!collapsed}
@@ -39,7 +39,7 @@ function CategoryRow({ row, travelerIds, collapsed, onToggleCategory }: LedgerRo
           {collapsed ? <ChevronRight aria-hidden="true" size={16} className="shrink-0" /> : <ChevronDown aria-hidden="true" size={16} className="shrink-0" />}<span>{row.category}</span>
         </button>
       </th>
-      <td className="min-w-[5.5rem] px-3 py-2 text-right font-semibold">{money(row.totalCents)}</td>
+      <td className="min-w-[7rem] whitespace-nowrap px-3 py-2 text-right font-semibold">{money(row.totalCents)}</td>
       {travelerIds.map((id) => (
         <td key={id} className="min-w-[5.5rem] px-2 py-2 text-right">{money(row.cells[id] ?? 0)}</td>
       ))}
@@ -55,14 +55,14 @@ function ExpenseRow({ row, travelerIds, onExpense, highlightedExpenseId }: Ledge
     <tr onClick={open} className={`cursor-pointer border-b border-border/70 text-text-2 hover:bg-surface-2 ${highlightedExpenseId === row.expenseId ? 'expense-added' : ''}`}>
       <th
         scope="row"
-        className="sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] bg-surface-1 px-3 py-2 text-left font-medium sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]"
+        className="sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] border-r border-r-border bg-surface-1 px-3 py-2 text-left font-medium sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]"
       >
         <button type="button" onClick={(event) => { event.stopPropagation(); open(); }} aria-label={`View details for ${row.description}`} className="block min-w-0 max-w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
           <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">{row.description}</span>
         </button>
         <span className="mt-1 block min-w-0 break-words [overflow-wrap:anywhere] text-xs text-text-3">{row.payers}</span>
       </th>
-      <td className="min-w-[5.5rem] px-3 py-2 text-right">{money(row.totalCents)}</td>
+      <td className="min-w-[7rem] whitespace-nowrap px-3 py-2 text-right">{money(row.totalCents)}</td>
       {travelerIds.map((id) => (
         <td key={id} className="min-w-[5.5rem] px-2 py-2 text-right">
           {explicitZeroLabel(row.cells[id] ?? null)}
@@ -89,7 +89,7 @@ function SummaryRow({ row, travelerIds }: LedgerRowProps) {
 
   return (
     <tr className={`border-t border-border ${rowTone} ${uncovered || unassigned ? 'bg-error/10' : final ? 'bg-surface-2' : ''}`}>
-      <th scope="row" className={`sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] px-3 py-3 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem] ${background}`}>
+      <th scope="row" className={`sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] border-r border-r-border px-3 py-3 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem] ${background}`}>
         <span className="block break-words">{row.label}</span>
         {row.type === 'adjustment' && (
           <span className="mt-1 block text-xs text-text-3">moves responsibility; spending unchanged</span>
@@ -101,7 +101,7 @@ function SummaryRow({ row, travelerIds }: LedgerRowProps) {
         )}
         {unassigned && <span className="mt-1 block text-xs">See the problems above; fix the expense to assign it.</span>}
       </th>
-      <td className="min-w-[5.5rem] px-3 py-3 text-right">
+      <td className="min-w-[7rem] whitespace-nowrap px-3 py-3 text-right">
         {money(row.totalCents)}
       </td>
       {travelerIds.map((id) => {
@@ -177,8 +177,8 @@ export default function LedgerTable({ onExpense, onTraveler, highlightedExpenseI
           <caption className="sr-only">Trip expense ledger showing totals and shares for every traveler</caption>
           <thead className="relative z-20 bg-surface-1">
             <tr className="border-b border-border text-text-2">
-              <th scope="col" className="sticky left-0 z-30 w-[9.5rem] min-w-[9.5rem] bg-surface-1 px-3 py-3 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]">Expense</th>
-              <th scope="col" className="min-w-[5.5rem] bg-surface-1 px-3 py-3 text-right">Total</th>
+              <th scope="col" className="sticky left-0 z-30 w-[9.5rem] min-w-[9.5rem] border-r border-r-border bg-surface-1 px-3 py-3 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]">Expense</th>
+              <th scope="col" className="min-w-[7rem] whitespace-nowrap bg-surface-1 px-3 py-3 text-right">Total</th>
               {ledger.travelerIds.map((id) => {
                 const participant = participants.find((item) => item.id === id);
                 if (!participant) return null;
@@ -187,7 +187,7 @@ export default function LedgerTable({ onExpense, onTraveler, highlightedExpenseI
                     <button type="button" onClick={(event) => { event.stopPropagation(); onTraveler(id); }} aria-label={`View details for ${participant.name}`} className="relative z-20 block min-h-11 w-full min-w-0 max-w-full px-2 py-3 text-right text-text hover:text-accent">
                       <span className="block break-words [overflow-wrap:anywhere]">{participant.name}</span>
                       {capBadge(ledger, id) && (
-                        <span className="block whitespace-nowrap text-xs text-text-3">{capBadge(ledger, id)}</span>
+                        <span className="block whitespace-normal text-xs text-text-3">{capBadge(ledger, id)}</span>
                       )}
                     </button>
                   </th>
@@ -209,12 +209,6 @@ export default function LedgerTable({ onExpense, onTraveler, highlightedExpenseI
             ))}
           </tbody>
         </table>
-        {overflows && (
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-surface-1 to-transparent"
-          />
-        )}
       </div>
       {overflows && <p className="flex items-center gap-1 px-3 pb-3 text-xs text-text-3">Swipe for more travelers <ArrowRight aria-hidden="true" size={14} /></p>}
       <style jsx global>{`
