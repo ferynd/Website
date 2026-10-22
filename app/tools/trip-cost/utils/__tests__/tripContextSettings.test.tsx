@@ -2,11 +2,22 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Expense, Payment, Trip, TripParticipant, UserProfile } from '../../pageTypes';
-import { tripRevision, type TripSettingsFields } from '../tripSettings';
+import { STALE_SETTINGS_MESSAGE, tripRevision, type TripSettingsFields } from '../tripSettings';
 
 type AccountSnapshot = {
   exists: () => boolean;
   data: () => { displayName?: string; email?: string } | undefined;
+};
+
+type TripSnapshot = {
+  id: string;
+  exists: () => boolean;
+  data: () => Omit<Trip, 'id'> | undefined;
+};
+
+type SettingsTransaction = {
+  get: (ref: unknown) => Promise<TripSnapshot>;
+  update: (...args: unknown[]) => void;
 };
 
 const hooks = vi.hoisted(() => ({
@@ -15,6 +26,13 @@ const hooks = vi.hoisted(() => ({
   seed: [] as unknown[],
   setDoc: vi.fn((...args: unknown[]) => Promise.resolve(void args)),
   updateDoc: vi.fn((...args: unknown[]) => Promise.resolve(void args)),
+  db: { name: 'test-db' },
+  transactionGet: vi.fn<(ref: unknown) => Promise<TripSnapshot>>(),
+  transactionUpdate: vi.fn<(...args: unknown[]) => void>(),
+  runTransaction: vi.fn<(
+    db: unknown,
+    callback: (tx: SettingsTransaction) => Promise<void>,
+  ) => Promise<void>>(),
   getDoc: vi.fn((...args: unknown[]): Promise<AccountSnapshot> => Promise.resolve(void args).then(() => ({
     exists: () => true,
     data: () => ({ displayName: 'Ada', email: 'ada@example.com' }),
@@ -45,6 +63,7 @@ vi.mock('firebase/firestore', () => ({
   onSnapshot: vi.fn(() => () => undefined),
   orderBy: vi.fn(),
   query: vi.fn(),
+  runTransaction: hooks.runTransaction,
   setDoc: (...args: unknown[]) => hooks.setDoc(...args),
   updateDoc: (...args: unknown[]) => hooks.updateDoc(...args),
   serverTimestamp: () => 'server-time',
@@ -52,6 +71,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 vi.mock('../../db', () => ({
+  db: hooks.db,
   tripDoc: (id: string) => ({ id }),
   tripAuditCol: (id: string) => ({ id }),
   userDoc: (uid: string) => ({ id: uid }),
@@ -97,6 +117,11 @@ const validSettings: TripSettingsFields = {
   defaultSplit: { a: 40, b: 60 },
 };
 
+function serverSnapshot(serverTrip: Trip): TripSnapshot {
+  const { id, ...data } = serverTrip;
+  return { id, exists: () => true, data: () => data };
+}
+
 function mount(profile: UserProfile, expenses: Expense[] = [], payments: Payment[] = []) {
   hooks.states = [];
   hooks.index = 0;
@@ -118,23 +143,44 @@ function mount(profile: UserProfile, expenses: Expense[] = [], payments: Payment
 beforeEach(() => {
   hooks.setDoc.mockClear();
   hooks.updateDoc.mockClear();
+  hooks.transactionGet.mockReset();
+  hooks.transactionGet.mockResolvedValue(serverSnapshot(trip));
+  hooks.transactionUpdate.mockReset();
+  hooks.runTransaction.mockReset();
+  hooks.runTransaction.mockImplementation(async (_db, callback) => {
+    await callback({ get: hooks.transactionGet, update: hooks.transactionUpdate });
+  });
   hooks.getDoc.mockReset();
   hooks.getDoc.mockResolvedValue({ exists: () => true, data: () => ({ displayName: 'Ada', email: 'ada@example.com' }) });
 });
 
 describe('updateTripSettings', () => {
-  it('rejects invalid settings and a stale edit without writing', async () => {
+  it('rejects invalid settings before starting a transaction', async () => {
     const api = mount(admin);
     const baseline = tripRevision(trip);
     await expect(api.updateTripSettings({
       ...validSettings,
       spendCaps: [{ participantId: 'a', maxAmount: 10.005 }],
     }, baseline)).rejects.toThrow(/whole cents/);
-    await expect(api.updateTripSettings(validSettings, 'old-revision')).rejects.toThrow(/changed while you were editing/);
-    await expect(api.updateTripSettings(validSettings, baseline)).resolves.toBeUndefined();
-    expect(hooks.updateDoc).toHaveBeenCalledTimes(1);
+    expect(hooks.runTransaction).not.toHaveBeenCalled();
+    expect(hooks.transactionGet).not.toHaveBeenCalled();
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
+    expect(hooks.updateDoc).not.toHaveBeenCalled();
     expect(hooks.setDoc).not.toHaveBeenCalled();
-    expect(hooks.updateDoc).toHaveBeenCalledWith(
+  });
+
+  it('saves all settings with exactly one transactional update', async () => {
+    const api = mount(admin);
+    const baseline = tripRevision(trip);
+    await expect(api.updateTripSettings(validSettings, baseline)).resolves.toBeUndefined();
+    expect(hooks.runTransaction).toHaveBeenCalledTimes(1);
+    expect(hooks.runTransaction).toHaveBeenCalledWith(hooks.db, expect.any(Function));
+    expect(hooks.transactionGet).toHaveBeenCalledTimes(1);
+    expect(hooks.transactionGet).toHaveBeenCalledWith({ id: 'trip-1' });
+    expect(hooks.transactionUpdate).toHaveBeenCalledTimes(1);
+    expect(hooks.updateDoc).not.toHaveBeenCalled();
+    expect(hooks.setDoc).not.toHaveBeenCalled();
+    expect(hooks.transactionUpdate).toHaveBeenCalledWith(
       { id: 'trip-1' },
       {
         spendCaps: validSettings.spendCaps,
@@ -145,16 +191,57 @@ describe('updateTripSettings', () => {
     );
   });
 
-  it('writes once when the caller confirms the current revision', async () => {
+  it('rejects a server change that has not reached the cached snapshot', async () => {
     const api = mount(admin);
-    await api.updateTripSettings(validSettings, 'old-revision', tripRevision(trip));
-    expect(hooks.updateDoc).toHaveBeenCalledTimes(1);
+    hooks.transactionGet.mockResolvedValue(serverSnapshot({ ...trip, defaultSplit: { a: 100 } }));
+    await expect(api.updateTripSettings(validSettings, tripRevision(trip)))
+      .rejects.toThrow(STALE_SETTINGS_MESSAGE);
+    expect(hooks.transactionGet).toHaveBeenCalledTimes(1);
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
+    expect(hooks.updateDoc).not.toHaveBeenCalled();
     expect(hooks.setDoc).not.toHaveBeenCalled();
+  });
+
+  it('writes once when the caller acknowledges the server revision', async () => {
+    const api = mount(admin);
+    const serverTrip: Trip = { ...trip, defaultSplit: { a: 100 } };
+    hooks.transactionGet.mockResolvedValue(serverSnapshot(serverTrip));
+    await api.updateTripSettings(validSettings, tripRevision(trip), tripRevision(serverTrip));
+    expect(hooks.transactionUpdate).toHaveBeenCalledTimes(1);
+    expect(hooks.updateDoc).not.toHaveBeenCalled();
+    expect(hooks.setDoc).not.toHaveBeenCalled();
+  });
+
+  it('rejects overwrite acknowledgement for an older server revision', async () => {
+    const api = mount(admin);
+    hooks.transactionGet.mockResolvedValue(serverSnapshot({ ...trip, defaultSplit: { b: 100 } }));
+    await expect(api.updateTripSettings(validSettings, 'old-revision', tripRevision(trip)))
+      .rejects.toThrow(STALE_SETTINGS_MESSAGE);
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('validates settings against server travelers even when that revision is acknowledged', async () => {
+    const api = mount(admin);
+    const serverTrip: Trip = { ...trip, participants: [person('b', 'uid-b')], participantIds: ['uid-b'] };
+    hooks.transactionGet.mockResolvedValue(serverSnapshot(serverTrip));
+    await expect(api.updateTripSettings(validSettings, tripRevision(trip), tripRevision(serverTrip)))
+      .rejects.toThrow(/distinct travelers/);
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('reports a deleted trip without writing', async () => {
+    const api = mount(admin);
+    hooks.transactionGet.mockResolvedValue({ id: trip.id, exists: () => false, data: () => undefined });
+    await expect(api.updateTripSettings(validSettings, tripRevision(trip)))
+      .rejects.toThrow('The trip no longer exists.');
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
   });
 
   it('does not write settings for a non-admin', async () => {
     const api = mount(member);
     await expect(api.updateTripSettings(validSettings, tripRevision(trip))).rejects.toThrow(/admin/);
+    expect(hooks.runTransaction).not.toHaveBeenCalled();
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
     expect(hooks.updateDoc).not.toHaveBeenCalled();
     expect(hooks.setDoc).not.toHaveBeenCalled();
   });

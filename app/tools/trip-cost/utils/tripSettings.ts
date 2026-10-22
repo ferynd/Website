@@ -102,6 +102,8 @@ export function validateTripSettings(settings: TripSettingsFields, ids: string[]
     for (const [id, value] of Object.entries(shares ?? {})) {
       if (!ids.includes(id) || !Number.isFinite(value) || value < 0 || value > 100) {
         errors.push(`${label} must use known travelers and percentages from 0 to 100.`);
+      } else if (parseScaledInput(value, 1e6).kind === 'fractional') {
+        errors.push(`${label} must use at most six decimal places.`);
       }
     }
   };
@@ -112,7 +114,7 @@ export function validateTripSettings(settings: TripSettingsFields, ids: string[]
   validateShares(settings.overageSplit.shares, 'Overage shares');
   if (
     settings.overageSplit.type === 'manual' &&
-    !Object.values(settings.overageSplit.shares ?? {}).some((value) => value > 0)
+    !Object.values(settings.overageSplit.shares ?? {}).some((value) => Math.round(value * 1e6) > 0)
   ) {
     errors.push('Custom overage needs at least one positive share.');
   }
@@ -225,7 +227,11 @@ export function overagePreview(caps: BudgetCapResult, split: OverageSplit, ids: 
   );
   const manual = Object.fromEntries(eligible.map((id) => {
     const share = split.shares?.[id];
-    return [id, typeof share === 'number' && Number.isFinite(share) && share > 0 ? share : 0];
+    // Match allocateCents' weight scaling before deciding whether to fall back.
+    const positive = typeof share === 'number' &&
+      Number.isFinite(share) &&
+      Math.round(share * 1e6) > 0;
+    return [id, positive ? share : 0];
   }));
   const fallback = split.type === 'manual' && eligible.length > 0 && !eligible.some((id) => manual[id] > 0);
   const weights = split.type === 'even' || fallback

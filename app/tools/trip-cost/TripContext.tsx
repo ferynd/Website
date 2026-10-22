@@ -12,12 +12,13 @@ import {
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
   serverTimestamp,
   Timestamp,
   updateDoc,
 } from 'firebase/firestore';
-import { tripDoc, tripAuditCol, userDoc } from './db';
+import { db, tripDoc, tripAuditCol, userDoc } from './db';
 import { uniqueLinkedParticipant } from './utils/payer';
 import type {
   Trip,
@@ -42,7 +43,12 @@ import {
   participantRemovalMessage,
 } from './utils/participants';
 
-import { settingsWriteError, tripRevision, type TripSettingsFields } from './utils/tripSettings';
+import {
+  settingsWriteError,
+  tripRevision,
+  validateTripSettings,
+  type TripSettingsFields,
+} from './utils/tripSettings';
 
 interface TripContextValue {
   trip: Trip | null;
@@ -360,23 +366,37 @@ export const TripProvider = ({
   ) => {
     if (!trip) throw new Error('No trip loaded');
     if (!userProfile?.isAdmin) throw new Error('Only an admin can save settings.');
-    const revision = tripRevision(trip);
-    const message = settingsWriteError(
+    const errors = validateTripSettings(
       settings,
       participants.map((person) => person.id),
-      baseline,
-      revision,
-      overwriteRevision,
     );
-    // Reject before any write so a validation error cannot leave a partial save.
-    if (message) throw new Error(message);
-    // updateDoc replaces each map. setDoc merge would deep-merge defaultSplit
-    // and overageSplit, leaving removed percentages in place.
-    await updateDoc(tripDoc(trip.id), {
-      spendCaps: settings.spendCaps,
-      overageSplit: settings.overageSplit,
-      defaultSplit: settings.defaultSplit,
-      updatedAt: serverTimestamp(),
+    // Invalid settings must fail before starting any transaction read or write.
+    if (errors.length) throw new Error(errors.join(' '));
+
+    const ref = tripDoc(trip.id);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('The trip no longer exists.');
+      const data = snap.data() as Omit<Trip, 'id'>;
+      const serverTrip: Trip = { id: snap.id, ...data };
+      const serverRevision = tripRevision(serverTrip);
+      const message = settingsWriteError(
+        settings,
+        serverTrip.participants.map((person) => person.id),
+        baseline,
+        serverRevision,
+        overwriteRevision,
+      );
+      if (message) throw new Error(message);
+
+      // One transactional update replaces each map. setDoc merge would retain
+      // removed percentages through deep merging.
+      tx.update(ref, {
+        spendCaps: settings.spendCaps,
+        overageSplit: settings.overageSplit,
+        defaultSplit: settings.defaultSplit,
+        updatedAt: serverTimestamp(),
+      });
     });
   };
 

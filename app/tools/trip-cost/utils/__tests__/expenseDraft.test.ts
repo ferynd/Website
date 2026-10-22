@@ -348,8 +348,20 @@ describe('trip default split', () => {
   it('reports whether a usable default exists and who is missing from it', () => {
     expect(hasTripDefault(undefined)).toBe(false);
     expect(hasTripDefault({ kait: 0 })).toBe(false);
+    expect(hasTripDefault({ kait: 0.0000001 })).toBe(false);
+    expect(hasTripDefault({ kait: 0.000001 })).toBe(true);
     expect(hasTripDefault({ kait: 100 })).toBe(true);
     expect(travelersMissingFromDefault({ kait: 100, james: 0 }, TRAVELERS)).toEqual(['bob']);
+  });
+
+  it('handles only quantized-zero default weights remaining after exclusion', () => {
+    const { draft: d } = applyTripDefault(
+      draft({ splitParticipants: ['bob'] }),
+      { kait: 100, bob: 0.0000001 },
+      TRAVELERS,
+    );
+    expect(d.manualSplit).toEqual(manual('percent', { bob: '0' }));
+    expect(codes(d)).toEqual(['split-sum']);
   });
 
   it('never changes a saved expense when the default changes', () => {

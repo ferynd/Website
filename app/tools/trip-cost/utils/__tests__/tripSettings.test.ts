@@ -97,6 +97,31 @@ describe('trip settings validation', () => {
     }, ['a', 'b', 'c'])).toEqual([]);
   });
 
+  it('rejects custom shares that disappear at allocator precision', () => {
+    const parsed = parseSettingsDraft({
+      caps: {},
+      overageType: 'manual',
+      overageShares: { a: '0.0000001' },
+      defaultShares: {},
+    }, ids);
+    expect(parsed.errors).toContain('Custom overage needs at least one positive share.');
+    expect(parsed.errors).toContain('Overage shares must use at most six decimal places.');
+    expect(validateTripSettings({
+      ...evenSettings(),
+      overageSplit: { type: 'manual', shares: { a: 0.000001 } },
+    }, ids)).toEqual([]);
+  });
+
+  it('rejects excess precision even alongside positive overage or default shares', () => {
+    const errors = validateTripSettings({
+      ...evenSettings(),
+      overageSplit: { type: 'manual', shares: { a: 100, b: 0.0000001 } },
+      defaultSplit: { a: 100, b: 0.0000001 },
+    }, ids);
+    expect(errors).toContain('Overage shares must use at most six decimal places.');
+    expect(errors).toContain('Default split must use at most six decimal places.');
+  });
+
   it('drops blank and unknown inputs, and keeps invalid text for validation', () => {
     const parsed = parseSettingsDraft({
       caps: { a: '10.50', b: '', ghost: '5' },
@@ -277,6 +302,16 @@ describe('overage eligibility and new-traveler notice', () => {
     expect(preview.normalized).toEqual({ b: 5000, c: 5000 });
     expect(overagePreview(caps, { type: 'manual', shares: { b: 25 } }, ids).normalized)
       .toEqual({ b: 10000, c: 0 });
+  });
+
+  it('falls back to even when eligible manual shares quantize to zero', () => {
+    const ids = ['a', 'b'];
+    const caps = applyBudgetCaps({ a: 0, b: 0 }, [], undefined, ids);
+    const preview = overagePreview(caps, { type: 'manual', shares: { a: 0.0000001 } }, ids);
+    expect(preview.fallback).toBe(true);
+    expect(preview.normalized).toEqual({ a: 5000, b: 5000 });
+    expect(overagePreview(caps, { type: 'manual', shares: { a: 0.0000001, b: 0.000001 } }, ids))
+      .toMatchObject({ fallback: false, normalized: { a: 0, b: 10000 } });
   });
 
   it('does not claim an even fallback when nobody can absorb overage', () => {
