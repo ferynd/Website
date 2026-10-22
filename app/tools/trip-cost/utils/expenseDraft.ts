@@ -476,3 +476,120 @@ export function applyTripDefault(
     missing: travelersMissingFromDefault(defaultSplit, ids),
   };
 }
+
+export type ExpenseEditorMethod = 'equal' | 'trip-default' | 'amount' | 'percent';
+
+export interface ExpenseEditorState {
+  draft: ExpenseDraft;
+  method: ExpenseEditorMethod;
+}
+
+/** Saved defaults have no provenance field: edit them as their saved Custom % snapshot. */
+export function createExpenseEditor(
+  travelerIds: string[],
+  category: string,
+  defaultSplit?: DefaultSplit,
+  payerId?: string,
+  original?: Expense,
+): ExpenseEditorState {
+  if (original) {
+    const draft = expenseToDraft(original);
+    return { draft, method: draft.splitType === 'even' ? 'equal' : draft.manualSplitMode };
+  }
+  const draft: ExpenseDraft = {
+    category,
+    description: '',
+    totalAmount: '',
+    paidBy: payerId ? { [payerId]: '' } : {},
+    splitType: 'even',
+    splitParticipants: [...travelerIds],
+    manualSplit: {},
+    manualSplitMode: 'amount',
+  };
+  return hasTripDefault(defaultSplit)
+    ? { draft: applyTripDefault(draft, defaultSplit, travelerIds).draft, method: 'trip-default' }
+    : { draft, method: 'equal' };
+}
+
+/** Changes modes through the same deterministic allocation used by draft validation. */
+export function changeExpenseMethod(
+  state: ExpenseEditorState,
+  method: ExpenseEditorMethod,
+  travelerIds: string[],
+  defaultSplit?: DefaultSplit,
+): ExpenseEditorState {
+  if (method === state.method) return state;
+  if (method === 'equal') {
+    return { method, draft: { ...state.draft, splitType: 'even', manualSplit: {} } };
+  }
+  if (method === 'trip-default') {
+    return { method, draft: applyTripDefault(state.draft, defaultSplit, travelerIds).draft };
+  }
+  const draft = state.draft.splitType === 'even'
+    ? applyTripDefault(state.draft, Object.fromEntries(travelerIds.map((id) => [id, 1])), travelerIds).draft
+    : state.draft;
+  return { method, draft: { ...convertManualSplit(draft, method, travelerIds), splitType: 'manual' } };
+}
+
+/** A default is rescaled only by an explicit selection change, never a Firestore refresh. */
+export function toggleExpenseTraveler(
+  state: ExpenseEditorState,
+  travelerId: string,
+  travelerIds: string[],
+  defaultSplit?: DefaultSplit,
+): ExpenseEditorState {
+  const selected = state.draft.splitParticipants;
+  const splitParticipants = selected.includes(travelerId)
+    ? selected.filter((id) => id !== travelerId)
+    : [...selected, travelerId];
+  const draft = { ...state.draft, splitParticipants };
+  return {
+    ...state,
+    draft: state.method === 'trip-default' ? applyTripDefault(draft, defaultSplit, travelerIds).draft : draft,
+  };
+}
+
+/** Explicit zeros in an equal split need a manual representation; keep the rest equal. */
+export function setExpenseExplicitZero(
+  state: ExpenseEditorState,
+  travelerId: string,
+  zero: boolean,
+  travelerIds: string[],
+): ExpenseEditorState {
+  if (state.method === 'equal') {
+    const weights = Object.fromEntries(travelerIds.map((id) => [id, id === travelerId && zero ? 0 : 1]));
+    return { method: 'percent', draft: applyTripDefault(state.draft, weights, travelerIds).draft };
+  }
+  const mode = state.draft.manualSplitMode;
+  return {
+    method: mode,
+    draft: {
+      ...state.draft,
+      manualSplit: { ...state.draft.manualSplit, [travelerId]: { type: mode, value: zero ? '0' : '' } },
+    },
+  };
+}
+
+/** A running payer remainder uses integer cents, including overpayment. */
+export function expensePayerRemainder(draft: ExpenseDraft): number | null {
+  const total = parseScaledInput(draft.totalAmount, 100);
+  if (total.kind !== 'ok') return null;
+  let paid = 0;
+  for (const value of Object.values(draft.paidBy)) {
+    const parsed = parseScaledInput(value, 100);
+    if (parsed.kind === 'blank') continue;
+    if (parsed.kind !== 'ok') return null;
+    paid += parsed.units;
+  }
+  return total.units - paid;
+}
+
+/** Short editor copy; validation remains shared with the mutation boundary. */
+export function expenseEditorError(error: DraftError): string {
+  if (error.code === 'payer-required') return 'Pick who paid.';
+  if (error.code === 'split-empty') return 'Include at least one traveler.';
+  if (error.code === 'split-sum' && error.message.startsWith('Split totals')) {
+    return error.message.replace('Split totals', 'Custom split totals');
+  }
+  return error.message;
+}

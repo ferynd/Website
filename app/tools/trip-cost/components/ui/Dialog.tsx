@@ -4,6 +4,8 @@ import React, { useEffect, useId, useRef } from 'react';
 import { X } from 'lucide-react';
 
 const openDialogs: symbol[] = [];
+let previousBodyOverflow = '';
+let firstOpener: HTMLElement | null = null;
 
 /** Register a modal layer and return its identity for topmost checks. */
 export function registerModalLayer(): symbol {
@@ -42,9 +44,12 @@ export default function Dialog({ open, title, onClose, children, footer, dismiss
 
   useEffect(() => {
     if (!open) return;
+    if (openDialogs.length === 0) {
+      previousBodyOverflow = document.body.style.overflow;
+      firstOpener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
     const token = registerModalLayer();
     opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const oldOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     panel.current?.focus();
 
@@ -87,9 +92,16 @@ export default function Dialog({ open, title, onClose, children, footer, dismiss
     document.addEventListener('keydown', key);
     return () => {
       document.removeEventListener('keydown', key);
+      const wasTop = isTopModalLayer(token);
       unregisterModalLayer(token);
-      document.body.style.overflow = oldOverflow;
-      opener.current?.focus();
+      if (openDialogs.length === 0) {
+        document.body.style.overflow = previousBodyOverflow;
+        const target = opener.current?.isConnected ? opener.current : firstOpener;
+        target?.focus();
+        firstOpener = null;
+      } else if (wasTop && opener.current?.isConnected) {
+        opener.current.focus();
+      }
     };
   }, [open]);
 

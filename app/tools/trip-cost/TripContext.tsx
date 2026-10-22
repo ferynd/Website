@@ -16,7 +16,6 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { tripDoc, tripAuditCol } from './db';
-import { EXPENSE_CATEGORIES } from './constants';
 import { uniqueLinkedParticipant } from './utils/payer';
 import type {
   Trip,
@@ -48,8 +47,6 @@ interface TripContextValue {
   auditEntries: AuditEntry[];
   /** Cents-exact ledger: allocations, caps, balances, problems, settlements. */
   ledger: Ledger;
-  newExpense: ExpenseDraft;
-  setNewExpense: React.Dispatch<React.SetStateAction<ExpenseDraft>>;
   addParticipant: (
     name: string,
     authorUid: string,
@@ -90,17 +87,6 @@ export const TripProvider = ({
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
-  const emptyExpenseDraft: ExpenseDraft = {
-    category: EXPENSE_CATEGORIES[0],
-    description: '',
-    totalAmount: '',
-    paidBy: {},
-    splitType: 'even',
-    splitParticipants: [],
-    manualSplit: {},
-    manualSplitMode: 'amount',
-  };
-  const [newExpense, setNewExpense] = useState<ExpenseDraft>(emptyExpenseDraft);
 
   useEffect(() => {
     setTrip(null);
@@ -284,8 +270,6 @@ export const TripProvider = ({
       { expenses: updated, updatedAt: serverTimestamp() },
       { merge: true }
     );
-
-    setNewExpense(emptyExpenseDraft);
   };
 
   const updateExpense = async (id: string, draft: ExpenseDraft) => {
@@ -396,8 +380,6 @@ export const TripProvider = ({
     payments,
     auditEntries,
     ledger,
-    newExpense,
-    setNewExpense,
     addParticipant,
     updateParticipant,
     linkParticipantAccount,

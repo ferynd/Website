@@ -1,22 +1,23 @@
 "use client";
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTrip } from '../../TripContext';
 import ParticipantsSection from './ParticipantsSection';
-import ExpenseForm from './ExpenseForm';
+import ExpenseEditor from './ExpenseEditor';
 import BalanceSummary from './BalanceSummary';
 import SettlementSuggestions from './SettlementSuggestions';
 import PaymentHistory from './PaymentHistory';
 import AuditLog from './AuditLog';
 import TripSettings from './TripSettings';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
-import Dialog from '../ui/Dialog';
 import TripHeader from './TripHeader';
 import TripTabs from './TripTabs';
 import LedgerTable from './LedgerTable';
 import ExpenseDetailSheet from './ExpenseDetailSheet';
 import TravelerDetailSheet from './TravelerDetailSheet';
-import type { UserProfile } from '../../pageTypes';
+import { draftToExpenseFields, expenseToDraft, type ExpenseFields } from '../../utils/expenseDraft';
+import { expenseRevision } from '../../utils/expenseSave';
+import type { Expense, UserProfile } from '../../pageTypes';
 
 interface TripDetailProps {
   onBack: () => void;
@@ -30,16 +31,42 @@ interface DeleteTarget {
 
 /** Trip Cost detail page with the ledger and settings split into two tabs. */
 export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
-  const { trip, auditEntries, deleteExpense, deletePayment, deleteParticipant } = useTrip();
+  const { trip, expenses, participants, auditEntries, deleteExpense, deletePayment, deleteParticipant } = useTrip();
   const [showAuditLog, setShowAuditLog] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
-  const [addBusy, setAddBusy] = useState(false);
+  const [editor, setEditor] = useState<{ original?: Expense; previousIds: string[] } | null>(null);
+  const [highlightRequest, setHighlightRequest] = useState<{ previousIds: string[]; fields: ExpenseFields } | null>(null);
+  const [highlightedExpenseId, setHighlightedExpenseId] = useState<string | null>(null);
   const [expenseId, setExpenseId] = useState<string | null>(null);
   const [travelerId, setTravelerId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const activeRequest = useRef(0);
+
+  useEffect(() => {
+    if (!highlightRequest) return;
+    // The mutation API returns void. Match the successfully added fields against
+    // the subsequent snapshot, excluding every expense present when Add opened.
+    const added = expenses.find((expense) => {
+      if (highlightRequest.previousIds.includes(expense.id) || expense.createdBy !== userProfile?.uid) return false;
+      const result = draftToExpenseFields(expenseToDraft(expense), {
+        original: expense,
+        travelerIds: participants.map((person) => person.id),
+      });
+      return result.fields && expenseRevision({ ...result.fields, id: '', createdBy: '' }) ===
+        expenseRevision({ ...highlightRequest.fields, id: '', createdBy: '' });
+    });
+    if (added) {
+      setHighlightedExpenseId(added.id);
+      setHighlightRequest(null);
+    }
+  }, [expenses, participants, highlightRequest, userProfile?.uid]);
+
+  useEffect(() => {
+    if (!highlightedExpenseId) return;
+    const timer = window.setTimeout(() => setHighlightedExpenseId(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [highlightedExpenseId]);
 
   const openConfirm = (target: DeleteTarget) => {
     activeRequest.current += 1;
@@ -89,7 +116,7 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
 
   const expenseContent = (
     <div className="min-w-0 space-y-4">
-      <LedgerTable onExpense={setExpenseId} onTraveler={setTravelerId} />
+      <LedgerTable onExpense={setExpenseId} onTraveler={setTravelerId} highlightedExpenseId={highlightedExpenseId} />
       <BalanceSummary userProfile={userProfile} />
       <SettlementSuggestions />
       <PaymentHistory
@@ -122,21 +149,31 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
         <div className="min-w-0 space-y-4">
           <TripHeader
             onBack={onBack}
-            onAddExpense={() => setAddOpen(true)}
+            onAddExpense={() => setEditor({ previousIds: expenses.map((expense) => expense.id) })}
             onTraveler={setTravelerId}
           />
           <TripTabs expenses={expenseContent} participantsSettings={participantContent} />
         </div>
       </div>
-      <Dialog open={addOpen} title="Add expense" dismissible={!addBusy} onClose={() => setAddOpen(false)}>
-        <ExpenseForm onBusyChange={setAddBusy} onSaved={() => setAddOpen(false)} onCancel={() => setAddOpen(false)} />
-      </Dialog>
       <ExpenseDetailSheet
         expenseId={expenseId}
         userProfile={userProfile}
         onClose={() => setExpenseId(null)}
         onDelete={(id) => openConfirm({ type: 'expense', id })}
+        onEdit={(original) => setEditor({ original, previousIds: [] })}
       />
+      {editor && (
+        <ExpenseEditor
+          key={`${trip.id}-${editor.original?.id ?? 'add'}`}
+          original={editor.original}
+          userProfile={userProfile}
+          onClose={() => setEditor(null)}
+          onSaved={(fields) => {
+            if (!editor.original) setHighlightRequest({ previousIds: editor.previousIds, fields });
+            setEditor(null);
+          }}
+        />
+      )}
       <TravelerDetailSheet travelerId={travelerId} onClose={() => setTravelerId(null)} />
       {confirmDelete && (
         <ConfirmDeleteModal

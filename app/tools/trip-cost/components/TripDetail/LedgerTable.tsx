@@ -10,6 +10,7 @@ import type { LedgerViewRow } from '../../utils/ledgerView';
 interface LedgerTableProps {
   onExpense: (id: string) => void;
   onTraveler: (id: string) => void;
+  highlightedExpenseId?: string | null;
 }
 
 interface LedgerRowProps {
@@ -18,6 +19,7 @@ interface LedgerRowProps {
   collapsed: boolean;
   onToggleCategory: (category: string) => void;
   onExpense: (id: string) => void;
+  highlightedExpenseId?: string | null;
 }
 
 const money = (cents: number) => <span className="tabular-nums">{formatMoney(cents)}</span>;
@@ -46,11 +48,11 @@ function CategoryRow({ row, travelerIds, collapsed, onToggleCategory }: LedgerRo
 }
 
 /** Keyboard and pointer accessible expense row with original shares only. */
-function ExpenseRow({ row, travelerIds, onExpense }: LedgerRowProps) {
+function ExpenseRow({ row, travelerIds, onExpense, highlightedExpenseId }: LedgerRowProps) {
   if (row.type !== 'expense') return null;
   const open = () => onExpense(row.expenseId);
   return (
-    <tr onClick={open} className="cursor-pointer border-b border-border/70 text-text-2 hover:bg-surface-2">
+    <tr onClick={open} className={`cursor-pointer border-b border-border/70 text-text-2 hover:bg-surface-2 ${highlightedExpenseId === row.expenseId ? 'expense-added' : ''}`}>
       <th
         scope="row"
         className="sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] bg-surface-1 px-3 py-2 text-left font-medium sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]"
@@ -129,7 +131,7 @@ function LedgerDataRow(props: LedgerRowProps) {
 }
 
 /** Responsive ledger matrix with a sticky expense column and overflow cues. */
-export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps) {
+export default function LedgerTable({ onExpense, onTraveler, highlightedExpenseId }: LedgerTableProps) {
   const { ledger, participants, expenses } = useTrip();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [overflows, setOverflows] = useState(false);
@@ -147,6 +149,18 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
     return () => observer.disconnect();
   }, [ledger.travelerIds.length, rows.length]);
 
+  useEffect(() => {
+    if (!highlightedExpenseId) return;
+    const expense = expenses.find((item) => item.id === highlightedExpenseId);
+    if (expense) {
+      setCollapsed((old) => {
+        const next = new Set(old);
+        next.delete(expense.category);
+        return next;
+      });
+    }
+  }, [highlightedExpenseId, expenses]);
+
   const toggleCategory = (category: string) => {
     setCollapsed((old) => {
       const next = new Set(old);
@@ -159,18 +173,18 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
   return (
     <section className="min-w-0 overflow-hidden rounded-lg bg-surface-1 shadow">
       <div ref={scroller} className="relative overflow-x-auto">
-        <table className="w-full min-w-max border-collapse text-sm">
+        <table className="isolate w-full min-w-max border-separate border-spacing-0 text-sm">
           <caption className="sr-only">Trip expense ledger showing totals and shares for every traveler</caption>
-          <thead>
+          <thead className="relative z-20 bg-surface-1">
             <tr className="border-b border-border text-text-2">
-              <th scope="col" className="sticky left-0 z-20 w-[9.5rem] min-w-[9.5rem] bg-surface-1 px-3 py-3 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]">Expense</th>
-              <th scope="col" className="min-w-[5.5rem] px-3 py-3 text-right">Total</th>
+              <th scope="col" className="sticky left-0 z-30 w-[9.5rem] min-w-[9.5rem] bg-surface-1 px-3 py-3 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]">Expense</th>
+              <th scope="col" className="min-w-[5.5rem] bg-surface-1 px-3 py-3 text-right">Total</th>
               {ledger.travelerIds.map((id) => {
                 const participant = participants.find((item) => item.id === id);
                 if (!participant) return null;
                 return (
-                  <th key={id} scope="col" className="min-w-[5.5rem] bg-surface-1 px-2 py-2 text-right">
-                    <button type="button" onClick={() => onTraveler(id)} aria-label={`View details for ${participant.name}`} className="min-w-0 max-w-full text-right text-text hover:text-accent">
+                  <th key={id} scope="col" className="relative z-10 min-w-[5.5rem] bg-surface-1 text-right">
+                    <button type="button" onClick={(event) => { event.stopPropagation(); onTraveler(id); }} aria-label={`View details for ${participant.name}`} className="relative z-20 block min-h-11 w-full min-w-0 max-w-full px-2 py-3 text-right text-text hover:text-accent">
                       <span className="block break-words [overflow-wrap:anywhere]">{participant.name}</span>
                       {capBadge(ledger, id) && (
                         <span className="block whitespace-nowrap text-xs text-text-3">{capBadge(ledger, id)}</span>
@@ -181,7 +195,7 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
               })}
             </tr>
           </thead>
-          <tbody>
+          <tbody className="relative z-0">
             {rows.map((row) => (
               <LedgerDataRow
                 key={rowKey(row)}
@@ -190,6 +204,7 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
                 collapsed={(row.type === 'expense' || row.type === 'category') && collapsed.has(row.category)}
                 onToggleCategory={toggleCategory}
                 onExpense={onExpense}
+                highlightedExpenseId={highlightedExpenseId}
               />
             ))}
           </tbody>
@@ -202,6 +217,20 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
         )}
       </div>
       {overflows && <p className="flex items-center gap-1 px-3 pb-3 text-xs text-text-3">Swipe for more travelers <ArrowRight aria-hidden="true" size={14} /></p>}
+      <style jsx global>{`
+        .expense-added > th,
+        .expense-added > td {
+          background-color: color-mix(in srgb, hsl(var(--accent)) 16%, hsl(var(--surface-1)));
+          box-shadow: inset 0 2px 0 hsl(var(--accent) / 0.5), inset 0 -2px 0 hsl(var(--accent) / 0.5);
+          transition: background-color 0.2s ease;
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .expense-added > th,
+          .expense-added > td {
+            transition: none;
+          }
+        }
+      `}</style>
     </section>
   );
 }

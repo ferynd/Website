@@ -186,7 +186,7 @@ export default function ParticipantsSection({
       {userProfile && (
         <div className="space-y-3 mb-4">
           {/* Mode Toggle */}
-          <div className="flex gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2">
             <Button
               onClick={() => setIsSearchMode(false)}
               variant="ghost"
@@ -215,13 +215,13 @@ export default function ParticipantsSection({
 
           {/* Add by Name Mode */}
           {!isSearchMode && (
-            <div className="flex gap-2">
+            <div className="flex min-w-0 flex-wrap gap-2">
               <Input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Enter participant name"
-                className="flex-1"
+                className="min-w-0 flex-1"
               />
               <Button
                 onClick={addManualParticipant}
@@ -237,7 +237,7 @@ export default function ParticipantsSection({
           {/* Search Registered Users Mode */}
           {isSearchMode && (
             <div className="relative" ref={dropdownRef}>
-              <div className="flex gap-2">
+              <div className="flex min-w-0 flex-wrap gap-2">
                 <Input
                   ref={searchInputRef}
                   value={searchQuery}
@@ -248,7 +248,7 @@ export default function ParticipantsSection({
                   onKeyPress={handleSearchKeyPress}
                   onFocus={() => setShowDropdown(true)}
                   placeholder="Search by email or name..."
-                  className="flex-1"
+                  className="min-w-0 flex-1"
                 />
                 <Button
                   onClick={() => selectedUser && addRegisteredUser(selectedUser)}

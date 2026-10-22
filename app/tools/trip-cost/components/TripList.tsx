@@ -36,9 +36,9 @@ export default function TripList({
       <div className="max-w-7xl mx-auto p-4">
         {/* Header */}
         <div className="bg-surface-1 rounded-lg shadow mb-6 p-4">
-          <div className="flex min-w-0 items-center justify-between gap-3">
-            <h1 className="min-w-0 break-words [overflow-wrap:anywhere] text-2xl font-bold text-text">Trip Cost Calculator</h1>
-            <div className="flex shrink-0 items-center gap-4">
+          <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <h1 className="min-w-0 text-2xl font-bold text-text">Trip Cost Calculator</h1>
+            <div className="flex min-w-0 flex-wrap items-center gap-4">
               <span className="min-w-0 break-words [overflow-wrap:anywhere] text-text">
                 {userProfile?.displayName}
                 {userProfile?.isAdmin && (
@@ -60,13 +60,14 @@ export default function TripList({
         {/* Create Trip (Admin) */}
         {userProfile?.isAdmin && (
           <div className="bg-surface-1 rounded-lg shadow mb-6 p-4">
-            <div className="flex gap-3">
+            <div className="flex min-w-0 flex-wrap gap-3">
               <Input
                 type="text"
                 value={newTripName}
                 onChange={(e) => setNewTripName(e.target.value)}
                 placeholder="Enter trip name..."
-                className="flex-1"
+                aria-label="Trip name"
+                className="min-w-0 flex-1"
               />
               <Button
                 onClick={onCreateTrip}
@@ -94,7 +95,7 @@ export default function TripList({
                 <div className="flex gap-2">
                   <Button
                     onClick={() => onOpenTrip(trip)}
-                    className="flex-1"
+                    className="min-w-0 flex-1"
                   >
                     Open
                   </Button>

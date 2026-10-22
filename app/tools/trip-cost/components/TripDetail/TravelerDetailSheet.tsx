@@ -36,11 +36,13 @@ export default function TravelerDetailSheet({ travelerId, onClose }: TravelerDet
 
   const adjustment = ledger.caps.adjustments[person.id] ?? 0;
   const status = balanceStatus(ledger.remaining[person.id] ?? 0);
+  const reimbursements = payments.filter((payment) => isValidLedgerPayment(payment, ledger.travelerIds) &&
+    (payment.payerId === person.id || payment.payeeId === person.id));
   const rows = ledger.expenses.filter((expense) => Object.hasOwn(expense.shares, person.id));
 
   return (
     <Dialog open title={`${person.name} · cost details`} onClose={onClose}>
-      <div className="space-y-4 text-sm text-text-2">
+      <div className="min-w-0 space-y-4 break-words text-sm text-text-2 [overflow-wrap:anywhere]">
         <div className="grid grid-cols-2 gap-3">
           <Metric label="Expense subtotal" value={ledger.subtotals[person.id] ?? 0} />
           <Metric label="Final responsibility" value={ledger.final[person.id] ?? 0} />
@@ -72,10 +74,9 @@ export default function TravelerDetailSheet({ travelerId, onClose }: TravelerDet
         </section>
         <section>
           <h3 className="font-semibold text-text">Reimbursements</h3>
+          {reimbursements.length === 0 && <p className="mt-2">None</p>}
           <ul className="mt-2 space-y-1">
-            {payments
-              .filter((payment) => isValidLedgerPayment(payment, ledger.travelerIds) && (payment.payerId === person.id || payment.payeeId === person.id))
-              .map((payment) => (
+            {reimbursements.map((payment) => (
                 <li key={payment.id}>
                   {payment.payerId === person.id
                     ? `Sent to ${nameOf(payment.payeeId)}`

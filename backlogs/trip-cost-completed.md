@@ -14,3 +14,8 @@ step in `backlogs/protocol.md` (only after their commits merge to `main`).
 
 - [x] **Pure draft/validation helpers wired into `TripContext`; no layout change.**
   > Resolved: `utils/expenseDraft.ts`, `utils/payment.ts`, and `utils/participants.ts` wired into `TripContext` for exact-cent new writes, payment validation, id-preserving account linking, and legacy round-trip preservation; checks: npm test (1963), lint, tsc, build pass; merged: 2e52cd7 (commit 1aeb666, PR #170); residual risk: the current form's on-screen ±$0.01 check remains until TC-P4.
+
+### TC-P3 — Layout and ledger table
+
+- [x] **Header, tabs, `LedgerTable`, detail sheets, local `Dialog`.**
+  > Resolved: ledger-first header/tabs, contained ledger matrix with pinned Expense column and labelled adjustments/final rows, keyboard/touch expense and traveler sheets, local responsive focus-trapping Dialog, temporary ExpenseForm dialog, ExpensesList removed; F-019/F-020/F-023 fixed for Trip Cost only; checks: npm test (1986), lint, tsc, build pass; merged: 42f312b (head f09e814, PR #171); residual risk: five 390px follow-ups (trip-list title/Create Trip overflow, participant Add overflow, balance-strip overflow cue, empty Reimbursements body, and traveler-header hit-target overlap), fixed in TC-P4.
