@@ -557,6 +557,11 @@ export interface ExpenseEditorState {
   pendingPercents?: ExpenseDraft['manualSplit'];
 }
 
+/** Custom $ keeps its percent snapshot read-only until it can show dollars. */
+export function expenseSharesAwaitTotal(state: ExpenseEditorState): boolean {
+  return state.method === 'amount' && Boolean(state.pendingPercents) && manualMode(state.draft) === 'percent';
+}
+
 /**
  * Blank included shares are stored as explicit $0 / 0%. In Custom $ and Custom %
  * the zero checkbox follows that rule; Equal and Trip default do not treat a
@@ -741,25 +746,19 @@ export function setExpenseTotal(
   };
 }
 
-/** Edits one share. A dollar edit ends pending percent conversion; a percent edit updates it. */
+/** Edits displayed shares only; a dollar edit ends pending percent conversion. */
 export function setExpenseShare(
   state: ExpenseEditorState,
   travelerId: string,
   value: string,
 ): ExpenseEditorState {
+  if (expenseSharesAwaitTotal(state)) return state;
   const mode = manualMode(state.draft);
   const draft: ExpenseDraft = {
     ...state.draft,
     manualSplit: { ...state.draft.manualSplit, [travelerId]: { type: mode, value } },
   };
   if (!state.pendingPercents) return { ...state, draft };
-  if (mode === 'percent') {
-    return {
-      ...state,
-      draft,
-      pendingPercents: { ...state.pendingPercents, [travelerId]: { type: 'percent', value } },
-    };
-  }
   return { ...state, draft, pendingPercents: undefined };
 }
 
@@ -848,6 +847,7 @@ export function setExpenseExplicitZero(
   travelerIds: string[],
   defaultSplit?: DefaultSplit,
 ): ExpenseEditorState {
+  if (expenseSharesAwaitTotal(state)) return state;
   let origin = state.zeroOrigin;
   const automatic = state.method === 'equal' || state.method === 'trip-default';
   if (state.method === 'equal' || state.method === 'trip-default') {

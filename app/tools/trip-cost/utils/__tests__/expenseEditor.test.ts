@@ -1,7 +1,7 @@
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
-import { SplitPreview } from '../../components/TripDetail/ExpenseSplitControls';
+import { SplitMethodControl, SplitPreview } from '../../components/TripDetail/ExpenseSplitControls';
 
 vi.mock('@/components/Button', () => ({
   default: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => React.createElement('button', props),
@@ -544,6 +544,116 @@ describe('explicit zero stays reversible when travelers change', () => {
 });
 
 describe('Custom $ chosen before a total keeps shares', () => {
+  function controls(state: ExpenseEditorState): string {
+    return renderToStaticMarkup(React.createElement(SplitMethodControl, {
+      state,
+      hasDefault: true,
+      onChange: () => {},
+    }));
+  }
+
+  function previewControls(state: ExpenseEditorState): string {
+    return renderToStaticMarkup(React.createElement(SplitPreview, {
+      travelers: ids.map((id) => ({ id, name: id.toUpperCase() })),
+      state,
+      preview: validateDraft(state.draft, { travelerIds: ids }).preview,
+      showInputs: true,
+      errorId: 'split-error',
+      onValue: () => {},
+      onZero: () => {},
+    }));
+  }
+
+  it.each<ExpenseEditorMethod>(['equal', 'trip-default', 'percent'])(
+    '%s can select Custom $ without disabling it, then shows editable dollars for $50', (method) => {
+      let state = createExpenseEditor(ids, 'Food', method === 'trip-default' ? defaultSplit : undefined, 'a');
+      state = changeExpenseMethod(state, method, ids, defaultSplit);
+      const before = controls(state).match(/<input\b[^>]*value="amount"[^>]*>/)?.[0];
+      expect(before).toBeDefined();
+      expect(before).not.toContain('disabled');
+
+      state = changeExpenseMethod(state, 'amount', ids, defaultSplit);
+      const selected = controls(state).match(/<input\b[^>]*value="amount"[^>]*>/)?.[0];
+      expect(selected).toContain('checked=""');
+      expect(selected).not.toContain('disabled');
+      expect(controls(state)).toContain('Enter the amount first; shares are converted from the current split.');
+      const pending = previewControls(state);
+      const inputs = pending.match(/<input\b[^>]*>/g) ?? [];
+      expect(inputs).toHaveLength(6);
+      for (const input of inputs) {
+        expect(input).toContain('aria-describedby="split-error ');
+        if (input.includes('type="checkbox"')) expect(input).toContain('disabled=""');
+        else {
+          expect(input).toContain('aria-label="Percent share for');
+          expect(input).toContain('readOnly=""');
+        }
+      }
+      expect(pending).toContain('Enter the amount first; shares are converted from the current split.');
+      expect(pending.match(/>%<\/span>/g)).toHaveLength(3);
+
+      state = setExpenseTotal(state, '50', ids);
+      state.draft.description = 'Dinner';
+      state.draft.paidBy = { a: '50' };
+      const expense = save(state);
+      expect(expense.manualSplit).toEqual(method === 'trip-default' ? {
+        a: { type: 'amount', value: 25 },
+        b: { type: 'amount', value: 12.5 },
+        c: { type: 'amount', value: 12.5 },
+      } : {
+        a: { type: 'amount', value: 16.67 },
+        b: { type: 'amount', value: 16.67 },
+        c: { type: 'amount', value: 16.66 },
+      });
+      const converted = previewControls(state);
+      expect(converted).toContain('aria-label="Dollar share for A"');
+      expect(converted).not.toMatch(/readOnly|disabled|Percent share/);
+    },
+  );
+
+  it('ignores pending share/zero edits and validates later edits as dollars rather than percentages', () => {
+    const pending = changeExpenseMethod(createExpenseEditor(ids, 'Food', undefined, 'a'), 'amount', ids);
+    let state = pending;
+    for (const [id, value] of [['a', '60'], ['b', '30'], ['c', '10']]) {
+      state = setExpenseShare(state, id, value);
+      state = setExpenseExplicitZero(state, id, true, ids);
+      state = setExpenseExplicitZero(state, id, false, ids);
+    }
+    expect(state).toBe(pending);
+    state = setExpenseTotal(state, '50', ids);
+    state.draft.description = 'Dinner';
+    state.draft.paidBy = { a: '50' };
+    expect(allocateExpense(save(state), ids).shares).toEqual({ a: 1667, b: 1667, c: 1666 });
+    for (const [id, value] of [['a', '60'], ['b', '30'], ['c', '10']]) {
+      state = setExpenseShare(state, id, value);
+    }
+    expect(state.pendingPercents).toBeUndefined();
+    expect(draftToExpenseFields(state.draft, { travelerIds: ids })).toMatchObject({
+      fields: null,
+      errors: [{ code: 'split-sum', message: 'Split totals $100.00 of $50.00.' }],
+    });
+    state = setExpenseShare(state, 'a', '30');
+    state = setExpenseShare(state, 'b', '15');
+    state = setExpenseShare(state, 'c', '5');
+    expect(save(state).manualSplit).toEqual({
+      a: { type: 'amount', value: 30 },
+      b: { type: 'amount', value: 15 },
+      c: { type: 'amount', value: 5 },
+    });
+  });
+
+  it.each(['', '0', 'invalid'])(
+    'locks the pending snapshot again when a converted total becomes %j', (total) => {
+      let state = changeExpenseMethod(createExpenseEditor(ids, 'Food', undefined, 'a'), 'amount', ids);
+      state = setExpenseTotal(state, '50', ids);
+      state = setExpenseTotal(state, total, ids);
+      expect(previewControls(state)).toContain('readOnly=""');
+      expect(setExpenseShare(state, 'a', '60')).toBe(state);
+      expect(setExpenseExplicitZero(state, 'a', true, ids)).toBe(state);
+      state = setExpenseTotal(state, '50', ids);
+      expect(state.draft.manualSplit.a).toEqual({ type: 'amount', value: '16.67' });
+    },
+  );
+
   it('converts an Equal split once the total is entered', () => {
     let state = createExpenseEditor(ids, 'Food', undefined, 'a');
     state.draft.description = 'Dinner';
