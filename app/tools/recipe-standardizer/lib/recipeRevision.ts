@@ -152,6 +152,59 @@ export const deriveRemoteRecipeState = (input: RemoteStateInput): RemoteRecipeSt
     : none;
 };
 
+/** Shown when a library open is refused because this tab is still saving. */
+export const SAVING_LOAD_REASON = 'Saving…';
+
+/** Save and Update cannot start a second write over one already in flight. */
+export const saveBlockedWhileWriting = (writeInFlight: boolean): boolean => writeInFlight;
+
+/**
+ * Ignore a changed conflict that is not newer than the revision this tab
+ * already adopted. That revision came from this tab's own write.
+ */
+export const remoteConflictToShow = (
+  conflict: RecipeConflict,
+  baseRevision: number | null,
+): RecipeConflict | null => {
+  if (
+    conflict.kind === 'changed'
+    && baseRevision !== null
+    && conflict.remoteRevision <= baseRevision
+  ) {
+    return null;
+  }
+  return conflict;
+};
+
+/** Clear the open recipe before delete so the list snapshot is not a remote deletion. */
+export const identityAfterDeleting = (
+  currentId: string | null,
+  baseRevision: number | null,
+  recipeId: string,
+): { currentId: string | null; baseRevision: number | null } => {
+  if (recipeId !== currentId) {
+    return { currentId, baseRevision };
+  }
+  return { currentId: null, baseRevision: null };
+};
+
+/**
+ * Block a library open that would race this tab's write.
+ * Reopening the recipe being saved is refused while the write is in flight
+ * and when that write overlaps the load, so a stale snapshot cannot look remote.
+ */
+export const loadedRecipeBlockReason = (
+  writeInFlight: boolean,
+  writeEpochAtStart: number,
+  writeEpochNow: number,
+  loadedId: string,
+  currentId: string | null,
+): string | null => {
+  if (writeInFlight) return SAVING_LOAD_REASON;
+  if (writeEpochNow !== writeEpochAtStart && loadedId === currentId) return SAVING_LOAD_REASON;
+  return null;
+};
+
 /** Conflict actions in display order. */
 export type RecipeConflictChoice = 'reload' | 'overwrite' | 'save-as-new' | 'close' | 'keep-editing';
 

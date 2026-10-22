@@ -286,14 +286,36 @@ const bakeEquivalent = (
     : { equivalent: scaled, equivalentBakeFactor: null };
 };
 
-/** Clear a stale annotation after correction, confirmation, or removing its text. */
+/**
+ * Keep, clear, or rescale a baked-equivalent annotation after an edit.
+ * Text edits, a blank equivalent, and an explicit confirmation clear it.
+ * A gram edit multiplies the stored factor by newG/oldG and clears it when
+ * the result is within FACTOR_ONE_EPSILON of 1.
+ */
 export const nextEquivalentBakeFactor = (
   previous: RecipeIngredient,
   nextEquivalent: string,
   markedCorrect: boolean,
+  nextQuantityG: number | null,
 ): number | null => {
-  if (markedCorrect || nextEquivalent.trim() === '' || nextEquivalent !== previous.equivalent) return null;
-  return previous.equivalentBakeFactor;
+  if (markedCorrect || nextEquivalent.trim() === '' || nextEquivalent !== previous.equivalent) {
+    return null;
+  }
+  const factor = previous.equivalentBakeFactor;
+  if (factor === null) return null;
+  if (nextQuantityG === previous.quantityG) return factor;
+  const oldQuantityG = previous.quantityG;
+  if (
+    oldQuantityG === null
+    || nextQuantityG === null
+    || oldQuantityG <= 0
+    || nextQuantityG <= 0
+  ) {
+    return null;
+  }
+  const scaled = snapFactor(factor * (nextQuantityG / oldQuantityG));
+  if (!Number.isFinite(scaled) || scaled <= 0) return null;
+  return scaled === 1 ? null : scaled;
 };
 
 /**

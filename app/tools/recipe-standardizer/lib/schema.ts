@@ -1,4 +1,4 @@
-/* --- CONFIGURATION: none --- */
+/* --- CONFIGURATION: recipe import messages --- */
 /**
  * Strict JSON import validation for the Recipe Standardizer.
  *
@@ -32,98 +32,98 @@
  */
 
 const MESSAGE_COPY = {
-  isInvalidTheEquivalentMayNot: (value0: unknown) =>
-    `${value0} is invalid — the equivalent may not match the current grams; ` +
+  invalidBakeFactor: (path: string) =>
+    `${path} is invalid — the equivalent may not match the current grams; ` +
     `check it.`,
-  mustBeANumberOrNull: (value0: unknown, value1: unknown) =>
-    `${value0} must be a number or null (got ${value1}).`,
-  mustBeGot: (value0: unknown, value1: unknown, value2: unknown) =>
-    `${value0} must be >= ${value1} (got ${value2}).`,
-  mustBeAnObjectWithA: (value0: unknown) => `${value0} must be an object with a "when" field.`,
-  waitentryidIsMissingDuringWaitPrep: (value0: unknown) =>
-    `${value0}.waitEntryId is missing — during-wait prep must name the ` +
+  numberOrNull: (path: string, value: string) =>
+    `${path} must be a number or null (got ${value}).`,
+  belowMinimum: (path: string, min: number, value: number) =>
+    `${path} must be >= ${min} (got ${value}).`,
+  timingObject: (path: string) => `${path} must be an object with a "when" field.`,
+  missingWaitEntryId: (path: string) =>
+    `${path}.waitEntryId is missing — during-wait prep must name the ` +
     `wait timeline entry.`,
-  sectionidIsMissingAfterSectionPrep: (value0: unknown) =>
-    `${value0}.sectionId is missing — after-section prep must name the ` +
+  missingAfterSectionId: (path: string) =>
+    `${path}.sectionId is missing — after-section prep must name the ` +
     `section.`,
-  beforestepidIsMissingJustInTime: (value0: unknown) =>
-    `${value0}.beforeStepId is missing — just-in-time prep must identify ` +
+  missingBeforeStepId: (path: string) =>
+    `${path}.beforeStepId is missing — just-in-time prep must identify ` +
     `the step it precedes.`,
-  whenIsNotStartDuringWait: (value0: unknown, value1: unknown) =>
-    `${value0}.when "${value1}" is not start/during-wait/after-section/just-in-time ` +
+  unknownPrepWhen: (path: string, when: string) =>
+    `${path}.when "${when}" is not start/during-wait/after-section/just-in-time ` +
     `— treated as "start".`,
-  prepgroupsMustBeAnArray: 'prepGroups must be an array.',
-  mustBeAnObject: (value0: unknown) => `${value0} must be an object.`,
-  idIsMissingEveryPrepGroup: (value0: unknown) =>
-    `${value0}.id is missing — every prep group needs a unique string id.`,
-  nameIsMissing: (value0: unknown) => `${value0}.name is missing.`,
-  mustBeAnObjectWithId: (value0: unknown) => `${value0} must be an object with id and name, or null.`,
-  needsBothAStableIdAnd: (value0: unknown) =>
-    `${value0} needs both a stable id and a name (e.g. "crust mixture").`,
-  mustBeAnArray: (value0: unknown) => `${value0} must be an array.`,
-  mustBeAnObjectWithKind: (value0: unknown) => `${value0} must be an object with kind and id.`,
-  kindMustBeSectionStepPrepgroup: (value0: unknown, value1: unknown) =>
-    `${value0}.kind must be section/step/prepGroup (got ${value1}).`,
-  idIsMissing: (value0: unknown) => `${value0}.id is missing.`,
-  timelineMustBeAnArray: 'timeline must be an array.',
-  idIsMissingEveryTimelineEntry: (value0: unknown) =>
-    `${value0}.id is missing — every timeline entry needs a unique string ` +
+  prepGroupsArray: 'prepGroups must be an array.',
+  objectRequired: (path: string) => `${path} must be an object.`,
+  missingPrepGroupId: (path: string) =>
+    `${path}.id is missing — every prep group needs a unique string id.`,
+  missingName: (path: string) => `${path}.name is missing.`,
+  resultObject: (path: string) => `${path} must be an object with id and name, or null.`,
+  resultIdAndName: (path: string) =>
+    `${path} needs both a stable id and a name (e.g. "crust mixture").`,
+  arrayRequired: (path: string) => `${path} must be an array.`,
+  referenceObject: (path: string) => `${path} must be an object with kind and id.`,
+  referenceKind: (path: string, kind: string) =>
+    `${path}.kind must be section/step/prepGroup (got ${kind}).`,
+  missingId: (path: string) => `${path}.id is missing.`,
+  timelineArray: 'timeline must be an array.',
+  missingTimelineId: (path: string) =>
+    `${path}.id is missing — every timeline entry needs a unique string ` +
     `id.`,
-  kindIsNotPrepExecutionWait: (value0: unknown, value1: unknown) =>
-    `${value0}.kind "${value1}" is not prep/execution/wait/serve — treated ` +
+  unknownTimelineKind: (path: string, kind: string) =>
+    `${path}.kind "${kind}" is not prep/execution/wait/serve — treated ` +
     `as "execution".`,
-  alternativesMustBeAnObject: (value0: unknown, value1: unknown) =>
-    `${value0}.alternatives[${value1}] must be an object.`,
-  techniqueoverridesMustBeAnArray: 'techniqueOverrides must be an array.',
-  needsIdNameAndHelp: (value0: unknown) => `${value0} needs id, name, and help.`,
-  sectionsIsRequiredAndMustBe: 'sections is required and must be a non-empty array.',
-  sectionsMustContainAtLeastOne: 'sections must contain at least one workflow section.',
-  idIsMissingEverySectionNeeds: (value0: unknown) =>
-    `${value0}.id is missing — every section needs a unique string id.`,
-  idIsADuplicateSectionId: (value0: unknown, value1: unknown) =>
-    `${value0}.id "${value1}" is a duplicate section id.`,
-  typeIsNotPrepExecutionCombined: (value0: unknown, value1: unknown) =>
-    `${value0}.type "${value1}" is not prep/execution/combined — treated ` +
+  alternativeObject: (path: string, index: number) =>
+    `${path}.alternatives[${index}] must be an object.`,
+  techniqueOverridesArray: 'techniqueOverrides must be an array.',
+  techniqueFields: (path: string) => `${path} needs id, name, and help.`,
+  sectionsRequired: 'sections is required and must be a non-empty array.',
+  sectionsNonEmpty: 'sections must contain at least one workflow section.',
+  missingSectionEntryId: (path: string) =>
+    `${path}.id is missing — every section needs a unique string id.`,
+  duplicateSectionId: (path: string, id: string) =>
+    `${path}.id "${id}" is a duplicate section id.`,
+  unknownSectionType: (path: string, sectionType: string) =>
+    `${path}.type "${sectionType}" is not prep/execution/combined — treated ` +
     `as "combined".`,
-  ingredientsIsRequiredAndMustBe: 'ingredients is required and must be a non-empty array.',
-  ingredientsMustContainAtLeastOne: 'ingredients must contain at least one ingredient.',
-  idIsMissingEveryIngredientNeeds: (value0: unknown) =>
-    `${value0}.id is missing — every ingredient needs a unique string id.`,
-  idIsADuplicateIngredientId: (value0: unknown, value1: unknown) =>
-    `${value0}.id "${value1}" is a duplicate ingredient id.`,
-  displaynameIsMissing: (value0: unknown) => `${value0}.displayName is missing.`,
-  hasNoGramWeightItWill: (value0: unknown, value1: unknown) =>
-    `${value0} ("${value1}") has no gram weight — it will display without ` +
+  ingredientsRequired: 'ingredients is required and must be a non-empty array.',
+  ingredientsNonEmpty: 'ingredients must contain at least one ingredient.',
+  missingIngredientId: (path: string) =>
+    `${path}.id is missing — every ingredient needs a unique string id.`,
+  duplicateIngredientId: (path: string, id: string) =>
+    `${path}.id "${id}" is a duplicate ingredient id.`,
+  missingDisplayName: (path: string) => `${path}.displayName is missing.`,
+  missingGrams: (path: string, name: string) =>
+    `${path} ("${name}") has no gram weight — it will display without ` +
     `a quantity and be excluded from weight-based scaling math.`,
-  sectionidsReferencesWhichDoesNotMatch: (value0: unknown, value1: unknown) =>
-    `${value0}.sectionIds references "${value1}" which does not match any ` +
+  unknownSectionRef: (path: string, ref: string) =>
+    `${path}.sectionIds references "${ref}" which does not match any ` +
     `sections[].id.`,
-  primarysectionidDoesNotMatchAnySections: (value0: unknown, value1: unknown) =>
-    `${value0}.primarySectionId "${value1}" does not match any sections[].id.`,
-  primarysectionidWasNotListedInSectionids: (value0: unknown, value1: unknown) =>
-    `${value0}.primarySectionId "${value1}" was not listed in sectionIds ` +
+  unknownPrimarySection: (path: string, sectionId: string) =>
+    `${path}.primarySectionId "${sectionId}" does not match any sections[].id.`,
+  primarySectionAdded: (path: string, sectionId: string) =>
+    `${path}.primarySectionId "${sectionId}" was not listed in sectionIds ` +
     `— added it.`,
-  isMissingTreatedAsAnEmpty: (value0: unknown) => `${value0} is missing — treated as an empty list.`,
-  idIsADuplicateIdEvery: (value0: unknown, value1: unknown, value2: unknown) =>
-    `${value0}.id "${value1}" is a duplicate ${value2} id — every step ` +
+  missingList: (path: string) => `${path} is missing — treated as an empty list.`,
+  duplicateStepId: (path: string, id: string, list: string) =>
+    `${path}.id "${id}" is a duplicate ${list} id — every step ` +
     `needs a unique id.`,
-  textIsMissing: (value0: unknown) => `${value0}.text is missing.`,
-  sectionidIsMissingEveryStepMust: (value0: unknown) =>
-    `${value0}.sectionId is missing — every step must belong to a section.`,
-  sectionidDoesNotMatchAnySections: (value0: unknown, value1: unknown) =>
-    `${value0}.sectionId "${value1}" does not match any sections[].id.`,
-  ingredientrefsReferencesWhichDoesNotMatch: (value0: unknown, value1: unknown) =>
-    `${value0}.ingredientRefs references "${value1}" which does not match ` +
+  missingText: (path: string) => `${path}.text is missing.`,
+  missingStepSection: (path: string) =>
+    `${path}.sectionId is missing — every step must belong to a section.`,
+  unknownStepSection: (path: string, sectionId: string) =>
+    `${path}.sectionId "${sectionId}" does not match any sections[].id.`,
+  unknownIngredientRef: (path: string, ref: string) =>
+    `${path}.ingredientRefs references "${ref}" which does not match ` +
     `any ingredients[].id.`,
-  schemaversionIsNewerThanThisTool: (value0: unknown, value1: unknown) =>
-    `schemaVersion ${value0} is newer than this tool supports (${value1}) ` +
+  newerSchema: (version: string, supported: number) =>
+    `schemaVersion ${version} is newer than this tool supports (${supported}) ` +
     `— imported best-effort; unrecognized data may be ignored.`,
-  nameIsMissingTheRecipeNeeds: 'name is missing — the recipe needs a name.',
-  sectionsDependsonReferencesWhichDoesNot: (value0: unknown, value1: unknown) =>
-    `sections[${value0}].dependsOn references "${value1}" which does not ` +
+  missingRecipeName: 'name is missing — the recipe needs a name.',
+  unknownDependsOn: (index: number, ref: string) =>
+    `sections[${index}].dependsOn references "${ref}" which does not ` +
     `match any sections[].id.`,
-  unknownTechniqueIdSNotIn: (value0: unknown) =>
-    `Unknown technique id(s) ${value0} — not in the site glossary or this ` +
+  unknownTechniques: (ids: string) =>
+    `Unknown technique id(s) ${ids} — not in the site glossary or this ` +
     `recipe's overrides; their help will not display.`,
 } as const;
 
@@ -149,20 +149,17 @@ import {
 } from './types';
 import { validateWorkflow } from './workflowValidate';
 
-/** Parse success contract. */
 export interface ParseSuccess {
   ok: true;
   recipe: Recipe;
   warnings: string[];
 }
 
-/** Parse failure contract. */
 export interface ParseFailure {
   ok: false;
   errors: string[];
 }
 
-/** Parse result contract. */
 export type ParseResult = ParseSuccess | ParseFailure;
 
 const SECTION_TYPES: SectionType[] = ['prep', 'execution', 'combined'];
@@ -184,7 +181,7 @@ const readEquivalentBakeFactor = (
 ): number | null => {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    warnings.push(MESSAGE_COPY.isInvalidTheEquivalentMayNot(path));
+    warnings.push(MESSAGE_COPY.invalidBakeFactor(path));
     return null;
   }
   if (equivalent === '' || Math.abs(value - 1) < FACTOR_ONE_EPSILON) return null;
@@ -202,11 +199,11 @@ const readNullableNumber = (
 ): number | null => {
   if (v === null || v === undefined) return null;
   if (typeof v !== 'number' || !Number.isFinite(v)) {
-    errors.push(MESSAGE_COPY.mustBeANumberOrNull(path, JSON.stringify(v)));
+    errors.push(MESSAGE_COPY.numberOrNull(path, JSON.stringify(v)));
     return null;
   }
   if (opts.min !== undefined && v < opts.min) {
-    errors.push(MESSAGE_COPY.mustBeGot(path, opts.min, v));
+    errors.push(MESSAGE_COPY.belowMinimum(path, opts.min, v));
     return null;
   }
   return v;
@@ -224,7 +221,7 @@ const readPrepTiming = (
   const fallback: PrepTiming = { when: 'start', note: '' };
   if (v === undefined || v === null) return fallback;
   if (!isObject(v)) {
-    errors.push(MESSAGE_COPY.mustBeAnObjectWithA(path));
+    errors.push(MESSAGE_COPY.timingObject(path));
     return fallback;
   }
   const note = asString(v.note);
@@ -233,7 +230,7 @@ const readPrepTiming = (
   if (when === 'during-wait') {
     const waitEntryId = asString(v.waitEntryId);
     if (!waitEntryId) {
-      errors.push(MESSAGE_COPY.waitentryidIsMissingDuringWaitPrep(path));
+      errors.push(MESSAGE_COPY.missingWaitEntryId(path));
       return fallback;
     }
     return {
@@ -245,7 +242,7 @@ const readPrepTiming = (
   if (when === 'after-section') {
     const sectionId = asString(v.sectionId);
     if (!sectionId) {
-      errors.push(MESSAGE_COPY.sectionidIsMissingAfterSectionPrep(path));
+      errors.push(MESSAGE_COPY.missingAfterSectionId(path));
       return fallback;
     }
     return {
@@ -257,7 +254,7 @@ const readPrepTiming = (
   if (when === 'just-in-time') {
     const beforeStepId = asString(v.beforeStepId);
     if (!beforeStepId) {
-      errors.push(MESSAGE_COPY.beforestepidIsMissingJustInTime(path));
+      errors.push(MESSAGE_COPY.missingBeforeStepId(path));
       return fallback;
     }
     return {
@@ -266,7 +263,7 @@ const readPrepTiming = (
       note,
     };
   }
-  warnings.push(MESSAGE_COPY.whenIsNotStartDuringWait(path, when || '(empty)'));
+  warnings.push(MESSAGE_COPY.unknownPrepWhen(path, when || '(empty)'));
   return { when: 'start', note };
 };
 
@@ -277,23 +274,23 @@ const readPrepGroups = (
 ): PrepGroup[] => {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
-    errors.push(MESSAGE_COPY.prepgroupsMustBeAnArray);
+    errors.push(MESSAGE_COPY.prepGroupsArray);
     return [];
   }
   const groups: PrepGroup[] = [];
   raw.forEach((entry, i) => {
     const path = `prepGroups[${i}]`;
     if (!isObject(entry)) {
-      errors.push(MESSAGE_COPY.mustBeAnObject(path));
+      errors.push(MESSAGE_COPY.objectRequired(path));
       return;
     }
     const id = asString(entry.id);
     if (!id) {
-      errors.push(MESSAGE_COPY.idIsMissingEveryPrepGroup(path));
+      errors.push(MESSAGE_COPY.missingPrepGroupId(path));
       return;
     }
     const name = asString(entry.name);
-    if (!name) errors.push(MESSAGE_COPY.nameIsMissing(path));
+    if (!name) errors.push(MESSAGE_COPY.missingName(path));
     groups.push({
       id,
       name,
@@ -313,13 +310,13 @@ const readPrepGroups = (
 const readStepResult = (v: unknown, path: string, errors: string[]): StepResult | null => {
   if (v === undefined || v === null) return null;
   if (!isObject(v)) {
-    errors.push(MESSAGE_COPY.mustBeAnObjectWithId(path));
+    errors.push(MESSAGE_COPY.resultObject(path));
     return null;
   }
   const id = asString(v.id);
   const name = asString(v.name);
   if (!id || !name) {
-    errors.push(MESSAGE_COPY.needsBothAStableIdAnd(path));
+    errors.push(MESSAGE_COPY.resultIdAndName(path));
     return null;
   }
   return { id, name };
@@ -332,24 +329,24 @@ const readWorkflowReferences = (
 ): WorkflowReference[] => {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
-    errors.push(MESSAGE_COPY.mustBeAnArray(path));
+    errors.push(MESSAGE_COPY.arrayRequired(path));
     return [];
   }
   const refs: WorkflowReference[] = [];
   raw.forEach((entry, i) => {
     const refPath = `${path}[${i}]`;
     if (!isObject(entry)) {
-      errors.push(MESSAGE_COPY.mustBeAnObjectWithKind(refPath));
+      errors.push(MESSAGE_COPY.referenceObject(refPath));
       return;
     }
     const kind = asString(entry.kind) as WorkflowReference['kind'];
     const id = asString(entry.id);
     if (!REFERENCE_KINDS.includes(kind)) {
-      errors.push(MESSAGE_COPY.kindMustBeSectionStepPrepgroup(refPath, JSON.stringify(entry.kind)));
+      errors.push(MESSAGE_COPY.referenceKind(refPath, JSON.stringify(entry.kind)));
       return;
     }
     if (!id) {
-      errors.push(MESSAGE_COPY.idIsMissing(refPath));
+      errors.push(MESSAGE_COPY.missingId(refPath));
       return;
     }
     refs.push({ kind, id });
@@ -364,31 +361,31 @@ const readTimeline = (
 ): TimelineEntry[] => {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
-    errors.push(MESSAGE_COPY.timelineMustBeAnArray);
+    errors.push(MESSAGE_COPY.timelineArray);
     return [];
   }
   const entries: TimelineEntry[] = [];
   raw.forEach((entry, i) => {
     const path = `timeline[${i}]`;
     if (!isObject(entry)) {
-      errors.push(MESSAGE_COPY.mustBeAnObject(path));
+      errors.push(MESSAGE_COPY.objectRequired(path));
       return;
     }
     const id = asString(entry.id);
     if (!id) {
-      errors.push(MESSAGE_COPY.idIsMissingEveryTimelineEntry(path));
+      errors.push(MESSAGE_COPY.missingTimelineId(path));
       return;
     }
     let kind = asString(entry.kind) as TimelineKind;
     if (!TIMELINE_KINDS.includes(kind)) {
-      warnings.push(MESSAGE_COPY.kindIsNotPrepExecutionWait(path, asString(entry.kind) || '(empty)'));
+      warnings.push(MESSAGE_COPY.unknownTimelineKind(path, asString(entry.kind) || '(empty)'));
       kind = 'execution';
     }
     const alternatives: TimelineAlternative[] = [];
     if (Array.isArray(entry.alternatives)) {
       entry.alternatives.forEach((alt, j) => {
         if (!isObject(alt)) {
-          errors.push(MESSAGE_COPY.alternativesMustBeAnObject(path, j));
+          errors.push(MESSAGE_COPY.alternativeObject(path, j));
           return;
         }
         alternatives.push({
@@ -423,21 +420,21 @@ const readTechniqueOverrides = (
 ): TechniqueOverride[] => {
   if (raw === undefined || raw === null) return [];
   if (!Array.isArray(raw)) {
-    errors.push(MESSAGE_COPY.techniqueoverridesMustBeAnArray);
+    errors.push(MESSAGE_COPY.techniqueOverridesArray);
     return [];
   }
   const overrides: TechniqueOverride[] = [];
   raw.forEach((entry, i) => {
     const path = `techniqueOverrides[${i}]`;
     if (!isObject(entry)) {
-      errors.push(MESSAGE_COPY.mustBeAnObject(path));
+      errors.push(MESSAGE_COPY.objectRequired(path));
       return;
     }
     const id = asString(entry.id);
     const name = asString(entry.name);
     const help = asString(entry.help);
     if (!id || !name || !help) {
-      errors.push(MESSAGE_COPY.needsIdNameAndHelp(path));
+      errors.push(MESSAGE_COPY.techniqueFields(path));
       return;
     }
     overrides.push({
@@ -455,11 +452,11 @@ const readSections = (
   warnings: string[],
 ): RecipeSection[] => {
   if (!Array.isArray(raw)) {
-    errors.push(MESSAGE_COPY.sectionsIsRequiredAndMustBe);
+    errors.push(MESSAGE_COPY.sectionsRequired);
     return [];
   }
   if (raw.length === 0) {
-    errors.push(MESSAGE_COPY.sectionsMustContainAtLeastOne);
+    errors.push(MESSAGE_COPY.sectionsNonEmpty);
     return [];
   }
   const seenIds = new Set<string>();
@@ -467,24 +464,24 @@ const readSections = (
   raw.forEach((entry, i) => {
     const path = `sections[${i}]`;
     if (!isObject(entry)) {
-      errors.push(MESSAGE_COPY.mustBeAnObject(path));
+      errors.push(MESSAGE_COPY.objectRequired(path));
       return;
     }
     const id = asString(entry.id);
     if (!id) {
-      errors.push(MESSAGE_COPY.idIsMissingEverySectionNeeds(path));
+      errors.push(MESSAGE_COPY.missingSectionEntryId(path));
       return;
     }
     if (seenIds.has(id)) {
-      errors.push(MESSAGE_COPY.idIsADuplicateSectionId(path, id));
+      errors.push(MESSAGE_COPY.duplicateSectionId(path, id));
       return;
     }
     seenIds.add(id);
     const name = asString(entry.name);
-    if (!name) errors.push(MESSAGE_COPY.nameIsMissing(path));
+    if (!name) errors.push(MESSAGE_COPY.missingName(path));
     let type = asString(entry.type) as SectionType;
     if (!SECTION_TYPES.includes(type)) {
-      warnings.push(MESSAGE_COPY.typeIsNotPrepExecutionCombined(path, asString(entry.type) || '(empty)'));
+      warnings.push(MESSAGE_COPY.unknownSectionType(path, asString(entry.type) || '(empty)'));
       type = 'combined';
     }
     let order = readNullableNumber(entry.order, `${path}.order`, errors);
@@ -512,11 +509,11 @@ const readIngredients = (
   warnings: string[],
 ): RecipeIngredient[] => {
   if (!Array.isArray(raw)) {
-    errors.push(MESSAGE_COPY.ingredientsIsRequiredAndMustBe);
+    errors.push(MESSAGE_COPY.ingredientsRequired);
     return [];
   }
   if (raw.length === 0) {
-    errors.push(MESSAGE_COPY.ingredientsMustContainAtLeastOne);
+    errors.push(MESSAGE_COPY.ingredientsNonEmpty);
     return [];
   }
   const seenIds = new Set<string>();
@@ -524,37 +521,37 @@ const readIngredients = (
   raw.forEach((entry, i) => {
     const path = `ingredients[${i}]`;
     if (!isObject(entry)) {
-      errors.push(MESSAGE_COPY.mustBeAnObject(path));
+      errors.push(MESSAGE_COPY.objectRequired(path));
       return;
     }
     const id = asString(entry.id);
     if (!id) {
-      errors.push(MESSAGE_COPY.idIsMissingEveryIngredientNeeds(path));
+      errors.push(MESSAGE_COPY.missingIngredientId(path));
       return;
     }
     if (seenIds.has(id)) {
-      errors.push(MESSAGE_COPY.idIsADuplicateIngredientId(path, id));
+      errors.push(MESSAGE_COPY.duplicateIngredientId(path, id));
       return;
     }
     seenIds.add(id);
     const displayName = asString(entry.displayName);
-    if (!displayName) errors.push(MESSAGE_COPY.displaynameIsMissing(path));
+    if (!displayName) errors.push(MESSAGE_COPY.missingDisplayName(path));
 
     const quantityG = readNullableNumber(entry.quantityG, `${path}.quantityG`, errors, { min: 0 });
     if (quantityG === null && (entry.quantityG === null || entry.quantityG === undefined)) {
-      warnings.push(MESSAGE_COPY.hasNoGramWeightItWill(path, displayName || id));
+      warnings.push(MESSAGE_COPY.missingGrams(path, displayName || id));
     }
 
     const sectionRefs = asStringArray(entry.sectionIds);
     sectionRefs.forEach((ref) => {
       if (!sectionIds.has(ref)) {
-        errors.push(MESSAGE_COPY.sectionidsReferencesWhichDoesNotMatch(path, ref));
+        errors.push(MESSAGE_COPY.unknownSectionRef(path, ref));
       }
     });
 
     let primarySectionId = asString(entry.primarySectionId);
     if (primarySectionId && !sectionIds.has(primarySectionId)) {
-      errors.push(MESSAGE_COPY.primarysectionidDoesNotMatchAnySections(path, primarySectionId));
+      errors.push(MESSAGE_COPY.unknownPrimarySection(path, primarySectionId));
       primarySectionId = '';
     }
     if (!primarySectionId && sectionRefs.length > 0) {
@@ -564,7 +561,7 @@ const readIngredients = (
     // grouping and the section cards contradict each other — normalize it in.
     if (primarySectionId && !sectionRefs.includes(primarySectionId)) {
       sectionRefs.push(primarySectionId);
-      warnings.push(MESSAGE_COPY.primarysectionidWasNotListedInSectionids(path, primarySectionId));
+      warnings.push(MESSAGE_COPY.primarySectionAdded(path, primarySectionId));
     }
 
     ingredients.push({
@@ -600,11 +597,11 @@ const readSteps = (
   warnings: string[],
 ): RecipeStep[] => {
   if (raw === undefined || raw === null) {
-    warnings.push(MESSAGE_COPY.isMissingTreatedAsAnEmpty(field));
+    warnings.push(MESSAGE_COPY.missingList(field));
     return [];
   }
   if (!Array.isArray(raw)) {
-    errors.push(MESSAGE_COPY.mustBeAnArray(field));
+    errors.push(MESSAGE_COPY.arrayRequired(field));
     return [];
   }
   const steps: RecipeStep[] = [];
@@ -612,29 +609,29 @@ const readSteps = (
   raw.forEach((entry, i) => {
     const path = `${field}[${i}]`;
     if (!isObject(entry)) {
-      errors.push(MESSAGE_COPY.mustBeAnObject(path));
+      errors.push(MESSAGE_COPY.objectRequired(path));
       return;
     }
     // Step ids must be unique within the list: the rename review flow and
     // React keys address steps by (list, id), so duplicates would collide.
     const id = asString(entry.id) || `${field}-${i + 1}`;
     if (seenIds.has(id)) {
-      errors.push(MESSAGE_COPY.idIsADuplicateIdEvery(path, id, field));
+      errors.push(MESSAGE_COPY.duplicateStepId(path, id, field));
       return;
     }
     seenIds.add(id);
     const text = asString(entry.text);
-    if (!text) errors.push(MESSAGE_COPY.textIsMissing(path));
+    if (!text) errors.push(MESSAGE_COPY.missingText(path));
     const sectionId = asString(entry.sectionId);
     if (!sectionId) {
-      errors.push(MESSAGE_COPY.sectionidIsMissingEveryStepMust(path));
+      errors.push(MESSAGE_COPY.missingStepSection(path));
     } else if (!sectionIds.has(sectionId)) {
-      errors.push(MESSAGE_COPY.sectionidDoesNotMatchAnySections(path, sectionId));
+      errors.push(MESSAGE_COPY.unknownStepSection(path, sectionId));
     }
     const ingredientRefs = asStringArray(entry.ingredientRefs);
     ingredientRefs.forEach((ref) => {
       if (!ingredientIds.has(ref)) {
-        errors.push(MESSAGE_COPY.ingredientrefsReferencesWhichDoesNotMatch(path, ref));
+        errors.push(MESSAGE_COPY.unknownIngredientRef(path, ref));
       }
     });
     let order = readNullableNumber(entry.order, `${path}.order`, errors);
@@ -694,12 +691,12 @@ export const parseRecipeJson = (rawText: string): ParseResult => {
   const version = parsed.schemaVersion;
   if (version !== undefined && version !== 1 && version !== RECIPE_SCHEMA_VERSION) {
     warnings.push(
-      MESSAGE_COPY.schemaversionIsNewerThanThisTool(JSON.stringify(version), RECIPE_SCHEMA_VERSION),
+      MESSAGE_COPY.newerSchema(JSON.stringify(version), RECIPE_SCHEMA_VERSION),
     );
   }
 
   const name = asString(parsed.name);
-  if (!name) errors.push(MESSAGE_COPY.nameIsMissingTheRecipeNeeds);
+  if (!name) errors.push(MESSAGE_COPY.missingRecipeName);
 
   const sections = readSections(parsed.sections, errors, warnings);
   const sectionIds = new Set(sections.map((s) => s.id));
@@ -707,7 +704,7 @@ export const parseRecipeJson = (rawText: string): ParseResult => {
   sections.forEach((section, i) => {
     section.dependsOn.forEach((dep) => {
       if (!sectionIds.has(dep)) {
-        errors.push(MESSAGE_COPY.sectionsDependsonReferencesWhichDoesNot(i, dep));
+        errors.push(MESSAGE_COPY.unknownDependsOn(i, dep));
       }
     });
   });
@@ -781,7 +778,7 @@ export const parseRecipeJson = (rawText: string): ParseResult => {
   const unknownTechniques = [...new Set(findUnknownTechniqueIds(allTechniqueIds, recipe.techniqueOverrides))];
   if (unknownTechniques.length > 0) {
     warnings.push(
-      MESSAGE_COPY.unknownTechniqueIdSNotIn(unknownTechniques.map((id) => `"${id}"`).join(', ')),
+      MESSAGE_COPY.unknownTechniques(unknownTechniques.map((id) => `"${id}"`).join(', ')),
     );
   }
 

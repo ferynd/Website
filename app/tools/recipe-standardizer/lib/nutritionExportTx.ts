@@ -1,22 +1,19 @@
 /* --- CONFIGURATION: export transaction field paths --- */
-/** Firebase-free transaction body; validate all sources and the recipe revision before staging atomic writes. */
-
-const MESSAGE_COPY = {
-  recipeNoLongerExists: 'Recipe no longer exists.',
-  recipeExportReferenceChangedFor: (value0: unknown) => `Recipe export reference changed for ${value0}.`,
-  nutritionTrackerFoodWasDeleted: (value0: unknown) => `Nutrition Tracker food ${value0} was deleted.`,
-  nutritionTrackerFoodChangedAfterReview: (value0: unknown) =>
-    `Nutrition Tracker food ${value0} changed after review.`,
-  invalidExportDocumentIdS: (value0: unknown) => `Invalid export document ID(s): ${value0}`,
-} as const;
-
-const RECIPE_FIELD_PREFIX = 'recipe.nutritionExports.';
-const UPDATED_AT_FIELD = 'updatedAt';
-
 /**
  * Firebase-free transaction body for writing a tracker food and its recipe back-reference atomically.
  * It checks and bumps the recipe revision, then reads and validates every dependency before staging either write.
  */
+
+const MESSAGE_COPY = {
+  recipeMissing: 'Recipe no longer exists.',
+  exportReferenceChanged: (basis: string) => `Recipe export reference changed for ${basis}.`,
+  foodDeleted: (foodId: string) => `Nutrition Tracker food ${foodId} was deleted.`,
+  foodChanged: (foodId: string) => `Nutrition Tracker food ${foodId} changed after review.`,
+  invalidExportIds: (ids: string) => `Invalid export document ID(s): ${ids}`,
+} as const;
+
+const RECIPE_FIELD_PREFIX = 'recipe.nutritionExports.';
+const UPDATED_AT_FIELD = 'updatedAt';
 
 import { checkRecipeRevision, RECIPE_REVISION_FIELD } from './recipeRevision';
 import { parseNutritionExport, sameNutritionExport } from './nutritionExportRef';
@@ -65,7 +62,7 @@ export const exportRefFieldPath = (basis: NutritionExportBasisKey): string =>
 /** Error raised when the referenced recipe has disappeared. */
 export class ExportRecipeMissingError extends Error {
   constructor() {
-    super(MESSAGE_COPY.recipeNoLongerExists);
+    super(MESSAGE_COPY.recipeMissing);
     this.name = 'ExportRecipeMissingError';
   }
 }
@@ -75,7 +72,7 @@ export class ExportRefChangedError extends Error {
   readonly basis: NutritionExportBasisKey;
 
   constructor(basis: NutritionExportBasisKey) {
-    super(MESSAGE_COPY.recipeExportReferenceChangedFor(basis));
+    super(MESSAGE_COPY.exportReferenceChanged(basis));
     this.name = 'ExportRefChangedError';
     this.basis = basis;
   }
@@ -86,7 +83,7 @@ export class ExportTargetMissingError extends Error {
   readonly foodId: string;
 
   constructor(foodId: string) {
-    super(MESSAGE_COPY.nutritionTrackerFoodWasDeleted(foodId));
+    super(MESSAGE_COPY.foodDeleted(foodId));
     this.name = 'ExportTargetMissingError';
     this.foodId = foodId;
   }
@@ -97,7 +94,7 @@ export class ExportTargetChangedError extends Error {
   readonly foodId: string;
 
   constructor(foodId: string) {
-    super(MESSAGE_COPY.nutritionTrackerFoodChangedAfterReview(foodId));
+    super(MESSAGE_COPY.foodChanged(foodId));
     this.name = 'ExportTargetChangedError';
     this.foodId = foodId;
   }
@@ -107,7 +104,7 @@ export class ExportTargetChangedError extends Error {
 export const assertExportRequestIds = (request: ExportCommitRequest): void => {
   const ids = [request.foodId, request.recipeId, ...request.sourceTargets.map((target) => target.id)];
   const invalid = [...new Set(ids.filter((id) => !isValidFirestoreDocId(id)))];
-  if (invalid.length > 0) throw new Error(MESSAGE_COPY.invalidExportDocumentIdS(invalid.join(', ')));
+  if (invalid.length > 0) throw new Error(MESSAGE_COPY.invalidExportIds(invalid.join(', ')));
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

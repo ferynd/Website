@@ -13,17 +13,17 @@ const VIEW_COPY = {
   unknownError: 'unknown error',
 
   notYetChecked: 'Not yet checked',
-  matchedAgainstNutritionTrackerFoodsCandidate: (
-    value0: unknown,
-    value1: unknown,
-    value2: unknown,
-    value3: unknown,
-    value4: unknown,
+  matchSummary: (
+    candidates: number,
+    unlinked: number,
+    confirmed: number,
+    noMatch: number,
+    unlinkedNote: string,
   ) =>
-    `Matched against Nutrition Tracker foods: ${value0} candidate(s) to ` +
-    `confirm, ${value1} unlinked; ${value2} confirmed and ${value3} no-match ` +
-    `links kept. Tap a badge to confirm or change a link.${value4}`,
-  matchingFailed: (value0: unknown) => `Matching failed: ${value0}`,
+    `Matched against Nutrition Tracker foods: ${candidates} candidate(s) to ` +
+    `confirm, ${unlinked} unlinked; ${confirmed} confirmed and ${noMatch} no-match ` +
+    `links kept. Tap a badge to confirm or change a link.${unlinkedNote}`,
+  matchingFailed: (detail: string) => `Matching failed: ${detail}`,
   optional: 'optional',
   hide: 'Hide',
   show: 'Show',
@@ -38,7 +38,7 @@ const VIEW_COPY = {
   needReview: 'need review',
   unlinked: 'unlinked',
   noMatch: 'no match',
-  couldnTCheckNutritionTrackerFoods: 'Couldn\'t check Nutrition Tracker foods — confirmed links are unverified.',
+  foodsUnverified: 'Couldn\'t check Nutrition Tracker foods — confirmed links are unverified.',
   retry: 'Retry',
 } as const;
 
@@ -225,7 +225,7 @@ export default function IngredientsView({
         ? VIEW_COPY.unlinkedNote
         : '';
       setMatchMessage(
-        VIEW_COPY.matchedAgainstNutritionTrackerFoodsCandidate(
+        VIEW_COPY.matchSummary(
           summary.candidates,
           summary.unlinked,
           summary.confirmed,
@@ -351,7 +351,7 @@ export default function IngredientsView({
             {linkSummary.noMatch > 0 && <span>{linkSummary.noMatch} {VIEW_COPY.noMatch}</span>}
           </p>
           {foods.status === 'error' && <p className="flex flex-wrap items-center gap-2 text-xs text-warning">
-            {VIEW_COPY.couldnTCheckNutritionTrackerFoods}
+            {VIEW_COPY.foodsUnverified}
             <Button
               size="sm"
               variant="ghost"

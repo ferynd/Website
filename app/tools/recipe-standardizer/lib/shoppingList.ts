@@ -18,7 +18,6 @@ import { describeEquivalent, type EquivalentNote } from './display';
 import { scaleQuantityG } from './scaling';
 import type { Recipe, RecipeIngredient, RecipeSection } from './types';
 
-/** Shopping item contract. */
 export interface ShoppingItem {
   /** Normalized-name consolidation key. */
   key: string;
@@ -37,16 +36,14 @@ export interface ShoppingItem {
   ingredientIds: string[];
 }
 
-/** Shopping group contract. */
 export interface ShoppingGroup {
   label: string;
   items: ShoppingItem[];
 }
 
-/** Shopping order contract. */
 export type ShoppingOrder = 'workflow' | 'grocery';
 
-/** Normalize ingredient name helper. */
+/** Key used to consolidate shopping lines that share a display name. */
 export const normalizeIngredientName = (name: string): string =>
   name
     .toLowerCase()
@@ -54,7 +51,7 @@ export const normalizeIngredientName = (name: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
-/** Build shopping items helper. */
+/** Consolidate ingredients that share a normalized name into one line. */
 export const buildShoppingItems = (recipe: Recipe, factor: number): ShoppingItem[] => {
   const byKey = new Map<string, {
     item: ShoppingItem;

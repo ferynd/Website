@@ -8,6 +8,11 @@ import {
   RecipeRevisionConflictError,
   deriveRemoteRecipeState,
   conflictChoices,
+  identityAfterDeleting,
+  loadedRecipeBlockReason,
+  remoteConflictToShow,
+  SAVING_LOAD_REASON,
+  saveBlockedWhileWriting,
   type RemoteStateInput,
   type RecipeConflict,
 } from '../lib/recipeRevision';
@@ -249,6 +254,74 @@ describe('deriveRemoteRecipeState', () => {
   });
   it('none when the open recipe has not yet appeared in the list', () => {
     expect(deriveRemoteRecipeState(remoteInput({ metas: [], seenInList: false })).kind).toBe('none');
+  });
+  it('clearing the open id before its list row disappears is not a remote delete', () => {
+    const next = identityAfterDeleting('recipe-1', 1, 'recipe-1');
+    expect(next).toEqual({ currentId: null, baseRevision: null });
+    expect(deriveRemoteRecipeState(remoteInput({
+      currentId: next.currentId,
+      baseRevision: next.baseRevision,
+      metas: [],
+    })).kind).toBe('none');
+  });
+});
+
+describe('identityAfterDeleting', () => {
+  it('keeps the open recipe when a different library row is deleted', () => {
+    expect(identityAfterDeleting('recipe-1', 4, 'recipe-2')).toEqual({
+      currentId: 'recipe-1',
+      baseRevision: 4,
+    });
+  });
+});
+
+describe('remoteConflictToShow', () => {
+  it.each([
+    {
+      label: 'own write at the adopted revision',
+      conflict: { kind: 'changed', remoteRevision: 2 } as RecipeConflict,
+      baseRevision: 2,
+      expected: null,
+    },
+    {
+      label: 'own write behind the adopted revision',
+      conflict: { kind: 'changed', remoteRevision: 1 } as RecipeConflict,
+      baseRevision: 2,
+      expected: null,
+    },
+  ])('$label is not a conflict', ({ conflict, baseRevision, expected }) => {
+    expect(remoteConflictToShow(conflict, baseRevision)).toBe(expected);
+  });
+  it('shows a changed conflict newer than the adopted revision', () => {
+    expect(remoteConflictToShow({ kind: 'changed', remoteRevision: 3 }, 2)).toEqual({
+      kind: 'changed',
+      remoteRevision: 3,
+    });
+  });
+  it('shows a deleted conflict even when this tab has a base revision', () => {
+    expect(remoteConflictToShow({ kind: 'deleted' }, 2)).toEqual({ kind: 'deleted' });
+  });
+});
+
+describe('saveBlockedWhileWriting', () => {
+  it('blocks Save and Update only while a write is in flight', () => {
+    expect(saveBlockedWhileWriting(true)).toBe(true);
+    expect(saveBlockedWhileWriting(false)).toBe(false);
+  });
+});
+
+describe('loadedRecipeBlockReason', () => {
+  it('blocks every load while a write is in flight', () => {
+    expect(loadedRecipeBlockReason(true, 0, 1, 'recipe-2', 'recipe-1')).toBe(SAVING_LOAD_REASON);
+  });
+  it('blocks reapplying the open recipe when a write overlapped the load', () => {
+    expect(loadedRecipeBlockReason(false, 0, 1, 'recipe-1', 'recipe-1')).toBe(SAVING_LOAD_REASON);
+  });
+  it('allows a load when no write overlapped it', () => {
+    expect(loadedRecipeBlockReason(false, 2, 2, 'recipe-1', 'recipe-1')).toBeNull();
+  });
+  it('allows opening a different recipe after a write finishes', () => {
+    expect(loadedRecipeBlockReason(false, 0, 1, 'recipe-2', 'recipe-1')).toBeNull();
   });
 });
 

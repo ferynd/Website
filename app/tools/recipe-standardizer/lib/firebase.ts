@@ -11,7 +11,5 @@ const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
 /** Shared initialized Firebase application. */
 export { app };
-/** Auth helper. */
 export const auth = getAuth(app);
-/** Db helper. */
 export const db = getFirestore(app);

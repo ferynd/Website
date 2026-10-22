@@ -1,7 +1,11 @@
 /* --- CONFIGURATION: recipe nutrition export values --- */
-/** Exports check and bump the reviewed recipe revision atomically with the tracker food and reference. */
-/** Decimal places stored in exported tracker foods. */
+/**
+ * Exports check and bump the reviewed recipe revision atomically with the tracker food and reference.
+ * Pure recipe-to-tracker export calculations, status derivation, collision checks, and request creation.
+ * Export values always describe the saved recipe at 1× and use the tracker document contract.
+ */
 
+/** Decimal places stored in exported tracker foods. */
 export const EXPORT_DECIMAL_PLACES = 2;
 /** Tracker quantity represents one complete export unit. */
 export const TRACKER_EXPORT_QUANTITY = 1;
@@ -22,12 +26,6 @@ const REQUEST_ERROR_COPY = {
   selfReference: 'self-reference: an export cannot replace one of its ingredient foods.',
   fingerprint: 'The built tracker food did not match the reviewed nutrition snapshot.',
 } as const;
-
-/**
- * Recipe exports check and bump the reviewed document revision atomically.
- * Pure recipe-to-tracker export calculations, status derivation, collision checks, and request creation.
- * Export values always describe the saved recipe at 1× and use the tracker document contract.
- */
 
 import { isValidRecipeRevision } from './recipeRevision';
 import { formatCoveragePercent } from './nutritionFormat';

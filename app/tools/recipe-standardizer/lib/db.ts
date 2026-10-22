@@ -13,10 +13,9 @@
 const MESSAGE_COPY = {
   untitledRecipe: 'Untitled recipe',
   missingRecipe: 'This recipe no longer exists in Firestore.',
-
-  invalidFoodDocumentIdS: (value0: unknown) => `Invalid food document ID(s): ${value0}`,
-  atMostFoodsCanBeCreated: (value0: unknown) => `At most ${value0} foods can be created at once.`,
-  duplicateFoodIdsInOneBatch: 'Duplicate food ids in one batch.',
+  invalidFoodIds: (ids: string) => `Invalid food document ID(s): ${ids}`,
+  tooManyFoods: (limit: number) => `At most ${limit} foods can be created at once.`,
+  duplicateFoodIds: 'Duplicate food ids in one batch.',
 } as const;
 
 import {
@@ -117,7 +116,7 @@ export const loadRecipe = async (uid: string, recipeId: string): Promise<LoadRec
   return parsed.ok ? { ...parsed, revision: readRecipeRevision(data) } : { ...parsed, missing: false };
 };
 
-/** Save new recipe helper. */
+/** Create a recipe document at revision 1. */
 export const saveNewRecipe = async (uid: string, recipe: Recipe): Promise<string> => {
   const ref = await addDoc(recipesCol(uid), {
     name: recipe.name,
@@ -207,7 +206,7 @@ export const createFoodItemsIfAbsent = async (
 ): Promise<void> => {
   const ids = docs.map((d) => d.id);
   const invalidIds = ids.filter((id) => !isValidFirestoreDocId(id));
-  if (invalidIds.length) throw new Error(MESSAGE_COPY.invalidFoodDocumentIdS(invalidIds.join(', ')));
+  if (invalidIds.length) throw new Error(MESSAGE_COPY.invalidFoodIds(invalidIds.join(', ')));
   const invalidLinkIds = [...new Set(linkTargets.map(({ id }) => id).filter((id) => !isValidFirestoreDocId(id)))];
   if (invalidLinkIds.length) throw new FoodLinkTargetChangedError(invalidLinkIds);
   const idSet = new Set(ids);
@@ -218,8 +217,8 @@ export const createFoodItemsIfAbsent = async (
   }
   const uniqueLinkTargets = [...linkTargetsById.values()];
   if (!docs.length && !uniqueGuardIds.length && !uniqueLinkTargets.length) return;
-  if (docs.length > MAX_INTAKE_ITEMS) throw new Error(MESSAGE_COPY.atMostFoodsCanBeCreated(MAX_INTAKE_ITEMS));
-  if (new Set(ids).size !== ids.length) throw new Error(MESSAGE_COPY.duplicateFoodIdsInOneBatch);
+  if (docs.length > MAX_INTAKE_ITEMS) throw new Error(MESSAGE_COPY.tooManyFoods(MAX_INTAKE_ITEMS));
+  if (new Set(ids).size !== ids.length) throw new Error(MESSAGE_COPY.duplicateFoodIds);
   await runTransaction(db, async (tx) => {
     const refs = docs.map((d) => doc(foodItemsCol(uid), d.id));
     const guardRefs = uniqueGuardIds.map((id) => doc(foodItemsCol(uid), id));

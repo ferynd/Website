@@ -16,7 +16,6 @@ const VIEW_COPY = {
     '0.001×–1000×).',
 
   currentScale: 'Current scale: ',
-  text: '— ',
   resetTo1: 'Reset to 1×',
   bakeScaleIntoRecipe: 'Bake scale into recipe…',
   scalingAdjustsAWorkingCopyOf:
@@ -30,7 +29,6 @@ const VIEW_COPY = {
   apply: 'Apply',
   servings: 'Servings ',
   baseline: '(baseline ',
-  text2: ')',
   noBaseline: '(no baseline)',
   example12: '12',
   targetServings: 'Target servings',
@@ -104,7 +102,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
         <p className="text-sm text-text">
           {VIEW_COPY.currentScale}
           <span className="font-semibold">{formatFactor(scale.factor)}</span>
-          {scaleActive && <span className="text-text-3"> {VIEW_COPY.text}{scale.label}</span>}
+          {scaleActive && <span className="text-text-3"> — {scale.label}</span>}
         </p>
         {scaleActive && (
           <div className="ml-auto flex gap-2">
@@ -163,7 +161,7 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
           }}
         >
           <p className="text-sm font-medium text-text">
-            {VIEW_COPY.servings}{baseline ? <span className="text-text-3">{VIEW_COPY.baseline}{baseline}{VIEW_COPY.text2}</span> : <span className="text-text-3">{VIEW_COPY.noBaseline}</span>}
+            {VIEW_COPY.servings}{baseline ? <span className="text-text-3">{VIEW_COPY.baseline}{baseline})</span> : <span className="text-text-3">{VIEW_COPY.noBaseline}</span>}
           </p>
           <div className="flex items-end gap-2">
             <Input

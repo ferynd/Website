@@ -79,7 +79,6 @@ export type RecipeNutritionExports = Partial<Record<NutritionExportBasisKey, Rec
 
 export type SectionType = 'prep' | 'execution' | 'combined';
 
-/** Recipe section contract. */
 export interface RecipeSection {
   id: string;
   name: string;
@@ -93,13 +92,11 @@ export interface RecipeSection {
 }
 
 /* CONFIGURATION: gram-basis bounds */
-/** Max grams per unit helper. */
+/** Largest grams-per-unit value accepted for a confirmed nutrition link. */
 export const MAX_GRAMS_PER_UNIT = 10000;
 
-/** Nutrition link status contract. */
 export type NutritionLinkStatus = 'unlinked' | 'candidate' | 'confirmed' | 'no-match';
 
-/** Nutrition link contract. */
 export interface NutritionLink {
   status: NutritionLinkStatus;
   /** Tracker foodItems doc id — set for candidate/confirmed, null otherwise. */
@@ -120,7 +117,7 @@ export interface NutritionLink {
   targetFingerprint: string | null;
 }
 
-/** Unlinked nutrition helper. */
+/** Default link for an ingredient with no tracker food. */
 export const UNLINKED_NUTRITION: NutritionLink = {
   status: 'unlinked',
   foodItemId: null,
@@ -139,7 +136,6 @@ export interface FoodItemRef {
   name: string;
 }
 
-/** Recipe ingredient contract. */
 export interface RecipeIngredient {
   id: string;
   displayName: string;
@@ -217,7 +213,6 @@ export interface StepResult {
   name: string;
 }
 
-/** Recipe step contract. */
 export interface RecipeStep {
   id: string;
   sectionId: string;
@@ -261,7 +256,6 @@ export interface TimelineAlternative {
   note: string;
 }
 
-/** Timeline kind contract. */
 export type TimelineKind = 'prep' | 'execution' | 'wait' | 'serve';
 
 /**
@@ -299,7 +293,6 @@ export interface TechniqueOverride {
   help: string;
 }
 
-/** Recipe servings contract. */
 export interface RecipeServings {
   baselineServings: number | null;
   currentServings: number | null;
@@ -307,14 +300,12 @@ export interface RecipeServings {
   portionSizeG: number | null;
 }
 
-/** Recipe yield contract. */
 export interface RecipeYield {
   estimatedFinalWeightG: number | null;
   actualFinalWeightG: number | null;
   yieldNotes: string;
 }
 
-/** Recipe contract. */
 export interface Recipe {
   schemaVersion: number;
   name: string;

@@ -16,6 +16,8 @@ interface SaveChoiceModalProps {
   onUpdate: () => void;
   onSaveAsNew: (name: string) => void;
   onCancel: () => void;
+  /** True while an update is already in flight. */
+  updateDisabled: boolean;
 }
 
 /**
@@ -30,6 +32,7 @@ export default function SaveChoiceModal({
   onUpdate,
   onSaveAsNew,
   onCancel,
+  updateDisabled,
 }: SaveChoiceModalProps) {
   const [newName, setNewName] = useState(suggestedNewName);
 
@@ -40,7 +43,12 @@ export default function SaveChoiceModal({
         <p className="text-sm text-text-2">{changeSummary}</p>
 
         <div className="space-y-3">
-          <Button className="w-full" size="sm" onClick={onUpdate}>
+          <Button
+            className="w-full"
+            size="sm"
+            disabled={updateDisabled}
+            onClick={onUpdate}
+          >
             Update existing recipe
           </Button>
           <div className="rounded-lg border border-border bg-surface-2 p-3 space-y-2">

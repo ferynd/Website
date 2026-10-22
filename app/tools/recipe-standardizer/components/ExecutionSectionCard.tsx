@@ -1,10 +1,9 @@
-/* --- CONFIGURATION: none --- */
+/* --- CONFIGURATION: execution step copy --- */
 /** Execution steps consume named inputs and share ingredient equivalent caveats. */
 'use client';
 
 const VIEW_COPY = {
   after: 'After: ',
-  text: '.',
   verifyContents: 'Verify contents',
   optional: 'optional',
 } as const;
@@ -90,7 +89,7 @@ export default function ExecutionSectionCard({ data, recipe, factor, techniquesF
           const hasDisclosure = item.verifyIngredients.length > 0 || step.equipment.length > 0;
           return (
             <li key={step.id} className="flex gap-2 text-sm text-text">
-              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}{VIEW_COPY.text}</span>
+              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}.</span>
               <div className="min-w-0 flex-1">
                 <p>{step.text}</p>
                 <StepInputChips step={item} />

@@ -1,4 +1,4 @@
-/* --- CONFIGURATION: none --- */
+/* --- CONFIGURATION: consolidated list copy --- */
 /** Shopping and grocery checklists derive amounts from ingredients and share equivalent caveats. */
 'use client';
 

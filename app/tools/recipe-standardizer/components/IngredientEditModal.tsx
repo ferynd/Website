@@ -1,4 +1,4 @@
-/* --- CONFIGURATION: none --- */
+/* --- CONFIGURATION: ingredient edit copy --- */
 /** Ingredient edits retain stale equivalent provenance until correction or explicit confirmation. */
 'use client';
 
@@ -8,7 +8,7 @@ const VIEW_COPY = {
   editIngredient: 'Edit ingredient',
   name: 'Name',
   grams: 'Grams',
-  equivalentEG2Cups: 'Equivalent (e.g. 2 cups)',
+  equivalentLabel: 'Equivalent (e.g. 2 cups)',
   prepNote: 'Prep note',
   groceryCategory: 'Grocery category',
   substitutionNotes: 'Substitution notes',
@@ -24,7 +24,6 @@ const ANNOTATION_COPY = {
   confirm: 'The equivalent matches the current grams',
 } as const;
 
-/** Ingredient edits preserve annotations until the equivalent is explicitly corrected. */
 import { useState } from 'react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
@@ -77,7 +76,7 @@ export default function IngredientEditModal({ ingredient, onSave, onCancel }: In
       displayName: name,
       quantityG: grams,
       equivalent: equivalent.trim(),
-      equivalentBakeFactor: nextEquivalentBakeFactor(ingredient, equivalent.trim(), markedCorrect),
+      equivalentBakeFactor: nextEquivalentBakeFactor(ingredient, equivalent.trim(), markedCorrect, grams),
       prepNote: prepNote.trim(),
       groceryCategory: groceryCategory.trim(),
       substitutionNotes: substitutionNotes.trim(),
@@ -110,7 +109,7 @@ export default function IngredientEditModal({ ingredient, onSave, onCancel }: In
             wrapperClassName="flex flex-col flex-1"
           />
           <Input
-            label={VIEW_COPY.equivalentEG2Cups}
+            label={VIEW_COPY.equivalentLabel}
             value={equivalent}
             onChange={(e) => setEquivalent(e.target.value)}
             wrapperClassName="flex flex-col flex-1"

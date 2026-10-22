@@ -10,6 +10,7 @@ import {
   classifyEquivalentText,
   findUnscalableEquivalents,
   nextEquivalentBakeFactor,
+  FACTOR_ONE_EPSILON,
   factorFromMultiplier,
   factorFromPortions,
   factorFromServings,
@@ -335,6 +336,46 @@ describe('nextEquivalentBakeFactor', () => {
     },
   ])('$label', ({ text, marked, expected }) => {
     const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
-    expect(nextEquivalentBakeFactor(previous, text, marked)).toBe(expected);
+    expect(nextEquivalentBakeFactor(previous, text, marked, previous.quantityG)).toBe(expected);
+  });
+
+  it('multiplies the stored factor by new grams over old grams', () => {
+    const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
+    expect(previous.quantityG).toBe(600);
+    expect(nextEquivalentBakeFactor(previous, previous.equivalent, false, 1200)).toBe(6);
+  });
+
+  it('clears the factor when the rescaled value is 1 within tolerance', () => {
+    const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
+    expect(nextEquivalentBakeFactor(previous, previous.equivalent, false, 200)).toBeNull();
+    const nearOne = 200 * (1 + FACTOR_ONE_EPSILON / 2);
+    expect(nextEquivalentBakeFactor(previous, previous.equivalent, false, nearOne)).toBeNull();
+  });
+
+  it('keeps a rescaled factor that stays outside the 1× tolerance', () => {
+    const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
+    const grams = 200 * (1 + FACTOR_ONE_EPSILON * 2);
+    const factor = nextEquivalentBakeFactor(previous, previous.equivalent, false, grams);
+    expect(factor).not.toBeNull();
+    expect(factor).toBeGreaterThan(1);
+  });
+
+  it.each([
+    { label: 'unknown grams', grams: null },
+    { label: 'zero grams', grams: 0 },
+    { label: 'negative grams', grams: -1 },
+  ])('clears the annotation for $label', ({ grams }) => {
+    const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
+    expect(nextEquivalentBakeFactor(previous, previous.equivalent, false, grams)).toBeNull();
+  });
+
+  it('leaves an unannotated ingredient clear when grams change', () => {
+    const previous = proseRecipe().ingredients[0];
+    expect(nextEquivalentBakeFactor(previous, previous.equivalent, false, 50)).toBeNull();
+  });
+
+  it('clears the annotation when the equivalent text changes along with grams', () => {
+    const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
+    expect(nextEquivalentBakeFactor(previous, '2 cups', false, 1200)).toBeNull();
   });
 });

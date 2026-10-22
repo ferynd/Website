@@ -1,4 +1,4 @@
-/* --- CONFIGURATION: accordion panel registry --- */
+/* --- CONFIGURATION: workspace copy and accordion panels --- */
 /** Owns recipe baseline, editable draft, render-time scale, bake review, and revision conflict resolution. */
 'use client';
 
@@ -12,52 +12,52 @@ const VIEW_COPY = {
   unknownError: 'unknown error',
   skippedIngredients: (count: number) =>
     ` ${count} ingredient(s) changed meanwhile and were left as they are.`,
-  nutritionMatchCandidateSToConfirm: (value0: unknown, value1: unknown) =>
-    `Nutrition match: ${value0} candidate(s) to confirm, ${value1} unlinked ` +
+  nutritionMatchSummary: (candidates: number, unlinked: number) =>
+    `Nutrition match: ${candidates} candidate(s) to confirm, ${unlinked} unlinked ` +
     `(see Ingredients).`,
-  couldNotLoadRecipe: (value0: unknown) => `Could not load recipe: ${value0}`,
-  thisRecipeWasDeletedFromThe: 'This recipe was deleted from the library — it is now unsaved.',
-  saved: (value0: unknown) => `Saved “${value0}”.`,
-  giveTheRecipeANameBefore: 'Give the recipe a name before saving.',
+  couldNotLoadRecipe: (detail: string) => `Could not load recipe: ${detail}`,
+  deletedFromLibrary: 'This recipe was deleted from the library — it is now unsaved.',
+  saved: (name: string) => `Saved “${name}”.`,
+  nameRequired: 'Give the recipe a name before saving.',
   noChangesToSave: 'No changes to save.',
-  saveFailed: (value0: unknown) => `Save failed: ${value0}`,
-  updated: (value0: unknown) => `Updated “${value0}”.`,
-  updateFailed: (value0: unknown) => `Update failed: ${value0}`,
-  text: (value0: unknown, value1: unknown) => `${value0} ${value1}`,
+  saveFailed: (detail: string) => `Save failed: ${detail}`,
+  updated: (name: string) => `Updated “${name}”.`,
+  updateFailed: (detail: string) => `Update failed: ${detail}`,
   noRecipeOpen: 'No recipe open.',
   couldNotLoadNutritionTrackerFoods: 'Could not load Nutrition Tracker foods — try again.',
-  theOpenRecipeChangedWhileMatching: 'The open recipe changed while matching — run it again.',
-  couldNotLoadNutritionTrackerFoods2: 'Could not load Nutrition Tracker foods — nothing was written. Try again.',
-  theOpenRecipeChangedNothingWas: 'The open recipe changed — nothing was written.',
-  someIngredientsWereLinkedToA:
+  recipeChangedWhileMatching: 'The open recipe changed while matching — run it again.',
+  foodsUnavailableNothingWritten:
+    'Could not load Nutrition Tracker foods — nothing was written. Try again.',
+  recipeChangedNothingWritten: 'The open recipe changed — nothing was written.',
+  ingredientsLinkedDuringReview:
     'Some ingredients were linked to a Nutrition Tracker food while you were ' +
     'reviewing — nothing was written. Close and reopen this dialog to review ' +
     'again.',
-  aNutritionTrackerFoodChosenFor:
+  linkExistingDeleted:
     'A Nutrition Tracker food chosen for "Link existing" was deleted — nothing ' +
     'was written. Review the highlighted rows again.',
-  aNutritionTrackerFoodChosenFor2:
+  linkExistingChanged:
     'A Nutrition Tracker food chosen for "Link existing" changed or was deleted ' +
     '— nothing was written. Review the highlighted rows again.',
-  aNutritionTrackerFoodThisReview:
+  replacedFoodRestored:
     'A Nutrition Tracker food this review replaces was restored meanwhile — ' +
     'nothing was written. Close and reopen this dialog to review again.',
-  couldNotCreateFoodsNothingWas: (value0: unknown) => `Could not create foods — nothing was written: ${value0}`,
-  nutritionTrackerFoodsWereCreatedBut:
+  createFoodsFailed: (detail: string) => `Could not create foods — nothing was written: ${detail}`,
+  foodsCreatedRecipeChanged:
     'Nutrition Tracker foods were created, but the open recipe changed before ' +
     'links could be applied.',
-  createdNutritionTrackerFoodSAnd: (value0: unknown, value1: unknown, value2: unknown) =>
-    `Created ${value0} Nutrition Tracker food(s) and confirmed ${value1} ` +
-    `link(s) — save the recipe to keep the links.${value2}`,
-  nothingWasWritten: (value0: unknown) => `Nothing was written: ${value0}`,
+  intakeApplied: (created: number, linked: number, skippedNote: string) =>
+    `Created ${created} Nutrition Tracker food(s) and confirmed ${linked} ` +
+    `link(s) — save the recipe to keep the links.${skippedNote}`,
+  nothingWasWritten: (detail: string) => `Nothing was written: ${detail}`,
   couldNotAccessTheClipboard: 'Could not access the clipboard.',
   recipeLibraryImport: 'Recipe library & import',
-  saved2: 'saved',
+  savedLabel: 'saved',
   unsavedChanges: 'Unsaved changes',
   unsaved: '● unsaved',
   save: 'Save',
   closeRecipe: 'Close recipe',
-  nutritionLinkSPointAtDeleted:
+  staleNutritionLinks:
     'nutrition link(s) point at deleted, renamed, or changed Nutrition Tracker ' +
     'foods.',
   review: 'Review',
@@ -66,17 +66,15 @@ const VIEW_COPY = {
   servingsYield: 'Servings & yield',
   baselineServings: 'Baseline servings: ',
   estimatedFinalWeight: 'Estimated final weight: ',
-  text2: '—',
-  actualFinalWeightGWeighThe: 'Actual final weight (g) — weigh the finished batch to improve scaling',
+  actualWeightLabel: 'Actual final weight (g) — weigh the finished batch to improve scaling',
   source: 'Source',
   timeline: 'Timeline',
   recipeNotes: 'Recipe notes',
-  thisRecipeHasNoPrepGroups: 'This recipe has no prep groups.',
-  text3: '.',
-  thisRecipeHasNoExecutionSteps: 'This recipe has no execution steps.',
+  noPrepGroups: 'This recipe has no prep groups.',
+  noExecutionSteps: 'This recipe has no execution steps.',
   copied: 'Copied',
   copyJson: 'Copy JSON',
-  openASavedRecipeOrImport: 'Open a saved recipe or import a new one above to get cooking.',
+  emptyState: 'Open a saved recipe or import a new one above to get cooking.',
 } as const;
 
 const PANEL_KEYS = ['overview', 'ingredients', 'prep', 'execution', 'nutrition', 'scaling', 'json'] as const;
@@ -132,9 +130,14 @@ const EXPORT_WORKSPACE_COPY = {
 
 import {
   deriveRemoteRecipeState,
+  identityAfterDeleting,
   INITIAL_RECIPE_REVISION,
   LEGACY_RECIPE_REVISION,
+  loadedRecipeBlockReason,
   RecipeRevisionConflictError,
+  remoteConflictToShow,
+  SAVING_LOAD_REASON,
+  saveBlockedWhileWriting,
   type RecipeConflict,
 } from '../lib/recipeRevision';
 import RecipeConflictModal from './RecipeConflictModal';
@@ -290,6 +293,13 @@ export default function RecipeWorkspace() {
   const [baseline, setBaseline] = useState<Recipe | null>(null);
   const [draft, setDraft] = useState<Recipe | null>(null);
   const [currentId, setCurrentId] = useState<string | null>(null);
+  const currentIdRef = useRef<string | null>(null);
+  const baseRevisionRef = useRef<number | null>(null);
+  const writeInFlightRef = useRef(false);
+  const writeEpochRef = useRef(0);
+  currentIdRef.current = currentId;
+  baseRevisionRef.current = baseRevision;
+  writeInFlightRef.current = writeInFlight;
   const [scale, setScale] = useState<ScaleResult>(NO_SCALE);
   const [warnings, setWarnings] = useState<string[]>([]);
   const [status, setStatus] = useState('');
@@ -406,6 +416,8 @@ export default function RecipeWorkspace() {
     importWarnings: string[],
     revision: number | null,
   ) => {
+    currentIdRef.current = id;
+    baseRevisionRef.current = revision;
     setBaseRevision(revision);
     setConflict(null);
     setListSeenId(id !== null && savedRecipes.some((meta) => meta.id === id) ? id : null);
@@ -449,7 +461,7 @@ export default function RecipeWorkspace() {
         if (!current) return;
         const { recipe: matched, summary } = applyNutritionMatches(current, items);
         setDraft(matched);
-        setStatus(VIEW_COPY.nutritionMatchCandidateSToConfirm(summary.candidates, summary.unlinked));
+        setStatus(VIEW_COPY.nutritionMatchSummary(summary.candidates, summary.unlinked));
       } catch {
         /* matching is optional — never block import */
       }
@@ -458,9 +470,27 @@ export default function RecipeWorkspace() {
   };
 
   const handleLoad = async (recipeId: string) => {
+    const blockReason = (epochAtStart: number): string | null => loadedRecipeBlockReason(
+      writeInFlightRef.current,
+      epochAtStart,
+      writeEpochRef.current,
+      recipeId,
+      currentIdRef.current,
+    );
+    const initialReason = blockReason(writeEpochRef.current);
+    if (initialReason !== null) {
+      setLoadError(initialReason);
+      return;
+    }
     if (!confirmDiscard()) return;
     setLoadError('');
+    const epochAtStart = writeEpochRef.current;
     const result = await loadSavedRecipe(recipeId);
+    const overlappedReason = blockReason(epochAtStart);
+    if (overlappedReason !== null) {
+      setLoadError(overlappedReason);
+      return;
+    }
     if (!result.ok) {
       setLoadError(VIEW_COPY.couldNotLoadRecipe(result.errors.join(' ')));
       return;
@@ -470,15 +500,23 @@ export default function RecipeWorkspace() {
   };
 
   const handleDelete = async (recipeId: string) => {
+    const deletingOpen = recipeId === currentId;
+    if (deletingOpen) {
+      const next = identityAfterDeleting(currentId, baseRevision, recipeId);
+      currentIdRef.current = next.currentId;
+      baseRevisionRef.current = next.baseRevision;
+      setCurrentId(next.currentId);
+      setBaseRevision(next.baseRevision);
+    }
     await remove(recipeId);
-    if (recipeId === currentId) {
-      setCurrentId(null);
-      setBaseRevision(null);
-      setStatus(VIEW_COPY.thisRecipeWasDeletedFromThe);
+    if (deletingOpen) {
+      setStatus(VIEW_COPY.deletedFromLibrary);
     }
   };
 
   const closeRecipe = () => {
+    currentIdRef.current = null;
+    baseRevisionRef.current = null;
     setBaseRevision(null);
     setConflict(null);
     setBakeReview(null);
@@ -550,6 +588,8 @@ export default function RecipeWorkspace() {
   const persistNew = async (recipe: Recipe) => {
     const cleanRecipe = withoutNutritionExports(recipe).recipe;
     const id = await saveNew(cleanRecipe);
+    currentIdRef.current = id;
+    baseRevisionRef.current = INITIAL_RECIPE_REVISION;
     setBaseline(cleanRecipe);
     setDraft(cleanRecipe);
     setCurrentId(id);
@@ -559,9 +599,10 @@ export default function RecipeWorkspace() {
   };
 
   const handleSaveClick = async () => {
+    if (saveBlockedWhileWriting(writeInFlightRef.current)) return;
     if (!draft) return;
     if (!draft.name.trim()) {
-      setStatus(VIEW_COPY.giveTheRecipeANameBefore);
+      setStatus(VIEW_COPY.nameRequired);
       return;
     }
     try {
@@ -585,36 +626,48 @@ export default function RecipeWorkspace() {
 
   const updateWithRevision = async (expected: number) => {
     if (!draft || !currentId) return;
-    const session = recipeSessionRef.current;
+    if (saveBlockedWhileWriting(writeInFlightRef.current)) return;
+    const writtenId = currentId;
     const saved = draft;
     setSaveModalSummary(null);
+    writeEpochRef.current += 1;
+    writeInFlightRef.current = true;
     setWriteInFlight(true);
     setConflictBusy(true);
     try {
-      const result = await update(currentId, saved, expected);
-      if (session !== recipeSessionRef.current) return;
+      const result = await update(writtenId, saved, expected);
+      if (currentIdRef.current !== writtenId) return;
       setBaseline({ ...saved, nutritionExports: result.nutritionExports });
       setDraft((previous) => previous ? { ...previous, nutritionExports: result.nutritionExports } : previous);
+      baseRevisionRef.current = result.revision;
       setBaseRevision(result.revision);
       setConflict(null);
       setStatus(VIEW_COPY.updated(saved.name));
     } catch (err) {
-      if (session !== recipeSessionRef.current) return;
+      if (currentIdRef.current !== writtenId) return;
       if (err instanceof RecipeRevisionConflictError) {
-        setConflict(err.conflict);
-        setStatus(err.conflict.kind === 'changed'
-          ? CONFLICT_WORKSPACE_COPY.saveChanged
-          : CONFLICT_WORKSPACE_COPY.saveDeleted);
+        const surfaced = remoteConflictToShow(err.conflict, baseRevisionRef.current);
+        if (surfaced !== null) {
+          setConflict(surfaced);
+          setStatus(surfaced.kind === 'changed'
+            ? CONFLICT_WORKSPACE_COPY.saveChanged
+            : CONFLICT_WORKSPACE_COPY.saveDeleted);
+        }
       } else {
         setStatus(VIEW_COPY.updateFailed(err instanceof Error ? err.message : VIEW_COPY.unknownError));
       }
     } finally {
+      writeInFlightRef.current = false;
       setWriteInFlight(false);
       setConflictBusy(false);
+      setLoadError((current) => (current === SAVING_LOAD_REASON ? '' : current));
     }
   };
 
-  const handleUpdateExisting = () => updateWithRevision(baseRevision ?? LEGACY_RECIPE_REVISION);
+  const handleUpdateExisting = () => {
+    if (saveBlockedWhileWriting(writeInFlightRef.current)) return;
+    void updateWithRevision(baseRevision ?? LEGACY_RECIPE_REVISION);
+  };
 
   const reloadRecipe = async () => {
     if (!currentId) return;
@@ -630,10 +683,10 @@ export default function RecipeWorkspace() {
       } else if (result.missing) {
         setConflict({ kind: 'deleted' });
       } else {
-        setStatus(VIEW_COPY.text(CONFLICT_WORKSPACE_COPY.reloadFailed, result.errors.join(' ')));
+        setStatus(`${CONFLICT_WORKSPACE_COPY.reloadFailed} ${result.errors.join(' ')}`);
       }
     } catch (err) {
-      setStatus(VIEW_COPY.text(CONFLICT_WORKSPACE_COPY.reloadFailed, err instanceof Error ? err.message : String(err)));
+      setStatus(`${CONFLICT_WORKSPACE_COPY.reloadFailed} ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setConflictBusy(false);
     }
@@ -679,7 +732,7 @@ export default function RecipeWorkspace() {
     // Apply against the *latest* draft, not the click-time closure — and bail
     // out entirely if a different recipe was opened while the read ran.
     if (session !== recipeSessionRef.current) {
-      throw new Error(VIEW_COPY.theOpenRecipeChangedWhileMatching);
+      throw new Error(VIEW_COPY.recipeChangedWhileMatching);
     }
     const current = draftRef.current;
     if (!current) throw new Error(VIEW_COPY.noRecipeOpen);
@@ -695,11 +748,11 @@ export default function RecipeWorkspace() {
     if (!fresh) {
       return {
         status: 'error',
-        message: VIEW_COPY.couldNotLoadNutritionTrackerFoods2,
+        message: VIEW_COPY.foodsUnavailableNothingWritten,
       };
     }
     if (session !== recipeSessionRef.current) {
-      return { status: 'error', message: VIEW_COPY.theOpenRecipeChangedNothingWas };
+      return { status: 'error', message: VIEW_COPY.recipeChangedNothingWritten };
     }
     const refreshed = refreshPlanLinkTargets(plan, fresh);
     const currentRecipe = draftRef.current;
@@ -707,13 +760,13 @@ export default function RecipeWorkspace() {
     if (findNoLongerEligible(refreshed.plan, currentRecipe, fresh).length) {
       return {
         status: 'error',
-        message: VIEW_COPY.someIngredientsWereLinkedToA,
+        message: VIEW_COPY.ingredientsLinkedDuringReview,
       };
     }
     if (refreshed.missingIds.length) {
       return {
         status: 'error',
-        message: VIEW_COPY.aNutritionTrackerFoodChosenFor,
+        message: VIEW_COPY.linkExistingDeleted,
       };
     }
     const currentPlan = refreshed.plan;
@@ -739,14 +792,14 @@ export default function RecipeWorkspace() {
         void refreshFoods();
         return {
           status: 'error',
-          message: VIEW_COPY.aNutritionTrackerFoodChosenFor2,
+          message: VIEW_COPY.linkExistingChanged,
         };
       }
       if (err instanceof FoodTargetReappearedError) {
         void refreshFoods();
         return {
           status: 'error',
-          message: VIEW_COPY.aNutritionTrackerFoodThisReview,
+          message: VIEW_COPY.replacedFoodRestored,
         };
       }
       if (err instanceof FoodIdCollisionError) {
@@ -759,7 +812,7 @@ export default function RecipeWorkspace() {
       }
       return {
         status: 'error',
-        message: VIEW_COPY.couldNotCreateFoodsNothingWas(err instanceof Error ? err.message : VIEW_COPY.unknownError),
+        message: VIEW_COPY.createFoodsFailed(err instanceof Error ? err.message : VIEW_COPY.unknownError),
       };
     }
     const created = docs
@@ -771,7 +824,7 @@ export default function RecipeWorkspace() {
       items: [...prev.items.filter((food) => !created.some((item) => item.id === food.id)), ...created],
     }));
     if (session !== recipeSessionRef.current) {
-      setStatus(VIEW_COPY.nutritionTrackerFoodsWereCreatedBut);
+      setStatus(VIEW_COPY.foodsCreatedRecipeChanged);
       return { status: 'created-unlinked', created: created.length };
     }
     const current = draftRef.current;
@@ -811,7 +864,7 @@ export default function RecipeWorkspace() {
     const applied = applyIntakeLinks(current, entries);
     setDraft(applied.recipe);
     setStatus(
-      VIEW_COPY.createdNutritionTrackerFoodSAnd(
+      VIEW_COPY.intakeApplied(
         created.length,
         applied.applied.length,
         applied.skipped.length ? VIEW_COPY.skippedIngredients(applied.skipped.length) : '',
@@ -1042,7 +1095,7 @@ export default function RecipeWorkspace() {
         >
           <BookOpen size={18} className="text-accent" />
           <span className="flex-1 text-lg font-semibold text-text">{VIEW_COPY.recipeLibraryImport}</span>
-          <span className="text-sm text-text-3">{savedRecipes.length} {VIEW_COPY.saved2}</span>
+          <span className="text-sm text-text-3">{savedRecipes.length} {VIEW_COPY.savedLabel}</span>
         </button>
         {libraryOpen && (
           <div className="px-5 pb-5 space-y-5">
@@ -1081,6 +1134,7 @@ export default function RecipeWorkspace() {
                 <Button
                   size="sm"
                   onClick={handleSaveClick}
+                  disabled={saveBlockedWhileWriting(writeInFlight)}
                   className="inline-flex items-center gap-1.5"
                 >
                   <Save size={14} /> {VIEW_COPY.save}
@@ -1123,7 +1177,7 @@ export default function RecipeWorkspace() {
             </div>
           )}
           {linkSummary.stale > 0 && <div className="flex flex-wrap items-center gap-2 rounded-lg border border-error/30 bg-error/10 p-3 text-sm text-error">
-            <TriangleAlert size={14} /> {linkSummary.stale} {VIEW_COPY.nutritionLinkSPointAtDeleted}
+            <TriangleAlert size={14} /> {linkSummary.stale} {VIEW_COPY.staleNutritionLinks}
             <Button
               size="sm"
               variant="ghost"
@@ -1158,9 +1212,9 @@ export default function RecipeWorkspace() {
                   <div className="rounded-lg border border-border bg-surface-2 p-3 space-y-1">
                     <p className="font-medium text-text">{VIEW_COPY.servingsYield}</p>
                     <p className="text-text-2">{VIEW_COPY.baselineServings}{draft.servings.baselineServings ?? '—'}</p>
-                    <p className="text-text-2">{VIEW_COPY.estimatedFinalWeight}{draft.yield.estimatedFinalWeightG !== null ? `${draft.yield.estimatedFinalWeightG} g` : VIEW_COPY.text2}</p>
+                    <p className="text-text-2">{VIEW_COPY.estimatedFinalWeight}{draft.yield.estimatedFinalWeightG !== null ? `${draft.yield.estimatedFinalWeightG} g` : '—'}</p>
                     <Input
-                      label={VIEW_COPY.actualFinalWeightGWeighThe}
+                      label={VIEW_COPY.actualWeightLabel}
                       type="number"
                       min={0}
                       step="any"
@@ -1240,7 +1294,7 @@ export default function RecipeWorkspace() {
             >
               <div className="space-y-3">
                 {workflow && workflow.prepGroups.length === 0 && workflow.residualPrepSections.length === 0 && (
-                  <p className="text-sm text-text-3">{VIEW_COPY.thisRecipeHasNoPrepGroups}</p>
+                  <p className="text-sm text-text-3">{VIEW_COPY.noPrepGroups}</p>
                 )}
                 {workflow?.prepGroups.map((group) => (
                   <PrepGroupCard
@@ -1258,7 +1312,7 @@ export default function RecipeWorkspace() {
                     <ol className="space-y-1.5">
                       {steps.map((step, i) => (
                         <li key={step.id} className="flex gap-2 text-sm text-text">
-                          <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}{VIEW_COPY.text3}</span>
+                          <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}.</span>
                           <p>{step.text}</p>
                         </li>
                       ))}
@@ -1279,7 +1333,7 @@ export default function RecipeWorkspace() {
             >
               <div className="space-y-3">
                 {workflow && workflow.executionSections.length === 0 && (
-                  <p className="text-sm text-text-3">{VIEW_COPY.thisRecipeHasNoExecutionSteps}</p>
+                  <p className="text-sm text-text-3">{VIEW_COPY.noExecutionSteps}</p>
                 )}
                 {workflow?.executionSections.map((data) => (
                   <ExecutionSectionCard
@@ -1378,7 +1432,7 @@ export default function RecipeWorkspace() {
       {!draft && (
         <div className="rounded-xl border border-border bg-surface-1 p-8 text-center text-text-3">
           <UtensilsCrossed size={32} className="mx-auto mb-3 text-accent" />
-          <p>{VIEW_COPY.openASavedRecipeOrImport}</p>
+          <p>{VIEW_COPY.emptyState}</p>
         </div>
       )}
       {stepReview && draft && (
@@ -1404,6 +1458,7 @@ export default function RecipeWorkspace() {
           recipeName={baseline?.name ?? draft.name}
           suggestedNewName={suggestVersionName(draft.name, savedRecipes.map((r) => r.name))}
           changeSummary={saveModalSummary}
+          updateDisabled={saveBlockedWhileWriting(writeInFlight)}
           onUpdate={handleUpdateExisting}
           onSaveAsNew={handleSaveAsNew}
           onCancel={() => setSaveModalSummary(null)}

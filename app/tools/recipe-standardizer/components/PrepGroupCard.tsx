@@ -1,12 +1,10 @@
-/* --- CONFIGURATION: none --- */
+/* --- CONFIGURATION: prep group copy --- */
 /** Named preparation inputs render authoritative grams and shared equivalent caveats. */
 'use client';
 
 const VIEW_COPY = {
   usedIn: 'Used in: ',
-  text: '— ',
   optional: 'optional',
-  text2: '.',
   moreDetail: 'More detail',
 } as const;
 
@@ -77,7 +75,7 @@ export default function PrepGroupCard({ group, factor, techniques }: PrepGroupCa
                   </span>
                 )}
                 <span>{ing.displayName}</span>
-                {ing.prepNote && <span className="text-text-3">{VIEW_COPY.text}{ing.prepNote}</span>}
+                {ing.prepNote && <span className="text-text-3">— {ing.prepNote}</span>}
                 {ing.optional && <span className="text-xs italic text-text-3">{VIEW_COPY.optional}</span>}
               </li>
             );
@@ -88,7 +86,7 @@ export default function PrepGroupCard({ group, factor, techniques }: PrepGroupCa
         <ol className="space-y-1.5 border-t border-border pt-2.5">
           {group.steps.map((step, i) => (
             <li key={step.id} className="flex gap-2 text-sm text-text">
-              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}{VIEW_COPY.text2}</span>
+              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}.</span>
               <div className="min-w-0">
                 <p>{step.text}</p>
                 {(step.timing || step.dependencyNote) && (

@@ -3,8 +3,8 @@
 'use client';
 
 const MESSAGE_COPY = {
-  userecipetoolMustBeUsedWithinRecipeprovider: 'useRecipeTool must be used within RecipeProvider',
-  youMustBeSignedIn: 'You must be signed in.',
+  outsideProvider: 'useRecipeTool must be used within RecipeProvider',
+  mustBeSignedIn: 'You must be signed in.',
   loading: 'Loading…',
   authenticationFailed: 'Authentication failed.',
 } as const;
@@ -68,14 +68,14 @@ interface RecipeContextValue {
 
 const RecipeContext = createContext<RecipeContextValue | undefined>(undefined);
 
-/** Use recipe tool helper. */
+/** Read recipe services. Throws when rendered outside RecipeProvider. */
 export const useRecipeTool = (): RecipeContextValue => {
   const ctx = useContext(RecipeContext);
-  if (!ctx) throw new Error(MESSAGE_COPY.userecipetoolMustBeUsedWithinRecipeprovider);
+  if (!ctx) throw new Error(MESSAGE_COPY.outsideProvider);
   return ctx;
 };
 
-/** Recipe provider helper. */
+/** Provide authenticated recipe services to the standardizer tree. */
 export function RecipeProvider({ children }: {
   children: ReactNode;
 }) {
@@ -110,7 +110,7 @@ export function RecipeProvider({ children }: {
   }, [user]);
 
   const requireUid = useCallback((): string => {
-    if (!user) throw new Error(MESSAGE_COPY.youMustBeSignedIn);
+    if (!user) throw new Error(MESSAGE_COPY.mustBeSignedIn);
     return user.uid;
   }, [user]);
 

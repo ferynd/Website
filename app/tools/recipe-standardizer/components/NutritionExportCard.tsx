@@ -2,11 +2,6 @@
 /** Render export availability from the pure card model; owned bases remain reachable through their rows. */
 'use client';
 
-const VIEW_COPY = {
-  text: '“',
-  text2: '”',
-} as const;
-
 const CARD_TITLE = 'Nutrition Tracker food';
 const CARD_DESCRIPTION = 'Save this recipe as a food you can log in the Nutrition Tracker.';
 const SCALE_NOTE = 'Exports always use the recipe at 1×; the working scale doesn\'t change the tracker food.';
@@ -91,7 +86,7 @@ function ExportRow({
     <li className="space-y-2 rounded-lg border border-border bg-surface-1 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{EXPORT_BASIS_LABELS[status.basis]}</span>
-        <span className="text-sm text-text-2">{VIEW_COPY.text}{status.ref.foodName}{VIEW_COPY.text2}</span>
+        <span className="text-sm text-text-2">“{status.ref.foodName}”</span>
         <span className="text-xs text-text-3">{new Date(status.ref.exportedAtMs).toLocaleDateString()}</span>
         {status.ref.coverage === 'partial' ? (
           <span className="rounded-full bg-warning/10 px-2 py-1 text-xs text-warning">{PARTIAL_LABEL}</span>

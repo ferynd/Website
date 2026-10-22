@@ -115,11 +115,6 @@ _“Estimate CIFI research payout timing with logged rate history and interactiv
 
 This React tool lives under **app/tools/cifi-research-estimator/**. It stores configuration and local history in browser `localStorage` using the namespaced `website:tools:cifi-research-estimator:v1:*` keys, fits linear/exponential/logarithmic growth models client-side, and renders interactive SVG charts without a charting dependency.
 
-If the same recipe is saved or deleted in another tab or device, the open copy shows a notice, and saving asks whether to reload, overwrite (export links are kept), or save as a new recipe — nothing is overwritten silently by the current app. Older cached clients can bypass this guard (see SECURITY.md).
-
-Baking a scale lists equivalent measures that can't be rescaled (ranges, prose like “a generous handful”). Kept ones are marked “not rescaled after N× bake” everywhere, including the saved recipe and copied JSON, until edited.
-
-
 ### Recipe Standardizer (Firebase-backed)
 
 _"Paste a ChatGPT-converted recipe as strict JSON, then stage prep groups, execute with named results, check nutrition and export it to the Nutrition Tracker, scale, and save — a phone-first kitchen workflow."_
@@ -131,6 +126,10 @@ This React tool lives under **app/tools/recipe-standardizer/**. The site makes n
 The Nutrition panel totals all 24 Nutrition Tracker nutrients from confirmed, current links only. It distinguishes complete from partial coverage (by ingredient count and grams), marks partial totals as lower bounds ("≥"), offers total / per serving / per portion / per 100 g cooked (flagged when it relies on an estimated final weight), follows live scaling, and lists every ingredient it could not count with a reason and a direct link or edit action. Values use raw ingredient data; cooking losses aren't modeled.
 
 Export to the Nutrition Tracker saves the recipe as one food, per portion (preferred when the recipe has portions) or per 100 g cooked (requires the measured cooked weight). Quantity 1 equals one portion or 100 g. Partial coverage needs explicit confirmation, including when every ingredient is linked but a nutrient is only a lower bound or saved as 0. Exports never replace an existing food: re-exporting updates only the food this recipe created, asks first if it was edited in the tracker, and the panel flags exports that are out of date.
+
+If the same recipe is saved or deleted in another tab or device, the open copy shows a notice, and saving asks whether to reload, overwrite (export links are kept), or save as a new recipe — nothing is overwritten silently by the current app. Older cached clients can bypass this guard (see SECURITY.md).
+
+Baking a scale lists equivalent measures that can't be rescaled (ranges, prose like “a generous handful”). Kept ones are marked “not rescaled after N× bake” everywhere, including the saved recipe and copied JSON, until edited.
 
 ### Conflict Tracker (Firebase-backed)
 

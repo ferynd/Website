@@ -2,12 +2,6 @@
 /** Review measures the bake cannot rescale; keeping one always persists its cumulative annotation. */
 'use client';
 
-const VIEW_COPY = {
-  text: '→ ',
-  text2: '“',
-  text3: '”',
-} as const;
-
 import { useEffect, useState } from 'react';
 import Button from '@/components/Button';
 import {
@@ -53,9 +47,9 @@ function IssueRow({ issue, choice, onChange }: {
     <fieldset className="space-y-2 rounded-lg border border-border bg-surface-2 p-3">
       <legend className="font-medium">{issue.displayName}</legend>
       <p className="text-sm text-text-2">
-        {formatGrams(issue.gramsBefore)} {VIEW_COPY.text}{formatGrams(issue.gramsAfter)}
+        {formatGrams(issue.gramsBefore)} → {formatGrams(issue.gramsAfter)}
       </p>
-      <p className="text-sm">{VIEW_COPY.text2}{issue.equivalent}{VIEW_COPY.text3}</p>
+      <p className="text-sm">“{issue.equivalent}”</p>
       <p className="text-xs text-warning">{REASON_COPY[issue.reason]}</p>
       {(['annotate', 'clear'] as const).map((value) => (
         <label key={value} className="flex items-center gap-2 text-sm">

@@ -2,12 +2,6 @@
 /** Review one saved export snapshot; target changes reset confirmations and in-flight writes block dismissal. */
 'use client';
 
-const VIEW_COPY = {
-  text: '→',
-  text2: ': ',
-  text3: '→ ',
-} as const;
-
 const DIALOG_TITLE = 'Export to Nutrition Tracker';
 const EXPORT_COPY = {
   basisLegend: 'Export basis',
@@ -302,13 +296,13 @@ function ReviewStep({
           {diff.changes.length === 0 && !diff.quantityChanged ? <p>{EXPORT_COPY.noChanges}</p> : null}
           {diff.quantityChanged ? (
             <p>
-              {EXPORT_COPY.quantityLabel} {status.targetFood?.quantity ?? EXPORT_COPY.unknown} {VIEW_COPY.text}{' '}
+              {EXPORT_COPY.quantityLabel} {status.targetFood?.quantity ?? EXPORT_COPY.unknown} {'→'}{' '}
               {TRACKER_EXPORT_QUANTITY}
             </p>
           ) : null}
           {diff.changes.map((change) => (
             <p key={change.key}>
-              {nutrientLabel(change.key)}{VIEW_COPY.text2}{change.before ?? EXPORT_COPY.unknown} {VIEW_COPY.text3}{change.after}
+              {nutrientLabel(change.key)}: {change.before ?? EXPORT_COPY.unknown} → {change.after}
             </p>
           ))}
           <p className="pt-1 text-text-3">{EXPORT_COPY.pastLogsNote}</p>
