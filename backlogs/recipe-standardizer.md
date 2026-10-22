@@ -55,7 +55,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 ### P5 — Hardening, migrations, docs, and remaining touched-code findings
 
 - [p] **Complete rollout hardening before optional features.** Depends: P4.
-  > pushed — F-096 revision conflicts, F-093 bake review/annotation, saved-shape fixtures, export card fix + view-model tests, F-141 plan; checks: npm test 2392 passed (99 files), tsc, lint, build; commit: <sha>; PR: #<n>
+  > pushed — F-096 revision conflicts, F-093 bake review/annotation, saved-shape fixtures, export card fix + view-model tests, F-141 plan; checks: npm test 2392 passed (99 files), tsc, lint, build; commit: 48de054; PR: #175
   - Test all pre-v2/v2 saved shapes with the additive nutrition fields.
   - Add stale-write/revision conflict handling for multi-tab recipe updates or leave a separately approved AR-16 item with explicit residual risk.
   - Prevent baked scaling from persisting an unscalable equivalent as current without review/annotation.
