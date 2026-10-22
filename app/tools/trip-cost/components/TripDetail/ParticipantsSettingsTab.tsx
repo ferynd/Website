@@ -115,6 +115,16 @@ export default function ParticipantsSettingsTab({
     setDraft(update);
   };
 
+  // Drop the draft and reload the latest stored settings (also clears a
+  // pending save whose snapshot was superseded by someone else's change).
+  const discard = () => {
+    if (saving) return;
+    setPending(null);
+    setDirty(false);
+    setOverwriteRevision(undefined);
+    setSaveError('');
+  };
+
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!trip || !admin || saving || parsed.errors.length > 0) return;
@@ -217,6 +227,17 @@ export default function ParticipantsSettingsTab({
               aria-describedby={messageIds}
             >
               {saving ? 'Saving…' : stale ? 'Save anyway' : 'Save settings'}
+            </Button>
+          )}
+          {admin && dirty && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full max-w-full"
+              disabled={saving}
+              onClick={discard}
+            >
+              {stale ? 'Discard changes and load the latest settings' : 'Discard changes'}
             </Button>
           )}
         </div>

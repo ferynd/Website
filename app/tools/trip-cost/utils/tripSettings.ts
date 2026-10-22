@@ -25,7 +25,13 @@ export const STALE_SETTINGS_MESSAGE =
  * Expense, participant, and settings changes still change the revision.
  */
 export function tripRevision(trip: Trip): string {
-  return JSON.stringify({ ...trip, updatedAt: undefined });
+  // Sorted keys, so a snapshot that lists the same fields in another order
+  // (for example after a first write adds overageSplit) is not "changed".
+  return JSON.stringify({ ...trip, updatedAt: undefined }, (_key, value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(record).sort().map((key) => [key, record[key]]));
+  });
 }
 
 export function settingsAreStale(baseline: string, trip: Trip): boolean {

@@ -165,6 +165,8 @@ describe('stale settings edits', () => {
     expect(settingsAreStale(revision, { ...trip, updatedAt: { seconds: 1, nanoseconds: 0 } as Trip['updatedAt'] })).toBe(false);
     expect(settingsAreStale(revision, { ...trip, name: 'Changed' })).toBe(true);
     expect(tripRevision({ ...trip, updatedAt: { seconds: 9, nanoseconds: 0 } as Trip['updatedAt'] })).toBe(revision);
+    const reordered = Object.fromEntries(Object.entries(trip).reverse()) as unknown as Trip;
+    expect(tripRevision(reordered)).toBe(revision);
   });
 
   it('blocks a write until overwrite names the current revision', () => {

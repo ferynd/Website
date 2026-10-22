@@ -186,6 +186,22 @@ describe('settings save lifecycle', () => {
     await Promise.resolve();
   });
 
+  it('discards a stale draft and loads the latest stored settings', () => {
+    const form = setupForm();
+    form.caps(form.render()).onChange('a', '75.00');
+    form.context.trip = { ...original, spendCaps: [{ participantId: 'a', maxAmount: 40 }] };
+    let tree = form.render();
+    expect(form.markup(tree)).toContain('changed while you were editing');
+    const discard = findElement(tree, (node) =>
+      typeof node.props.children === 'string' && node.props.children.startsWith('Discard changes'));
+    (discard.props.onClick as () => void)();
+    tree = form.render();
+    expect(form.caps(tree).caps.a).toBe('40');
+    expect(form.markup(tree)).not.toContain('changed while you were editing');
+    expect(form.markup(tree)).not.toContain('Discard changes');
+    expect(form.updateTripSettings).not.toHaveBeenCalled();
+  });
+
   it('keeps the typed draft dirty after an optimistic snapshot and server rejection', async () => {
     const form = setupForm();
     const save = deferredSave();
