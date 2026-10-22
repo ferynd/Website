@@ -221,7 +221,7 @@ import {
 } from '../lib/nutritionExportTx';
 import { nutritionPanelSubtitle } from '../lib/nutritionFormat';
 import { exportSubtitleSuffix } from '../lib/nutritionExportFormat';
-import { removeChecklist } from '../lib/checklistStore';
+import { removeChecklist, saveChecklist } from '../lib/checklistStore';
 import {
   applyStepTextUpdates,
   findAffectedSteps,
@@ -337,7 +337,12 @@ export default function RecipeWorkspace() {
   const recipeSessionRef = useRef(0);
   const [recipeSession, setRecipeSession] = useState(0);
   const [checklistKey, setChecklistKey] = useState(0);
+  const checklistTicksRef = useRef<string[]>([]);
   const foodsRequestRef = useRef(0);
+
+  const handleChecklistChange = (keys: string[]) => {
+    checklistTicksRef.current = keys;
+  };
 
   const refreshFoods = async (): Promise<import('../lib/trackerFoods').TrackerFood[] | null> => {
     const request = ++foodsRequestRef.current;
@@ -421,6 +426,7 @@ export default function RecipeWorkspace() {
     importWarnings: string[],
     revision: number | null,
   ) => {
+    checklistTicksRef.current = [];
     currentIdRef.current = id;
     baseRevisionRef.current = revision;
     setBaseRevision(revision);
@@ -614,7 +620,7 @@ export default function RecipeWorkspace() {
     setDraft((prev) => (prev ? { ...prev, yield: { ...prev.yield, actualFinalWeightG: value } } : prev));
   };
 
-  const persistNew = async (recipe: Recipe): Promise<boolean> => {
+  const persistNew = async (recipe: Recipe, carryChecklist: boolean): Promise<boolean> => {
     // A double click must not create two documents for one unsaved recipe.
     if (writeInFlightRef.current) return false;
     writeInFlightRef.current = true;
@@ -628,6 +634,7 @@ export default function RecipeWorkspace() {
       setWriteInFlight(false);
       setLoadError((current) => (current === SAVING_LOAD_REASON ? '' : current));
     }
+    if (carryChecklist) saveChecklist(id, checklistTicksRef.current);
     currentIdRef.current = id;
     baseRevisionRef.current = INITIAL_RECIPE_REVISION;
     setBaseline(cleanRecipe);
@@ -649,7 +656,7 @@ export default function RecipeWorkspace() {
     }
     try {
       if (!currentId) {
-        await persistNew(draft);
+        await persistNew(draft, currentId === null);
         return;
       }
       if (remoteState.kind !== 'none') {
@@ -737,7 +744,7 @@ export default function RecipeWorkspace() {
   const handleSaveAsNew = async (name: string): Promise<boolean> => {
     if (!draft) return false;
     try {
-      const saved = await persistNew(withoutNutritionExports({ ...draft, name }).recipe);
+      const saved = await persistNew(withoutNutritionExports({ ...draft, name }).recipe, false);
       if (saved) setSaveModalSummary(null);
       return saved;
     } catch (err) {
@@ -1316,11 +1323,13 @@ export default function RecipeWorkspace() {
                   key={checklistKey}
                   recipeId={currentId}
                   recipe={draft}
+                  baselineRecipe={baseline}
                   workflow={workflow}
                   factor={scale.factor}
                   onIngredientChange={handleIngredientChange}
                   onRunNutritionMatch={runNutritionMatch}
                   onCommitIntake={commitIntake}
+                  onChecklistChange={handleChecklistChange}
                   linkAssessments={linkAssessments}
                   foods={foods}
                   linkSummary={linkSummary}

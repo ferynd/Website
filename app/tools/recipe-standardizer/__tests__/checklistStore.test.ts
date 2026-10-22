@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CHECKLIST_STORAGE_KEY,
   MAX_RECIPES,
+  checklistKeysForBaseline,
+  checklistKeysForDisplay,
   parseChecklistStore,
   pruneChecklistKeys,
   readChecklist,
@@ -64,6 +66,7 @@ describe('checklist storage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it('round-trips saved checklist keys', () => {
@@ -102,6 +105,26 @@ describe('checklist storage', () => {
     saveChecklist('recipe-a', []);
     expect(readChecklist('recipe-a')).toEqual([]);
   });
+
+  it('keeps a fresh save newest when the device clock moves backward', () => {
+    const recipes = Object.fromEntries(
+      Array.from({ length: MAX_RECIPES }, (_unused, index) => [
+        `recipe-${index}`,
+        { keys: ['flour'], updatedAtMs: 100 + index },
+      ]),
+    );
+    values.set(CHECKLIST_STORAGE_KEY, JSON.stringify({ version: 1, recipes }));
+    vi.spyOn(Date, 'now').mockReturnValue(1);
+
+    saveChecklist('recipe-new', ['salt']);
+
+    const stored = JSON.parse(values.get(CHECKLIST_STORAGE_KEY) ?? '{}') as {
+      recipes: Record<string, { updatedAtMs: number }>;
+    };
+    expect(stored.recipes['recipe-new']?.updatedAtMs).toBe(150);
+    expect(stored.recipes['recipe-new']).toBeDefined();
+    expect(stored.recipes['recipe-0']).toBeUndefined();
+  });
 });
 
 describe('pruneChecklistKeys', () => {
@@ -111,5 +134,16 @@ describe('pruneChecklistKeys', () => {
 
   it('returns an empty list when the recipe has no shopping keys', () => {
     expect(pruneChecklistKeys(['flour'], [])).toEqual([]);
+  });
+});
+
+describe('draft and baseline checklist keys', () => {
+  it('hides ticks invalid for the draft while retaining ticks valid for the saved baseline', () => {
+    const checked = ['flour', 'salt'];
+    const draftKeys = ['bread flour', 'salt'];
+    const baselineKeys = ['flour', 'salt'];
+
+    expect(checklistKeysForDisplay(checked, draftKeys)).toEqual(['salt']);
+    expect(checklistKeysForBaseline(checked, baselineKeys)).toEqual(['flour', 'salt']);
   });
 });

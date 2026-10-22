@@ -70,7 +70,7 @@ const MODES = [
 type IngredientMode = (typeof MODES)[number]['key'];
 
 import EquivalentText from './EquivalentText';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -92,7 +92,12 @@ import type { NutritionLink, Recipe, RecipeIngredient } from '../lib/types';
 import type { FoodsState } from '../lib/trackerFoods';
 import { selectIntakeGroups, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
 import { groupIngredientsForDisplay, type NormalizedWorkflow } from '../lib/workflow';
-import { pruneChecklistKeys, readChecklist, saveChecklist } from '../lib/checklistStore';
+import {
+  checklistKeysForBaseline,
+  checklistKeysForDisplay,
+  readChecklist,
+  saveChecklist,
+} from '../lib/checklistStore';
 import { normalizeIngredientName } from '../lib/shoppingList';
 import ConsolidatedList from './ConsolidatedList';
 import IngredientEditModal from './IngredientEditModal';
@@ -102,6 +107,7 @@ import NutritionIntakeModal from './NutritionIntakeModal';
 interface IngredientsViewProps {
   recipeId: string | null;
   recipe: Recipe;
+  baselineRecipe: Recipe | null;
   workflow: NormalizedWorkflow;
   factor: number;
   onIngredientChange: (updated: RecipeIngredient) => void;
@@ -112,6 +118,7 @@ interface IngredientsViewProps {
   onNutritionLinkChange: (id: string, link: NutritionLink) => void;
   onRefreshFoods: () => void;
   onCommitIntake: (plan: IntakeCommitPlan) => Promise<IntakeCommitOutcome>;
+  onChecklistChange: (keys: string[]) => void;
 }
 
 function nutritionBadgeLabel(state: LinkAssessment['state'], matchedName: string | null): string {
@@ -178,6 +185,7 @@ function NutritionBadge({ ingredient, assessment, onOpen }: {
 export default function IngredientsView({
   recipeId,
   recipe,
+  baselineRecipe,
   workflow,
   factor,
   onIngredientChange,
@@ -188,10 +196,13 @@ export default function IngredientsView({
   onNutritionLinkChange,
   onRefreshFoods,
   onCommitIntake,
+  onChecklistChange,
 }: IngredientsViewProps) {
   const [mode, setMode] = useState<IngredientMode>('workflow');
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const [checklistHydrated, setChecklistHydrated] = useState(false);
+  const [hydratedRecipeId, setHydratedRecipeId] = useState<string | null>(null);
+  const hydratedForRef = useRef<string | null>(null);
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<RecipeIngredient | null>(null);
   const intakeGroupCount = useMemo(
@@ -208,22 +219,51 @@ export default function IngredientsView({
     )),
     [recipe.ingredients],
   );
+  const baselineShoppingKeys = useMemo(
+    () => baselineRecipe?.ingredients.map((ingredient) => (
+      normalizeIngredientName(ingredient.displayName) || ingredient.id
+    )) ?? [],
+    [baselineRecipe?.ingredients],
+  );
+  const displayChecked = useMemo(
+    () => new Set(checklistKeysForDisplay(Array.from(checked), currentShoppingKeys)),
+    [checked, currentShoppingKeys],
+  );
 
   useEffect(() => {
+    if (recipeId === null) {
+      // Deleting the open recipe temporarily clears its ID. Keep the hydrated
+      // ticks until deletion succeeds or the parent opens another recipe.
+      if (hydratedForRef.current !== null) return;
+      setChecked(new Set());
+      setChecklistHydrated(true);
+      setHydratedRecipeId(null);
+      return;
+    }
+    if (hydratedForRef.current === recipeId) return;
     setChecklistHydrated(false);
-    setChecked(new Set(recipeId ? readChecklist(recipeId) : []));
+    const keys = readChecklist(recipeId);
+    setChecked(new Set(keys));
+    hydratedForRef.current = recipeId;
     setChecklistHydrated(true);
+    setHydratedRecipeId(recipeId);
   }, [recipeId]);
 
   useEffect(() => {
-    if (!checklistHydrated) return;
-    const pruned = pruneChecklistKeys(Array.from(checked), currentShoppingKeys);
-    if (pruned.length !== checked.size) {
-      setChecked(new Set(pruned));
-      return;
-    }
-    if (recipeId) saveChecklist(recipeId, pruned);
-  }, [checked, checklistHydrated, currentShoppingKeys, recipeId]);
+    if (
+      !checklistHydrated ||
+      recipeId === null ||
+      hydratedRecipeId !== recipeId ||
+      hydratedForRef.current !== recipeId
+    ) return;
+    // Persist only ticks for saved ingredients; in-memory ticks for unsaved
+    // draft ingredients stay visible without being written.
+    saveChecklist(recipeId, checklistKeysForBaseline(Array.from(checked), baselineShoppingKeys));
+  }, [baselineShoppingKeys, checked, checklistHydrated, hydratedRecipeId, recipeId]);
+
+  useEffect(() => {
+    onChecklistChange(Array.from(displayChecked));
+  }, [displayChecked, onChecklistChange]);
 
   const toggleChecked = (key: string) => {
     setChecked((prev) => {
@@ -419,7 +459,7 @@ export default function IngredientsView({
           recipe={recipe}
           factor={factor}
           order={mode === 'shopping' ? 'workflow' : 'grocery'}
-          checked={checked}
+          checked={displayChecked}
           onToggle={toggleChecked}
         />
       )}

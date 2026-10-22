@@ -18,7 +18,7 @@ Dormant feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-
 - **D2 — Trip default split:** when a default exists, new expenses start on "Trip default", saved as a percent snapshot; excluded travelers are rescaled in the preview; travelers missing from the default get an explicit 0% plus a Settings warning.
 - **D3 — Account linking:** admin-only, to an existing registered account; keeps the participant `id`.
 - **D4 — Recording payments:** non-admins may record only payments where they are payer or payee; admins any. Client-side only; rules enforcement (F-088) stays with AR-09.
-- **D5 — Priority:** listed first in `BACKLOG.md`.
+- **D5 — Priority:** dormant; `backlogs/trip-cost.md` is not listed among active feature priorities in `BACKLOG.md`.
 - **Infeasible caps — warn, don't block:** saving caps that can't be covered shows a warning but is allowed (a later expense can make caps infeasible anyway). The ledger shows a persistent "Not covered by anyone" amount and pauses settlement suggestions. This is how AR-04's "Reject infeasible caps" criterion is met for Trip Cost.
 
 ## Current state and invariants

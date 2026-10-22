@@ -6,6 +6,8 @@ export const CHECKLIST_STORAGE_KEY = 'recipe-standardizer:checklist';
 /** Maximum number of saved recipe checklists retained on this device. */
 export const MAX_RECIPES = 50;
 const STORE_VERSION = 1;
+const INITIAL_UPDATED_AT_MS = 0;
+const UPDATED_AT_INCREMENT_MS = 1;
 
 /** A saved recipe's checked normalized shopping item keys and last update time. */
 export interface ChecklistEntry {
@@ -87,6 +89,14 @@ export const pruneChecklistKeys = (keys: string[], currentKeys: string[]): strin
   return keys.filter((key) => validKeys.has(key));
 };
 
+/** Keep visible ticks limited to the current draft's shopping items. */
+export const checklistKeysForDisplay = (keys: string[], draftKeys: string[]): string[] =>
+  pruneChecklistKeys(keys, draftKeys);
+
+/** Keep persisted ticks aligned with the saved recipe, even while its draft is edited. */
+export const checklistKeysForBaseline = (keys: string[], baselineKeys: string[]): string[] =>
+  pruneChecklistKeys(keys, baselineKeys);
+
 /** Read one saved recipe checklist; unavailable storage and malformed data produce no ticks. */
 export const readChecklist = (recipeId: string): string[] => {
   const storage = getStorage();
@@ -108,9 +118,13 @@ export const saveChecklist = (recipeId: string, keys: string[]): void => {
     if (keys.length === 0) {
       delete store.recipes[recipeId];
     } else {
+      const maxStoredUpdatedAtMs = Math.max(
+        INITIAL_UPDATED_AT_MS,
+        ...Object.values(store.recipes).map((entry) => entry.updatedAtMs),
+      );
       store.recipes[recipeId] = {
         keys: Array.from(new Set(keys)),
-        updatedAtMs: Date.now(),
+        updatedAtMs: Math.max(Date.now(), maxStoredUpdatedAtMs + UPDATED_AT_INCREMENT_MS),
       };
     }
     const nextStore: ChecklistStore = {
