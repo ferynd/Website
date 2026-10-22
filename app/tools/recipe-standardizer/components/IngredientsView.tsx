@@ -1,5 +1,5 @@
 /* --- CONFIGURATION: ingredient display modes --- */
-/** Ingredient views share equivalent caveats; checklist ticks reset for each recipe session. */
+/** Ingredient views share equivalent caveats; saved recipes restore device-local checklist ticks. */
 'use client';
 
 const VIEW_COPY = {
@@ -70,7 +70,7 @@ const MODES = [
 type IngredientMode = (typeof MODES)[number]['key'];
 
 import EquivalentText from './EquivalentText';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   BadgeCheck,
@@ -92,12 +92,15 @@ import type { NutritionLink, Recipe, RecipeIngredient } from '../lib/types';
 import type { FoodsState } from '../lib/trackerFoods';
 import { selectIntakeGroups, type IntakeCommitOutcome, type IntakeCommitPlan } from '../lib/nutritionIntakeReview';
 import { groupIngredientsForDisplay, type NormalizedWorkflow } from '../lib/workflow';
+import { pruneChecklistKeys, readChecklist, saveChecklist } from '../lib/checklistStore';
+import { normalizeIngredientName } from '../lib/shoppingList';
 import ConsolidatedList from './ConsolidatedList';
 import IngredientEditModal from './IngredientEditModal';
 import NutritionLinkEditor from './NutritionLinkEditor';
 import NutritionIntakeModal from './NutritionIntakeModal';
 
 interface IngredientsViewProps {
+  recipeId: string | null;
   recipe: Recipe;
   workflow: NormalizedWorkflow;
   factor: number;
@@ -170,9 +173,10 @@ function NutritionBadge({ ingredient, assessment, onOpen }: {
  * - Shopping / Pantry: consolidated checklist grouped by first-use section.
  * - Grocery Category: the same consolidated checklist grouped by category.
  * Checkbox ticks are shared between the two consolidated modes and survive
- * mode switches (view state only — not persisted).
+ * mode switches; saved recipe ticks hydrate from device-local storage.
  */
 export default function IngredientsView({
+  recipeId,
   recipe,
   workflow,
   factor,
@@ -187,6 +191,7 @@ export default function IngredientsView({
 }: IngredientsViewProps) {
   const [mode, setMode] = useState<IngredientMode>('workflow');
   const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [checklistHydrated, setChecklistHydrated] = useState(false);
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<RecipeIngredient | null>(null);
   const intakeGroupCount = useMemo(
@@ -197,6 +202,28 @@ export default function IngredientsView({
   const [matching, setMatching] = useState(false);
   const [matchMessage, setMatchMessage] = useState('');
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const currentShoppingKeys = useMemo(
+    () => recipe.ingredients.map((ingredient) => (
+      normalizeIngredientName(ingredient.displayName) || ingredient.id
+    )),
+    [recipe.ingredients],
+  );
+
+  useEffect(() => {
+    setChecklistHydrated(false);
+    setChecked(new Set(recipeId ? readChecklist(recipeId) : []));
+    setChecklistHydrated(true);
+  }, [recipeId]);
+
+  useEffect(() => {
+    if (!checklistHydrated) return;
+    const pruned = pruneChecklistKeys(Array.from(checked), currentShoppingKeys);
+    if (pruned.length !== checked.size) {
+      setChecked(new Set(pruned));
+      return;
+    }
+    if (recipeId) saveChecklist(recipeId, pruned);
+  }, [checked, checklistHydrated, currentShoppingKeys, recipeId]);
 
   const toggleChecked = (key: string) => {
     setChecked((prev) => {

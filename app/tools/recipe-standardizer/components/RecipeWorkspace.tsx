@@ -221,6 +221,7 @@ import {
 } from '../lib/nutritionExportTx';
 import { nutritionPanelSubtitle } from '../lib/nutritionFormat';
 import { exportSubtitleSuffix } from '../lib/nutritionExportFormat';
+import { removeChecklist } from '../lib/checklistStore';
 import {
   applyStepTextUpdates,
   findAffectedSteps,
@@ -534,6 +535,7 @@ export default function RecipeWorkspace() {
       setStatus(VIEW_COPY.deleteFailed(error instanceof Error ? error.message : VIEW_COPY.unknownError));
       return;
     }
+    removeChecklist(recipeId);
     if (deletingOpen) {
       setStatus(VIEW_COPY.deletedFromLibrary);
     }
@@ -1312,6 +1314,7 @@ export default function RecipeWorkspace() {
               {workflow && (
                 <IngredientsView
                   key={checklistKey}
+                  recipeId={currentId}
                   recipe={draft}
                   workflow={workflow}
                   factor={scale.factor}

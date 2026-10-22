@@ -52,20 +52,6 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
   - Keep this open until the user or automation confirms production/non-production deployment.
   - **Accept:** owner can complete the flow; another UID cannot read/write the recipe; deployment evidence is recorded.
 
-### P5 — Hardening, migrations, docs, and remaining touched-code findings
-
-- [p] **Complete rollout hardening before optional features.** Depends: P4.
-  > pushed — F-096 revision conflicts, F-093 bake review/annotation, saved-shape fixtures, export card fix + view-model tests, F-141 plan; checks: npm test 2411 passed (99 files), tsc, lint, build; commit: 48de054; PR: #175
-  - Test all pre-v2/v2 saved shapes with the additive nutrition fields.
-  - Add stale-write/revision conflict handling for multi-tab recipe updates or leave a separately approved AR-16 item with explicit residual risk.
-  - Prevent baked scaling from persisting an unscalable equivalent as current without review/annotation.
-  - Plan and document migration from `default-app-id` rather than making the accidental namespace permanent.
-  - Split to P8 (checklist persistence); P5 only resets ticks per recipe.
-  - Update README, Architecture, Security, scaling copy, and cross-tool contracts.
-  - Carried from P4 review (PR #168, Codex P2 on 5009f5f): disable the Export button when no *missing* basis is exportable (`NutritionExportCard.tsx:180`; base it on `selectMissingExportBasis`), plus component tests for the export modal fixes.
-  - **Findings:** F-093 addressed (bake review + persisted annotation); F-096 addressed client-side (revision transaction; rules-level enforcement retained as AR-16 residual); F-141 plan documented in ARCHITECTURE, migration retained under AR-08; F-097/F-143 confirmed closed by P1/P3 (see PR body).
-  - **Accept:** migration fixtures, concurrent-save tests, baked-equivalent tests, docs, and end-to-end export smoke pass.
-
 ### P6 — Optional direct diary logging
 
 - [ ] **Log a portion directly to a daily entry.** Depends: P4. Do not start without explicit approval.
@@ -78,12 +64,14 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 
 ### P8 — Persist ingredient checklist ticks (optional UX)
 
-- [ ] **Persist Shopping/Grocery checklist ticks per recipe in one versioned localStorage object.** Depends: P5.
+- [p] **Persist Shopping/Grocery checklist ticks per recipe in one versioned localStorage object.** Depends: P5.
+  > pushed — saved-recipe checklist hydration/persistence with stale-key pruning, 50-recipe LRU cap, safe storage wrappers, deletion cleanup, and device-local docs; checks: npm test (2441), npx tsc --noEmit, npm run lint, npm run build pass; commit: TBD; PR: TBD
   - Add `lib/checklistStore.ts`, key `recipe-standardizer:checklist`, value `{ version: 1, recipes: Record<recipeId, { keys: string[]; updatedAtMs: number }> }`.
   - Pure `parseChecklistStore(raw: unknown)` returns an empty store for invalid values, drops non-string keys, and caps at `MAX_RECIPES = 50` by LRU on `updatedAtMs`.
   - SSR-safe `readChecklist(recipeId)` and `saveChecklist(recipeId, keys)` guard `typeof window` and catch storage failures.
-  - Only saved recipes persist; unsaved imports keep ephemeral ticks.
-  - Keys use normalized ingredient names; prune stale keys against current shopping keys on read.
+  - Only saved recipes persist; unsaved imports keep ephemeral ticks; deleting a recipe removes its local entry best-effort.
+  - Keys use the normalized shopping-list key; prune stale keys after mount against current shopping keys.
+  - **Accept:** parser, LRU, storage round-trip/failure/removal, and stale-key helper tests pass; Shopping and Grocery modes share hydrated ticks; docs state local-only, per-device, not synced.
 
 ## Audit reconciliation
 

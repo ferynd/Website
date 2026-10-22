@@ -1,6 +1,6 @@
 # Trip Cost Tracker Redesign
 
-Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-cost/`). Goals: correct, cents-exact totals; an expense matrix (Expense | Total | one column per traveler) with labelled budget-cap adjustment rows; a Participants & Settings tab; one shared add/edit expense dialog; settlements below the ledger; usable at 390px without page-wide sideways scrolling.
+Dormant feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-cost/`). TC-P1–TC-P6 and their follow-ups are merged and archived. Add and prioritize a new actionable phase before resuming.
 
 **Non-goals:** schema changes, Firestore rules changes, data migration, subcollection storage (AR-09), email invites, bulk reallocation tools, expense-by-expense or chronological cap attribution, trip ID in the URL, and site-wide UI rewrites.
 
@@ -34,27 +34,3 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 - Linking an account keeps the participant `id`; a uid may be linked to at most one traveler per trip; `participantIds` is always recomputed from `participants`.
 - Settings (`spendCaps`, `overageSplit`, `defaultSplit`) are validated together and written in one transactional update. A dirty form warns before overwriting a trip that changed after editing started; overwrite confirmation expires on another revision. Optimistic snapshots do not discard edits before server acceptance, and rejected saves retain the draft. Default totals omit former travelers and accept the legacy 0.1 percentage-point tolerance. Infeasible caps warn and still save.
 
-## Active phases
-
-### TC-P6 — Participants & Settings sections
-
-- [p] **Sectioned settings tab, account linking, one-write settings save.** Depends: TC-P2, TC-P3.
-  > pushed — review round 2 fixes: settings save checks server revision and travelers in one transaction; overage/default weights that round to zero are treated as zero (no preview crash); Discard changes; checks: npm test (2205), tsc, lint, build pass; PR: #174
-  - Travelers (link account per D3, removal guard lists blocking records), budget caps with progress against final responsibility and near-cap marker, overage redistribution with eligibility preview, default split (blank inputs, missing-traveler warning), audit log. Validate first, then one transactional update (checking the server revision and travelers and replacing the three settings maps; `setDoc` merge would keep removed keys); warn when the trip changed since the form loaded (C13). Infeasible caps warn but save. Add-traveler notice about resplitting and overage effect (C8). README blurb.
-  - **Accept:** linking a name-only participant keeps its id and history; partial saves are impossible; the new-traveler overage effect is shown.
-
-### TC-P6 hotfix — Participant removal blockers and loading status
-
-- [p] **Show removal blockers before confirmation and recheck atomically.** Depends: live TC-P6 (base `60c733a`).
-  > pushed — Remove on a referenced traveler opens a scrollable blocker dialog listing every blocking expense/payment (no Delete); deleteParticipant rechecks blockers on the server copy inside a transaction; styled auth/trip-list loading status; checks: npm test (2216), tsc, lint, build pass; commit: fdb6828; PR: #176
-  - **Scope/root cause:** Remove opened a generic delete confirmation before checking cached references. Render every blocking expense/payment in the shared scrolling dialog with Close only; switch an open confirmation when live references arrive. Unreferenced travelers retain a named delete confirmation. Read the server trip and recheck traveler existence/references in the same transaction that removes the traveler and cleans caps/default/overage shares.
-  - **Accept:** stale client data cannot bypass the transactional removal guard; server-only travelers/settings survive cleanup; all blockers remain readable with reachable close controls at 390×420. Auth and trip-list loading share an accessible, reduced-motion-aware spinner.
-  - **Checks:** `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`; regression coverage in `participantRemoval.test.tsx`, `tripContextSettings.test.tsx`, and `participantsSettings.test.tsx`. Verify 1280px and 390px layouts.
-  - **Docs/deployment:** README, ARCHITECTURE, SECURITY updated; no schema/rules/dependency changes or migration. Rules enforcement and writes that introduce orphan references after removal remain AR-09 follow-ups. Recheck a real trip after deployment.
-
-### TC-P6 follow-up — Mobile ledger readability and dialog sizing
-
-- [p] **Stop the ledger scroll gradient covering traveler values; size mobile dialogs to content.** Depends: live TC-P6 hotfix (base `03c7e5a`).
-  > pushed — removed the right-edge overflow gradient (it scrolled with the table and sat over the first traveler column); sticky Expense column gets a solid border edge; Total column min width 7rem, no wrapping; cap labels may wrap; Trip Cost dialogs become content-height bottom sheets on mobile (max 90dvh, scrollable body); checks: npm test (2218), tsc, lint, build pass; PR: #177
-  - **Accept:** at 390px, scrolled or unscrolled, no overlay covers traveler values or headers; Total amounts such as `$1,095.75` are not clipped; the removal-blocker dialog on a tall phone sizes to its content with Close directly below the list.
-  - **Checks:** `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`; coverage in `ledgerTableLayout.test.tsx` and `participantRemoval.test.tsx`. Recheck Ohio Expenses tab at 390px after deployment.
