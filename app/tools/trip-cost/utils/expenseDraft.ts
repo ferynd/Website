@@ -530,6 +530,20 @@ export function createExpenseEditor(
     : { draft, method: 'equal' };
 }
 
+/**
+ * Rounding order for method changes and explicit zeros.
+ * Stored participants keep the cents they already have; known trip members
+ * the draft never listed follow them.
+ */
+function editorSplitOrder(state: ExpenseEditorState, travelerIds: string[]): string[] {
+  const known = new Set(travelerIds);
+  const preferred = unique([
+    ...state.draft.splitParticipants,
+    ...(state.travelerOrder ?? []),
+  ]).filter((id) => known.has(id));
+  return [...preferred, ...travelerIds.filter((id) => !preferred.includes(id))];
+}
+
 /** Changes modes through the same deterministic allocation used by draft validation. */
 export function changeExpenseMethod(
   state: ExpenseEditorState,
@@ -538,16 +552,17 @@ export function changeExpenseMethod(
   defaultSplit?: DefaultSplit,
 ): ExpenseEditorState {
   if (method === state.method) return state;
+  const order = editorSplitOrder(state, travelerIds);
   if (method === 'equal') {
     return { ...state, zeroOrigin: undefined, method, draft: { ...state.draft, splitType: 'even', manualSplit: {} } };
   }
   if (method === 'trip-default') {
-    return { ...state, zeroOrigin: undefined, method, draft: applyTripDefault(state.draft, defaultSplit, travelerIds).draft };
+    return { ...state, zeroOrigin: undefined, method, draft: applyTripDefault(state.draft, defaultSplit, order).draft };
   }
   const draft = state.draft.splitType === 'even'
-    ? applyTripDefault(state.draft, Object.fromEntries(travelerIds.map((id) => [id, 1])), travelerIds).draft
+    ? applyTripDefault(state.draft, Object.fromEntries(order.map((id) => [id, 1])), order).draft
     : state.draft;
-  return { ...state, zeroOrigin: undefined, method, draft: { ...convertManualSplit(draft, method, travelerIds), splitType: 'manual' } };
+  return { ...state, zeroOrigin: undefined, method, draft: { ...convertManualSplit(draft, method, order), splitType: 'manual' } };
 }
 
 /** A default is rescaled only by an explicit selection change, never a Firestore refresh. */
@@ -563,11 +578,9 @@ export function toggleExpenseTraveler(
     ? selected.filter((id) => id !== travelerId)
     : travelerOrder.filter((id) => id === travelerId || selected.includes(id));
   const draft = { ...state.draft, splitParticipants };
-  return {
-    ...state,
-    travelerOrder,
-    draft: state.method === 'trip-default' ? applyTripDefault(draft, defaultSplit, travelerIds).draft : draft,
-  };
+  const next: ExpenseEditorState = { ...state, travelerOrder, draft };
+  if (state.method !== 'trip-default') return next;
+  return { ...next, draft: applyTripDefault(draft, defaultSplit, editorSplitOrder(next, travelerIds)).draft };
 }
 
 /** Keep automatic split provenance so unedited zero toggles can be reversed. */
@@ -605,7 +618,7 @@ export function setExpenseExplicitZero(
       return { ...state, method: 'equal', zeroOrigin: undefined, draft: { ...state.draft, splitType: 'even', manualSplit: {} } };
     }
     const weights = { ...origin.weights, ...Object.fromEntries(zeros.map((id) => [id, 0])) };
-    const draft = applyTripDefault(state.draft, weights, travelerIds).draft;
+    const draft = applyTripDefault(state.draft, weights, editorSplitOrder(state, travelerIds)).draft;
     return {
       ...state,
       method: zeros.length ? 'percent' : origin.method,

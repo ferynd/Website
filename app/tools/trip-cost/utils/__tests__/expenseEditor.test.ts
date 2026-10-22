@@ -276,6 +276,49 @@ describe('shared editor split methods', () => {
     },
   );
 
+  it.each([0.01, 0.02])(
+    'keeps [c, b, a] even-split cents when switching a $%s expense to Custom $ or Custom %',
+    (amount) => {
+      const expense: Expense = {
+        id: 'e', createdBy: 'user', category: 'Food', description: 'Penny',
+        totalAmount: amount, paidBy: { a: amount }, splitType: 'even',
+        splitParticipants: ['c', 'b', 'a'], manualSplit: {},
+      };
+      const loaded = createExpenseEditor(ids, 'Food', undefined, undefined, expense);
+      const expected = allocateExpense(expense, ids).shares;
+      const customAmount = changeExpenseMethod(loaded, 'amount', ids);
+      if (amount === 0.01) {
+        expect(customAmount.draft.manualSplit).toEqual({
+          c: { type: 'amount', value: '0.01' },
+          b: { type: 'amount', value: '0.00' },
+          a: { type: 'amount', value: '0.00' },
+        });
+      }
+      expect(allocateExpense(save(customAmount, expense), ids).shares).toEqual(expected);
+      const customPercent = changeExpenseMethod(loaded, 'percent', ids);
+      expect(allocateExpense(save(customPercent, expense), ids).shares).toEqual(expected);
+      const tripDefault = changeExpenseMethod(loaded, 'trip-default', ids, { a: 1, b: 1, c: 1 });
+      expect(allocateExpense(save(tripDefault, expense), ids).shares).toEqual(expected);
+    },
+  );
+
+  it.each([0.01, 0.02])(
+    'keeps [c, b, a] even-split cents for $%s when an explicit zero is applied before Custom $',
+    (amount) => {
+      const expense: Expense = {
+        id: 'e', createdBy: 'user', category: 'Food', description: 'Penny',
+        totalAmount: amount, paidBy: { a: amount }, splitType: 'even',
+        splitParticipants: ['c', 'b', 'a'], manualSplit: {},
+      };
+      const loaded = createExpenseEditor(ids, 'Food', undefined, undefined, expense);
+      const expected = allocateExpense(expense, ids).shares;
+      const zeroed = setExpenseExplicitZero(loaded, 'a', true, ids);
+      expect(allocateExpense(save(zeroed, expense), ids).shares).toEqual(expected);
+      const customAmount = changeExpenseMethod(zeroed, 'amount', ids);
+      expect(allocateExpense(save(customAmount, expense), ids).shares).toEqual(expected);
+    },
+  );
+
   it.each<ExpenseEditorMethod>(['equal', 'percent'])(
     '%s keeps stored order after excluding a traveler', (method) => {
       const expense: Expense = { ...save(ready(method)), splitParticipants: ['c', 'b', 'a'] };

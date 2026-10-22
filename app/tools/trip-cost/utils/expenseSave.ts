@@ -34,3 +34,12 @@ export function expenseEditStatus(
   return expenseRevision(original) === expenseRevision(current) ? 'unchanged' : 'changed';
 }
 
+/**
+ * Row a save should treat as the untouched baseline.
+ * An acknowledged overwrite passes the editor's snapshot so a legacy split
+ * the editor left alone stays exempt. With no snapshot, the live row is used.
+ */
+export function expenseSaveOriginal(live: Expense, baseline?: Expense): Expense {
+  return baseline?.id === live.id ? baseline : live;
+}
+

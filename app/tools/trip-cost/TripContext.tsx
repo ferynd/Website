@@ -31,6 +31,7 @@ import type {
 } from './pageTypes';
 import { buildLedger, type Ledger } from './utils/ledger';
 import { draftToExpenseFields, type DraftContext } from './utils/expenseDraft';
+import { expenseSaveOriginal } from './utils/expenseSave';
 import { validatePayment } from './utils/payment';
 import { fromCents } from './utils/money';
 import {
@@ -57,7 +58,7 @@ interface TripContextValue {
   linkParticipantAccount: (id: string, uid: string) => Promise<void>;
   deleteParticipant: (id: string) => Promise<void>;
   addExpense: (draft: ExpenseDraft) => Promise<void>;
-  updateExpense: (id: string, draft: ExpenseDraft) => Promise<void>;
+  updateExpense: (id: string, draft: ExpenseDraft, baseline?: Expense) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   addPayment: (
     payerId: string,
@@ -272,15 +273,19 @@ export const TripProvider = ({
     );
   };
 
-  const updateExpense = async (id: string, draft: ExpenseDraft) => {
+  const updateExpense = async (id: string, draft: ExpenseDraft, baseline?: Expense) => {
     if (!trip) throw new Error('No trip loaded');
 
-    const original = expenses.find((e) => e.id === id);
-    if (!original) throw new Error('This expense no longer exists.');
+    const live = expenses.find((e) => e.id === id);
+    if (!live) throw new Error('This expense no longer exists.');
 
     // Money fields left untouched keep their stored values, so legacy rows
     // stay editable; any changed amount or split must add up exactly (C5).
-    const { fields, errors } = draftToExpenseFields(draft, draftContext(original));
+    // "Save anyway" validates untouched fields against the editor snapshot.
+    const { fields, errors } = draftToExpenseFields(
+      draft,
+      draftContext(expenseSaveOriginal(live, baseline)),
+    );
     if (!fields) throw new Error(errors[0].message);
 
     const updated = expenses.map((e) => (e.id === id ? { ...e, ...fields } : e));

@@ -94,8 +94,9 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (busy.current || latest.current.status === 'deleted') return;
-    if (latest.current.status === 'changed' && acknowledgedRevision !== latest.current.revision) return;
+    const editStatus = latest.current.status;
+    if (busy.current || editStatus === 'deleted') return;
+    if (editStatus === 'changed' && acknowledgedRevision !== latest.current.revision) return;
     const result = draftToExpenseFields(draft, context);
     if (!result.fields) return;
     const requestId = ++request.current;
@@ -105,8 +106,9 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
     setSaving(true);
     setSaveError('');
     try {
-      if (original) await updateExpense(original.id, draft);
-      else await addExpense(draft);
+      if (!original) await addExpense(draft);
+      else if (editStatus === 'changed') await updateExpense(original.id, draft, original);
+      else await updateExpense(original.id, draft);
       if (isCurrent()) onSaved(result.fields);
     } catch (error) {
       if (isCurrent()) setSaveError(error instanceof Error ? error.message : 'Could not save expense. Please try again.');

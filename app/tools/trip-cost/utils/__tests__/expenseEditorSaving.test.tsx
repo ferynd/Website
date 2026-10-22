@@ -103,4 +103,55 @@ describe('ExpenseEditor pending save', () => {
       }
     },
   );
+
+  it('passes the editor snapshot when saving over a concurrent change', () => {
+    const travelers = ['a', 'b', 'c'];
+    const baseline: Expense = {
+      id: 'expense', createdBy: 'user', category: 'Food', description: 'Dinner',
+      totalAmount: 100, paidBy: { a: 100 }, splitType: 'manual', splitParticipants: travelers,
+      manualSplit: {
+        a: { type: 'percent', value: 33.33 },
+        b: { type: 'percent', value: 33.33 },
+        c: { type: 'percent', value: 33.33 },
+      },
+    };
+    const live: Expense = { ...baseline, description: 'Updated elsewhere', splitType: 'even', manualSplit: {} };
+    const updateExpense = vi.fn(() => Promise.resolve());
+    hooks.useTrip.mockReturnValue({
+      trip: {},
+      expenses: [live],
+      participants: travelers.map((id) => ({ id, name: id })),
+      addExpense: vi.fn(),
+      updateExpense,
+    });
+    const props = { original: baseline, userProfile: null, onClose: vi.fn(), onSaved: vi.fn() };
+    const render = () => {
+      hooks.index = 0;
+      return ExpenseEditor(props);
+    };
+    const textOf = (node: React.ReactNode): string => {
+      if (typeof node === 'string' || typeof node === 'number') return String(node);
+      if (Array.isArray(node)) return node.map(textOf).join('');
+      if (!React.isValidElement(node)) return '';
+      return textOf((node.props as { children?: React.ReactNode }).children);
+    };
+    const elements = (node: React.ReactNode): React.ReactElement[] => {
+      if (Array.isArray(node)) return node.flatMap(elements);
+      if (!React.isValidElement(node)) return [];
+      return [node, ...elements((node.props as { children?: React.ReactNode }).children)];
+    };
+    const first = render();
+    const label = elements(first).find((element) => element.type === 'label' && textOf(element).includes('Save anyway'));
+    const checkbox = label && elements(label).find((element) => element.type === 'input');
+    const onChange = checkbox && (checkbox.props as { onChange?: (event: { target: { checked: boolean } }) => void }).onChange;
+    if (!onChange) throw new Error('missing overwrite checkbox');
+    onChange({ target: { checked: true } });
+    const ready = render();
+    ready.props.children.props.onSubmit({ preventDefault: vi.fn() });
+    expect(updateExpense).toHaveBeenCalledWith(
+      baseline.id,
+      expect.objectContaining({ description: 'Dinner', manualSplitMode: 'percent' }),
+      baseline,
+    );
+  });
 });
