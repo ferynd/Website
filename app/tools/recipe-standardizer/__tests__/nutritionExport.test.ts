@@ -1,4 +1,6 @@
 /* --- CONFIGURATION: nutrition export test matrix --- */
+/** Regression coverage for nutritionExport.test. Fixtures remain local and do not access production data. */
+
 const ROUNDING_CASES = [
   [71.875, 71.88],
   [25.625, 25.63],
@@ -74,12 +76,12 @@ const recipeWithOneNutrientGap = () => {
         return food === undefined
           ? ingredient
           : {
-              ...ingredient,
-              nutritionLink: {
-                ...ingredient.nutritionLink,
-                targetFingerprint: fingerprintTrackerFood(food),
-              },
-            };
+            ...ingredient,
+            nutritionLink: {
+              ...ingredient.nutritionLink,
+              targetFingerprint: fingerprintTrackerFood(food),
+            },
+          };
       }),
     },
   };
@@ -131,7 +133,11 @@ const ownExport = (
     finalWeightG: payload.finalWeightG,
   });
   const withRef = { ...recipe, nutritionExports: { ...recipe.nutritionExports, [basis]: ref } };
-  return { recipe: withRef, ref, food };
+  return {
+    recipe: withRef,
+    ref,
+    food,
+  };
 };
 
 describe('nutritionExport', () => {
@@ -146,12 +152,22 @@ describe('nutritionExport', () => {
 
   it('per-portion payload divides the 1× total by portionCount', () => {
     const payload = payloadFor(butterCookiesRecipe());
-    expect(payload.nutrients).toMatchObject({ calories: 440, protein: 5.25, carbs: 57.5, fat: 20.5 });
+    expect(payload.nutrients).toMatchObject({
+      calories: 440,
+      protein: 5.25,
+      carbs: 57.5,
+      fat: 20.5,
+    });
   });
 
   it('per-100g payload uses the measured final weight', () => {
     const payload = payloadFor(butterCookiesRecipe(), 'per100gCooked');
-    expect(payload.nutrients).toMatchObject({ calories: 550, protein: 6.56, carbs: 71.88, fat: 25.63 });
+    expect(payload.nutrients).toMatchObject({
+      calories: 550,
+      protein: 6.56,
+      carbs: 71.88,
+      fat: 25.63,
+    });
   });
 
   it('payload is independent of the working scale', () => {
@@ -187,20 +203,32 @@ describe('nutritionExport', () => {
       calculateExportNutrition(recipe, sourceFoodsReady()),
       'per100gCooked',
     );
-    expect(result).toEqual({ ok: false, reason: 'estimated-final-weight', overCapKeys: [] });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'estimated-final-weight',
+      overCapKeys: [],
+    });
   });
 
   it('size-mode per portion is blocked as estimated-final-weight without a measured weight', () => {
     const recipe = {
       ...estimatedOnly(),
-      servings: { ...estimatedOnly().servings, portionCount: null, portionSizeG: 80 },
+      servings: {
+        ...estimatedOnly().servings,
+        portionCount: null,
+        portionSizeG: 80,
+      },
     };
     const result = buildExportPayload(
       recipe,
       calculateExportNutrition(recipe, sourceFoodsReady()),
       'perPortion',
     );
-    expect(result).toEqual({ ok: false, reason: 'estimated-final-weight', overCapKeys: [] });
+    expect(result).toEqual({
+      ok: false,
+      reason: 'estimated-final-weight',
+      overCapKeys: [],
+    });
   });
 
   it('size-mode per portion with a measured weight uses portionSizeG / finalWeight', () => {
@@ -220,7 +248,11 @@ describe('nutritionExport', () => {
   it('no portion data blocks perPortion with no-portion-data', () => {
     const recipe = {
       ...butterCookiesRecipe(),
-      servings: { ...butterCookiesRecipe().servings, portionCount: null, portionSizeG: null },
+      servings: {
+        ...butterCookiesRecipe().servings,
+        portionCount: null,
+        portionSizeG: null,
+      },
     };
     const result = buildExportPayload(
       recipe,
@@ -232,7 +264,11 @@ describe('nutritionExport', () => {
 
   it('foods not ready blocks both bases with foods-unavailable', () => {
     const recipe = butterCookiesRecipe();
-    const result = calculateExportNutrition(recipe, { status: 'loading', items: [], error: '' });
+    const result = calculateExportNutrition(recipe, {
+      status: 'loading',
+      items: [],
+      error: '',
+    });
     expect(buildExportPayload(recipe, result, 'perPortion')).toMatchObject({
       ok: false,
       reason: 'foods-unavailable',
@@ -341,7 +377,11 @@ describe('nutritionExport', () => {
         payload: { ok: true, payload: result.payload },
         foods: tracked,
       }),
-    ).toMatchObject({ recipe: 'changed', target: 'unchanged', stale: true });
+    ).toMatchObject({
+      recipe: 'changed',
+      target: 'unchanged',
+      stale: true,
+    });
     expect(
       deriveExportStatus({
         basis: 'perPortion',
@@ -366,10 +406,18 @@ describe('nutritionExport', () => {
       nowIso: '2025-01-01T00:00:00.000Z',
       nowMs: 99,
     };
-    expect(() => buildExportCommitRequest({ ...commitInput, partialConfirmed: false })).toThrow(
+    expect(() => buildExportCommitRequest({
+      recipeRevision: 0,
+      ...commitInput,
+      partialConfirmed: false,
+    })).toThrow(
       ExportRequestError,
     );
-    expect(buildExportCommitRequest({ ...commitInput, partialConfirmed: true }).nextRef.coverage).toBe(
+    expect(buildExportCommitRequest({
+      recipeRevision: 0,
+      ...commitInput,
+      partialConfirmed: true,
+    }).nextRef.coverage).toBe(
       'partial',
     );
   });
@@ -461,7 +509,11 @@ describe('nutritionExport', () => {
   it('selectExportBasis falls back to per100gCooked when portion data is missing', () => {
     const recipe = {
       ...butterCookiesRecipe(),
-      servings: { ...butterCookiesRecipe().servings, portionCount: null, portionSizeG: null },
+      servings: {
+        ...butterCookiesRecipe().servings,
+        portionCount: null,
+        portionSizeG: null,
+      },
     };
     expect(
       selectExportBasis(recipe, calculateExportNutrition(recipe, sourceFoodsReady()), 'recipe-1').preferred,
@@ -481,8 +533,16 @@ describe('nutritionExport', () => {
   it('selectExportBasis returns preferred=null with both reasons when neither is exportable', () => {
     const recipe = {
       ...butterCookiesRecipe(),
-      servings: { ...butterCookiesRecipe().servings, portionCount: null, portionSizeG: null },
-      yield: { ...butterCookiesRecipe().yield, actualFinalWeightG: null, estimatedFinalWeightG: null },
+      servings: {
+        ...butterCookiesRecipe().servings,
+        portionCount: null,
+        portionSizeG: null,
+      },
+      yield: {
+        ...butterCookiesRecipe().yield,
+        actualFinalWeightG: null,
+        estimatedFinalWeightG: null,
+      },
     };
     const choice = selectExportBasis(
       recipe,
@@ -539,7 +599,11 @@ describe('nutritionExport', () => {
       payload: { ok: true, payload },
       foods: foodsReady(own.food),
     });
-    expect(status).toMatchObject({ recipe: 'current', target: 'unchanged', stale: false });
+    expect(status).toMatchObject({
+      recipe: 'current',
+      target: 'unchanged',
+      stale: false,
+    });
     expect(exportAction(status, { ok: true, payload })).toBe('update');
   });
 
@@ -608,7 +672,11 @@ describe('nutritionExport', () => {
     const own = ownExport(recipe, payload, 'per100gCooked');
     const missingWeight = {
       ...own.recipe,
-      yield: { ...own.recipe.yield, actualFinalWeightG: null, estimatedFinalWeightG: null },
+      yield: {
+        ...own.recipe.yield,
+        actualFinalWeightG: null,
+        estimatedFinalWeightG: null,
+      },
     };
     const next = buildExportPayload(
       missingWeight,
@@ -654,7 +722,12 @@ describe('nutritionExport', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const own = ownExport(recipe, payload);
-    const ref = { ...own.ref, coverage: 'partial' as const, includedCount: 2, totalCount: 3 };
+    const ref = {
+      ...own.ref,
+      coverage: 'partial' as const,
+      includedCount: 2,
+      totalCount: 3,
+    };
     const status = deriveExportStatus({
       basis: 'perPortion',
       ref,
@@ -721,9 +794,17 @@ describe('nutritionExport', () => {
       ref: own.ref,
       recipeId: 'recipe-1',
       payload: { ok: true, payload },
-      foods: { status: 'loading', items: [], error: '' },
+      foods: {
+        status: 'loading',
+        items: [],
+        error: '',
+      },
     });
-    expect(status).toMatchObject({ recipe: 'unknown', target: 'unknown', stale: false });
+    expect(status).toMatchObject({
+      recipe: 'unknown',
+      target: 'unknown',
+      stale: false,
+    });
     expect(exportAction(status, { ok: true, payload })).toBe('blocked');
   });
 
@@ -737,7 +818,7 @@ describe('nutritionExport', () => {
     ).toEqual(food);
   });
 
-  it("findExportCollision ignores the basis's own exported target", () => {
+  it('findExportCollision ignores the basis\'s own exported target', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const own = ownExport(recipe, payload);
@@ -745,7 +826,7 @@ describe('nutritionExport', () => {
     expect(findExportCollision(own.food.id, [own.food], status)).toBeNull();
   });
 
-  it("findExportCollision flags the other basis's exported food as a collision", () => {
+  it('findExportCollision flags the other basis\'s exported food as a collision', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const otherBasisRef = makeRef({
@@ -763,8 +844,19 @@ describe('nutritionExport', () => {
     const same = trackerFood('id', 'Name', payload.nutrients);
     expect(diffExportNutrients(same, payload)).toMatchObject({ quantityChanged: false, changes: [] });
     expect(
-      diffExportNutrients({ ...same, quantity: 2, nutrients: { ...same.nutrients, calories: 1 } }, payload),
-    ).toMatchObject({ quantityChanged: true, changes: [{ key: 'calories', before: 1, after: 440 }] });
+      diffExportNutrients({
+        ...same,
+        quantity: 2,
+        nutrients: { ...same.nutrients, calories: 1 },
+      }, payload),
+    ).toMatchObject({
+      quantityChanged: true,
+      changes: [{
+        key: 'calories',
+        before: 1,
+        after: 440,
+      }],
+    });
   });
 
   it('collectExportSourceTargets dedupes repeated food ids and uses the fingerprints of the foods used', () => {
@@ -780,6 +872,7 @@ describe('nutritionExport', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const request = buildExportCommitRequest({
+      recipeRevision: 0,
       recipe,
       recipeId: 'recipe-1',
       basis: 'perPortion',
@@ -801,12 +894,13 @@ describe('nutritionExport', () => {
     });
   });
 
-  it("update request keeps ref.foodId and the tracker's current name, expectedTarget = stored target", () => {
+  it('update request keeps ref.foodId and the tracker\'s current name, expectedTarget = stored target', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const own = ownExport(recipe, payload);
     const status = statusFor(own.recipe, 'perPortion', payload, foodsReady(own.food), own.ref);
     const request = buildExportCommitRequest({
+      recipeRevision: 0,
       recipe: own.recipe,
       recipeId: 'recipe-1',
       basis: 'perPortion',
@@ -848,8 +942,12 @@ describe('nutritionExport', () => {
       nowIso: '2025-01-02T00:00:00.000Z',
       nowMs: 8,
     };
-    expect(() => buildExportCommitRequest(input)).toThrow(ExportRequestError);
-    const request = buildExportCommitRequest({ ...input, overwriteTrackerEdits: true });
+    expect(() => buildExportCommitRequest({ ...input, recipeRevision: 0 })).toThrow(ExportRequestError);
+    const request = buildExportCommitRequest({
+      recipeRevision: 0,
+      ...input,
+      overwriteTrackerEdits: true,
+    });
     expect(request.expectedTarget?.fingerprint).toBe(fingerprintTrackerFood(own.food));
   });
 
@@ -891,7 +989,7 @@ describe('nutritionExport', () => {
     };
     expect(reviewedTarget.id).not.toBe(status.targetFood?.id);
     expect(exportTargetChangedSinceReview(status, reviewedTarget)).toBe(true);
-    expect(() => buildExportCommitRequest(input)).toThrow('The exported tracker food is not available.');
+    expect(() => buildExportCommitRequest({ ...input, recipeRevision: 0 })).toThrow('The exported tracker food is not available.');
   });
 
   it('partial payload without partialConfirmed throws ExportRequestError', () => {
@@ -899,6 +997,7 @@ describe('nutritionExport', () => {
     const payload = payloadFor(recipe);
     expect(() =>
       buildExportCommitRequest({
+        recipeRevision: 0,
         recipe,
         recipeId: 'recipe-1',
         basis: 'perPortion',
@@ -920,6 +1019,7 @@ describe('nutritionExport', () => {
     const payload = payloadFor(recipe);
     expect(() =>
       buildExportCommitRequest({
+        recipeRevision: 0,
         recipe,
         recipeId: 'recipe-1',
         basis: 'perPortion',
@@ -936,11 +1036,12 @@ describe('nutritionExport', () => {
     ).toThrow(ExportRequestError);
   });
 
-  it("exporting into an ingredient's own source food throws ExportRequestError (self-reference)", () => {
+  it('exporting into an ingredient\'s own source food throws ExportRequestError (self-reference)', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     expect(() =>
       buildExportCommitRequest({
+        recipeRevision: 0,
         recipe,
         recipeId: 'recipe-1',
         basis: 'perPortion',
@@ -968,6 +1069,7 @@ describe('nutritionExport', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const request = buildExportCommitRequest({
+      recipeRevision: 0,
       recipe,
       recipeId: 'recipe-1',
       basis: 'perPortion',
@@ -990,6 +1092,7 @@ describe('nutritionExport', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const request = buildExportCommitRequest({
+      recipeRevision: 0,
       recipe,
       recipeId: 'recipe-1',
       basis: 'perPortion',
@@ -1037,7 +1140,7 @@ describe('nutritionExport', () => {
     expect(loggedCalories).toBe((1760 * 250) / 320);
   });
 
-  it("the tracker's default quantity prefill (food.quantity) logs exactly one unit", () => {
+  it('the tracker\'s default quantity prefill (food.quantity) logs exactly one unit', () => {
     const payload = payloadFor(butterCookiesRecipe());
     const doc = buildTrackerFoodDoc('Name', payload.nutrients, 'now');
     const quantity = parseQty(String(doc.quantity));
@@ -1050,5 +1153,41 @@ describe('nutritionExport', () => {
     for (const key of TRACKER_NUTRIENT_KEYS) {
       expect(payload.nutrients[key]).toBeLessThanOrEqual(NUTRIENT_MAX_BOUNDS[key]);
     }
+  });
+});
+
+describe('export request recipe revision', () => {
+  const requestInput = (recipeRevision: number) => {
+    const recipe = butterCookiesRecipe();
+    const foods = sourceFoodsReady();
+    const payload = buildExportPayload(recipe, calculateExportNutrition(recipe, foods), 'perPortion');
+    if (!payload.ok) throw new Error('Expected payload');
+    return {
+      recipe,
+      recipeId: 'recipe-1',
+      recipeRevision,
+      basis: 'perPortion' as const,
+      status: deriveExportStatus({
+        basis: 'perPortion',
+        recipeId: 'recipe-1',
+        ref: undefined,
+        payload,
+        foods,
+      }),
+      payload: payload.payload,
+      sourceTargets: [],
+      chosenName: 'Cookies',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      partialConfirmed: true,
+      nowIso: '2025-01-01T00:00:00.000Z',
+      nowMs: 1,
+    };
+  };
+  it('buildExportCommitRequest carries the recipe revision as expectedRecipeRevision', () => {
+    expect(buildExportCommitRequest(requestInput(3)).expectedRecipeRevision).toBe(3);
+  });
+  it.each([[-1], [1.5], [Number.NaN]])('buildExportCommitRequest rejects invalid recipe revision %s', (revision) => {
+    expect(() => buildExportCommitRequest(requestInput(revision))).toThrow('no valid saved revision');
   });
 });

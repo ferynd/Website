@@ -1,12 +1,15 @@
+/* --- CONFIGURATION: nutrition export card copy --- */
+/** Render export availability from the pure card model; owned bases remain reachable through their rows. */
 'use client';
 
-/* --- CONFIGURATION: nutrition export card copy --- */
+const VIEW_COPY = {
+  text: '“',
+  text2: '”',
+} as const;
+
 const CARD_TITLE = 'Nutrition Tracker food';
-const EXPORT_LABEL = 'Export to Nutrition Tracker';
-const UPDATE_LABEL = 'Update tracker food';
-const RECREATE_LABEL = 'Create it again';
 const CARD_DESCRIPTION = 'Save this recipe as a food you can log in the Nutrition Tracker.';
-const SCALE_NOTE = "Exports always use the recipe at 1×; the working scale doesn't change the tracker food.";
+const SCALE_NOTE = 'Exports always use the recipe at 1×; the working scale doesn\'t change the tracker food.';
 const PARTIAL_LABEL = 'partial';
 
 /**
@@ -17,16 +20,14 @@ const PARTIAL_LABEL = 'partial';
 import { PackagePlus } from 'lucide-react';
 import Button from '@/components/Button';
 import {
-  describeExportBlocks,
+  buildExportCardModel,
+  exportRowLabel,
+  EXPORT_LABEL,
+  type ExportCardRowModel,
   describeExportStatus,
-  exportDisabledReason,
   EXPORT_BASIS_LABELS,
 } from '../lib/nutritionExportFormat';
 import {
-  buildExportPayload,
-  exportAction,
-  primaryExportTarget,
-  selectExportBasis,
   type ExportStatus,
 } from '../lib/nutritionExport';
 import { NUTRITION_EXPORT_BASIS_KEYS, type NutritionExportBasisKey } from '../lib/types';
@@ -45,7 +46,9 @@ interface NutritionExportCardProps {
   onOpen: (basis: NutritionExportBasisKey | 'choose') => void;
 }
 
-function StatusPill({ status }: { status: ExportStatus }) {
+function StatusPill({ status }: {
+  status: ExportStatus;
+}) {
   const descriptions = [describeExportStatus(status)];
   const recipeIsStale = status.recipe === 'changed' || status.recipe === 'unavailable';
   const targetIsStale = status.target === 'modified' || status.target === 'missing';
@@ -74,36 +77,28 @@ function StatusPill({ status }: { status: ExportStatus }) {
 
 function ExportRow({
   status,
-  action,
-  disabled,
-  disabledReason,
+  model,
   onOpen,
 }: {
   status: ExportStatus;
-  action: ReturnType<typeof exportAction>;
-  disabled: boolean;
-  disabledReason: string | null;
+  model: ExportCardRowModel;
   onOpen: (basis: NutritionExportBasisKey) => void;
 }) {
   if (status.ref === null) return null;
-  const label =
-    action === 'recreate'
-      ? RECREATE_LABEL
-      : action === 'update' || action === 'update-overwrite-tracker-edits'
-        ? UPDATE_LABEL
-        : EXPORT_LABEL;
+  const { action, disabled, disabledReason } = model;
+  const label = exportRowLabel(action);
   return (
     <li className="space-y-2 rounded-lg border border-border bg-surface-1 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">{EXPORT_BASIS_LABELS[status.basis]}</span>
-        <span className="text-sm text-text-2">“{status.ref.foodName}”</span>
+        <span className="text-sm text-text-2">{VIEW_COPY.text}{status.ref.foodName}{VIEW_COPY.text2}</span>
         <span className="text-xs text-text-3">{new Date(status.ref.exportedAtMs).toLocaleDateString()}</span>
         {status.ref.coverage === 'partial' ? (
           <span className="rounded-full bg-warning/10 px-2 py-1 text-xs text-warning">{PARTIAL_LABEL}</span>
         ) : null}
         <StatusPill status={status} />
       </div>
-      {status.ownership === 'foreign' ? null : (
+      {!model.showButton ? null : (
         <>
           <Button
             size="sm"
@@ -136,20 +131,18 @@ export default function NutritionExportCard({
   scaleActive,
   onOpen,
 }: NutritionExportCardProps) {
-  const disabledReason = exportDisabledReason({ saved: recipeId !== null, dirty, foodsStatus: foods.status });
-  const choice = selectExportBasis(recipe, result, recipeId);
-  const hasMissingOwnBasis = statuses.some((status) => status.ownership !== 'own');
-  const basisActions = new Map(
-    statuses.map((status) => {
-      const payload = buildExportPayload(recipe, result, status.basis);
-      return [status.basis, exportAction(status, payload)];
-    }),
-  );
-  const blockedReasons = describeExportBlocks(choice.options);
+  const model = buildExportCardModel({
+    recipe,
+    result,
+    recipeId,
+    dirty,
+    foodsStatus: foods.status,
+    statuses,
+  });
+  const { disabledReason, blockedReasons } = model;
   const blockedReasonIds = NUTRITION_EXPORT_BASIS_KEYS.filter((basis) => blockedReasons[basis] !== null).map(
     (basis) => `nutrition-export-blocked-${basis}`,
   );
-  const noBasisAvailable = choice.preferred === null;
   return (
     <section
       className="space-y-3 rounded-xl border border-border bg-surface-2 p-4"
@@ -162,31 +155,34 @@ export default function NutritionExportCard({
         </h3>
       </div>
       <p className="text-sm text-text-2">{CARD_DESCRIPTION}</p>
-      {statuses.some((status) => status.ref !== null) ? (
+      {model.rows.length > 0 ? (
         <ul className="space-y-2">
-          {statuses.map((status) => (
-            <ExportRow
-              key={status.basis}
-              status={status}
-              action={basisActions.get(status.basis) ?? 'blocked'}
-              disabled={disabledReason !== null || basisActions.get(status.basis) === 'blocked'}
-              disabledReason={disabledReason ?? blockedReasons[status.basis]}
-              onOpen={onOpen}
-            />
-          ))}
+          {model.rows.map((row) => {
+            const status = statuses.find((status) => status.basis === row.basis);
+            if (!status) return null;
+            return (
+              <ExportRow
+                key={row.basis}
+                status={status}
+                model={row}
+                onOpen={onOpen}
+              />
+            );
+          })}
         </ul>
       ) : null}
       <Button
-        disabled={disabledReason !== null || !hasMissingOwnBasis || noBasisAvailable}
+        disabled={model.primaryDisabled}
         aria-describedby={
           [disabledReason ? 'nutrition-export-disabled-reason' : null, ...blockedReasonIds]
             .filter((id): id is string => id !== null)
             .join(' ') || undefined
         }
-        onClick={() => onOpen(primaryExportTarget(statuses, choice))}
+        onClick={() => onOpen(model.primaryTarget)}
       >
         {EXPORT_LABEL}
       </Button>
+      {model.primaryNote && <p className="text-sm text-text-3">{model.primaryNote}</p>}
       {disabledReason ? (
         <p id="nutrition-export-disabled-reason" className="text-sm text-text-3">
           {disabledReason}
@@ -194,7 +190,11 @@ export default function NutritionExportCard({
       ) : null}
       {NUTRITION_EXPORT_BASIS_KEYS.map((basis) =>
         blockedReasons[basis] === null ? null : (
-          <p id={`nutrition-export-blocked-${basis}`} key={basis} className="text-sm text-text-3">
+          <p
+            id={`nutrition-export-blocked-${basis}`}
+            key={basis}
+            className="text-sm text-text-3"
+          >
             {blockedReasons[basis]}
           </p>
         ),

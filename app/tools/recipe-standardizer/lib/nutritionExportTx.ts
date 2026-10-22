@@ -1,12 +1,24 @@
 /* --- CONFIGURATION: export transaction field paths --- */
+/** Firebase-free transaction body; validate all sources and the recipe revision before staging atomic writes. */
+
+const MESSAGE_COPY = {
+  recipeNoLongerExists: 'Recipe no longer exists.',
+  recipeExportReferenceChangedFor: (value0: unknown) => `Recipe export reference changed for ${value0}.`,
+  nutritionTrackerFoodWasDeleted: (value0: unknown) => `Nutrition Tracker food ${value0} was deleted.`,
+  nutritionTrackerFoodChangedAfterReview: (value0: unknown) =>
+    `Nutrition Tracker food ${value0} changed after review.`,
+  invalidExportDocumentIdS: (value0: unknown) => `Invalid export document ID(s): ${value0}`,
+} as const;
+
 const RECIPE_FIELD_PREFIX = 'recipe.nutritionExports.';
 const UPDATED_AT_FIELD = 'updatedAt';
 
 /**
  * Firebase-free transaction body for writing a tracker food and its recipe back-reference atomically.
- * It reads and validates every dependency before staging either write.
+ * It checks and bumps the recipe revision, then reads and validates every dependency before staging either write.
  */
 
+import { checkRecipeRevision, RECIPE_REVISION_FIELD } from './recipeRevision';
 import { parseNutritionExport, sameNutritionExport } from './nutritionExportRef';
 import type { ExportCommitRequest } from './nutritionExport';
 import {
@@ -53,7 +65,7 @@ export const exportRefFieldPath = (basis: NutritionExportBasisKey): string =>
 /** Error raised when the referenced recipe has disappeared. */
 export class ExportRecipeMissingError extends Error {
   constructor() {
-    super('Recipe no longer exists.');
+    super(MESSAGE_COPY.recipeNoLongerExists);
     this.name = 'ExportRecipeMissingError';
   }
 }
@@ -63,7 +75,7 @@ export class ExportRefChangedError extends Error {
   readonly basis: NutritionExportBasisKey;
 
   constructor(basis: NutritionExportBasisKey) {
-    super(`Recipe export reference changed for ${basis}.`);
+    super(MESSAGE_COPY.recipeExportReferenceChangedFor(basis));
     this.name = 'ExportRefChangedError';
     this.basis = basis;
   }
@@ -74,7 +86,7 @@ export class ExportTargetMissingError extends Error {
   readonly foodId: string;
 
   constructor(foodId: string) {
-    super(`Nutrition Tracker food ${foodId} was deleted.`);
+    super(MESSAGE_COPY.nutritionTrackerFoodWasDeleted(foodId));
     this.name = 'ExportTargetMissingError';
     this.foodId = foodId;
   }
@@ -85,7 +97,7 @@ export class ExportTargetChangedError extends Error {
   readonly foodId: string;
 
   constructor(foodId: string) {
-    super(`Nutrition Tracker food ${foodId} changed after review.`);
+    super(MESSAGE_COPY.nutritionTrackerFoodChangedAfterReview(foodId));
     this.name = 'ExportTargetChangedError';
     this.foodId = foodId;
   }
@@ -95,7 +107,7 @@ export class ExportTargetChangedError extends Error {
 export const assertExportRequestIds = (request: ExportCommitRequest): void => {
   const ids = [request.foodId, request.recipeId, ...request.sourceTargets.map((target) => target.id)];
   const invalid = [...new Set(ids.filter((id) => !isValidFirestoreDocId(id)))];
-  if (invalid.length > 0) throw new Error(`Invalid export document ID(s): ${invalid.join(', ')}`);
+  if (invalid.length > 0) throw new Error(MESSAGE_COPY.invalidExportDocumentIdS(invalid.join(', ')));
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -117,6 +129,7 @@ export const runExportTransaction = async <R>(
     Promise.all(sourceRefs.map((ref) => tx.get(ref))),
   ]);
   if (!recipeSnapshot.exists()) throw new ExportRecipeMissingError();
+  const storedRevision = checkRecipeRevision(recipeSnapshot, request.expectedRecipeRevision);
   const recipeData = recipeSnapshot.data();
   const recipeRecord = isRecord(recipeData) ? recipeData.recipe : null;
   const recipeBody = isRecord(recipeRecord) ? recipeRecord : {};
@@ -156,5 +169,6 @@ export const runExportTransaction = async <R>(
   tx.update(refs.recipe, {
     [exportRefFieldPath(request.basis)]: request.nextRef,
     [UPDATED_AT_FIELD]: serverTimestampValue,
+    [RECIPE_REVISION_FIELD]: storedRevision + 1,
   });
 };

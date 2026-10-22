@@ -1,10 +1,23 @@
+/* --- CONFIGURATION: none --- */
+/** Named preparation inputs render authoritative grams and shared equivalent caveats. */
 'use client';
 
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: none                                           */
-/* ------------------------------------------------------------ */
+const VIEW_COPY = {
+  usedIn: 'Used in: ',
+  text: '— ',
+  optional: 'optional',
+  text2: '.',
+  moreDetail: 'More detail',
+} as const;
 
-import { AlertTriangle, ChevronRight, Clock, CornerDownRight, MapPin } from 'lucide-react';
+import EquivalentText from './EquivalentText';
+import {
+  AlertTriangle,
+  ChevronRight,
+  Clock,
+  CornerDownRight,
+  MapPin,
+} from 'lucide-react';
 import { formatAmount } from '../lib/display';
 import type { Technique } from '../lib/techniques';
 import type { NormalizedPrepGroup } from '../lib/workflow';
@@ -40,20 +53,17 @@ export default function PrepGroupCard({ group, factor, techniques }: PrepGroupCa
           )}
           {group.firstUseLabel && (
             <span className="inline-flex items-center gap-1 rounded-full bg-surface-1 border border-border px-2 py-0.5 text-text-3">
-              <CornerDownRight size={12} /> Used in: {group.firstUseLabel}
+              <CornerDownRight size={12} /> {VIEW_COPY.usedIn}{group.firstUseLabel}
             </span>
           )}
         </div>
       </div>
-
       {group.holdNote && (
         <p className="flex items-start gap-1.5 text-sm text-warning">
           <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" /> {group.holdNote}
         </p>
       )}
-
       {group.instruction && <p className="text-sm text-text">{group.instruction}</p>}
-
       {group.ingredients.length > 0 && (
         <ul className="space-y-1">
           {group.ingredients.map((ing) => {
@@ -63,23 +73,22 @@ export default function PrepGroupCard({ group, factor, techniques }: PrepGroupCa
                 <span className="font-medium tabular-nums">{amount.grams}</span>
                 {amount.equivalent && (
                   <span className="text-text-3">
-                    ({amount.equivalent}{amount.equivalentUnscaled ? ' at 1×' : ''})
+                    <EquivalentText text={amount.equivalent} note={amount.equivalentNote} />
                   </span>
                 )}
                 <span>{ing.displayName}</span>
-                {ing.prepNote && <span className="text-text-3">— {ing.prepNote}</span>}
-                {ing.optional && <span className="text-xs italic text-text-3">optional</span>}
+                {ing.prepNote && <span className="text-text-3">{VIEW_COPY.text}{ing.prepNote}</span>}
+                {ing.optional && <span className="text-xs italic text-text-3">{VIEW_COPY.optional}</span>}
               </li>
             );
           })}
         </ul>
       )}
-
       {group.steps.length > 0 && (
         <ol className="space-y-1.5 border-t border-border pt-2.5">
           {group.steps.map((step, i) => (
             <li key={step.id} className="flex gap-2 text-sm text-text">
-              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}.</span>
+              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}{VIEW_COPY.text2}</span>
               <div className="min-w-0">
                 <p>{step.text}</p>
                 {(step.timing || step.dependencyNote) && (
@@ -92,17 +101,15 @@ export default function PrepGroupCard({ group, factor, techniques }: PrepGroupCa
           ))}
         </ol>
       )}
-
       {group.details && (
         <details className="group/details">
           <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden inline-flex items-center gap-1 rounded text-xs text-text-3 hover:text-text-2 focus-ring">
             <ChevronRight size={12} className="transition-transform group-open/details:rotate-90" />
-            More detail
+            {VIEW_COPY.moreDetail}
           </summary>
           <p className="mt-1 ps-4 text-xs text-text-2">{group.details}</p>
         </details>
       )}
-
       <TechniqueHelp techniques={techniques} />
     </div>
   );

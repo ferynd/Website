@@ -1,10 +1,14 @@
+/* --- CONFIGURATION: nutrition export review copy --- */
+/** Review one saved export snapshot; target changes reset confirmations and in-flight writes block dismissal. */
 'use client';
 
-/* --- CONFIGURATION: nutrition export review copy --- */
+const VIEW_COPY = {
+  text: '→',
+  text2: ': ',
+  text3: '→ ',
+} as const;
+
 const DIALOG_TITLE = 'Export to Nutrition Tracker';
-const CREATE_LABEL = 'Create food';
-const UPDATE_LABEL = 'Update food';
-const RECREATE_LABEL = 'Create food again';
 const EXPORT_COPY = {
   basisLegend: 'Export basis',
   basisPreference: 'Per portion is recommended when the recipe has portions.',
@@ -14,7 +18,7 @@ const EXPORT_COPY = {
   showAllNutrients: 'Show all 24 nutrients',
   hideAllNutrients: 'Hide all nutrients',
   nameLabel: 'Nutrition Tracker food name',
-  keepNameNote: "Updates keep the food's name and ID in the Nutrition Tracker.",
+  keepNameNote: 'Updates keep the food\'s name and ID in the Nutrition Tracker.',
   collisionLead: 'A Nutrition Tracker food with this name already exists (“',
   collisionTail: '”). Choose a different name — existing foods are never replaced.',
   updateDiffTitle: 'What changes in the tracker',
@@ -28,7 +32,8 @@ const EXPORT_COPY = {
   noData: '0 (no data)',
   saving: 'Saving…',
   trackerEditLead:
-    '” was changed in the Nutrition Tracker after you exported it. Updating replaces those changes.',
+    '” was changed in the Nutrition Tracker after you exported it. Updating ' +
+    'replaces those changes.',
   trackerEditPrefix: '“',
 } as const;
 
@@ -37,12 +42,26 @@ const EXPORT_COPY = {
  * The parent revalidates every reviewed value before the transaction starts.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  initialExportName,
+  exportReviewIdentity,
+  exportSubmitDisabled,
+  nameAfterReviewAgain,
+  exportOutcomeActions,
+  exportCommitLabel,
+  canDismissExport,
+} from '../lib/nutritionExportView';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import Button from '@/components/Button';
 import { formatNutrientAmount, nutrientLabel } from '../lib/nutritionFormat';
 import {
   buildExportPayload,
-  defaultExportFoodName,
   diffExportNutrients,
   exportAction,
   findExportCollision,
@@ -64,7 +83,6 @@ import {
 } from '../lib/nutritionExportFormat';
 import {
   TRACKER_NUTRIENT_KEYS,
-  fingerprintTrackerFood,
   trackerFoodId,
   validateTrackerFoodName,
   type FoodsState,
@@ -144,7 +162,11 @@ function PartialWarning({
     <section className="space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm">
       <p>{partialExportWarning(payload)}</p>
       <label className="flex items-center gap-2">
-        <input type="checkbox" checked={confirmed} onChange={(event) => onChange(event.target.checked)} />
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(event) => onChange(event.target.checked)}
+        />
         <span>{EXPORT_COPY.partialConfirm}</span>
       </label>
     </section>
@@ -168,14 +190,20 @@ function TrackerEditsWarning({
         {EXPORT_COPY.trackerEditLead}
       </p>
       <label className="mt-2 flex items-center gap-2">
-        <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(event) => onChange(event.target.checked)}
+        />
         <span>{EXPORT_COPY.replaceConfirm}</span>
       </label>
     </section>
   );
 }
 
-function ExportPreview({ payload }: { payload: ExportPayload }) {
+function ExportPreview({ payload }: {
+  payload: ExportPayload;
+}) {
   const [showAll, setShowAll] = useState(false);
   const headline: TrackerNutrientKey[] = ['calories', 'protein', 'carbs', 'fat'];
   const keys = showAll ? TRACKER_NUTRIENT_KEYS : headline;
@@ -200,7 +228,11 @@ function ExportPreview({ payload }: { payload: ExportPayload }) {
           );
         })}
       </dl>
-      <button type="button" className="text-sm text-accent" onClick={() => setShowAll((current) => !current)}>
+      <button
+        type="button"
+        className="text-sm text-accent"
+        onClick={() => setShowAll((current) => !current)}
+      >
         {showAll ? EXPORT_COPY.hideAllNutrients : EXPORT_COPY.showAllNutrients}
       </button>
     </section>
@@ -270,20 +302,24 @@ function ReviewStep({
           {diff.changes.length === 0 && !diff.quantityChanged ? <p>{EXPORT_COPY.noChanges}</p> : null}
           {diff.quantityChanged ? (
             <p>
-              {EXPORT_COPY.quantityLabel} {status.targetFood?.quantity ?? EXPORT_COPY.unknown} →{' '}
+              {EXPORT_COPY.quantityLabel} {status.targetFood?.quantity ?? EXPORT_COPY.unknown} {VIEW_COPY.text}{' '}
               {TRACKER_EXPORT_QUANTITY}
             </p>
           ) : null}
           {diff.changes.map((change) => (
             <p key={change.key}>
-              {nutrientLabel(change.key)}: {change.before ?? EXPORT_COPY.unknown} → {change.after}
+              {nutrientLabel(change.key)}{VIEW_COPY.text2}{change.before ?? EXPORT_COPY.unknown} {VIEW_COPY.text3}{change.after}
             </p>
           ))}
           <p className="pt-1 text-text-3">{EXPORT_COPY.pastLogsNote}</p>
         </section>
       ) : null}
       {payload.coverage === 'partial' ? (
-        <PartialWarning payload={payload} confirmed={partialConfirmed} onChange={onPartialChange} />
+        <PartialWarning
+          payload={payload}
+          confirmed={partialConfirmed}
+          onChange={onPartialChange}
+        />
       ) : null}
       {action === 'update-overwrite-tracker-edits' ? (
         <TrackerEditsWarning
@@ -310,10 +346,10 @@ function OutcomeStep({
   return (
     <div className="space-y-4" role="status">
       <p>{describeExportOutcome(outcome)}</p>
-      {outcome.status === 'review-changed' || outcome.status === 'collision' ? (
+      {exportOutcomeActions(outcome).reviewAgain ? (
         <Button onClick={onReviewAgain}>{EXPORT_COPY.reviewAgain}</Button>
       ) : null}
-      {outcome.status !== 'review-changed' && outcome.status !== 'collision' ? (
+      {exportOutcomeActions(outcome).close ? (
         <Button disabled={closeDisabled} onClick={onClose}>{EXPORT_COPY.close}</Button>
       ) : null}
     </div>
@@ -334,12 +370,7 @@ export default function NutritionExportModal({
   const choice = useMemo(() => selectExportBasis(recipe, result, recipeId), [recipe, result, recipeId]);
   const initial = initialBasis === 'choose' ? choice.preferred : initialBasis;
   const [basis, setBasis] = useState<NutritionExportBasisKey>(initial ?? 'perPortion');
-  const [name, setName] = useState(() => {
-    const basisToUse = initial ?? 'perPortion';
-    const row = statuses.find((item) => item.basis === basisToUse);
-    const ref = row?.ownership === 'own' && row.target === 'missing' ? row.ref : null;
-    return ref?.foodName ?? defaultExportFoodName(recipe.name, basisToUse);
-  });
+  const [name, setName] = useState(() => initialExportName(recipe.name, statuses, initial ?? 'perPortion'));
   const [partialConfirmed, setPartialConfirmed] = useState(false);
   const [overwriteConfirmed, setOverwriteConfirmed] = useState(false);
   const [outcome, setOutcome] = useState<ExportCommitOutcome | null>(null);
@@ -348,14 +379,12 @@ export default function NutritionExportModal({
   const status = statuses.find((item) => item.basis === basis) ?? statuses[0];
   const payload = payloadResult.ok ? payloadResult.payload : null;
   const action = exportAction(status, payloadResult);
-  const targetFingerprint = status.targetFood === null ? '' : fingerprintTrackerFood(status.targetFood);
-  const reviewIdentity = [
+  const reviewIdentity = exportReviewIdentity({
     basis,
-    payload?.fingerprint ?? payloadResult.ok,
+    payloadResult,
     action,
-    status.targetFood?.lastUpdated ?? '',
-    targetFingerprint,
-  ].join(':');
+    targetFood: status.targetFood,
+  });
   const previousReviewIdentity = useRef(reviewIdentity);
 
   useEffect(() => {
@@ -363,13 +392,12 @@ export default function NutritionExportModal({
     previousReviewIdentity.current = reviewIdentity;
     setPartialConfirmed(false);
     setOverwriteConfirmed(false);
-    const ref = status.ownership === 'own' && action === 'recreate' ? status.ref : null;
-    setName(ref?.foodName ?? defaultExportFoodName(recipe.name, basis));
-  }, [action, basis, recipe.name, reviewIdentity, status]);
+    setName(initialExportName(recipe.name, statuses, basis));
+  }, [basis, recipe.name, reviewIdentity, statuses]);
 
   // Closing does not cancel the in-flight transaction, so every dismiss path is a no-op while it runs.
   const requestClose = useCallback(() => {
-    if (submitting) return;
+    if (!canDismissExport(submitting)) return;
     onClose();
   }, [onClose, submitting]);
 
@@ -400,10 +428,13 @@ export default function NutritionExportModal({
             onReviewAgain={() => {
               setPartialConfirmed(false);
               setOverwriteConfirmed(false);
-              if (outcome.status !== 'collision') {
-                const ref = status.ownership === 'own' && action === 'recreate' ? status.ref : null;
-                setName(ref?.foodName ?? defaultExportFoodName(recipe.name, basis));
-              }
+              setName(nameAfterReviewAgain({
+                outcome,
+                currentName: name,
+                recipeName: recipe.name,
+                statuses,
+                basis,
+              }));
               setOutcome(null);
             }}
           />
@@ -430,18 +461,16 @@ export default function NutritionExportModal({
     );
   }
   if (payload === null) return null;
-  const nameInvalid =
-    (action === 'create' || action === 'recreate') && validateTrackerFoodName(name) !== null;
-  const collision =
-    (action === 'create' || action === 'recreate') &&
-    findExportCollision(trackerFoodId(name), foods.items, status) !== null;
-  const disabled =
-    submitting ||
-    nameInvalid ||
-    collision ||
-    (payload.coverage === 'partial' && !partialConfirmed) ||
-    (action === 'update-overwrite-tracker-edits' && !overwriteConfirmed) ||
-    action === 'blocked';
+  const disabled = exportSubmitDisabled({
+    submitting,
+    action,
+    name,
+    foods,
+    status,
+    payload,
+    partialConfirmed,
+    overwriteConfirmed,
+  });
 
   const submit = async () => {
     const nextOutcome = await onCommit({
@@ -456,12 +485,7 @@ export default function NutritionExportModal({
     setOutcome(nextOutcome);
   };
 
-  const buttonLabel =
-    action === 'update' || action === 'update-overwrite-tracker-edits'
-      ? UPDATE_LABEL
-      : action === 'recreate'
-        ? RECREATE_LABEL
-        : CREATE_LABEL;
+  const buttonLabel = exportCommitLabel(action);
 
   return (
     <div
@@ -475,52 +499,58 @@ export default function NutritionExportModal({
           <h2 id="nutrition-export-title" className="text-lg font-semibold">
             {DIALOG_TITLE}
           </h2>
-          <Button variant="ghost" disabled={submitting} onClick={requestClose}>
+          <Button
+            variant="ghost"
+            disabled={submitting}
+            onClick={requestClose}
+          >
             {EXPORT_COPY.cancel}
           </Button>
         </div>
         <>
           {initialBasis === 'choose' ? (
-              <BasisStep
-                recipe={recipe}
-                result={result}
-                recipeId={recipeId}
-                basis={basis}
-                onChange={(nextBasis) => {
-                  setBasis(nextBasis);
-                  const row = statuses.find((item) => item.basis === nextBasis);
-                  const ref = row?.ownership === 'own' && row.target === 'missing' ? row.ref : null;
-                  setName(ref?.foodName ?? defaultExportFoodName(recipe.name, nextBasis));
-                  setPartialConfirmed(false);
-                  setOverwriteConfirmed(false);
-                }}
-              />
-            ) : null}
-            <ReviewStep
-              foods={foods}
-              status={status}
-              payload={payload}
-              action={action}
-              name={name}
-              onNameChange={setName}
-              partialConfirmed={partialConfirmed}
-              onPartialChange={setPartialConfirmed}
-              overwriteConfirmed={overwriteConfirmed}
-              onOverwriteChange={setOverwriteConfirmed}
+            <BasisStep
+              recipe={recipe}
+              result={result}
+              recipeId={recipeId}
+              basis={basis}
+              onChange={(nextBasis) => {
+                setBasis(nextBasis);
+                setName(initialExportName(recipe.name, statuses, nextBasis));
+                setPartialConfirmed(false);
+                setOverwriteConfirmed(false);
+              }}
             />
-            <div className="flex justify-end gap-2">
-              <Button variant="ghost" disabled={submitting} onClick={requestClose}>
-                {EXPORT_COPY.cancel}
-              </Button>
-              <Button
-                disabled={disabled}
-                onClick={() => {
-                  setSubmitting(true);
-                  void submit().finally(() => setSubmitting(false));
-                }}
-              >
-                {submitting ? EXPORT_COPY.saving : buttonLabel}
-              </Button>
+          ) : null}
+          <ReviewStep
+            foods={foods}
+            status={status}
+            payload={payload}
+            action={action}
+            name={name}
+            onNameChange={setName}
+            partialConfirmed={partialConfirmed}
+            onPartialChange={setPartialConfirmed}
+            overwriteConfirmed={overwriteConfirmed}
+            onOverwriteChange={setOverwriteConfirmed}
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="ghost"
+              disabled={submitting}
+              onClick={requestClose}
+            >
+              {EXPORT_COPY.cancel}
+            </Button>
+            <Button
+              disabled={disabled}
+              onClick={() => {
+                setSubmitting(true);
+                void submit().finally(() => setSubmitting(false));
+              }}
+            >
+              {submitting ? EXPORT_COPY.saving : buttonLabel}
+            </Button>
           </div>
         </>
       </div>

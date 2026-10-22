@@ -1,27 +1,23 @@
-"use client";
-
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: Firestore roots                                */
-/* ------------------------------------------------------------ */
-export const ROOT_COLLECTION = 'artifacts';
-export const APP_ID = 'recipe-standardizer';
-/**
- * CalorieTracker's Firestore app id. Its static site never sets
- * `window.__app_id`, so it falls back to 'default-app-id'
- * (see public/tools/CalorieTracker/config.js). Saved food items live at
- * artifacts/default-app-id/users/{uid}/foodItems/{foodId}.
- */
-export const CALORIE_TRACKER_APP_ID = 'default-app-id';
-
+/* --- CONFIGURATION: namespaces live in lib/namespaces.ts --- */
 /**
  * Firestore layout: one document per recipe at
  *   artifacts/recipe-standardizer/users/{uid}/recipes/{recipeId}
  *
  * A whole recipe (sections + ingredients + steps) is a few KB — far below
  * the 1 MB document limit — so a single document keeps loads/saves atomic
- * and needs no subcollections. First save creates the path implicitly; no
+ * and needs no subcollections. Updates replace the recipe in a revision-checked transaction. First save creates the path implicitly; no
  * manual Firestore seeding is required.
  */
+'use client';
+
+const MESSAGE_COPY = {
+  untitledRecipe: 'Untitled recipe',
+  missingRecipe: 'This recipe no longer exists in Firestore.',
+
+  invalidFoodDocumentIdS: (value0: unknown) => `Invalid food document ID(s): ${value0}`,
+  atMostFoodsCanBeCreated: (value0: unknown) => `At most ${value0} foods can be created at once.`,
+  duplicateFoodIdsInOneBatch: 'Duplicate food ids in one batch.',
+} as const;
 
 import {
   addDoc,
@@ -35,22 +31,42 @@ import {
   query,
   runTransaction,
   serverTimestamp,
-  setDoc,
   Timestamp,
   type CollectionReference,
   type DocumentReference,
   type FirestoreError,
 } from 'firebase/firestore';
+import { ROOT_COLLECTION, RECIPE_APP_ID, CALORIE_TRACKER_APP_ID } from './namespaces';
 import { db } from './firebase';
-import { parseRecipeJson, type ParseResult } from './schema';
+import { parseRecipeJson } from './schema';
 import type { Recipe, SavedRecipeMeta } from './types';
-import { FoodIdCollisionError, FoodLinkTargetChangedError, FoodTargetReappearedError, isValidFirestoreDocId, linkTargetChanged, parseTrackerFood, type LinkTarget, type TrackerFood, type TrackerFoodDoc } from './trackerFoods';
+import {
+  FoodIdCollisionError,
+  FoodLinkTargetChangedError,
+  FoodTargetReappearedError,
+  isValidFirestoreDocId,
+  linkTargetChanged,
+  parseTrackerFood,
+  type LinkTarget,
+  type TrackerFood,
+  type TrackerFoodDoc,
+} from './trackerFoods';
 import { MAX_INTAKE_ITEMS } from './nutritionIntake';
 import { assertExportRequestIds, runExportTransaction, type ExportTxPort } from './nutritionExportTx';
 import type { ExportCommitRequest } from './nutritionExport';
 
+import {
+  INITIAL_RECIPE_REVISION,
+  RECIPE_REVISION_FIELD,
+  readRecipeRevision,
+  runRecipeUpdateTransaction,
+  type LoadRecipeResult,
+  type RecipeUpdateResult,
+  type RecipeTxPort,
+} from './recipeRevision';
+
 const recipesCol = (uid: string): CollectionReference =>
-  collection(db, ROOT_COLLECTION, APP_ID, 'users', uid, 'recipes');
+  collection(db, ROOT_COLLECTION, RECIPE_APP_ID, 'users', uid, 'recipes');
 
 const foodItemsCol = (uid: string): CollectionReference =>
   collection(db, ROOT_COLLECTION, CALORIE_TRACKER_APP_ID, 'users', uid, 'foodItems');
@@ -69,8 +85,9 @@ export const watchRecipeList = (
         const recipe = data.recipe as Record<string, unknown> | undefined;
         return {
           id: docSnap.id,
-          name: typeof data.name === 'string' ? data.name : 'Untitled recipe',
+          name: typeof data.name === 'string' ? data.name : MESSAGE_COPY.untitledRecipe,
           updatedAtMs: updatedAt,
+          revision: readRecipeRevision(data),
           sectionCount: Array.isArray(recipe?.sections) ? recipe.sections.length : 0,
           ingredientCount: Array.isArray(recipe?.ingredients) ? recipe.ingredients.length : 0,
         };
@@ -81,43 +98,67 @@ export const watchRecipeList = (
   );
 
 /**
- * Recipes are stored as `{ name, recipe, createdAt, updatedAt }` where
+ * Recipes are stored as `{ name, recipe, createdAt, updatedAt, revision }` where
  * `recipe` is the full Recipe object. Loading re-runs the same strict
  * validator as import so a hand-edited or legacy document can never put the
  * UI into a half-valid state.
  */
-export const loadRecipe = async (uid: string, recipeId: string): Promise<ParseResult> => {
+export const loadRecipe = async (uid: string, recipeId: string): Promise<LoadRecipeResult> => {
   const snap = await getDoc(doc(recipesCol(uid), recipeId));
   if (!snap.exists()) {
-    return { ok: false, errors: ['This recipe no longer exists in Firestore.'] };
+    return {
+      ok: false,
+      errors: [MESSAGE_COPY.missingRecipe],
+      missing: true,
+    };
   }
   const data = snap.data() as Record<string, unknown>;
-  return parseRecipeJson(JSON.stringify(data.recipe ?? {}));
+  const parsed = parseRecipeJson(JSON.stringify(data.recipe ?? {}));
+  return parsed.ok ? { ...parsed, revision: readRecipeRevision(data) } : { ...parsed, missing: false };
 };
 
+/** Save new recipe helper. */
 export const saveNewRecipe = async (uid: string, recipe: Recipe): Promise<string> => {
   const ref = await addDoc(recipesCol(uid), {
     name: recipe.name,
     recipe,
+    [RECIPE_REVISION_FIELD]: INITIAL_RECIPE_REVISION,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
   return ref.id;
 };
 
-export const updateRecipe = async (uid: string, recipeId: string, recipe: Recipe): Promise<void> => {
-  await setDoc(doc(recipesCol(uid), recipeId), {
-    name: recipe.name,
-    recipe,
-    updatedAt: serverTimestamp(),
-  }, { merge: true });
-};
+/** Replace a saved recipe only at the explicitly reviewed revision; retain server export refs. */
+export const updateRecipe = async (
+  uid: string,
+  recipeId: string,
+  recipe: Recipe,
+  expectedRevision: number,
+): Promise<RecipeUpdateResult> => runTransaction(db, (transaction) => {
+  const port: RecipeTxPort<DocumentReference> = {
+    get: (ref) => transaction.get(ref),
+    update: (ref, data) => {
+      transaction.update(ref, data);
+    },
+  };
+  return runRecipeUpdateTransaction(
+    port,
+    doc(recipesCol(uid), recipeId),
+    { recipe, expectedRevision },
+    serverTimestamp(),
+  );
+});
 
+/** Delete is unconditional after the library's explicit confirmation. */
 export const deleteRecipe = async (uid: string, recipeId: string): Promise<void> => {
   await deleteDoc(doc(recipesCol(uid), recipeId));
 };
 
-/** Fetch full tracker food records for linking and nutrition math. This module creates foods and updates only a food this recipe previously exported, verifying it in-transaction; it never deletes tracker foods. */
+/**
+ * Fetch tracker foods for linking and nutrition math. Writes create foods or update verified own exports;
+ * this adapter never deletes tracker foods.
+ */
 export const fetchFoodItems = async (uid: string): Promise<TrackerFood[]> => {
   const snap = await getDocs(foodItemsCol(uid));
   return snap.docs
@@ -157,13 +198,16 @@ export const exportRecipeFood = async (uid: string, request: ExportCommitRequest
 /** Create new tracker foods atomically; never overwrites. */
 export const createFoodItemsIfAbsent = async (
   uid: string,
-  docs: { id: string; data: TrackerFoodDoc }[],
+  docs: {
+    id: string;
+    data: TrackerFoodDoc;
+  }[],
   guardIds: string[] = [],
   linkTargets: LinkTarget[] = [],
 ): Promise<void> => {
   const ids = docs.map((d) => d.id);
   const invalidIds = ids.filter((id) => !isValidFirestoreDocId(id));
-  if (invalidIds.length) throw new Error(`Invalid food document ID(s): ${invalidIds.join(', ')}`);
+  if (invalidIds.length) throw new Error(MESSAGE_COPY.invalidFoodDocumentIdS(invalidIds.join(', ')));
   const invalidLinkIds = [...new Set(linkTargets.map(({ id }) => id).filter((id) => !isValidFirestoreDocId(id)))];
   if (invalidLinkIds.length) throw new FoodLinkTargetChangedError(invalidLinkIds);
   const idSet = new Set(ids);
@@ -174,8 +218,8 @@ export const createFoodItemsIfAbsent = async (
   }
   const uniqueLinkTargets = [...linkTargetsById.values()];
   if (!docs.length && !uniqueGuardIds.length && !uniqueLinkTargets.length) return;
-  if (docs.length > MAX_INTAKE_ITEMS) throw new Error(`At most ${MAX_INTAKE_ITEMS} foods can be created at once.`);
-  if (new Set(ids).size !== ids.length) throw new Error('Duplicate food ids in one batch.');
+  if (docs.length > MAX_INTAKE_ITEMS) throw new Error(MESSAGE_COPY.atMostFoodsCanBeCreated(MAX_INTAKE_ITEMS));
+  if (new Set(ids).size !== ids.length) throw new Error(MESSAGE_COPY.duplicateFoodIdsInOneBatch);
   await runTransaction(db, async (tx) => {
     const refs = docs.map((d) => doc(foodItemsCol(uid), d.id));
     const guardRefs = uniqueGuardIds.map((id) => doc(foodItemsCol(uid), id));

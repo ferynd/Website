@@ -1,10 +1,25 @@
+/* --- CONFIGURATION: none --- */
+/** Execution steps consume named inputs and share ingredient equivalent caveats. */
 'use client';
 
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: none                                           */
-/* ------------------------------------------------------------ */
+const VIEW_COPY = {
+  after: 'After: ',
+  text: '.',
+  verifyContents: 'Verify contents',
+  optional: 'optional',
+} as const;
 
-import { ArrowRight, ChevronRight, Clock, Eye, Link2, Package, Thermometer, Wrench } from 'lucide-react';
+import EquivalentText from './EquivalentText';
+import {
+  ArrowRight,
+  ChevronRight,
+  Clock,
+  Eye,
+  Link2,
+  Package,
+  Thermometer,
+  Wrench,
+} from 'lucide-react';
 import { formatAmount } from '../lib/display';
 import type { Technique } from '../lib/techniques';
 import type { NormalizedExecutionSection, NormalizedStep } from '../lib/workflow';
@@ -19,16 +34,17 @@ interface ExecutionSectionCardProps {
   techniquesForStep: (stepId: string) => Technique[];
 }
 
-function StepInputChips({ step }: { step: NormalizedStep }) {
+function StepInputChips({ step }: {
+  step: NormalizedStep;
+}) {
   if (step.inputs.length === 0 && !step.resultName) return null;
   return (
     <div className="mt-1 flex flex-wrap gap-1.5">
       {step.inputs.map((input) => (
         <span
           key={`${input.kind}-${input.id}`}
-          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${
-            input.kind === 'prepGroup' ? 'bg-info/10 text-info' : 'bg-accent/10 text-accent'
-          }`}
+          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs ${input.kind === 'prepGroup' ? 'bg-info/10 text-info' : 'bg-accent/10 text-accent'
+            }`}
         >
           <Package size={11} /> {input.name}
         </span>
@@ -62,12 +78,11 @@ export default function ExecutionSectionCard({ data, recipe, factor, techniquesF
         {section.purpose && <p className="text-sm text-text-2">{section.purpose}</p>}
         {dependsOnNames.length > 0 && (
           <p className="flex items-center gap-1 text-xs text-text-3">
-            <Link2 size={12} /> After: {dependsOnNames.join(', ')}
+            <Link2 size={12} /> {VIEW_COPY.after}{dependsOnNames.join(', ')}
           </p>
         )}
         {section.notes && <p className="text-xs text-text-3">{section.notes}</p>}
       </div>
-
       <ol className="space-y-3">
         {steps.map((item, i) => {
           const { step } = item;
@@ -75,7 +90,7 @@ export default function ExecutionSectionCard({ data, recipe, factor, techniquesF
           const hasDisclosure = item.verifyIngredients.length > 0 || step.equipment.length > 0;
           return (
             <li key={step.id} className="flex gap-2 text-sm text-text">
-              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}.</span>
+              <span className="flex-shrink-0 tabular-nums text-text-3">{i + 1}{VIEW_COPY.text}</span>
               <div className="min-w-0 flex-1">
                 <p>{step.text}</p>
                 <StepInputChips step={item} />
@@ -107,7 +122,7 @@ export default function ExecutionSectionCard({ data, recipe, factor, techniquesF
                   <details className="group mt-1">
                     <summary className="cursor-pointer list-none [&::-webkit-details-marker]:hidden inline-flex items-center gap-1 rounded text-xs text-text-3 hover:text-text-2 focus-ring">
                       <ChevronRight size={12} className="transition-transform group-open:rotate-90" />
-                      Verify contents
+                      {VIEW_COPY.verifyContents}
                     </summary>
                     <div className="mt-1.5 space-y-1.5 ps-4">
                       {item.verifyIngredients.length > 0 && (
@@ -119,11 +134,11 @@ export default function ExecutionSectionCard({ data, recipe, factor, techniquesF
                                 <span className="font-medium tabular-nums">{amount.grams}</span>
                                 {amount.equivalent && (
                                   <span className="text-text-3">
-                                    ({amount.equivalent}{amount.equivalentUnscaled ? ' at 1×' : ''})
+                                    <EquivalentText text={amount.equivalent} note={amount.equivalentNote} />
                                   </span>
                                 )}
                                 <span>{ing.displayName}</span>
-                                {ing.optional && <span className="italic text-text-3">optional</span>}
+                                {ing.optional && <span className="italic text-text-3">{VIEW_COPY.optional}</span>}
                               </li>
                             );
                           })}

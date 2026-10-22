@@ -1,7 +1,8 @@
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: grocery group fallback label                   */
-/* ------------------------------------------------------------ */
+/* --- CONFIGURATION: grocery group fallback label --- */
+/** Derived shopping lists. Consolidated lines discard unreliable single-entry equivalents. */
+
 const UNCATEGORIZED_LABEL = 'Other';
+const NO_SECTION_LABEL = 'No section';
 
 /**
  * Consolidated shopping / pantry-pull / mise en place list.
@@ -13,9 +14,11 @@ const UNCATEGORIZED_LABEL = 'Other';
  * grams.
  */
 
-import { scaleEquivalentText, scaleQuantityG } from './scaling';
+import { describeEquivalent, type EquivalentNote } from './display';
+import { scaleQuantityG } from './scaling';
 import type { Recipe, RecipeIngredient, RecipeSection } from './types';
 
+/** Shopping item contract. */
 export interface ShoppingItem {
   /** Normalized-name consolidation key. */
   key: string;
@@ -26,21 +29,24 @@ export interface ShoppingItem {
   hasUnweighedPart: boolean;
   /** Scaled equivalent text, only when the line came from a single entry. */
   equivalent: string | null;
-  /** True when `equivalent` could not be scaled and shows the baseline (1×) text. */
-  equivalentUnscaled: boolean;
+  /** Shared live-scale or persisted bake caveat for a single equivalent. */
+  equivalentNote: EquivalentNote;
   groceryCategory: string;
   optional: boolean;
   sectionIds: string[];
   ingredientIds: string[];
 }
 
+/** Shopping group contract. */
 export interface ShoppingGroup {
   label: string;
   items: ShoppingItem[];
 }
 
+/** Shopping order contract. */
 export type ShoppingOrder = 'workflow' | 'grocery';
 
+/** Normalize ingredient name helper. */
 export const normalizeIngredientName = (name: string): string =>
   name
     .toLowerCase()
@@ -48,15 +54,19 @@ export const normalizeIngredientName = (name: string): string =>
     .replace(/\s+/g, ' ')
     .trim();
 
+/** Build shopping items helper. */
 export const buildShoppingItems = (recipe: Recipe, factor: number): ShoppingItem[] => {
-  const byKey = new Map<string, { item: ShoppingItem; entries: RecipeIngredient[] }>();
+  const byKey = new Map<string, {
+    item: ShoppingItem;
+    entries: RecipeIngredient[];
+  }>();
 
   recipe.ingredients.forEach((ing) => {
     const key = normalizeIngredientName(ing.displayName) || ing.id;
     const scaledG = scaleQuantityG(ing.quantityG, factor);
     const existing = byKey.get(key);
     if (!existing) {
-      const scaledEquivalent = ing.equivalent ? scaleEquivalentText(ing.equivalent, factor) : null;
+      const equivalent = describeEquivalent(ing, factor);
       byKey.set(key, {
         entries: [ing],
         item: {
@@ -64,9 +74,9 @@ export const buildShoppingItems = (recipe: Recipe, factor: number): ShoppingItem
           displayName: ing.displayName,
           totalQuantityG: scaledG,
           hasUnweighedPart: scaledG === null,
-          equivalent: ing.equivalent ? scaledEquivalent ?? ing.equivalent : null,
+          equivalent: equivalent.text,
           // Baseline-text fallback must be labeled, same as the workflow view.
-          equivalentUnscaled: Boolean(ing.equivalent && scaledEquivalent === null && factor !== 1),
+          equivalentNote: equivalent.note,
           groceryCategory: ing.groceryCategory,
           optional: ing.optional,
           sectionIds: [...ing.sectionIds],
@@ -84,7 +94,7 @@ export const buildShoppingItems = (recipe: Recipe, factor: number): ShoppingItem
     }
     // Consolidated lines drop the single-entry equivalent — summed free text is unreliable.
     item.equivalent = null;
-    item.equivalentUnscaled = false;
+    item.equivalentNote = { kind: 'none' };
     item.optional = item.optional && ing.optional;
     if (!item.groceryCategory && ing.groceryCategory) item.groceryCategory = ing.groceryCategory;
     ing.sectionIds.forEach((sid) => {
@@ -154,7 +164,7 @@ export const groupShoppingItems = (
   const unplaced = items.filter((item) => !placed.has(item.key));
   if (unplaced.length > 0) {
     groups.push({
-      label: 'No section',
+      label: NO_SECTION_LABEL,
       items: [...unplaced].sort((a, b) => a.displayName.localeCompare(b.displayName)),
     });
   }

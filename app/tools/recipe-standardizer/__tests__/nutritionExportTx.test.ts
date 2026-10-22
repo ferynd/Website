@@ -1,4 +1,6 @@
 /* --- CONFIGURATION: fake export transaction paths --- */
+/** Regression coverage for nutritionExportTx.test. Fixtures remain local and do not access production data. */
+
 const FAKE_TS = { fakeServerTimestamp: true };
 const FOOD_PATH = (id: string): string => `foodItems/${id}`;
 const RECIPE_PATH = 'recipes/recipe-1';
@@ -7,6 +9,7 @@ const RECIPE_PATH = 'recipes/recipe-1';
  * Exercises the transaction body with a read-before-write fake and commit-on-success staging.
  */
 
+import { RecipeRevisionConflictError } from '../lib/recipeRevision';
 import { describe, expect, it } from 'vitest';
 import { butterCookiesRecipe, foodsReady, sourceFoodsReady } from './exportFixtures';
 import {
@@ -38,7 +41,7 @@ class FakeSnapshot implements ExportTxSnapshot {
   constructor(
     private readonly value: unknown,
     private readonly present: boolean,
-  ) {}
+  ) { }
   exists(): boolean {
     return this.present;
   }
@@ -52,7 +55,7 @@ class FakeTx implements ExportTxPort<string> {
   private hasWritten = false;
   readonly operations: string[] = [];
 
-  constructor(readonly store: Map<string, unknown>) {}
+  constructor(readonly store: Map<string, unknown>) { }
 
   async get(ref: string): Promise<ExportTxSnapshot> {
     if (this.hasWritten) throw new Error('reads must precede writes');
@@ -102,6 +105,7 @@ const makeRequest = (basis: 'perPortion' | 'per100gCooked' = 'perPortion'): Expo
     foods,
   });
   return buildExportCommitRequest({
+    recipeRevision: 0,
     recipe,
     recipeId: 'recipe-1',
     basis,
@@ -125,7 +129,11 @@ const recipeDoc = (extra: Record<string, unknown> = {}) => ({
 
 const run = async (request: ExportCommitRequest, store: Map<string, unknown>) => {
   const tx = new FakeTx(store);
-  const refs = { food: FOOD_PATH(request.foodId), recipe: RECIPE_PATH, sourceFood: FOOD_PATH };
+  const refs = {
+    food: FOOD_PATH(request.foodId),
+    recipe: RECIPE_PATH,
+    sourceFood: FOOD_PATH,
+  };
   await runExportTransaction(tx, refs, request, FAKE_TS);
   tx.commit();
   return tx;
@@ -144,7 +152,13 @@ describe('nutritionExportTx', () => {
     await run(request, store);
     expect(store.get(FOOD_PATH(request.foodId))).toEqual(request.doc);
     expect(
-      (store.get(RECIPE_PATH) as { recipe: { nutritionExports: { perPortion: unknown } } }).recipe
+      (store.get(RECIPE_PATH) as {
+        recipe: {
+          nutritionExports: {
+            perPortion: unknown;
+          };
+        };
+      }).recipe
         .nutritionExports.perPortion,
     ).toEqual(request.nextRef);
   });
@@ -156,7 +170,11 @@ describe('nutritionExportTx', () => {
     await expect(run(request, store)).rejects.toBeInstanceOf(FoodIdCollisionError);
     expect(store.get(FOOD_PATH(request.foodId))).toEqual(original);
     expect(
-      (store.get(RECIPE_PATH) as { recipe: { nutritionExports: object } }).recipe.nutritionExports,
+      (store.get(RECIPE_PATH) as {
+        recipe: {
+          nutritionExports: object;
+        };
+      }).recipe.nutritionExports,
     ).toEqual({});
   });
 
@@ -186,6 +204,7 @@ describe('nutritionExportTx', () => {
       foods: foodsReady(currentFood),
     });
     const request = buildExportCommitRequest({
+      recipeRevision: 0,
       recipe: withRef,
       recipeId: 'recipe-1',
       basis: 'perPortion',
@@ -239,7 +258,11 @@ describe('nutritionExportTx', () => {
       };
       const changed =
         field === 'quantity' ? { ...request.doc, quantity: 2 } : { ...request.doc, name: 'Different' };
-      const updateRequest = { ...request, mode: 'update' as const, expectedTarget: expected };
+      const updateRequest = {
+        ...request,
+        mode: 'update' as const,
+        expectedTarget: expected,
+      };
       const store = seed(updateRequest);
       store.set(FOOD_PATH(request.foodId), changed);
       await expect(run(updateRequest, store)).rejects.toBeInstanceOf(ExportTargetChangedError);
@@ -251,7 +274,12 @@ describe('nutritionExportTx', () => {
     const updateRequest = {
       ...request,
       mode: 'update' as const,
-      expectedTarget: { id: request.foodId, fingerprint: 'x', normalizedName: 'x', lastUpdated: null },
+      expectedTarget: {
+        id: request.foodId,
+        fingerprint: 'x',
+        normalizedName: 'x',
+        lastUpdated: null,
+      },
     };
     await expect(run(updateRequest, seed(updateRequest))).rejects.toBeInstanceOf(ExportTargetMissingError);
   });
@@ -270,10 +298,18 @@ describe('nutritionExportTx', () => {
     };
     const store = seed({ ...request, mode: 'update' }, true);
     store.set(FOOD_PATH(request.foodId), observedDoc);
-    await run({ ...request, mode: 'update', expectedTarget }, store);
+    await run({
+      ...request,
+      mode: 'update',
+      expectedTarget,
+    }, store);
     const nextStore = seed({ ...request, mode: 'update' }, true);
     nextStore.set(FOOD_PATH(request.foodId), changedAgain);
-    await expect(run({ ...request, mode: 'update', expectedTarget }, nextStore)).rejects.toBeInstanceOf(
+    await expect(run({
+      ...request,
+      mode: 'update',
+      expectedTarget,
+    }, nextStore)).rejects.toBeInstanceOf(
       ExportTargetChangedError,
     );
   });
@@ -282,7 +318,11 @@ describe('nutritionExportTx', () => {
     const request = makeRequest();
     const store = seed(request);
     (
-      store.get(RECIPE_PATH) as { recipe: { nutritionExports: Record<string, unknown> } }
+      store.get(RECIPE_PATH) as {
+        recipe: {
+          nutritionExports: Record<string, unknown>;
+        };
+      }
     ).recipe.nutritionExports.perPortion = { ...request.nextRef, exportedAtMs: 99 };
     await expect(run(request, store)).rejects.toBeInstanceOf(ExportRefChangedError);
   });
@@ -291,7 +331,11 @@ describe('nutritionExportTx', () => {
     const request = makeRequest();
     const store = seed(request);
     (
-      store.get(RECIPE_PATH) as { recipe: { nutritionExports: Record<string, unknown> } }
+      store.get(RECIPE_PATH) as {
+        recipe: {
+          nutritionExports: Record<string, unknown>;
+        };
+      }
     ).recipe.nutritionExports.perPortion = request.nextRef;
     await expect(run(request, store)).rejects.toBeInstanceOf(ExportRefChangedError);
   });
@@ -306,7 +350,12 @@ describe('nutritionExportTx', () => {
     async (sourceExists) => {
       const request = {
         ...makeRequest(),
-        sourceTargets: [{ id: 'source', fingerprint: 'old', normalizedName: 'source', lastUpdated: 'old' }],
+        sourceTargets: [{
+          id: 'source',
+          fingerprint: 'old',
+          normalizedName: 'source',
+          lastUpdated: 'old',
+        }],
       };
       const store = seed(request);
       if (sourceExists) {
@@ -321,7 +370,11 @@ describe('nutritionExportTx', () => {
       }
       await expect(run(request, store)).rejects.toBeInstanceOf(FoodLinkTargetChangedError);
       expect(
-        (store.get(RECIPE_PATH) as { recipe: { nutritionExports: object } }).recipe.nutritionExports,
+        (store.get(RECIPE_PATH) as {
+          recipe: {
+            nutritionExports: object;
+          };
+        }).recipe.nutritionExports,
       ).toEqual({});
     },
   );
@@ -347,7 +400,11 @@ describe('nutritionExportTx', () => {
       normalizedName: 'butter cookies per portion',
       lastUpdated: existingFood.lastUpdated,
     };
-    const updated = { ...request, mode: 'update' as const, expectedTarget };
+    const updated = {
+      ...request,
+      mode: 'update' as const,
+      expectedTarget,
+    };
     const store = seed(updated, true);
     store.set(FOOD_PATH(request.foodId), existingDoc);
     await run(updated, store);
@@ -359,15 +416,26 @@ describe('nutritionExportTx', () => {
     ]);
   });
 
-  it('recipe update touches only recipe.nutritionExports.<basis> and updatedAt', async () => {
+  it('recipe update touches only recipe.nutritionExports.<basis>, updatedAt, and revision', async () => {
     const request = makeRequest();
     const store = seed(request);
-    (store.get(RECIPE_PATH) as { recipe: Record<string, unknown> }).recipe.extraField = 'preserved';
+    (store.get(RECIPE_PATH) as {
+      recipe: Record<string, unknown>;
+    }).recipe.extraField = 'preserved';
     await run(request, store);
-    expect((store.get(RECIPE_PATH) as { recipe: { extraField: string } }).recipe.extraField).toBe(
+    expect((store.get(RECIPE_PATH) as {
+      recipe: {
+        extraField: string;
+      };
+    }).recipe.extraField).toBe(
       'preserved',
     );
-    expect((store.get(RECIPE_PATH) as { updatedAt: unknown }).updatedAt).toBe(FAKE_TS);
+    expect((store.get(RECIPE_PATH) as {
+      updatedAt: unknown;
+    }).updatedAt).toBe(FAKE_TS);
+    expect((store.get(RECIPE_PATH) as {
+      revision: number;
+    }).revision).toBe(1);
   });
 
   it('writing the per100g ref keeps an existing perPortion ref intact', async () => {
@@ -375,12 +443,20 @@ describe('nutritionExportTx', () => {
     const existing = makeRequest().nextRef;
     const store = seed(request);
     (
-      store.get(RECIPE_PATH) as { recipe: { nutritionExports: Record<string, unknown> } }
+      store.get(RECIPE_PATH) as {
+        recipe: {
+          nutritionExports: Record<string, unknown>;
+        };
+      }
     ).recipe.nutritionExports.perPortion = existing;
     request.previousRef = null;
     await run(request, store);
     expect(
-      (store.get(RECIPE_PATH) as { recipe: { nutritionExports: Record<string, unknown> } }).recipe
+      (store.get(RECIPE_PATH) as {
+        recipe: {
+          nutritionExports: Record<string, unknown>;
+        };
+      }).recipe
         .nutritionExports.perPortion,
     ).toEqual(existing);
   });
@@ -392,7 +468,12 @@ describe('nutritionExportTx', () => {
       { ...request, recipeId: 'bad/id' },
       {
         ...request,
-        sourceTargets: [{ id: 'bad/id', fingerprint: '', normalizedName: '', lastUpdated: null }],
+        sourceTargets: [{
+          id: 'bad/id',
+          fingerprint: '',
+          normalizedName: '',
+          lastUpdated: null,
+        }],
       },
     ];
     for (const invalidRequest of invalidRequests) {
@@ -400,7 +481,11 @@ describe('nutritionExportTx', () => {
       await expect(
         runExportTransaction(
           tx,
-          { food: FOOD_PATH('food'), recipe: RECIPE_PATH, sourceFood: FOOD_PATH },
+          {
+            food: FOOD_PATH('food'),
+            recipe: RECIPE_PATH,
+            sourceFood: FOOD_PATH,
+          },
           invalidRequest,
           FAKE_TS,
         ),
@@ -408,5 +493,32 @@ describe('nutritionExportTx', () => {
       expect(tx.operations).toEqual([]);
       expect(() => assertExportRequestIds(invalidRequest)).toThrow();
     }
+  });
+});
+
+describe('export recipe revision', () => {
+  it('aborts with RecipeRevisionConflictError when the recipe revision changed since review, nothing written', async () => {
+    const request = makeRequest();
+    const store = seed(request);
+    (store.get(RECIPE_PATH) as Record<string, unknown>).revision = 2;
+    const before = structuredClone(store);
+    await expect(run(request, store)).rejects.toBeInstanceOf(RecipeRevisionConflictError);
+    expect(store).toEqual(before);
+  });
+  it('legacy recipe doc without revision exports at expected revision 0 and becomes revision 1', async () => {
+    const request = makeRequest();
+    const store = seed(request);
+    await run(request, store);
+    expect((store.get(RECIPE_PATH) as Record<string, unknown>).revision).toBe(1);
+  });
+  it('revision check runs before the export-ref check', async () => {
+    const request = makeRequest();
+    const store = seed(request);
+    (store.get(RECIPE_PATH) as Record<string, unknown>).revision = 2;
+    request.previousRef = request.nextRef;
+    await expect(run(request, store)).rejects.toBeInstanceOf(RecipeRevisionConflictError);
+  });
+  it('missing recipe still throws ExportRecipeMissingError', async () => {
+    await expect(run(makeRequest(), new Map())).rejects.toBeInstanceOf(ExportRecipeMissingError);
   });
 });

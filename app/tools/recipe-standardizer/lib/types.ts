@@ -1,6 +1,6 @@
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: recipe schema version                          */
-/* ------------------------------------------------------------ */
+/* --- CONFIGURATION: recipe schema version --- */
+/** Recipe data contracts. Grams are authoritative; baked-equivalent annotations retain old-batch provenance. */
+
 export const RECIPE_SCHEMA_VERSION = 2;
 
 /** Recipe nutrition bases that can be exported as a Nutrition Tracker food. */
@@ -49,7 +49,7 @@ export interface RecipeNutritionExport {
 export type RecipeNutritionExports = Partial<Record<NutritionExportBasisKey, RecipeNutritionExport>>;
 
 /**
- * Recipe Standardizer data model.
+ * Recipe Standardizer data model. Baked-equivalent annotations persist cumulative unscaled measures.
  *
  * Grams (`quantityG`) are the source of truth for every quantity; the
  * `equivalent` string is display-only secondary text ("2 cups", "3 cloves").
@@ -79,6 +79,7 @@ export type RecipeNutritionExports = Partial<Record<NutritionExportBasisKey, Rec
 
 export type SectionType = 'prep' | 'execution' | 'combined';
 
+/** Recipe section contract. */
 export interface RecipeSection {
   id: string;
   name: string;
@@ -92,10 +93,13 @@ export interface RecipeSection {
 }
 
 /* CONFIGURATION: gram-basis bounds */
+/** Max grams per unit helper. */
 export const MAX_GRAMS_PER_UNIT = 10000;
 
+/** Nutrition link status contract. */
 export type NutritionLinkStatus = 'unlinked' | 'candidate' | 'confirmed' | 'no-match';
 
+/** Nutrition link contract. */
 export interface NutritionLink {
   status: NutritionLinkStatus;
   /** Tracker foodItems doc id — set for candidate/confirmed, null otherwise. */
@@ -116,6 +120,7 @@ export interface NutritionLink {
   targetFingerprint: string | null;
 }
 
+/** Unlinked nutrition helper. */
 export const UNLINKED_NUTRITION: NutritionLink = {
   status: 'unlinked',
   foodItemId: null,
@@ -129,8 +134,12 @@ export const UNLINKED_NUTRITION: NutritionLink = {
 };
 
 /** Lightweight shape used for name matching. */
-export interface FoodItemRef { id: string; name: string; }
+export interface FoodItemRef {
+  id: string;
+  name: string;
+}
 
+/** Recipe ingredient contract. */
 export interface RecipeIngredient {
   id: string;
   displayName: string;
@@ -138,6 +147,8 @@ export interface RecipeIngredient {
   quantityG: number | null;
   /** Secondary human-friendly measure, e.g. "2 cups" or "1 large egg". */
   equivalent: string;
+  /** Cumulative baked scale between the equivalent's original batch and current grams; null if current. */
+  equivalentBakeFactor: number | null;
   prepNote: string;
   /** Every section this ingredient appears in. */
   sectionIds: string[];
@@ -156,10 +167,25 @@ export interface RecipeIngredient {
  * just-in-time prep must immediately precede.
  */
 export type PrepTiming =
-  | { when: 'start'; note: string }
-  | { when: 'during-wait'; waitEntryId: string; note: string }
-  | { when: 'after-section'; sectionId: string; note: string }
-  | { when: 'just-in-time'; beforeStepId: string; note: string };
+  | {
+    when: 'start';
+    note: string;
+  }
+  | {
+    when: 'during-wait';
+    waitEntryId: string;
+    note: string;
+  }
+  | {
+    when: 'after-section';
+    sectionId: string;
+    note: string;
+  }
+  | {
+    when: 'just-in-time';
+    beforeStepId: string;
+    note: string;
+  };
 
 /**
  * A named staged input that exists before an execution step and can safely
@@ -191,6 +217,7 @@ export interface StepResult {
   name: string;
 }
 
+/** Recipe step contract. */
 export interface RecipeStep {
   id: string;
   sectionId: string;
@@ -213,9 +240,18 @@ export interface RecipeStep {
 
 /** A typed pointer from a timeline entry to the entity it schedules. */
 export type WorkflowReference =
-  | { kind: 'section'; id: string }
-  | { kind: 'step'; id: string }
-  | { kind: 'prepGroup'; id: string };
+  | {
+    kind: 'section';
+    id: string;
+  }
+  | {
+    kind: 'step';
+    id: string;
+  }
+  | {
+    kind: 'prepGroup';
+    id: string;
+  };
 
 /** An alternative timing path (e.g. room-temp thaw vs refrigerator thaw). */
 export interface TimelineAlternative {
@@ -225,6 +261,7 @@ export interface TimelineAlternative {
   note: string;
 }
 
+/** Timeline kind contract. */
 export type TimelineKind = 'prep' | 'execution' | 'wait' | 'serve';
 
 /**
@@ -262,6 +299,7 @@ export interface TechniqueOverride {
   help: string;
 }
 
+/** Recipe servings contract. */
 export interface RecipeServings {
   baselineServings: number | null;
   currentServings: number | null;
@@ -269,16 +307,22 @@ export interface RecipeServings {
   portionSizeG: number | null;
 }
 
+/** Recipe yield contract. */
 export interface RecipeYield {
   estimatedFinalWeightG: number | null;
   actualFinalWeightG: number | null;
   yieldNotes: string;
 }
 
+/** Recipe contract. */
 export interface Recipe {
   schemaVersion: number;
   name: string;
-  source: { type: string; url: string; notes: string };
+  source: {
+    type: string;
+    url: string;
+    notes: string;
+  };
   servings: RecipeServings;
   yield: RecipeYield;
   sections: RecipeSection[];
@@ -298,6 +342,8 @@ export interface SavedRecipeMeta {
   id: string;
   name: string;
   updatedAtMs: number | null;
+  /** Stored doc revision (0 for pre-P5 docs). */
+  revision: number;
   sectionCount: number;
   ingredientCount: number;
 }

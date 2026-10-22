@@ -1,9 +1,16 @@
+/* --- CONFIGURATION: none --- */
+/** Shopping and grocery checklists derive amounts from ingredients and share equivalent caveats. */
 'use client';
 
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: none                                           */
-/* ------------------------------------------------------------ */
+const VIEW_COPY = {
+  unweighedPart: ' + unweighed part',
+  noWeight: 'no weight',
+  optional: 'optional',
+  usedIn: 'used in ',
+  sections: 'sections',
+} as const;
 
+import EquivalentText from './EquivalentText';
 import { useMemo } from 'react';
 import { buildShoppingItems, groupShoppingItems, type ShoppingOrder } from '../lib/shoppingList';
 import { formatGrams } from '../lib/scaling';
@@ -50,14 +57,16 @@ export default function ConsolidatedList({ recipe, factor, order, checked, onTog
                     <span className={`text-text ${isChecked ? 'line-through' : ''}`}>{item.displayName}</span>
                     <span className="font-medium tabular-nums text-text-2">
                       {item.totalQuantityG !== null ? formatGrams(item.totalQuantityG) : ''}
-                      {item.hasUnweighedPart ? (item.totalQuantityG !== null ? ' + unweighed part' : 'no weight') : ''}
+                      {item.hasUnweighedPart ? (item.totalQuantityG !== null ? VIEW_COPY.unweighedPart : VIEW_COPY.noWeight) : ''}
                     </span>
                     {item.equivalent && (
-                      <span className="text-text-3">({item.equivalent}{item.equivalentUnscaled ? ' at 1×' : ''})</span>
+                      <span className="text-text-3">
+                        <EquivalentText text={item.equivalent} note={item.equivalentNote} />
+                      </span>
                     )}
-                    {item.optional && <span className="text-xs italic text-text-3">optional</span>}
+                    {item.optional && <span className="text-xs italic text-text-3">{VIEW_COPY.optional}</span>}
                     {item.ingredientIds.length > 1 && (
-                      <span className="text-xs text-text-3">used in {item.sectionIds.length} sections</span>
+                      <span className="text-xs text-text-3">{VIEW_COPY.usedIn}{item.sectionIds.length} {VIEW_COPY.sections}</span>
                     )}
                   </label>
                 </li>

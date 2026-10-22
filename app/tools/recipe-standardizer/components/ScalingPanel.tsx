@@ -1,8 +1,51 @@
+/* --- CONFIGURATION: scaling controls and copy --- */
+/** Scale controls keep the baseline unchanged until an explicit bake and review. */
 'use client';
 
-/* ------------------------------------------------------------ */
-/* CONFIGURATION: none                                           */
-/* ------------------------------------------------------------ */
+const VIEW_COPY = {
+  multiplierError: 'Enter a positive multiplier (scale 0.001×–1000×).',
+  servingsError: 'Enter a positive serving count (scale 0.001×–1000×).',
+  missingServings:
+    'This recipe has no baselineServings, so serving-based scaling is ' +
+    'unavailable — use a multiplier or weight instead.',
+  weightError:
+    'Enter a positive weight with an actual/estimated reference weight (scale ' +
+    '0.001×–1000×).',
+  portionsError:
+    'Enter a positive portion count and size with a reference weight (scale ' +
+    '0.001×–1000×).',
+
+  currentScale: 'Current scale: ',
+  text: '— ',
+  resetTo1: 'Reset to 1×',
+  bakeScaleIntoRecipe: 'Bake scale into recipe…',
+  scalingAdjustsAWorkingCopyOf:
+    'Scaling adjusts a working copy of the quantities. Grams are the source of ' +
+    'truth; equivalent measures are scaled when their leading number can be ' +
+    'parsed, otherwise shown “at 1×”. Baking the scale in rewrites baseline ' +
+    'grams; equivalents that can\'t be rescaled are listed for review first, then ' +
+    'it asks how to save.',
+  batchMultiplier: 'Batch multiplier',
+  example15: '1.5',
+  apply: 'Apply',
+  servings: 'Servings ',
+  baseline: '(baseline ',
+  text2: ')',
+  noBaseline: '(no baseline)',
+  example12: '12',
+  targetServings: 'Target servings',
+  targetFinalWeight: 'Target final weight',
+  actual: 'actual',
+  estimated: 'estimated',
+  noReferenceWeight: '(no reference weight)',
+  example2000: '2000',
+  targetFinalWeightInGrams: 'Target final weight in grams',
+  portionsSize: 'Portions × size',
+  example10: '10',
+  portionCount: 'Portion count',
+  example150G: '150 g',
+  portionSizeInGrams: 'Portion size in grams',
+} as const;
 
 import { useState } from 'react';
 import { RotateCcw, Scale } from 'lucide-react';
@@ -59,38 +102,54 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface-2 p-3">
         <Scale size={18} className="text-accent" />
         <p className="text-sm text-text">
-          Current scale: <span className="font-semibold">{formatFactor(scale.factor)}</span>
-          {scaleActive && <span className="text-text-3"> — {scale.label}</span>}
+          {VIEW_COPY.currentScale}
+          <span className="font-semibold">{formatFactor(scale.factor)}</span>
+          {scaleActive && <span className="text-text-3"> {VIEW_COPY.text}{scale.label}</span>}
         </p>
         {scaleActive && (
           <div className="ml-auto flex gap-2">
-            <Button size="sm" variant="ghost" onClick={() => onScaleChange({ factor: 1, label: 'baseline' })} className="inline-flex items-center gap-1">
-              <RotateCcw size={14} /> Reset to 1×
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onScaleChange({ factor: 1, label: 'baseline' })}
+              className="inline-flex items-center gap-1"
+            >
+              <RotateCcw size={14} /> {VIEW_COPY.resetTo1}
             </Button>
-            <Button size="sm" variant="secondary" onClick={onBakeScale}>
-              Bake scale into recipe…
-            </Button>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={onBakeScale}
+            >
+              {VIEW_COPY.bakeScaleIntoRecipe}</Button>
           </div>
         )}
       </div>
       <p className="text-xs text-text-3">
-        Scaling adjusts a working copy of the quantities. Grams are the source of truth; equivalent
-        measures are scaled when their leading number can be parsed, otherwise shown “at 1×”.
-        Baking the scale in rewrites baseline grams and then asks how to save.
-      </p>
-
+        {VIEW_COPY.scalingAdjustsAWorkingCopyOf}</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <form
           className="rounded-lg border border-border bg-surface-2 p-3 space-y-2"
-          onSubmit={(e) => { e.preventDefault(); apply(factorFromMultiplier(Number(multiplier)), 'Enter a positive multiplier (scale 0.001×–1000×).'); }}
+          onSubmit={(e) => {
+            e.preventDefault();
+            apply(factorFromMultiplier(Number(multiplier)), VIEW_COPY.multiplierError);
+          }}
         >
-          <p className="text-sm font-medium text-text">Batch multiplier</p>
+          <p className="text-sm font-medium text-text">{VIEW_COPY.batchMultiplier}</p>
           <div className="flex items-end gap-2">
-            <Input type="number" min={0} step="any" placeholder="1.5" value={multiplier} onChange={(e) => setMultiplier(e.target.value)} wrapperClassName="flex flex-col flex-1" aria-label="Batch multiplier" />
-            <Button size="sm" type="submit">Apply</Button>
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              placeholder={VIEW_COPY.example15}
+              value={multiplier}
+              onChange={(e) => setMultiplier(e.target.value)}
+              wrapperClassName="flex flex-col flex-1"
+              aria-label={VIEW_COPY.batchMultiplier}
+            />
+            <Button size="sm" type="submit">{VIEW_COPY.apply}</Button>
           </div>
         </form>
-
         <form
           className="rounded-lg border border-border bg-surface-2 p-3 space-y-2"
           onSubmit={(e) => {
@@ -98,20 +157,32 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
             apply(
               factorFromServings(Number(servings), baseline),
               baseline
-                ? 'Enter a positive serving count (scale 0.001×–1000×).'
-                : 'This recipe has no baselineServings, so serving-based scaling is unavailable — use a multiplier or weight instead.',
+                ? VIEW_COPY.servingsError
+                : VIEW_COPY.missingServings,
             );
           }}
         >
           <p className="text-sm font-medium text-text">
-            Servings {baseline ? <span className="text-text-3">(baseline {baseline})</span> : <span className="text-text-3">(no baseline)</span>}
+            {VIEW_COPY.servings}{baseline ? <span className="text-text-3">{VIEW_COPY.baseline}{baseline}{VIEW_COPY.text2}</span> : <span className="text-text-3">{VIEW_COPY.noBaseline}</span>}
           </p>
           <div className="flex items-end gap-2">
-            <Input type="number" min={0} step="any" placeholder="12" value={servings} onChange={(e) => setServings(e.target.value)} wrapperClassName="flex flex-col flex-1" aria-label="Target servings" />
-            <Button size="sm" type="submit" disabled={!baseline}>Apply</Button>
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              placeholder={VIEW_COPY.example12}
+              value={servings}
+              onChange={(e) => setServings(e.target.value)}
+              wrapperClassName="flex flex-col flex-1"
+              aria-label={VIEW_COPY.targetServings}
+            />
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!baseline}
+            >{VIEW_COPY.apply}</Button>
           </div>
         </form>
-
         <form
           className="rounded-lg border border-border bg-surface-2 p-3 space-y-2"
           onSubmit={(e) => {
@@ -125,19 +196,31 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
           }}
         >
           <p className="text-sm font-medium text-text">
-            Target final weight{' '}
+            {VIEW_COPY.targetFinalWeight}{' '}
             <span className="text-text-3">
               {refWeight
-                ? `(reference ${Math.round(refWeight)} g ${recipe.yield.actualFinalWeightG ? 'actual' : 'estimated'})`
-                : '(no reference weight)'}
+                ? `(reference ${Math.round(refWeight)} g ${recipe.yield.actualFinalWeightG ? VIEW_COPY.actual : VIEW_COPY.estimated})`
+                : VIEW_COPY.noReferenceWeight}
             </span>
           </p>
           <div className="flex items-end gap-2">
-            <Input type="number" min={0} step="any" placeholder="2000" value={targetWeight} onChange={(e) => setTargetWeight(e.target.value)} wrapperClassName="flex flex-col flex-1" aria-label="Target final weight in grams" />
-            <Button size="sm" type="submit" disabled={!refWeight}>Apply</Button>
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              placeholder={VIEW_COPY.example2000}
+              value={targetWeight}
+              onChange={(e) => setTargetWeight(e.target.value)}
+              wrapperClassName="flex flex-col flex-1"
+              aria-label={VIEW_COPY.targetFinalWeightInGrams}
+            />
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!refWeight}
+            >{VIEW_COPY.apply}</Button>
           </div>
         </form>
-
         <form
           className="rounded-lg border border-border bg-surface-2 p-3 space-y-2"
           onSubmit={(e) => {
@@ -150,15 +233,36 @@ export default function ScalingPanel({ recipe, scale, onScaleChange, onBakeScale
             );
           }}
         >
-          <p className="text-sm font-medium text-text">Portions × size</p>
+          <p className="text-sm font-medium text-text">{VIEW_COPY.portionsSize}</p>
           <div className="flex items-end gap-2">
-            <Input type="number" min={0} step="any" placeholder="10" value={portionCount} onChange={(e) => setPortionCount(e.target.value)} wrapperClassName="flex flex-col flex-1" aria-label="Portion count" />
-            <Input type="number" min={0} step="any" placeholder="150 g" value={portionSize} onChange={(e) => setPortionSize(e.target.value)} wrapperClassName="flex flex-col flex-1" aria-label="Portion size in grams" />
-            <Button size="sm" type="submit" disabled={!refWeight}>Apply</Button>
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              placeholder={VIEW_COPY.example10}
+              value={portionCount}
+              onChange={(e) => setPortionCount(e.target.value)}
+              wrapperClassName="flex flex-col flex-1"
+              aria-label={VIEW_COPY.portionCount}
+            />
+            <Input
+              type="number"
+              min={0}
+              step="any"
+              placeholder={VIEW_COPY.example150G}
+              value={portionSize}
+              onChange={(e) => setPortionSize(e.target.value)}
+              wrapperClassName="flex flex-col flex-1"
+              aria-label={VIEW_COPY.portionSizeInGrams}
+            />
+            <Button
+              size="sm"
+              type="submit"
+              disabled={!refWeight}
+            >{VIEW_COPY.apply}</Button>
           </div>
         </form>
       </div>
-
       {error && <p className="text-sm text-error">{error}</p>}
     </div>
   );

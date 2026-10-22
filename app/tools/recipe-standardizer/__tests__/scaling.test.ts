@@ -1,9 +1,15 @@
+/* --- CONFIGURATION: scaling.test contract --- */
+/** Regression coverage for scaling.test. Fixtures remain local and do not access production data. */
+
 import { describe, expect, it } from 'vitest';
 import { parseRecipeJson } from '../lib/schema';
 import { confirmNutritionLink } from '../lib/nutritionLink';
 import { TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
 import {
   applyScaleToRecipe,
+  classifyEquivalentText,
+  findUnscalableEquivalents,
+  nextEquivalentBakeFactor,
   factorFromMultiplier,
   factorFromPortions,
   factorFromServings,
@@ -147,12 +153,15 @@ describe('applyScaleToRecipe', () => {
     base.ingredients[0].equivalent = 'a generous handful';
     const scaled = applyScaleToRecipe(base, 3);
     expect(scaled.ingredients[0].equivalent).toBe('a generous handful');
+    expect(scaled.ingredients[0].equivalentBakeFactor).toBe(3);
   });
 
   it('preserves a confirmed nutrition link and gram basis unchanged', () => {
     const base = recipe();
     const trackerFood: TrackerFood = {
-      id: 'food-flour', name: 'Flour', quantity: 1,
+      id: 'food-flour',
+      name: 'Flour',
+      quantity: 1,
       nutrients: Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 1])) as TrackerFood['nutrients'],
       lastUpdated: 'rev',
     };
@@ -213,5 +222,119 @@ describe('applyScaleToRecipe', () => {
       portionCount: 3,
       portionSizeG: 150.7,
     });
+  });
+});
+
+const proseRecipe = () => {
+  const base = recipe();
+  base.ingredients[0].equivalent = 'a generous handful';
+  return base;
+};
+
+describe('classifyEquivalentText', () => {
+  it.each([
+    ['', 3, 'blank'],
+    ['2 cups', 1, 'unchanged'],
+    ['2 cups', 3, 'scaled'],
+    ['3 large eggs', 1.5, 'scaled'],
+    ['1-2 cloves', 3, 'range'],
+    ['1 to 2 tbsp', 3, 'range'],
+    ['a generous handful', 3, 'unparseable'],
+    ['to taste', 3, 'unparseable'],
+  ] as const)('%j at %d× is %s', (text, factor, expected) => {
+    expect(classifyEquivalentText(text, factor)).toBe(expected);
+  });
+});
+
+describe('findUnscalableEquivalents', () => {
+  it('lists prose and range equivalents with grams before and after', () => {
+    const base = proseRecipe();
+    base.ingredients[1].equivalent = '1-2 cloves';
+    const issues = findUnscalableEquivalents(base, 3);
+    expect(issues.map((issue) => issue.reason)).toEqual(['unparseable', 'range']);
+    expect(issues[0]).toMatchObject({ gramsBefore: 200, gramsAfter: 600 });
+  });
+  it('skips blank, parseable, and count-based equivalents', () => {
+    const base = recipe();
+    base.ingredients[0].equivalent = '';
+    base.ingredients[1].equivalent = '2 cups';
+    base.ingredients[2].equivalent = '3 large eggs';
+    expect(findUnscalableEquivalents(base, 3)).toEqual([]);
+  });
+  it('lists an already-annotated equivalent as already-stale', () => {
+    const base = recipe();
+    base.ingredients[0].equivalentBakeFactor = 3;
+    expect(findUnscalableEquivalents(base, 2)[0].reason).toBe('already-stale');
+  });
+  it('returns nothing for a factor-1 portion-only bake', () => {
+    expect(findUnscalableEquivalents(proseRecipe(), 1)).toEqual([]);
+  });
+});
+
+describe('applyScaleToRecipe baked equivalents', () => {
+  it('annotates an unscalable equivalent with the bake factor by default', () => {
+    expect(applyScaleToRecipe(proseRecipe(), 3).ingredients[0].equivalentBakeFactor).toBe(3);
+  });
+  it('clears an unscalable equivalent when the user chooses clear', () => {
+    const base = proseRecipe();
+    expect(applyScaleToRecipe(base, 3, undefined, { [base.ingredients[0].id]: 'clear' }).ingredients[0])
+      .toMatchObject({ equivalent: '', equivalentBakeFactor: null });
+  });
+  it('never annotates a blank equivalent', () => {
+    const base = recipe();
+    base.ingredients[0].equivalent = '';
+    expect(applyScaleToRecipe(base, 3).ingredients[0].equivalentBakeFactor).toBeNull();
+  });
+  it('rescaled equivalents carry no annotation', () => {
+    const scaled = applyScaleToRecipe(recipe(), 3).ingredients[0];
+    expect(scaled.equivalent).toBe('3 3/4 cups chopped');
+    expect(scaled.equivalentBakeFactor).toBeNull();
+  });
+  it('a second bake multiplies an existing annotation and never rescales its text', () => {
+    const base = recipe();
+    base.ingredients[0].equivalentBakeFactor = 3;
+    const scaled = applyScaleToRecipe(base, 2).ingredients[0];
+    expect(scaled.equivalent).toBe(base.ingredients[0].equivalent);
+    expect(scaled.equivalentBakeFactor).toBe(6);
+  });
+  it('a bake that returns the cumulative factor to 1× clears the annotation', () => {
+    const base = applyScaleToRecipe(proseRecipe(), 3);
+    expect(applyScaleToRecipe(base, 1 / 3).ingredients[0].equivalentBakeFactor).toBeNull();
+  });
+  it('a factor-1 portion-only bake leaves annotations untouched', () => {
+    const base = applyScaleToRecipe(proseRecipe(), 3);
+    expect(applyScaleToRecipe(base, 1, { count: 4, sizeG: 50 }).ingredients).toEqual(base.ingredients);
+  });
+});
+
+describe('nextEquivalentBakeFactor', () => {
+  it.each([
+    {
+      label: 'text changed',
+      text: 'new measure',
+      marked: false,
+      expected: null,
+    },
+    {
+      label: 'blank',
+      text: '',
+      marked: false,
+      expected: null,
+    },
+    {
+      label: 'marked correct',
+      text: 'a generous handful',
+      marked: true,
+      expected: null,
+    },
+    {
+      label: 'unchanged and unconfirmed',
+      text: 'a generous handful',
+      marked: false,
+      expected: 3,
+    },
+  ])('$label', ({ text, marked, expected }) => {
+    const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
+    expect(nextEquivalentBakeFactor(previous, text, marked)).toBe(expected);
   });
 });
