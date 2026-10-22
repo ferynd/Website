@@ -36,14 +36,14 @@ const admin: UserProfile = {
 
 const trip = { id: 't', name: 'Trip', participants: [], expenses: [], payments: [] } as unknown as Trip;
 
-describe('blocked participant removal dialog', () => {
+describe('rejected delete confirmation', () => {
   it('bounds long errors to a scrollable message area with reachable actions outside it', () => {
     const error = Array.from({ length: 5 }, (_, index) =>
       `Expense ${index + 1}: ${'Long participant removal blocker '.repeat(30)}`,
     ).join('\n');
     const html = renderToStaticMarkup(
       <ConfirmDeleteModal
-        itemType="participant"
+        itemType="expense"
         error={error}
         onConfirm={() => undefined}
         onCancel={() => undefined}
@@ -81,6 +81,9 @@ describe('trip list loading state', () => {
   it('shows a loading state and hides the empty message until loading finishes', () => {
     const loading = list('loading');
     expect(loading).toContain('Loading trips');
+    expect(loading).toContain('role="status"');
+    expect(loading).toContain('aria-live="polite"');
+    expect(loading).toContain('motion-safe:animate-spin');
     expect(loading).not.toContain('No trips yet');
 
     const ready = list('ready');

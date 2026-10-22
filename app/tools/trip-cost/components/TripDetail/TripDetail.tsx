@@ -6,6 +6,8 @@ import ExpenseEditor from './ExpenseEditor';
 import SettlementsSection from './SettlementsSection';
 import ParticipantsSettingsTab from './ParticipantsSettingsTab';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
+import ParticipantRemovalDialog from './ParticipantRemovalDialog';
+import { participantRemovalBlockers } from '../../utils/participants';
 import TripHeader from './TripHeader';
 import TripTabs from './TripTabs';
 import LedgerTable from './LedgerTable';
@@ -27,7 +29,7 @@ interface DeleteTarget {
 
 /** Trip Cost detail page with the ledger and settings split into two tabs. */
 export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
-  const { trip, expenses, participants, deleteExpense, deletePayment, deleteParticipant } = useTrip();
+  const { trip, expenses, payments, participants, deleteExpense, deletePayment, deleteParticipant } = useTrip();
   const [editor, setEditor] = useState<{ original?: Expense; previousIds: string[] } | null>(null);
   const [highlightRequest, setHighlightRequest] = useState<{ previousIds: string[]; fields: ExpenseFields } | null>(null);
   const [highlightedExpenseId, setHighlightedExpenseId] = useState<string | null>(null);
@@ -63,6 +65,12 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
     return () => window.clearTimeout(timer);
   }, [highlightedExpenseId]);
 
+  // Derive this on every snapshot, including while a confirmation is open.
+  const removalBlockers = confirmDelete?.type === 'participant'
+    ? participantRemovalBlockers({ participants, expenses, payments }, confirmDelete.id)
+    : [];
+  const removalName = participants.find((person) => person.id === confirmDelete?.id)?.name;
+
   const openConfirm = (target: DeleteTarget) => {
     activeRequest.current += 1;
     setDeleteError(null);
@@ -79,7 +87,7 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
   };
 
   const runConfirmedDelete = async () => {
-    if (!confirmDelete || deleteBusy) return;
+    if (!confirmDelete || deleteBusy || removalBlockers.length > 0) return;
     const target = confirmDelete;
     const request = activeRequest.current;
     setDeleteBusy(true);
@@ -158,15 +166,22 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
         />
       )}
       <TravelerDetailSheet travelerId={travelerId} onClose={() => setTravelerId(null)} />
-      {confirmDelete && (
+      {confirmDelete && (removalBlockers.length > 0 ? (
+        <ParticipantRemovalDialog
+          name={removalName ?? 'this traveler'}
+          blockers={removalBlockers}
+          onClose={closeConfirm}
+        />
+      ) : (
         <ConfirmDeleteModal
           itemType={confirmDelete.type}
+          itemName={confirmDelete.type === 'participant' ? removalName : undefined}
           onCancel={closeConfirm}
           onConfirm={() => { void runConfirmedDelete(); }}
           error={deleteError}
           busy={deleteBusy}
         />
-      )}
+      ))}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import React from 'react';
 import { Trip, UserProfile } from '../pageTypes';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
+import LoadingStatus from './ui/LoadingStatus';
 
 // ===============================
 // CONFIGURATION (manual inputs)
@@ -117,8 +118,8 @@ export default function TripList({
           ))}
 
           {tripsStatus === 'loading' && trips.length === 0 && (
-            <div role="status" aria-live="polite" className="col-span-full py-12 text-center text-text">
-              Loading trips…
+            <div className="col-span-full">
+              <LoadingStatus>Loading trips…</LoadingStatus>
             </div>
           )}
           {tripsStatus === 'ready' && trips.length === 0 && (
