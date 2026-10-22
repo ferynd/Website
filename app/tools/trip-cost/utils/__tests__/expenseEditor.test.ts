@@ -111,9 +111,50 @@ describe('shared editor split methods', () => {
     expect(Number(setExpenseExplicitZero(zero, 'b', false, ids).draft.manualSplit.b.value)).toBeGreaterThan(0);
   });
 
+  it('unchecking an unchanged Equal-derived zero restores Equal and a valid split', () => {
+    const original = ready();
+    const zero = setExpenseExplicitZero(original, 'b', true, ids);
+    expect(zero.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '50' },
+      b: { type: 'percent', value: '0' },
+      c: { type: 'percent', value: '50' },
+    });
+    const restored = setExpenseExplicitZero(zero, 'b', false, ids);
+    expect(restored.method).toBe('equal');
+    expect(restored.draft.splitType).toBe('even');
+    expect(save(restored)).toStrictEqual(save(original));
+  });
+
+  it('restores equal weights while preserving remaining explicit zeros and exclusions', () => {
+    const fourIds = [...ids, 'd'];
+    const state = ready('percent');
+    state.draft.manualSplit = {
+      a: { type: 'percent', value: '100' },
+      b: { type: 'percent', value: '0' },
+      c: { type: 'percent', value: '0' },
+    };
+    const restored = setExpenseExplicitZero(state, 'b', false, fourIds);
+    expect(restored.method).toBe('percent');
+    expect(restored.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '50' },
+      b: { type: 'percent', value: '50' },
+      c: { type: 'percent', value: '0' },
+    });
+    expect(validateDraft(restored.draft, { travelerIds: fourIds })).toMatchObject({
+      errors: [], preview: { excluded: ['d'], zeroShare: ['c'] },
+    });
+  });
+
   it.each<ExpenseEditorMethod>(['percent', 'amount'])(
-    '%s: unchecking explicit zero restores a positive share instead of saving zero', (method) => {
-      const zero = changeExpenseMethod(setExpenseExplicitZero(ready(), 'b', true, ids), method, ids);
+    '%s: unchecking zero preserves edited custom shares and requires rebalancing', (method) => {
+      let zero = changeExpenseMethod(setExpenseExplicitZero(ready(), 'b', true, ids), method, ids);
+      if (method === 'percent') {
+        zero = { ...zero, draft: { ...zero.draft, manualSplit: {
+          a: { type: 'percent', value: '60' },
+          b: { type: 'percent', value: '0' },
+          c: { type: 'percent', value: '40' },
+        } } };
+      }
       expect(allocateExpense(save(zero), ids).shares.b).toBe(0);
       const restored = setExpenseExplicitZero(zero, 'b', false, ids);
       expect(Number(restored.draft.manualSplit.b.value)).toBeGreaterThan(0);
@@ -125,6 +166,31 @@ describe('shared editor split methods', () => {
       expect(result.errors.map((error) => error.code)).toEqual(['split-sum']);
       const balanced = changeExpenseMethod(restored, 'equal', ids);
       expect(Object.values(allocateExpense(save(balanced), ids).shares).every((share) => share > 0)).toBe(true);
+    },
+  );
+
+  it.each([defaultSplit, undefined])('rebalances Trip default zero shares with default weights %j', (weights) => {
+    const zero = setExpenseExplicitZero(ready('trip-default'), 'b', true, ids, weights);
+    expect(zero.method).toBe('percent');
+    expect(zero.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '66.6667' },
+      b: { type: 'percent', value: '0' },
+      c: { type: 'percent', value: '33.3333' },
+    });
+    expect(allocateExpense(save(zero), ids).shares).toEqual({ a: 667, b: 0, c: 334 });
+  });
+
+  it.each([{ order: ids }, { order: ['c', 'b', 'a'] }])(
+    'restores legacy percentage split order $order after toggling a traveler off and on', ({ order }) => {
+      const expense: Expense = {
+        ...save(ready()), splitType: 'manual', splitParticipants: order,
+        manualSplit: Object.fromEntries(ids.map((id) => [id, { type: 'percent', value: 33.33 }])),
+      };
+      const loaded = createExpenseEditor(ids, 'Food', undefined, undefined, expense);
+      const excluded = toggleExpenseTraveler(loaded, 'b', ids);
+      const restored = toggleExpenseTraveler(excluded, 'b', ids);
+      expect(restored.draft).toStrictEqual(loaded.draft);
+      expect(save(restored, expense)).toStrictEqual(expense);
     },
   );
 
