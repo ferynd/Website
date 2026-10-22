@@ -9,6 +9,7 @@ import {
   deriveRemoteRecipeState,
   conflictChoices,
   identityAfterDeleting,
+  shouldRestoreDeletedIdentity,
   loadedRecipeBlockReason,
   loadedRecipeOverlapError,
   remoteConflictToShow,
@@ -273,6 +274,18 @@ describe('identityAfterDeleting', () => {
       currentId: 'recipe-1',
       baseRevision: 4,
     });
+  });
+});
+
+describe('shouldRestoreDeletedIdentity', () => {
+  it('restores identity when the same session still has no open recipe', () => {
+    expect(shouldRestoreDeletedIdentity(4, 4, null)).toBe(true);
+  });
+  it('does not restore identity after another recipe session starts', () => {
+    expect(shouldRestoreDeletedIdentity(4, 5, null)).toBe(false);
+  });
+  it('does not restore identity when a recipe is already open', () => {
+    expect(shouldRestoreDeletedIdentity(4, 4, 'recipe-2')).toBe(false);
   });
 });
 

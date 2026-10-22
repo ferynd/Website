@@ -195,6 +195,13 @@ export const identityAfterDeleting = (
   return { currentId: null, baseRevision: null };
 };
 
+/** Restore a deleted recipe's identity only if no other recipe session replaced it. */
+export const shouldRestoreDeletedIdentity = (
+  deleteSession: number,
+  currentSession: number,
+  currentId: string | null,
+): boolean => deleteSession === currentSession && currentId === null;
+
 /**
  * Block a library open that would race this tab's write.
  * Reopening the recipe being saved is refused while the write is in flight

@@ -140,6 +140,7 @@ import {
   remoteConflictToShow,
   SAVING_LOAD_REASON,
   saveBlockedWhileWriting,
+  shouldRestoreDeletedIdentity,
   type RecipeConflict,
 } from '../lib/recipeRevision';
 import RecipeConflictModal from './RecipeConflictModal';
@@ -334,6 +335,7 @@ export default function RecipeWorkspace() {
   // in-flight nutrition match can detect that its result no longer applies.
   const recipeSessionRef = useRef(0);
   const [recipeSession, setRecipeSession] = useState(0);
+  const [checklistKey, setChecklistKey] = useState(0);
   const foodsRequestRef = useRef(0);
 
   const refreshFoods = async (): Promise<import('../lib/trackerFoods').TrackerFood[] | null> => {
@@ -426,6 +428,7 @@ export default function RecipeWorkspace() {
     setBakeReview(null);
     recipeSessionRef.current += 1;
     setRecipeSession(recipeSessionRef.current);
+    setChecklistKey((key) => key + 1);
     setBaseline(recipe);
     setDraft(recipe);
     setCurrentId(id);
@@ -505,6 +508,7 @@ export default function RecipeWorkspace() {
     const deletingOpen = recipeId === currentId;
     const previousId = currentId;
     const previousRevision = baseRevision;
+    const deleteSession = recipeSessionRef.current;
     if (deletingOpen) {
       const next = identityAfterDeleting(currentId, baseRevision, recipeId);
       currentIdRef.current = next.currentId;
@@ -517,7 +521,11 @@ export default function RecipeWorkspace() {
     } catch (error) {
       // A rejected delete leaves the document in place: restore the open
       // recipe's identity so Save keeps updating it instead of duplicating it.
-      if (deletingOpen && currentIdRef.current === null) {
+      if (deletingOpen && shouldRestoreDeletedIdentity(
+        deleteSession,
+        recipeSessionRef.current,
+        currentIdRef.current,
+      )) {
         currentIdRef.current = previousId;
         baseRevisionRef.current = previousRevision;
         setCurrentId(previousId);
@@ -539,6 +547,8 @@ export default function RecipeWorkspace() {
     setBakeReview(null);
     recipeSessionRef.current += 1;
     foodsRequestRef.current += 1;
+    setRecipeSession(recipeSessionRef.current);
+    setChecklistKey((key) => key + 1);
     setFoods({
       status: 'idle',
       items: [],
@@ -602,9 +612,9 @@ export default function RecipeWorkspace() {
     setDraft((prev) => (prev ? { ...prev, yield: { ...prev.yield, actualFinalWeightG: value } } : prev));
   };
 
-  const persistNew = async (recipe: Recipe) => {
+  const persistNew = async (recipe: Recipe): Promise<boolean> => {
     // A double click must not create two documents for one unsaved recipe.
-    if (writeInFlightRef.current) return;
+    if (writeInFlightRef.current) return false;
     writeInFlightRef.current = true;
     setWriteInFlight(true);
     const cleanRecipe = withoutNutritionExports(recipe).recipe;
@@ -614,17 +624,18 @@ export default function RecipeWorkspace() {
     } finally {
       writeInFlightRef.current = false;
       setWriteInFlight(false);
+      setLoadError((current) => (current === SAVING_LOAD_REASON ? '' : current));
     }
     currentIdRef.current = id;
     baseRevisionRef.current = INITIAL_RECIPE_REVISION;
     setBaseline(cleanRecipe);
     setDraft(cleanRecipe);
-    recipeSessionRef.current += 1;
-    setRecipeSession(recipeSessionRef.current);
+    setChecklistKey((key) => key + 1);
     setCurrentId(id);
     setBaseRevision(INITIAL_RECIPE_REVISION);
     setConflict(null);
     setStatus(VIEW_COPY.saved(recipe.name));
+    return true;
   };
 
   const handleSaveClick = async () => {
@@ -721,13 +732,15 @@ export default function RecipeWorkspace() {
     }
   };
 
-  const handleSaveAsNew = async (name: string) => {
-    if (!draft) return;
-    setSaveModalSummary(null);
+  const handleSaveAsNew = async (name: string): Promise<boolean> => {
+    if (!draft) return false;
     try {
-      await persistNew(withoutNutritionExports({ ...draft, name }).recipe);
+      const saved = await persistNew(withoutNutritionExports({ ...draft, name }).recipe);
+      if (saved) setSaveModalSummary(null);
+      return saved;
     } catch (err) {
       setStatus(VIEW_COPY.saveFailed(err instanceof Error ? err.message : VIEW_COPY.unknownError));
+      return false;
     }
   };
 
@@ -1298,7 +1311,7 @@ export default function RecipeWorkspace() {
             >
               {workflow && (
                 <IngredientsView
-                  key={recipeSession}
+                  key={checklistKey}
                   recipe={draft}
                   workflow={workflow}
                   factor={scale.factor}
@@ -1492,6 +1505,7 @@ export default function RecipeWorkspace() {
           suggestedNewName={suggestVersionName(draft.name, savedRecipes.map((r) => r.name))}
           changeSummary={saveModalSummary}
           updateDisabled={saveBlockedWhileWriting(writeInFlight)}
+          saveAsNewDisabled={saveBlockedWhileWriting(writeInFlight)}
           onUpdate={handleUpdateExisting}
           onSaveAsNew={handleSaveAsNew}
           onCancel={() => setSaveModalSummary(null)}
@@ -1503,16 +1517,19 @@ export default function RecipeWorkspace() {
           recipeName={draft.name}
           dirty={dirty}
           suggestedNewName={suggestVersionName(draft.name, savedRecipes.map((recipe) => recipe.name))}
-          busy={conflictBusy}
+          busy={conflictBusy || writeInFlight}
           onReload={() => {
             void reloadRecipe();
           }}
           onOverwrite={() => {
             if (conflict.kind === 'changed') void updateWithRevision(conflict.remoteRevision);
           }}
-          onSaveAsNew={(name) => {
-            setConflict(null);
-            void handleSaveAsNew(name);
+          onSaveAsNew={async (name) => {
+            if (saveBlockedWhileWriting(writeInFlightRef.current)) return;
+            setConflictBusy(true);
+            const saved = await handleSaveAsNew(name);
+            if (saved) setConflict(null);
+            setConflictBusy(false);
           }}
           onClose={closeRecipe}
           onKeepEditing={() => setConflict(null)}
