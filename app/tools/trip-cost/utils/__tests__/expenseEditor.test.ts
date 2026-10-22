@@ -127,12 +127,7 @@ describe('shared editor split methods', () => {
 
   it('restores equal weights while preserving remaining explicit zeros and exclusions', () => {
     const fourIds = [...ids, 'd'];
-    const state = ready('percent');
-    state.draft.manualSplit = {
-      a: { type: 'percent', value: '100' },
-      b: { type: 'percent', value: '0' },
-      c: { type: 'percent', value: '0' },
-    };
+    const state = setExpenseExplicitZero(setExpenseExplicitZero(ready(), 'b', true, ids), 'c', true, ids);
     const restored = setExpenseExplicitZero(state, 'b', false, fourIds);
     expect(restored.method).toBe('percent');
     expect(restored.draft.manualSplit).toEqual({
@@ -178,6 +173,127 @@ describe('shared editor split methods', () => {
       c: { type: 'percent', value: '33.3333' },
     });
     expect(allocateExpense(save(zero), ids).shares).toEqual({ a: 667, b: 0, c: 334 });
+  });
+
+  it.each([
+    { traveler: 'a', weights: defaultSplit },
+    { traveler: 'b', weights: defaultSplit },
+    { traveler: 'a', weights: undefined },
+    { traveler: 'b', weights: undefined },
+  ])('restores Trip default after zeroing $traveler with weights $weights', ({ traveler, weights }) => {
+    const original = ready('trip-default');
+    const zero = setExpenseExplicitZero(original, traveler, true, ids, weights);
+    const restored = setExpenseExplicitZero(zero, traveler, false, ids, weights);
+    expect(restored.method).toBe('trip-default');
+    expect(restored.draft.manualSplit).toEqual(original.draft.manualSplit);
+    expect(save(restored)).toStrictEqual(save(original));
+  });
+
+  it('restores default weights while leaving another explicit zero in place', () => {
+    let state = setExpenseExplicitZero(ready('trip-default'), 'b', true, ids, defaultSplit);
+    state = setExpenseExplicitZero(state, 'a', true, ids, defaultSplit);
+    expect(state.draft.manualSplit.c.value).toBe('100');
+    state = setExpenseExplicitZero(state, 'b', false, ids, defaultSplit);
+    expect(state.method).toBe('percent');
+    expect(save(state).manualSplit).toEqual({
+      a: { type: 'percent', value: 0 },
+      b: { type: 'percent', value: 50 },
+      c: { type: 'percent', value: 50 },
+    });
+    state = setExpenseExplicitZero(state, 'a', false, ids, defaultSplit);
+    expect(state.method).toBe('trip-default');
+    expect(save(state)).toStrictEqual(save(ready('trip-default')));
+  });
+
+  it.each<ExpenseEditorMethod>(['equal', 'trip-default'])(
+    '%s: unchecking zero keeps hand-edited shares even when they happen to be equal', (method) => {
+      const zero = setExpenseExplicitZero(ready(method), 'b', true, ids, defaultSplit);
+      zero.draft.manualSplit = {
+        a: { type: 'percent', value: '40' },
+        b: { type: 'percent', value: '0' },
+        c: { type: 'percent', value: '40' },
+      };
+      const restored = setExpenseExplicitZero(zero, 'b', false, ids, defaultSplit);
+      expect(restored.method).toBe('percent');
+      expect(restored.draft.manualSplit.a.value).toBe('40');
+      expect(restored.draft.manualSplit.c.value).toBe('40');
+      expect(Number(restored.draft.manualSplit.b.value)).toBeGreaterThan(0);
+      expect(validateDraft(restored.draft, { travelerIds: ids }).errors.map((error) => error.code)).toEqual(['split-sum']);
+    },
+  );
+
+  it('does not infer Equal from equal-looking custom percentages with no zero provenance', () => {
+    const state = ready('percent');
+    state.draft.manualSplit = {
+      a: { type: 'percent', value: '50' },
+      b: { type: 'percent', value: '0' },
+      c: { type: 'percent', value: '50' },
+    };
+    const restored = setExpenseExplicitZero(state, 'b', false, ids);
+    expect(restored.method).toBe('percent');
+    expect(restored.draft.manualSplit.a.value).toBe('50');
+    expect(restored.draft.manualSplit.c.value).toBe('50');
+    expect(Number(restored.draft.manualSplit.b.value)).toBeGreaterThan(0);
+    expect(validateDraft(restored.draft, { travelerIds: ids }).errors.map((error) => error.code)).toEqual(['split-sum']);
+  });
+
+  it('keeps valid hand-edited default shares when they happen to be equal', () => {
+    const zero = setExpenseExplicitZero(ready('trip-default'), 'b', true, ids, defaultSplit);
+    zero.draft.manualSplit.a.value = '50';
+    zero.draft.manualSplit.c.value = '50';
+    const restored = setExpenseExplicitZero(zero, 'b', false, ids, defaultSplit);
+    expect(restored.method).toBe('percent');
+    expect(restored.draft.manualSplit.a.value).toBe('50');
+    expect(restored.draft.manualSplit.c.value).toBe('50');
+    expect(Number(restored.draft.manualSplit.b.value)).toBeGreaterThan(0);
+    expect(validateDraft(restored.draft, { travelerIds: ids }).errors.map((error) => error.code)).toEqual(['split-sum']);
+  });
+
+  it.each([true, false])('unchecking a missing default traveler restores a positive share (zero toggled: %s)', (toggleZero) => {
+    const weights = { a: 75, c: 25 };
+    const state = changeExpenseMethod(ready(), 'trip-default', ids, weights);
+    const zero = toggleZero ? setExpenseExplicitZero(state, 'b', true, ids, weights) : state;
+    const restored = setExpenseExplicitZero(zero, 'b', false, ids, weights);
+    expect(restored.method).toBe('percent');
+    expect(Number(restored.draft.manualSplit.b.value)).toBeGreaterThan(0);
+    expect(restored.draft.manualSplit.a.value).toBe('75');
+    expect(restored.draft.manualSplit.c.value).toBe('25');
+    expect(validateDraft(restored.draft, { travelerIds: ids }).errors.map((error) => error.code)).toEqual(['split-sum']);
+  });
+
+  it.each(['10.00', '10.03', '10.01'])(
+    'keeps stored even-split order and tie cents after changing only the total to %s', (amount) => {
+      const expense: Expense = { ...save(ready()), totalAmount: 10, paidBy: { a: 10 }, splitParticipants: ['c', 'a', 'b'] };
+      const state = createExpenseEditor(ids, 'Food', undefined, undefined, expense);
+      state.draft.totalAmount = amount;
+      state.draft.paidBy = { a: amount };
+      const updated = save(state, expense);
+      expect(updated.splitParticipants).toEqual(expense.splitParticipants);
+      const expected = allocateExpense({ ...expense, totalAmount: Number(amount), paidBy: { a: Number(amount) } }, ids).shares;
+      expect(allocateExpense(updated, ids).shares).toEqual(expected);
+      expect(validateDraft(state.draft, { travelerIds: ids, original: expense }).preview?.shares).toEqual(expected);
+      expect(expected.c).toBe(Math.ceil(Number(amount) * 100 / 3));
+    },
+  );
+
+  it.each<ExpenseEditorMethod>(['equal', 'percent'])(
+    '%s keeps stored order after excluding a traveler', (method) => {
+      const expense: Expense = { ...save(ready(method)), splitParticipants: ['c', 'b', 'a'] };
+      const state = toggleExpenseTraveler(createExpenseEditor(ids, 'Food', undefined, undefined, expense), 'b', ids);
+      if (method === 'percent') {
+        state.draft.manualSplit.a.value = '50';
+        state.draft.manualSplit.c.value = '50';
+      }
+      const updated = save(state, expense);
+      expect(updated.splitParticipants).toEqual(['c', 'a']);
+      expect(allocateExpense(updated, ids).shares).toEqual({ c: 501, a: 500 });
+    },
+  );
+
+  it('keeps stored travelers ahead of newly included travelers when saving', () => {
+    const expense: Expense = { ...save(ready()), splitParticipants: ['c', 'a'] };
+    const state = toggleExpenseTraveler(createExpenseEditor(ids, 'Food', undefined, undefined, expense), 'b', ids);
+    expect(save(state, expense).splitParticipants).toEqual(['c', 'a', 'b']);
   });
 
   it.each([{ order: ids }, { order: ['c', 'b', 'a'] }])(

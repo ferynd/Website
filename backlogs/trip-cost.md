@@ -38,7 +38,7 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P4 — Shared expense editor
 
 - [p] **`ExpenseEditor` for add and edit; remove `ExpenseForm`.** Depends: TC-P2, TC-P3.
-  > in progress — PR #172 P3 review fixes implemented locally: unchanged Equal-derived zero removal restores Equal, trip-default zero shares rebalance, traveler toggles preserve loaded split order, pending saves disable fields and suppress optimistic-write stale warnings; 8 regression cases added; checks: npm test (2037), lint, tsc, build pass; awaiting user commit/push; last pushed commit: 314fb4a; PR: #172
+  > in progress — PR #172 r3 review fixes implemented locally: editor-only zero provenance restores Trip default/Equal without overwriting hand edits, and changed splits preserve stored participant order and tie cents; 17 regression cases added; checks: npm test (2054), lint, tsc, build pass; last reviewed head: 3036cfe; PR: #172
   - Payer picker (single, or several on demand), traveler chips, Equal / Trip default / Custom $ / Custom %, explicit zero, live cents-exact preview, inline reasons for disabled Save, stale-edit warning.
   - **Accept:** payers and splits on historical expenses are editable; all split methods work; trip default behaves per D2; legacy mixed types load as Custom $.
 

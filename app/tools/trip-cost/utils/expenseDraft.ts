@@ -284,7 +284,8 @@ function evaluateDraft(draft: ExpenseDraft, ctx: DraftContext): Evaluation {
         errors.push({ field: 'split', code: 'split-unknown', travelerId: id, message: "Someone in the split isn't on this trip." });
       }
     }
-    splitParticipants = includedInTripOrder(draft, travelerIds);
+    // Stored participant order breaks largest-remainder ties, even on total-only edits.
+    splitParticipants = requested.filter((id) => known.has(id));
     if (!requested.length) {
       errors.push({ field: 'split', code: 'split-empty', message: 'Choose at least one traveler to split this expense with.' });
     }
@@ -489,6 +490,13 @@ export interface ExpenseEditorState {
   method: ExpenseEditorMethod;
   /** Retain loaded rounding order when a traveler is deselected and reselected. */
   travelerOrder?: string[];
+  /** Editor-only provenance; never included in stored expense fields. */
+  zeroOrigin?: {
+    method: 'equal' | 'trip-default';
+    weights: DefaultSplit;
+    zeros: string[];
+    expected: Record<string, number>;
+  };
 }
 
 /** Saved defaults have no provenance field: edit them as their saved Custom % snapshot. */
@@ -531,15 +539,15 @@ export function changeExpenseMethod(
 ): ExpenseEditorState {
   if (method === state.method) return state;
   if (method === 'equal') {
-    return { ...state, method, draft: { ...state.draft, splitType: 'even', manualSplit: {} } };
+    return { ...state, zeroOrigin: undefined, method, draft: { ...state.draft, splitType: 'even', manualSplit: {} } };
   }
   if (method === 'trip-default') {
-    return { ...state, method, draft: applyTripDefault(state.draft, defaultSplit, travelerIds).draft };
+    return { ...state, zeroOrigin: undefined, method, draft: applyTripDefault(state.draft, defaultSplit, travelerIds).draft };
   }
   const draft = state.draft.splitType === 'even'
     ? applyTripDefault(state.draft, Object.fromEntries(travelerIds.map((id) => [id, 1])), travelerIds).draft
     : state.draft;
-  return { ...state, method, draft: { ...convertManualSplit(draft, method, travelerIds), splitType: 'manual' } };
+  return { ...state, zeroOrigin: undefined, method, draft: { ...convertManualSplit(draft, method, travelerIds), splitType: 'manual' } };
 }
 
 /** A default is rescaled only by an explicit selection change, never a Firestore refresh. */
@@ -562,7 +570,7 @@ export function toggleExpenseTraveler(
   };
 }
 
-/** Explicit zeros in an equal split need a manual representation; keep the rest equal. */
+/** Keep automatic split provenance so unedited zero toggles can be reversed. */
 export function setExpenseExplicitZero(
   state: ExpenseEditorState,
   travelerId: string,
@@ -570,30 +578,46 @@ export function setExpenseExplicitZero(
   travelerIds: string[],
   defaultSplit?: DefaultSplit,
 ): ExpenseEditorState {
+  let origin = state.zeroOrigin;
+  const automatic = state.method === 'equal' || state.method === 'trip-default';
   if (state.method === 'equal' || state.method === 'trip-default') {
-    const defaultWeights = defaultSplit ?? Object.fromEntries(
-      Object.entries(state.draft.manualSplit).map(([id, entry]) => [id, Number(entry.value)]),
-    );
-    const weights = state.method === 'trip-default'
-      ? { ...defaultWeights, ...(zero ? { [travelerId]: 0 } : {}) }
-      : Object.fromEntries(travelerIds.map((id) => [id, id === travelerId && zero ? 0 : 1]));
-    return { ...state, method: 'percent', draft: applyTripDefault(state.draft, weights, travelerIds).draft };
+    origin = {
+      method: state.method,
+      weights: state.method === 'equal'
+        ? Object.fromEntries(travelerIds.map((id) => [id, 1]))
+        : { ...(defaultSplit ?? Object.fromEntries(
+          Object.entries(state.draft.manualSplit).map(([id, entry]) => [id, Number(entry.value)]),
+        )) },
+      zeros: [],
+      expected: {},
+    };
+  }
+  const ids = includedInTripOrder(state.draft, travelerIds);
+  const unchanged = origin && (automatic || (
+    state.method === 'percent' && state.draft.manualSplitMode === 'percent' &&
+    ids.length === Object.keys(origin.expected).length &&
+    ids.every((id) => Number(state.draft.manualSplit[id]?.value) === origin.expected[id])
+  ));
+  // A missing/zero default weight cannot restore a positive share; use the custom fallback.
+  if (origin && unchanged && (zero || origin.weights[travelerId] > 0)) {
+    const zeros = zero ? unique([...origin.zeros, travelerId]) : origin.zeros.filter((id) => id !== travelerId);
+    if (!zeros.length && origin.method === 'equal') {
+      return { ...state, method: 'equal', zeroOrigin: undefined, draft: { ...state.draft, splitType: 'even', manualSplit: {} } };
+    }
+    const weights = { ...origin.weights, ...Object.fromEntries(zeros.map((id) => [id, 0])) };
+    const draft = applyTripDefault(state.draft, weights, travelerIds).draft;
+    return {
+      ...state,
+      method: zeros.length ? 'percent' : origin.method,
+      draft,
+      zeroOrigin: zeros.length ? {
+        ...origin,
+        zeros,
+        expected: Object.fromEntries(Object.entries(draft.manualSplit).map(([id, entry]) => [id, Number(entry.value)])),
+      } : undefined,
+    };
   }
   const mode = state.draft.manualSplitMode;
-  if (!zero && mode === 'percent' && Number(state.draft.manualSplit[travelerId]?.value) === 0) {
-    const ids = includedInTripOrder(state.draft, travelerIds);
-    const weights = Object.fromEntries(ids.map((id) => [id, Number(state.draft.manualSplit[id]?.value) === 0 ? 0 : 1]));
-    const expected = applyTripDefault(state.draft, weights, travelerIds).draft;
-    const othersUnchanged = ids.every((id) => id === travelerId ||
-      Number(state.draft.manualSplit[id]?.value) === Number(expected.manualSplit[id]?.value));
-    if (othersUnchanged) {
-      weights[travelerId] = 1;
-      if (Object.values(weights).every((weight) => weight > 0)) {
-        return changeExpenseMethod(state, 'equal', travelerIds);
-      }
-      return { ...state, draft: applyTripDefault(state.draft, weights, travelerIds).draft };
-    }
-  }
   // Restore a positive equal share without overwriting other custom entries.
   // If this exceeds the total, normal split validation asks the user to rebalance.
   const total = parseScaledInput(state.draft.totalAmount, 100);
@@ -603,6 +627,7 @@ export function setExpenseExplicitZero(
   const value = zero ? '0' : mode === 'percent' ? percentInput(restored) : centsInput(restored);
   return {
     ...state,
+    zeroOrigin: undefined,
     method: mode,
     draft: {
       ...state.draft,

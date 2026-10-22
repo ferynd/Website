@@ -139,8 +139,8 @@ describe('split methods', () => {
     }
   });
 
-  it('stores split participants in trip order', () => {
-    expect(save(draft({ splitParticipants: ['bob', 'kait', 'bob'] })).splitParticipants).toEqual(['kait', 'bob']);
+  it('preserves draft split order while deduplicating participants', () => {
+    expect(save(draft({ splitParticipants: ['bob', 'kait', 'bob'] })).splitParticipants).toEqual(['bob', 'kait']);
   });
 });
 
