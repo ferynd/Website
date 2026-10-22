@@ -65,7 +65,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 ### P8 — Persist ingredient checklist ticks (optional UX)
 
 - [p] **Persist Shopping/Grocery checklist ticks per recipe in one versioned localStorage object.** Depends: P5.
-  > pushed — saved-recipe checklist hydration/persistence with stale-key pruning, 50-recipe LRU cap, safe storage wrappers, deletion cleanup, and device-local docs; checks: npm test (2441), npx tsc --noEmit, npm run lint, npm run build pass; commit: TBD; PR: TBD
+  > pushed — saved-recipe checklist hydration/persistence with stale-key pruning, 50-recipe LRU cap, safe storage wrappers, deletion cleanup, and device-local docs; checks: npm test (2441), npx tsc --noEmit, npm run lint, npm run build pass; commit: f2dab71; PR: #178
   - Add `lib/checklistStore.ts`, key `recipe-standardizer:checklist`, value `{ version: 1, recipes: Record<recipeId, { keys: string[]; updatedAtMs: number }> }`.
   - Pure `parseChecklistStore(raw: unknown)` returns an empty store for invalid values, drops non-string keys, and caps at `MAX_RECIPES = 50` by LRU on `updatedAtMs`.
   - SSR-safe `readChecklist(recipeId)` and `saveChecklist(recipeId, keys)` guard `typeof window` and catch storage failures.
