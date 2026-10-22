@@ -3,9 +3,7 @@
 import React, { useId } from 'react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
-import { formatMoney } from '../../utils/money';
-import { hasInvalidShare } from '../../utils/ledgerLabels';
-import { expenseSharesAwaitTotal, showsExplicitZero, type DraftPreview, type ExpenseEditorMethod, type ExpenseEditorState } from '../../utils/expenseDraft';
+import { expenseExplicitZero, expenseMethodOptions, expensePreviewLabel, expenseSharesAwaitTotal, type DraftPreview, type ExpenseEditorMethod, type ExpenseEditorState } from '../../utils/expenseDraft';
 import type { Person } from '../../pageTypes';
 
 interface SplitMethodControlProps {
@@ -18,12 +16,7 @@ interface SplitMethodControlProps {
 export function SplitMethodControl({ state, hasDefault, onChange }: SplitMethodControlProps) {
   const name = useId();
   const awaitingTotal = expenseSharesAwaitTotal(state);
-  const methods: { value: ExpenseEditorMethod; label: string }[] = [
-    { value: 'equal', label: 'Equal' },
-    ...(hasDefault ? [{ value: 'trip-default' as const, label: 'Trip default' }] : []),
-    { value: 'amount', label: 'Custom $' },
-    { value: 'percent', label: 'Custom %' },
-  ];
+  const methods = expenseMethodOptions(hasDefault);
   return (
     <fieldset className="min-w-0" aria-describedby={`${name}-hint`}>
       <legend className="mb-2 font-semibold text-text">Method</legend>
@@ -103,6 +96,7 @@ export function SplitPreview({ travelers, state, preview, showInputs, errorId, o
   return (
     <section className="min-w-0" aria-label="Split preview">
       <h3 className="font-semibold text-text">Split preview</h3>
+      {preview?.notFinal && <p className="mt-2 text-sm text-warning">Entered shares are not final. Fix the split totals above before saving.</p>}
       {awaitingTotal && (
         <p id={hintId} className="mt-2 text-sm text-text-3">
           Enter the amount first; shares are converted from the current split. Share inputs and explicit zeros will then be available.
@@ -112,16 +106,13 @@ export function SplitPreview({ travelers, state, preview, showInputs, errorId, o
         {travelers.map((person) => {
           const included = draft.splitParticipants.includes(person.id);
           const value = draft.manualSplit[person.id]?.value ?? '';
-          const zero = showsExplicitZero(state.method, draft.splitType, value);
-          const share = preview?.shares[person.id];
+          const zero = expenseExplicitZero(state, person.id);
           return (
             <li key={person.id} className="min-w-0 space-y-2 py-3 text-sm">
               <div className="flex min-w-0 flex-wrap justify-between gap-2">
                 <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2">{person.name}</span>
                 <span className="shrink-0 tabular-nums text-text">
-                  {!included ? 'Not included' : preview && hasInvalidShare(preview.problems, person.id) ? 'Invalid share'
-                    : share === undefined ? preview ? 'Unassigned' : 'Enter an amount'
-                      : share === 0 ? '$0.00 (explicit)' : formatMoney(share)}
+                  {expensePreviewLabel(state, preview, person.id)}
                 </span>
               </div>
               {included && state.method === 'trip-default' && <p className="text-text-3">{value}% of this expense</p>}

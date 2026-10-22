@@ -4,9 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTrip } from '../../TripContext';
 import ParticipantsSection from './ParticipantsSection';
 import ExpenseEditor from './ExpenseEditor';
-import BalanceSummary from './BalanceSummary';
-import SettlementSuggestions from './SettlementSuggestions';
-import PaymentHistory from './PaymentHistory';
+import SettlementsSection from './SettlementsSection';
 import AuditLog from './AuditLog';
 import TripSettings from './TripSettings';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
@@ -117,9 +115,7 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
   const expenseContent = (
     <div className="min-w-0 space-y-4">
       <LedgerTable onExpense={setExpenseId} onTraveler={setTravelerId} highlightedExpenseId={highlightedExpenseId} />
-      <BalanceSummary userProfile={userProfile} />
-      <SettlementSuggestions />
-      <PaymentHistory
+      <SettlementsSection
         userProfile={userProfile}
         onDeletePayment={(id) => openConfirm({ type: 'payment', id })}
       />

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import { allocateExpense, applyBudgetCaps, buildLedger, calculateSettlements, type Ledger, type LedgerInput } from '../ledger';
-import { applySpendCaps, calculateBalances } from '../calc';
 import type { Expense, Payment, SpendCap } from '../../pageTypes';
 import { OHIO, expense, traveler } from './fixtures/ohio';
 
@@ -96,10 +95,12 @@ describe('C1 regression — reimbursements never consume caps', () => {
     expect(ledger.settlement.settlements).toEqual([{ from: 'bob', to: 'james', cents: 35000 }]);
   });
 
-  it('documents the old calc.ts result this replaces (Bob told to pay $550)', () => {
-    const people = C1.participants.map(({ id, name }) => ({ id, name }));
-    const old = applySpendCaps(calculateBalances(people, C1.expenses, C1.payments), C1.spendCaps!);
-    expect(old.find((b) => b.personId === 'bob')!.balance).toBeCloseTo(-550, 2);
+  it('keeps Bob at $350 after Kait reimburses James, rather than the former $550', () => {
+    const ledger = buildLedger(C1);
+    expect(ledger.totalSpendingCents).toBe(90000);
+    expect(ledger.caps.adjustments).toEqual({ kait: -10000, james: 5000, bob: 5000 });
+    expect(ledger.remaining.bob).toBe(35000);
+    expect(ledger.reimbursementsReceived.james).toBe(20000);
   });
 
   it('payments never change total spending, subtotals, final responsibility, or transfers', () => {
