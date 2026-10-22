@@ -95,7 +95,9 @@ import { groupIngredientsForDisplay, type NormalizedWorkflow } from '../lib/work
 import {
   checklistKeysForBaseline,
   checklistKeysForDisplay,
+  CHECKLIST_STORAGE_KEY,
   readChecklist,
+  sameChecklistKeys,
   saveChecklist,
 } from '../lib/checklistStore';
 import { normalizeIngredientName } from '../lib/shoppingList';
@@ -250,6 +252,17 @@ export default function IngredientsView({
   }, [recipeId]);
 
   useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== CHECKLIST_STORAGE_KEY && event.key !== null) return;
+      const currentRecipeId = hydratedForRef.current;
+      if (currentRecipeId === null || currentRecipeId !== recipeId) return;
+      setChecked(new Set(readChecklist(currentRecipeId)));
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, [recipeId]);
+
+  useEffect(() => {
     if (
       !checklistHydrated ||
       recipeId === null ||
@@ -258,7 +271,9 @@ export default function IngredientsView({
     ) return;
     // Persist only ticks for saved ingredients; in-memory ticks for unsaved
     // draft ingredients stay visible without being written.
-    saveChecklist(recipeId, checklistKeysForBaseline(Array.from(checked), baselineShoppingKeys));
+    const baselineKeys = checklistKeysForBaseline(Array.from(checked), baselineShoppingKeys);
+    if (sameChecklistKeys(readChecklist(recipeId), baselineKeys)) return;
+    saveChecklist(recipeId, baselineKeys);
   }, [baselineShoppingKeys, checked, checklistHydrated, hydratedRecipeId, recipeId]);
 
   useEffect(() => {

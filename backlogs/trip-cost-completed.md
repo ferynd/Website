@@ -33,14 +33,14 @@ step in `backlogs/protocol.md` (only after their commits merge to `main`).
 ### TC-P6 — Participants & Settings sections
 
 - [x] **Sectioned settings tab, account linking, one-write settings save.**
-  > Resolved: participant linking/removal guards, budget caps, overage redistribution, default split, audit log, and one transactional settings save with revision/traveler checks; Discard changes and zero-rounded weight handling; checks: npm test (2205), tsc, lint, build pass; merged: 60c733a (PR #174); residual risk: real-trip responsive verification remains covered by the follow-up checks.
+  > Resolved: participant linking/removal guards, budget caps, overage redistribution, default split, audit log, and one transactional settings save with revision/traveler checks; Discard changes and zero-rounded weight handling; checks: npm test (2205), tsc, lint, build pass; merged: 60c733a (PR #174); post-deploy visual check completed (details recorded in the follow-up entries); residual risk: none.
 
 ### TC-P6 hotfix — Participant removal blockers and loading status
 
 - [x] **Show removal blockers before confirmation and recheck atomically.**
-  > Resolved: referenced travelers show a scrollable blocker list and cannot be removed; deletion rechecks references from the server copy in a transaction and cleans settings; accessible styled auth/trip loading status; checks: npm test (2216), tsc, lint, build pass; merged: 03c7e5a (PR #176); residual risk: AR-09 rules enforcement and writes that introduce orphan references remain open; verify a real trip after deployment.
+  > Resolved: referenced travelers show a scrollable blocker list and cannot be removed; deletion rechecks references from the server copy in a transaction and cleans settings; accessible styled auth/trip loading status; checks: npm test (2216), tsc, lint, build pass; merged: 03c7e5a (PR #176); post-deploy read-only recheck PASS at 1280px and 390px on 2026-10-22 13:22 CDT; removal blocker for Jackie N on Ohio lists 4 expenses, Close only, and changed nothing; residual risk: AR-09 rules enforcement and writes that introduce orphan references remain open.
 
 ### TC-P6 follow-up — Mobile ledger readability and dialog sizing
 
 - [x] **Stop the ledger scroll gradient covering traveler values; size mobile dialogs to content.**
-  > Resolved: removed the scrolling gradient over traveler cells, clarified sticky Expense/Total columns, and made dialogs content-height mobile sheets with a scrollable body; checks: npm test (2218), tsc, lint, build pass; merged: 1936705 (PR #177); residual risk: recheck Ohio Expenses at 390px after deployment.
+  > Resolved: removed the scrolling gradient over traveler cells, clarified sticky Expense/Total columns, and made dialogs content-height mobile sheets with a scrollable body; checks: npm test (2218), tsc, lint, build pass; merged: 1936705 (PR #177); post-deploy recheck PASS at 390px and 1280px on 2026-10-22 16:13 CDT: no overlay over the first traveler, Total shown in full, and blocker modal sized to content at 390x1026; James declined the optional narrower-column tweak; residual risk: none.

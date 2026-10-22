@@ -97,6 +97,14 @@ export const checklistKeysForDisplay = (keys: string[], draftKeys: string[]): st
 export const checklistKeysForBaseline = (keys: string[], baselineKeys: string[]): string[] =>
   pruneChecklistKeys(keys, baselineKeys);
 
+/** Compare checklist keys as sets, ignoring ordering and duplicate keys. */
+export const sameChecklistKeys = (left: string[], right: string[]): boolean => {
+  const leftKeys = new Set(left);
+  const rightKeys = new Set(right);
+  if (leftKeys.size !== rightKeys.size) return false;
+  return Array.from(leftKeys).every((key) => rightKeys.has(key));
+};
+
 /** Read one saved recipe checklist; unavailable storage and malformed data produce no ticks. */
 export const readChecklist = (recipeId: string): string[] => {
   const storage = getStorage();

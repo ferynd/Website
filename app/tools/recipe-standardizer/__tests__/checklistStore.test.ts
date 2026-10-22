@@ -10,6 +10,7 @@ import {
   parseChecklistStore,
   pruneChecklistKeys,
   readChecklist,
+  sameChecklistKeys,
   saveChecklist,
 } from '../lib/checklistStore';
 
@@ -145,5 +146,15 @@ describe('draft and baseline checklist keys', () => {
 
     expect(checklistKeysForDisplay(checked, draftKeys)).toEqual(['salt']);
     expect(checklistKeysForBaseline(checked, baselineKeys)).toEqual(['flour', 'salt']);
+  });
+});
+
+describe('sameChecklistKeys', () => {
+  it('compares keys without considering order or duplicates', () => {
+    expect(sameChecklistKeys(['flour', 'salt', 'flour'], ['salt', 'flour'])).toBe(true);
+  });
+
+  it('detects a different key set', () => {
+    expect(sameChecklistKeys(['flour'], ['salt'])).toBe(false);
   });
 });

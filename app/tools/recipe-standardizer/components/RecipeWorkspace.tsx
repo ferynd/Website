@@ -1547,7 +1547,13 @@ export default function RecipeWorkspace() {
             if (saved) setConflict(null);
             setConflictBusy(false);
           }}
-          onClose={closeRecipe}
+          onClose={() => {
+            if (conflict.kind === 'deleted') {
+              const deletedRecipeId = currentIdRef.current;
+              if (deletedRecipeId !== null) removeChecklist(deletedRecipeId);
+            }
+            closeRecipe();
+          }}
           onKeepEditing={() => setConflict(null)}
         />
       )}
