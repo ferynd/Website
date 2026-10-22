@@ -250,6 +250,7 @@ export default function TripCostPage() {
       <TripList
         userProfile={userProfile}
         trips={trips}
+        tripsStatus={tripsError ? 'error' : tripsLoaded ? 'ready' : 'loading'}
         newTripName={newTripName}
         setNewTripName={setNewTripName}
         onCreateTrip={handleCreateTrip}

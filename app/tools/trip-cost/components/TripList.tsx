@@ -12,6 +12,8 @@ import Input from '@/components/Input';
 
 interface TripListProps {
   trips: Trip[];
+  /** Empty copy waits until a successful load. A failed load is not "no trips". */
+  tripsStatus: 'loading' | 'ready' | 'error';
   userProfile: UserProfile | null;
   newTripName: string;
   setNewTripName: (v: string) => void;
@@ -23,6 +25,7 @@ interface TripListProps {
 
 export default function TripList({
   trips,
+  tripsStatus,
   userProfile,
   newTripName,
   setNewTripName,
@@ -113,7 +116,12 @@ export default function TripList({
             </div>
           ))}
 
-          {trips.length === 0 && (
+          {tripsStatus === 'loading' && trips.length === 0 && (
+            <div role="status" aria-live="polite" className="col-span-full py-12 text-center text-text">
+              Loading trips…
+            </div>
+          )}
+          {tripsStatus === 'ready' && trips.length === 0 && (
             <div className="col-span-full text-center py-12 text-text">
               {userProfile?.isAdmin
                 ? 'No trips yet. Create your first trip above!'

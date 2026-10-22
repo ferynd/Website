@@ -57,10 +57,10 @@ export function paymentOverpayWarnings(
   const owes = Math.max(0, remaining[payerId] ?? 0);
   const isOwed = Math.max(0, -(remaining[payeeId] ?? 0));
   if (cents > owes) {
-    warnings.push(`${nameOf(payerId)} owes ${formatMoney(owes)}; this records ${formatMoney(cents)}.`);
+    warnings.push(`${nameOf(payerId)} owes ${formatMoney(owes)} in total; this records ${formatMoney(cents)}.`);
   }
   if (cents > isOwed) {
-    warnings.push(`${nameOf(payeeId)} is owed ${formatMoney(isOwed)}; this records ${formatMoney(cents)}.`);
+    warnings.push(`${nameOf(payeeId)} is owed ${formatMoney(isOwed)} in total; this records ${formatMoney(cents)}.`);
   }
   return warnings;
 }

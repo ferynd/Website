@@ -72,7 +72,7 @@ describe('RecordPaymentDialog save session', () => {
     const test = session();
     const dialog = test.render();
     expect(test.markup(dialog)).toContain('Logs a reimbursement that already happened');
-    expect(test.markup(dialog)).toContain('A owes $20.00; this records $25.01.');
+    expect(test.markup(dialog)).toContain('A owes $20.00 in total; this records $25.01.');
     dialog.props.children.props.onSubmit({ preventDefault: vi.fn() });
     dialog.props.children.props.onSubmit({ preventDefault: vi.fn() });
     expect(test.addPayment).toHaveBeenCalledOnce();
