@@ -69,7 +69,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
 
   const footer = editing ? (
     <div className="flex justify-end gap-2">
-      <Button variant="ghost" disabled={saving} onClick={() => setEditing(false)}>Cancel</Button>
+      <Button variant="ghost" disabled={saving} onClick={() => { setEditing(false); setError(''); }}>Cancel</Button>
       <Button variant="success" loading={saving} onClick={() => void save()}>Save</Button>
     </div>
   ) : canModify ? (
@@ -78,6 +78,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
         variant="ghost"
         onClick={() => {
           setDraft(expenseToDraft(expense));
+          setError('');
           setEditing(true);
         }}
       >
