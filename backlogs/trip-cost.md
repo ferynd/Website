@@ -38,7 +38,7 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P5 — Settlements
 
 - [p] **`SettlementsSection`, `RecordPaymentDialog`, balance strip; remove `BalanceSummary`, per-person payment forms, and the old `calc.ts` balance/cap/settlement functions.** Depends: TC-P2, TC-P3.
-  > in progress — settlements table, shared payment dialog, D4 client gates, payment history, legacy calc removal, and TC-P4 follow-ups (a)–(e) implemented; checks: npm test (2128), tsc, scoped ESLint pass; npm run lint/build blocked by EPERM on localhost sockets during OpenNext initialization; live 1280px/390px verification unavailable in this sandbox; maintainer review/push/PR pending.
+  > in progress — settlements breakdown table, shared RecordPaymentDialog (suggestion prefill, overpay warning, D4 client gates), newest-first payment history with admin delete, BalanceSummary/SettlementSuggestions/PaymentHistory and legacy calc.ts removed (scenarios ported to ledger tests), TC-P4 follow-ups (a)–(e) fixed; checks: npm test (2128), lint, tsc, build pass; 390/1280 local harness pass; pushed: 6a8aa06; PR: pending
   - Balance breakdown rows (final, paid, reimbursements sent/received, remaining), Record buttons on suggestions, one Record payment entry point with "logs a reimbursement; does not send money" copy, overpay warning, payment history; D4 gating.
   - **Accept:** one way to record a payment; Owes / Is owed / Settled copy everywhere; reimbursements leave spending and caps unchanged (tested in TC-P1, checked by hand here).
 
