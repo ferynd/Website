@@ -305,7 +305,7 @@ export default function ExpenseForm({ onSaved, onCancel, onBusyChange }: { onSav
                     }}
                     className="text-accent"
                   />
-                  <span className="flex-1 text-text-2">{p.name}</span>
+                  <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2">{p.name}</span>
                   {newExpense.splitType === 'manual' && included && (
                     <div className="flex items-center gap-1">
                       {splitMode === 'percent' && (

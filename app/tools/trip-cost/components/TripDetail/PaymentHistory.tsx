@@ -26,7 +26,7 @@ export default function PaymentHistory({
             key={p.id}
             className="flex items-center p-2 rounded-lg hover:bg-surface-2 transition-colors"
           >
-            <span className="flex-1">
+            <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
               <span className="font-medium">{name(p.payerId)}</span>
               <span className="text-text-3 mx-1">paid</span>
               <span className="font-medium">{name(p.payeeId)}</span>
@@ -47,7 +47,7 @@ export default function PaymentHistory({
                 onClick={() => onDeletePayment(p.id)}
                 variant="ghost"
                 size="sm"
-                className="text-error hover:text-error/90 text-xs ml-2 p-0 h-auto"
+                className="shrink-0 text-error hover:text-error/90 text-xs ml-2 p-0 h-auto"
               >
                 Delete
               </Button>

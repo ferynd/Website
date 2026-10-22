@@ -63,9 +63,9 @@ export default function TravelerDetailSheet({ travelerId, onClose }: TravelerDet
           <h3 className="font-semibold text-text">Expense shares</h3>
           <ul className="mt-2 divide-y divide-border">
             {rows.map((row) => (
-              <li key={row.expenseId} className="flex justify-between gap-3 py-2">
-                <span>{row.description}</span>
-                <span>{formatMoney(row.shares[person.id])}</span>
+              <li key={row.expenseId} className="flex min-w-0 justify-between gap-3 py-2">
+                <span className="min-w-0 break-words [overflow-wrap:anywhere]">{row.description}</span>
+                <span className="shrink-0">{formatMoney(row.shares[person.id])}</span>
               </li>
             ))}
           </ul>

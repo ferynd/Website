@@ -5,6 +5,7 @@ import Button from '@/components/Button';
 import Dialog from '../ui/Dialog';
 import { useTrip } from '../../TripContext';
 import { expenseToDraft } from '../../utils/expenseDraft';
+import { isCurrentExpenseSave } from '../../utils/expenseSave';
 import { describeProblem, makeNameOf } from '../../utils/ledgerLabels';
 import { formatMoney } from '../../utils/money';
 import { expensePayerAmounts, splitMethodLabel } from '../../utils/ledgerView';
@@ -36,6 +37,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
     // Firestore snapshots replace expense objects; only a different record should discard edits.
     const nextExpense = currentExpense.current;
     setEditing(false);
+    setSaving(false);
     setDraft(nextExpense ? expenseToDraft(nextExpense) : null);
     setError('');
   }, [expenseId]);
@@ -55,10 +57,10 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
     setError('');
     try {
       await updateExpense(expense.id, draft);
-      if (saveRequest.current !== request || currentExpense.current?.id !== requestExpenseId) return;
+      if (!isCurrentExpenseSave(request, saveRequest.current, requestExpenseId, currentExpense.current?.id)) return;
       setEditing(false);
     } catch (saveError) {
-      if (saveRequest.current !== request || currentExpense.current?.id !== requestExpenseId) return;
+      if (!isCurrentExpenseSave(request, saveRequest.current, requestExpenseId, currentExpense.current?.id)) return;
       setError(saveError instanceof Error ? saveError.message : 'Could not update expense.');
     } finally {
       if (saveRequest.current === request) setSaving(false);
@@ -149,9 +151,9 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
                 const included = Object.hasOwn(allocation.shares, person.id);
                 const share = allocation.shares[person.id];
                 return (
-                  <li key={person.id} className="flex justify-between py-2">
-                    <span>{person.name}</span>
-                    <span>{included ? share === 0 ? '$0.00 (explicit)' : formatMoney(share) : 'Not included'}</span>
+                  <li key={person.id} className="flex min-w-0 justify-between gap-3 py-2">
+                    <span className="min-w-0 break-words [overflow-wrap:anywhere]">{person.name}</span>
+                    <span className="shrink-0">{included ? share === 0 ? '$0.00 (explicit)' : formatMoney(share) : 'Not included'}</span>
                   </li>
                 );
               })}

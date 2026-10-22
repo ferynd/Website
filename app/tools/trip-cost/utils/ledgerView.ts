@@ -78,7 +78,7 @@ export type LedgerViewRow =
 export function expensePayerAmounts(allocated: Record<string, number>, stored: Record<string, number>): Record<string, number> {
   const result = { ...allocated };
   for (const [id, amount] of Object.entries(stored)) {
-    if (!Object.hasOwn(result, id) && typeof amount === 'number' && Number.isFinite(amount)) {
+    if (!Object.hasOwn(result, id) && typeof amount === 'number' && Number.isFinite(amount) && amount > 0) {
       result[id] = Math.round(amount * 100);
     }
   }

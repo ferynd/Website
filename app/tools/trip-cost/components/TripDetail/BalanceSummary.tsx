@@ -8,7 +8,6 @@ import { useTrip } from '../../TripContext';
 import type { UserProfile } from '../../pageTypes';
 import { balanceStatus } from '../../utils/ledgerLabels';
 import { formatMoney } from '../../utils/money';
-import LedgerProblems from './LedgerProblems';
 
 export default function BalanceSummary({
   userProfile,
@@ -73,8 +72,6 @@ export default function BalanceSummary({
           {error}
         </div>
       )}
-
-      <LedgerProblems />
 
       <ul className="space-y-4">
         {participants.map((p) => {

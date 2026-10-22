@@ -141,7 +141,7 @@ export default function TripSettings({
             <div className="space-y-2">
               {participants.map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
-                  <span className="flex-1 text-text-2 text-sm">{p.name}</span>
+                  <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2 text-sm">{p.name}</span>
                   <div className="flex items-center gap-1">
                     <Input
                       type="number"
@@ -192,7 +192,7 @@ export default function TripSettings({
             <div className="space-y-2">
               {participants.map((p) => (
                 <div key={p.id} className="flex items-center gap-2">
-                  <span className="flex-1 text-text-2 text-sm">{p.name}</span>
+                  <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2 text-sm">{p.name}</span>
                   <div className="flex items-center gap-1">
                     <span className="text-text-3 text-xs">
                       {CURRENCY_SYMBOL}
@@ -248,7 +248,7 @@ export default function TripSettings({
               <div className="space-y-2 mt-2">
                 {participants.map((p) => (
                   <div key={p.id} className="flex items-center gap-2">
-                    <span className="flex-1 text-text-2 text-sm">
+                    <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2 text-sm">
                       {p.name}
                     </span>
                     <div className="flex items-center gap-1">

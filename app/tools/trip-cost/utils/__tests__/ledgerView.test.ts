@@ -91,6 +91,11 @@ describe('ledger view model expense cells and payers', () => {
       .toEqual({ a: 2500, removed: 1234 });
   });
 
+  it('does not re-add zero, negative, or non-finite stored payer amounts', () => {
+    expect(expensePayerAmounts({}, { zero: 0, negative: -5, invalid: Number.NaN, infinity: Infinity }))
+      .toEqual({});
+  });
+
   it('labels mixed legacy dollar and percentage splits', () => {
     expect(splitMethodLabel({ splitType: 'manual', manualSplit: { a: { type: 'amount', value: 1 }, b: { type: 'percent', value: 50 } } }))
       .toBe('Mixed custom split ($ and %)');
