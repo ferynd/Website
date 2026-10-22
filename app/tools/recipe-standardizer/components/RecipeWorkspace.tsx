@@ -656,7 +656,7 @@ export default function RecipeWorkspace() {
     }
     try {
       if (!currentId) {
-        await persistNew(draft, currentId === null);
+        await persistNew(draft, true);
         return;
       }
       if (remoteState.kind !== 'none') {
@@ -741,10 +741,10 @@ export default function RecipeWorkspace() {
     }
   };
 
-  const handleSaveAsNew = async (name: string): Promise<boolean> => {
+  const handleSaveAsNew = async (name: string, carryChecklist = false): Promise<boolean> => {
     if (!draft) return false;
     try {
-      const saved = await persistNew(withoutNutritionExports({ ...draft, name }).recipe, false);
+      const saved = await persistNew(withoutNutritionExports({ ...draft, name }).recipe, carryChecklist);
       if (saved) setSaveModalSummary(null);
       return saved;
     } catch (err) {
@@ -1539,7 +1539,11 @@ export default function RecipeWorkspace() {
           onSaveAsNew={async (name) => {
             if (saveBlockedWhileWriting(writeInFlightRef.current)) return;
             setConflictBusy(true);
-            const saved = await handleSaveAsNew(name);
+            // A remotely deleted source is re-saved, not forked, so its ticks carry over.
+            const sourceDeleted = conflict.kind === 'deleted';
+            const sourceId = currentIdRef.current;
+            const saved = await handleSaveAsNew(name, sourceDeleted);
+            if (saved && sourceDeleted && sourceId) removeChecklist(sourceId);
             if (saved) setConflict(null);
             setConflictBusy(false);
           }}
