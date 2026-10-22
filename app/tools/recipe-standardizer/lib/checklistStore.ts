@@ -116,6 +116,19 @@ export const mergeStorageChecklist = (
   return Array.from(new Set([...storedKeys, ...unsavedTicks]));
 };
 
+/**
+ * Replace stored ticks only for this tab's saved ingredients; stored ticks on
+ * other keys (e.g. ingredients another tab saved) are kept.
+ */
+export const mergePersistedChecklist = (
+  storedKeys: string[],
+  ownTicks: string[],
+  ownBaselineKeys: string[],
+): string[] => {
+  const ownKeys = new Set(ownBaselineKeys);
+  return Array.from(new Set([...storedKeys.filter((key) => !ownKeys.has(key)), ...ownTicks]));
+};
+
 /** Read one saved recipe checklist; unavailable storage and malformed data produce no ticks. */
 export const readChecklist = (recipeId: string): string[] => {
   const storage = getStorage();
