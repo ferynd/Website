@@ -3,7 +3,7 @@
 import React, { useId } from 'react';
 import Input from '@/components/Input';
 import type { TripParticipant } from '../../pageTypes';
-import { enteredPercentTotal } from '../../utils/tripSettings';
+import { defaultSplitTotalInvalid, enteredPercentTotal } from '../../utils/tripSettings';
 
 interface DefaultSplitSectionProps {
   participants: TripParticipant[];
@@ -26,9 +26,12 @@ export default function DefaultSplitSection({
   const warningId = useId();
   const totalId = useId();
   const describedBy = [helpId, warningId, totalId, messageIds].filter(Boolean).join(' ');
-  const hasDefault = Object.values(shares).some((value) => value.trim() !== '');
-  const missing = hasDefault ? participants.filter((person) => !shares[person.id]?.trim()) : [];
-  const total = enteredPercentTotal(shares);
+  const currentShares = Object.fromEntries(
+    participants.map((person) => [person.id, shares[person.id] ?? '']),
+  );
+  const hasDefault = Object.values(currentShares).some((value) => value.trim() !== '');
+  const missing = hasDefault ? participants.filter((person) => !currentShares[person.id].trim()) : [];
+  const total = enteredPercentTotal(currentShares);
   const totalLabel = total === null
     ? 'Enter percentages as numbers.'
     : `Total: ${total.toFixed(2)}% / 100%`;
@@ -68,9 +71,9 @@ export default function DefaultSplitSection({
       </p>
       <p
         id={totalId}
-        className={`text-sm ${total !== null && Math.abs(total - 100) > 1e-6 ? 'text-warning' : 'text-text-3'}`}
+        className={`text-sm ${total !== null && defaultSplitTotalInvalid(total) ? 'text-warning' : 'text-text-3'}`}
       >
-        {total !== null || Object.values(shares).some((value) => value.trim() && Number.isNaN(Number(value)))
+        {total !== null || hasDefault
           ? totalLabel
           : ''}
       </p>

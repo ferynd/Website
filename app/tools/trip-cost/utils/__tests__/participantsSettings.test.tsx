@@ -112,4 +112,30 @@ describe('settings section markers', () => {
     expect(html).not.toContain('placeholder="0"');
     expect(html).not.toContain('value="0"');
   });
+
+  const defaultMarkup = (shares: Record<string, string>) => renderToStaticMarkup(
+    <DefaultSplitSection
+      participants={participants}
+      shares={shares}
+      readOnly={false}
+      messageIds="settings-messages"
+      onChange={() => undefined}
+    />,
+  );
+
+  it('excludes orphan shares from the displayed total and missing-traveler warning', () => {
+    const html = defaultMarkup({ a: '40', b: '30', gone: '30' });
+    expect(html).toContain('Total: 70.00% / 100%');
+    expect(html).not.toContain('Total: 100.00%');
+    expect(defaultMarkup({ gone: '100' })).not.toContain('Missing from the default:');
+    expect(defaultMarkup({ gone: 'nope' })).not.toContain('Enter percentages as numbers.');
+    expect(defaultMarkup({ a: '100', gone: '30' })).toContain('Missing from the default: Jimi');
+  });
+
+  it('uses the legacy 0.1% tolerance for the total warning colour', () => {
+    expect(defaultMarkup({ a: '49.95', b: '49.95' }))
+      .toMatch(/class="text-sm text-text-3">Total: 99.90%/);
+    expect(defaultMarkup({ a: '49.9', b: '49.9' }))
+      .toMatch(/class="text-sm text-warning">Total: 99.80%/);
+  });
 });

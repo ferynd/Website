@@ -297,7 +297,11 @@ export default function ParticipantsSection({
                       aria-describedby={`${person.id}-link-help`}
                     />
                   </label>
-                  <p id={`${person.id}-link-help`} className="break-words text-sm text-text-3 [overflow-wrap:anywhere]">
+                  <p
+                    id={`${person.id}-link-help`}
+                    aria-live="polite"
+                    className="break-words text-sm text-text-3 [overflow-wrap:anywhere]"
+                  >
                     {selectedUser
                       ? `Link ${person.name} to ${accountLabel(selectedUser)}. The trip name stays ${person.name}.`
                       : 'Choose an existing account. This keeps the same traveler and their expense history.'}
@@ -317,7 +321,8 @@ export default function ParticipantsSection({
                               variant="ghost"
                               size="sm"
                               disabled={taken}
-                              className="h-auto w-full min-w-0 justify-start px-3 py-2 text-left"
+                              aria-pressed={selectedUser?.uid === user.uid}
+                              className="h-auto w-full min-w-0 justify-start border border-transparent px-3 py-2 text-left aria-pressed:border-accent aria-pressed:bg-accent/10"
                               onClick={() => {
                                 setSelectedUser(user);
                                 setSearchQuery(user.displayName || user.email);

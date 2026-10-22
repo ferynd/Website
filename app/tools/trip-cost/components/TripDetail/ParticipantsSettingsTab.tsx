@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useId, useRef, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import type { UserProfile } from '../../pageTypes';
@@ -59,36 +59,47 @@ export default function ParticipantsSettingsTab({
   const [draft, setDraft] = useState<TripSettingsDraft>(() => (trip ? settingsDraft(trip) : emptyDraft()));
   const [baseline, setBaseline] = useState(() => (trip ? tripRevision(trip) : ''));
   const [dirty, setDirty] = useState(false);
-  const [overwrite, setOverwrite] = useState(false);
+  const [overwriteRevision, setOverwriteRevision] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [showAuditLog, setShowAuditLog] = useState(false);
-  const pending = useRef<TripSettingsFields | null>(null);
+  const [pending, setPending] = useState<{
+    settings: TripSettingsFields;
+    succeeded: boolean;
+  } | null>(null);
+  const revision = trip ? tripRevision(trip) : '';
+  const overwrite = overwriteRevision !== undefined && overwriteRevision === revision;
+
+  useEffect(() => {
+    if (overwriteRevision !== undefined && overwriteRevision !== revision) {
+      setOverwriteRevision(undefined);
+    }
+  }, [overwriteRevision, revision]);
 
   useEffect(() => {
     if (!trip) return;
-    if (pending.current) {
-      if (savedSettingsMatch(trip, pending.current)) {
-        pending.current = null;
+    if (pending) {
+      // A matching local snapshot is optimistic until the server accepts it.
+      // Keep the typed draft and dirty flag through a rejection and rollback.
+      if (pending.succeeded && savedSettingsMatch(trip, pending.settings)) {
+        setPending(null);
         setDirty(false);
-        setOverwrite(false);
+        setOverwriteRevision(undefined);
         setBaseline(tripRevision(trip));
         setDraft(settingsDraft(trip));
-      } else if (tripRevision(trip) !== baseline) {
-        pending.current = null;
       }
       return;
     }
     if (dirty) return;
     setBaseline(tripRevision(trip));
     setDraft(settingsDraft(trip));
-  }, [trip, dirty, baseline]);
+  }, [trip, dirty, pending]);
 
   const ids = participants.map((person) => person.id);
   const parsed = parseSettingsDraft(draft, ids);
   const preview = parsed.errors.length === 0 ? previewSettings(ledger, parsed.settings) : null;
   const eligibility = preview ? overagePreview(preview, parsed.settings.overageSplit, ledger.travelerIds) : null;
-  const ownWrite = Boolean(trip && pending.current && savedSettingsMatch(trip, pending.current));
+  const ownWrite = Boolean(trip && pending && savedSettingsMatch(trip, pending.settings));
   // A clean form refreshes from the snapshot. A dirty form must confirm before
   // it can overwrite settings that changed after the form diverged.
   const revisionMismatch = Boolean(trip && !ownWrite && settingsAreStale(baseline, trip));
@@ -98,7 +109,7 @@ export default function ParticipantsSettingsTab({
 
   const edit = (update: (current: TripSettingsDraft) => TripSettingsDraft) => {
     if (readOnly) return;
-    pending.current = null;
+    setPending(null);
     setDirty(true);
     setSaveError('');
     setDraft(update);
@@ -107,16 +118,18 @@ export default function ParticipantsSettingsTab({
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!trip || !admin || saving || parsed.errors.length > 0) return;
-    const revision = tripRevision(trip);
     const isStale = settingsAreStale(baseline, trip);
     if (isStale && (!dirty || !overwrite)) return;
     setSaving(true);
     setSaveError('');
-    pending.current = parsed.settings;
+    setPending({ settings: parsed.settings, succeeded: false });
     try {
-      await updateTripSettings(parsed.settings, baseline, isStale ? revision : undefined);
+      await updateTripSettings(parsed.settings, baseline, isStale ? overwriteRevision : undefined);
+      // The matching snapshot can arrive on either side of this promise.
+      setPending({ settings: parsed.settings, succeeded: true });
     } catch (failure) {
-      pending.current = null;
+      setPending(null);
+      setDirty(true);
       setSaveError(failure instanceof Error ? failure.message : 'Could not save settings.');
     } finally {
       setSaving(false);
@@ -179,7 +192,7 @@ export default function ParticipantsSettingsTab({
                 type="checkbox"
                 className="mt-1 shrink-0"
                 checked={overwrite}
-                onChange={(event) => setOverwrite(event.target.checked)}
+                onChange={(event) => setOverwriteRevision(event.target.checked ? revision : undefined)}
               />
               <span className="min-w-0 break-words [overflow-wrap:anywhere]">
                 Save anyway — overwrite budget caps, overage, and the default split

@@ -112,15 +112,23 @@ export function validateTripSettings(settings: TripSettingsFields, ids: string[]
   }
 
   validateShares(settings.defaultSplit, 'Default split');
-  const defaultValues = Object.values(settings.defaultSplit);
+  const defaultValues = ids
+    .filter((id) => Object.hasOwn(settings.defaultSplit, id))
+    .map((id) => settings.defaultSplit[id]);
   if (defaultValues.length) {
     const total = defaultValues.reduce((sum, value) => sum + value, 0);
-    if (Math.abs(total - 100) > 1e-6) {
-      errors.push('Default split percentages must total 100%, or leave every field blank for equal splitting.');
+    if (defaultSplitTotalInvalid(total)) {
+      errors.push(`Default split percentages must total 100% (currently ${total.toFixed(2)}%), or leave every field blank for equal splitting.`);
     }
   }
 
   return [...new Set(errors)];
+}
+
+/** Preserve the legacy default-split tolerance for previously saved trips. */
+export function defaultSplitTotalInvalid(total: number): boolean {
+  // 33.3 + 33.3 + 33.3 can be just below 99.9 in floating-point arithmetic.
+  return Math.abs(total - 100) > 0.1 + 1e-9;
 }
 
 /**
@@ -264,11 +272,11 @@ export function enteredPercentTotal(shares: Record<string, string>): number | nu
 }
 
 /**
- * Cents the new traveler would absorb if added now. Even overage only;
- * saved expense splits are not changed. Manual overage gives them no share.
+ * Cents the new traveler would absorb if added now, without changing saved
+ * expense splits. Includes manual overage's even fallback when no eligible
+ * traveler has a positive custom share.
  */
 export function newTravelerOverageCents(trip: Pick<Trip, 'participants' | 'expenses' | 'payments' | 'spendCaps' | 'overageSplit'>): number {
-  if (trip.overageSplit?.type === 'manual') return 0;
   let id = 'new-traveler-preview';
   while (trip.participants.some((person) => person.id === id)) id += '-x';
   const added: TripParticipant = { id, name: 'New traveler', isRegistered: false, addedBy: '' };

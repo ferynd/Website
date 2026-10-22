@@ -117,6 +117,42 @@ describe('trip settings validation', () => {
       defaultShares: {},
     }, ids).errors.join(' ')).toMatch(/whole cents/);
   });
+
+  it('accepts legacy rounded defaults within 0.1% and reports the total outside it', () => {
+    const legacyDefaults: TripSettingsFields['defaultSplit'][] = [
+      { a: 33.3, b: 33.3, c: 33.3 },
+      { a: 50, b: 50.1 },
+    ];
+    for (const defaultSplit of legacyDefaults) {
+      expect(validateTripSettings({ ...evenSettings(), defaultSplit }, ['a', 'b', 'c'])).toEqual([]);
+    }
+    expect(validateTripSettings({
+      ...evenSettings(),
+      defaultSplit: { a: 49.9, b: 49.9 },
+    }, ids)).toEqual([
+      'Default split percentages must total 100% (currently 99.80%), or leave every field blank for equal splitting.',
+    ]);
+    expect(validateTripSettings({
+      ...evenSettings(),
+      defaultSplit: { a: 50, b: 50.11 },
+    }, ids)[0]).toContain('currently 100.11%');
+  });
+
+  it('omits orphan defaults and overage shares when parsing a stored draft', () => {
+    const stored = baseTrip({
+      defaultSplit: { a: 40, b: 30, gone: 30 },
+      overageSplit: { type: 'manual', shares: { a: 0, b: 0, gone: 100 } },
+    });
+    const parsed = parseSettingsDraft(settingsDraft(stored), ids);
+    expect(parsed.settings.defaultSplit).toEqual({ a: 40, b: 30 });
+    expect(parsed.settings.overageSplit.shares).toEqual({ a: 0, b: 0 });
+    expect(parsed.errors).toContain('Custom overage needs at least one positive share.');
+    expect(parsed.errors.join(' ')).toContain('currently 70.00%');
+    expect(validateTripSettings({
+      ...evenSettings(),
+      defaultSplit: stored.defaultSplit!,
+    }, ids).join(' ')).toContain('currently 70.00%');
+  });
 });
 
 describe('stale settings edits', () => {
@@ -208,6 +244,24 @@ describe('overage eligibility and new-traveler notice', () => {
       overageSplit: { type: 'manual', shares: { b: 100 } },
     })).toBe(0);
     expect(newTravelerNotice({ ...trip, spendCaps: [] }, 'Casey').overage).toBeNull();
+  });
+
+  it('includes manual overage falling back to an even split in the add-traveler notice', () => {
+    const trip = baseTrip({
+      spendCaps: [
+        { participantId: 'a', maxAmount: 100 },
+        { participantId: 'b', maxAmount: 100 },
+      ],
+      expenses: [expense({ totalAmount: 300, paidBy: { a: 300 }, splitParticipants: ['a', 'b'] })],
+      overageSplit: { type: 'manual', shares: { a: 50, b: 50 } },
+    });
+    expect(newTravelerOverageCents(trip)).toBe(10000);
+    expect(newTravelerNotice(trip, 'Casey').overage)
+      .toBe('Casey will start absorbing over-cap costs: currently +$100.00.');
+
+    const withEligibleShare = { ...trip, spendCaps: [{ participantId: 'a', maxAmount: 100 }] };
+    expect(newTravelerOverageCents(withEligibleShare)).toBe(0);
+    expect(newTravelerNotice(withEligibleShare, 'Casey').overage).toBeNull();
   });
 });
 

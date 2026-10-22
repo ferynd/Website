@@ -32,7 +32,7 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 - Adding a traveler never resplits saved expense rows (`splitParticipants` is stored per expense).
 - New expense writes add up exactly (payers and Custom $ to the cent, Custom % to exactly 100%); money fields left unedited on an existing expense are saved back verbatim, so legacy rows within the old tolerance stay editable. Payments must be > $0 in whole cents between two different travelers on the trip.
 - Linking an account keeps the participant `id`; a uid may be linked to at most one traveler per trip; `participantIds` is always recomputed from `participants`.
-- Settings (`spendCaps`, `overageSplit`, `defaultSplit`) are validated together and written in one `updateDoc`. A dirty form warns before overwriting a trip that changed after editing started. Infeasible caps warn and still save.
+- Settings (`spendCaps`, `overageSplit`, `defaultSplit`) are validated together and written in one `updateDoc`. A dirty form warns before overwriting a trip that changed after editing started; overwrite confirmation expires on another revision. Optimistic snapshots do not discard edits before server acceptance, and rejected saves retain the draft. Default totals omit former travelers and accept the legacy 0.1 percentage-point tolerance. Infeasible caps warn and still save.
 
 ## Active phases
 

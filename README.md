@@ -220,7 +220,7 @@ This is a comprehensive web application to help groups track shared expenses on 
 - **Balance Calculations:** Automatic calculation of how much each person paid vs. how much they owe, and a summary of who should pay whom to settle up.
 - **Settlement Suggestions:** The app suggests optimal repayments to settle all debts (minimizing the number of transactions).
 - **Payment Tracking:** Users can record payments (when someone pays someone else to settle a debt). The tool keeps a full history of these payments.
-- **Saving:** Expenses and payments save as they are added. Budget caps, overage redistribution, and the default split share one Save control, so a settings change is a single write.
+- **Saving:** Expenses and payments save as they are added. Budget caps, overage redistribution, and the default split share one Save control, so a settings change is a single write. Rejected settings saves retain your edits; saving over a changed trip requires confirmation of its latest revision.
 
 **User Roles & Permissions:**
 
