@@ -27,6 +27,7 @@ describe('Dialog dismissal', () => {
       addEventListener,
       removeEventListener: vi.fn(),
     });
+    vi.stubGlobal('window', { matchMedia: () => ({ matches: true }) });
 
     const dialog = Dialog({ open: true, title: 'Expense', onClose, children: null, dismissible });
     if (!dialog) throw new Error('Expected an open dialog');
@@ -53,5 +54,23 @@ describe('Dialog dismissal', () => {
     } finally {
       cleanup?.();
     }
+  });
+
+  it('ignores backdrop taps on phone-width screens so forms are not discarded', () => {
+    const onClose = vi.fn();
+    vi.stubGlobal('HTMLElement', class {});
+    vi.stubGlobal('document', {
+      body: { style: { overflow: '' } },
+      activeElement: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    vi.stubGlobal('window', { matchMedia: () => ({ matches: false }) });
+
+    const dialog = Dialog({ open: true, title: 'Expense', onClose, children: null });
+    if (!dialog) throw new Error('Expected an open dialog');
+    const backdrop = {};
+    dialog.props.onMouseDown({ target: backdrop, currentTarget: backdrop } as React.MouseEvent<HTMLDivElement>);
+    expect(onClose).not.toHaveBeenCalled();
   });
 });

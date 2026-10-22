@@ -41,8 +41,8 @@ describe('ledger table mobile layout', () => {
       <LedgerTable onExpense={vi.fn()} onTraveler={vi.fn()} />,
     );
 
-    expect(html).toMatch(/sticky left-0[^\"]*border-r border-border[^\"]*bg-surface-1/);
-    expect(html).toContain('sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] border-r border-border bg-surface-2');
+    expect(html).toMatch(/sticky left-0[^\"]*border-r border-r-border[^\"]*bg-surface-1/);
+    expect(html).toContain('sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] border-r border-r-border bg-surface-2');
     expect(html).toContain('min-w-[7rem] whitespace-nowrap bg-surface-1 px-3 py-3 text-right');
     expect(html).toContain('min-w-[7rem] whitespace-nowrap px-3 py-2 text-right');
     expect(html).not.toContain('bg-gradient-to-l');

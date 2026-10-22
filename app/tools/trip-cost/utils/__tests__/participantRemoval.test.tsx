@@ -203,7 +203,7 @@ describe('participant removal flow', () => {
     expect(html).toContain('Expense: Dinner 12');
     expect(html).toContain('Payment: Jackie N to Jimi (Cash repayment)');
     expect(html).toContain('min-h-0 flex-1 overflow-y-auto');
-    expect(html).toContain('h-auto min-h-0 max-h-[90dvh]');
+    expect(html).toContain('h-auto min-h-0 max-h-[90vh] supports-[height:100dvh]:max-h-[90dvh]');
     expect(html).not.toContain('h-full');
     expect(html).toMatch(/<footer class="sticky bottom-0 shrink-0[^>]*><button[^>]*>Close<\/button><\/footer>/);
     expect(html).not.toContain('>Delete</button>');
