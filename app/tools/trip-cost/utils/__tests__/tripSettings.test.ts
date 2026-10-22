@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildLedger } from '../ledger';
+import { applyBudgetCaps, buildLedger } from '../ledger';
 import {
   capProgress,
   enteredPercentTotal,
@@ -212,7 +212,7 @@ describe('overage eligibility and new-traveler notice', () => {
     expect(formatNormalizedShare(10000)).toBe('100.00%');
   });
 
-  it('treats someone as eligible only when the ledger has not capped them', () => {
+  it('excludes travelers whose final responsibility has reached their cap', () => {
     const caps = {
       final: { a: 100, b: 100 },
       adjustments: { a: 0, b: 50 },
@@ -224,9 +224,63 @@ describe('overage eligibility and new-traveler notice', () => {
       cappedIds: ['a'],
     } as BudgetCapResult;
     const preview = overagePreview(caps, { type: 'even' }, ['a', 'b']);
-    expect(preview.eligible).toEqual(['b']);
+    expect(preview.eligible).toEqual([]);
     expect(preview.absorbing).toEqual(['b']);
-    expect(preview.normalized.b).toBe(10000);
+    expect(preview.normalized).toEqual({});
+  });
+
+  it('excludes a traveler exactly at cap even before the ledger locks them', () => {
+    const caps = applyBudgetCaps(
+      { a: 29, b: 28, c: 0 },
+      [{ participantId: 'a', maxAmount: 0.29 }, { participantId: 'b', maxAmount: 0.29 }],
+      { type: 'even' },
+      ['a', 'b', 'c'],
+    );
+    expect(caps.cappedIds).toEqual([]);
+    expect(caps.capCents.a).toBe(29);
+    const preview = overagePreview(caps, { type: 'even' }, ['a', 'b', 'c']);
+    expect(preview.eligible).toEqual(['b', 'c']);
+    expect(preview.normalized).toEqual({ b: 5000, c: 5000 });
+  });
+
+  it('falls back to even when only travelers at their caps have manual shares', () => {
+    const split = { type: 'manual' as const, shares: { a: 100 } };
+    const caps = applyBudgetCaps(
+      { a: 100, b: 0, c: 0 },
+      [{ participantId: 'a', maxAmount: 1 }],
+      split,
+      ['a', 'b', 'c'],
+    );
+    const preview = overagePreview(caps, split, ['a', 'b', 'c']);
+    expect(preview.fallback).toBe(true);
+    expect(preview.eligible).toEqual(['b', 'c']);
+    expect(preview.normalized).toEqual({ b: 5000, c: 5000 });
+
+    const furtherOverage = applyBudgetCaps(
+      { a: 102, b: 0, c: 0 },
+      [{ participantId: 'a', maxAmount: 1 }],
+      split,
+      ['a', 'b', 'c'],
+    );
+    expect(furtherOverage.fallbackUsed).toBe(true);
+    expect(furtherOverage.adjustments).toEqual({ a: -2, b: 1, c: 1 });
+  });
+
+  it('keeps uncapped zero-share travelers eligible and ignores invalid manual weights', () => {
+    const ids = ['a', 'b', 'c'];
+    const caps = applyBudgetCaps({ a: 0, b: 0, c: 0 }, [{ participantId: 'a', maxAmount: 0 }], undefined, ids);
+    const preview = overagePreview(caps, { type: 'manual', shares: { a: 100, b: Infinity, c: -1 } }, ids);
+    expect(preview.eligible).toEqual(['b', 'c']);
+    expect(preview.fallback).toBe(true);
+    expect(preview.normalized).toEqual({ b: 5000, c: 5000 });
+    expect(overagePreview(caps, { type: 'manual', shares: { b: 25 } }, ids).normalized)
+      .toEqual({ b: 10000, c: 0 });
+  });
+
+  it('does not claim an even fallback when nobody can absorb overage', () => {
+    const caps = applyBudgetCaps({ a: 0 }, [{ participantId: 'a', maxAmount: 0 }], undefined, ['a']);
+    expect(overagePreview(caps, { type: 'manual', shares: { a: 100 } }, ['a']))
+      .toMatchObject({ eligible: [], normalized: {}, fallback: false });
   });
 
   it('reports the cents a new traveler would absorb without resplitting expenses', () => {

@@ -14,6 +14,7 @@ vi.mock('@/components/Input', () => ({ default: 'input' }));
 import TripList from '../../components/TripList';
 import BudgetCapsSection from '../../components/TripDetail/BudgetCapsSection';
 import DefaultSplitSection from '../../components/TripDetail/DefaultSplitSection';
+import ConfirmDeleteModal from '../../components/TripDetail/ConfirmDeleteModal';
 import type { Ledger } from '../ledger';
 import type { Trip, TripParticipant, UserProfile } from '../../pageTypes';
 
@@ -34,6 +35,31 @@ const admin: UserProfile = {
 };
 
 const trip = { id: 't', name: 'Trip', participants: [], expenses: [], payments: [] } as unknown as Trip;
+
+describe('blocked participant removal dialog', () => {
+  it('bounds long errors to a scrollable message area with reachable actions outside it', () => {
+    const error = Array.from({ length: 5 }, (_, index) =>
+      `Expense ${index + 1}: ${'Long participant removal blocker '.repeat(30)}`,
+    ).join('\n');
+    const html = renderToStaticMarkup(
+      <ConfirmDeleteModal
+        itemType="participant"
+        error={error}
+        onConfirm={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+
+    expect(html).toContain('max-h-[calc(100dvh-2rem)]');
+    expect(html).toContain('flex-col gap-4 overflow-hidden');
+    expect(html).toMatch(/class="min-h-0 min-w-0 space-y-4 overflow-y-auto"><p id="confirm-title"/);
+    expect(html).toContain(error);
+    expect(html).toMatch(/<\/p><\/div><div class="flex shrink-0 flex-wrap justify-end gap-2"><button/);
+    expect(html).toContain('>Delete</button>');
+    expect(html).toContain('>Cancel</button>');
+    expect(html).toContain('aria-labelledby="confirm-title"');
+  });
+});
 
 function list(tripsStatus: 'loading' | 'ready' | 'error', trips: Trip[] = []) {
   return renderToStaticMarkup(

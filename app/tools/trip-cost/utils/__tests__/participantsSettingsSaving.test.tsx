@@ -48,6 +48,9 @@ vi.mock('firebase/firestore', () => ({
   getDocs: (...args: unknown[]) => hooks.getDocs(...args),
   query: (...args: unknown[]) => args,
   limit: (count: number) => count,
+  documentId: () => '__name__',
+  orderBy: (field: string) => ({ orderBy: field }),
+  startAfter: (cursor: string) => ({ startAfter: cursor }),
 }));
 vi.mock('@/components/Button', () => ({
   default: ({ loading, ...props }: React.ComponentProps<'button'> & { loading?: boolean }) =>
@@ -246,18 +249,76 @@ describe('settings save lifecycle', () => {
 });
 
 describe('account selection feedback', () => {
+  it('does not read registered accounts for a non-admin', () => {
+    hooks.useTrip.mockReturnValue({ trip: original, participants: original.participants });
+    const tree = renderSettled(() => ParticipantsSection({
+      ...props,
+      userProfile: { ...admin, isAdmin: false },
+    }));
+
+    expect(hooks.getDocs).not.toHaveBeenCalled();
+    expect(elements(tree).some((node) => node.props.children === 'Link account')).toBe(false);
+  });
+
+  it('searches accounts beyond the first page and keeps linked accounts disabled', async () => {
+    const firstPage = Array.from({ length: 100 }, (_, index) => ({
+      id: `account-${String(index).padStart(3, '0')}`,
+      data: () => ({ displayName: `Account ${index}`, email: `${index}@example.com` }),
+    }));
+    const lastPage = ['late-account', 'linked-account'].map((id) => ({
+      id,
+      data: () => ({ displayName: `Later ${id}`, email: `${id}@example.com` }),
+    }));
+    hooks.getDocs
+      .mockResolvedValueOnce({ docs: firstPage })
+      .mockResolvedValueOnce({ docs: lastPage });
+    hooks.useTrip.mockReturnValue({
+      trip: original,
+      participants: [
+        ...original.participants,
+        { id: 'b', name: 'Bea', userId: 'linked-account', isRegistered: true, addedBy: 'admin' },
+      ],
+    });
+    const render = () => renderSettled(() => ParticipantsSection(props));
+    let tree = render();
+    await vi.waitFor(() => expect(hooks.states).toContainEqual(expect.arrayContaining([
+      expect.objectContaining({ uid: 'late-account' }),
+    ])));
+    const linkButton = findElement(tree, (node) => node.props.children === 'Link account');
+    (linkButton.props.onClick as () => void)();
+    tree = render();
+    const searchLabel = findElement(tree, (node) =>
+      node.type === 'label' && Array.isArray(node.props.children)
+        && node.props.children[0] === 'Search registered accounts for ',
+    );
+    const input = findElement(searchLabel, (node) => typeof node.props.onChange === 'function');
+    (input.props.onChange as (event: { target: { value: string } }) => void)({ target: { value: 'Later' } });
+    tree = render();
+
+    const choices = elements(tree).filter((node) => node.props['aria-pressed'] !== undefined);
+    expect(choices).toHaveLength(2);
+    expect(choices.map((node) => node.props.disabled)).toEqual([false, true]);
+    expect(renderToStaticMarkup(<>{choices}</>)).toContain('Already on this trip');
+    expect(hooks.getDocs).toHaveBeenNthCalledWith(2, [
+      'users',
+      { orderBy: '__name__' },
+      100,
+      { startAfter: 'account-099' },
+    ]);
+  });
+
   it('marks the chosen account pressed, styles it, and announces the link help', async () => {
     const accounts = ['one', 'two'].map((uid) => ({
       id: uid,
       data: () => ({ displayName: 'Shared Name', email: `${uid}@example.com` }),
     }));
-    hooks.getDocs.mockResolvedValue({
-      forEach: (visit: (entry: typeof accounts[number]) => void) => accounts.forEach(visit),
-    });
+    hooks.getDocs.mockResolvedValue({ docs: accounts });
     hooks.useTrip.mockReturnValue({ trip: original, participants: original.participants });
     const render = () => renderSettled(() => ParticipantsSection(props));
     let tree = render();
-    await Promise.resolve();
+    await vi.waitFor(() => expect(hooks.states).toContainEqual(expect.arrayContaining([
+      expect.objectContaining({ uid: 'one' }),
+    ])));
     const linkButton = findElement(tree, (node) => node.props.children === 'Link account');
     (linkButton.props.onClick as () => void)();
     tree = render();
@@ -273,6 +334,6 @@ describe('account selection feedback', () => {
     const help = findElement(tree, (node) => node.props.id === 'a-link-help');
     expect(help.props['aria-live']).toBe('polite');
     expect(renderToStaticMarkup(help)).toContain('Link Ada to Shared Name · one@example.com');
-    expect(hooks.getDocs).toHaveBeenCalledWith(['users', 100]);
+    expect(hooks.getDocs).toHaveBeenCalledWith(['users', { orderBy: '__name__' }, 100]);
   });
 });

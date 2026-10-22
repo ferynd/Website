@@ -1,13 +1,15 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { getDocs, limit, query } from 'firebase/firestore';
+import { documentId, getDocs, limit, orderBy, query, startAfter } from 'firebase/firestore';
+import type { QueryConstraint } from 'firebase/firestore';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { usersCol } from '../../db';
 import { useTrip } from '../../TripContext';
 import type { UserProfile } from '../../pageTypes';
 import { newTravelerNotice } from '../../utils/tripSettings';
+import { fetchRegisteredUsers, REGISTERED_USERS_PAGE_SIZE } from '../../utils/registeredUsers';
 
 interface RegisteredUser {
   uid: string;
@@ -60,19 +62,22 @@ export default function ParticipantsSection({
       setLoadingUsers(true);
       setUsersError('');
       try {
-        const snapshot = await getDocs(query(usersCol(), limit(100)));
-        if (cancelled) return;
-        const users: RegisteredUser[] = [];
-        snapshot.forEach((entry) => {
-          const data = entry.data() as Omit<RegisteredUser, 'uid'>;
-          users.push({
-            uid: entry.id,
-            email: data.email ?? '',
-            displayName: data.displayName ?? '',
-            firstName: data.firstName ?? '',
-            lastInitial: data.lastInitial ?? '',
+        const users = await fetchRegisteredUsers<RegisteredUser>(async (cursor) => {
+          const constraints: QueryConstraint[] = [orderBy(documentId()), limit(REGISTERED_USERS_PAGE_SIZE)];
+          if (cursor !== undefined) constraints.push(startAfter(cursor));
+          const snapshot = await getDocs(query(usersCol(), ...constraints));
+          return snapshot.docs.map((entry) => {
+            const data = entry.data() as Omit<RegisteredUser, 'uid'>;
+            return {
+              uid: entry.id,
+              email: data.email ?? '',
+              displayName: data.displayName ?? '',
+              firstName: data.firstName ?? '',
+              lastInitial: data.lastInitial ?? '',
+            };
           });
-        });
+        }, () => cancelled);
+        if (cancelled) return;
         setRegisteredUsers(users);
       } catch {
         if (!cancelled) setUsersError('Could not load registered accounts.');

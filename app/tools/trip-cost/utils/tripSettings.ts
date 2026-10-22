@@ -212,9 +212,16 @@ export interface OveragePreview {
  */
 export function overagePreview(caps: BudgetCapResult, split: OverageSplit, ids: string[]): OveragePreview {
   const capped = new Set(caps.cappedIds);
-  const eligible = ids.filter((id) => !capped.has(id));
-  const manual = Object.fromEntries(eligible.map((id) => [id, split.shares?.[id] ?? 0]));
-  const fallback = split.type === 'manual' && !eligible.some((id) => manual[id] > 0);
+  // capCents and final already use money.ts integer cents. The ledger only
+  // adds a traveler to cappedIds after they exceed the cap, so check equality too.
+  const eligible = ids.filter((id) =>
+    !capped.has(id) && (!(id in caps.capCents) || (caps.final[id] ?? 0) < caps.capCents[id]),
+  );
+  const manual = Object.fromEntries(eligible.map((id) => {
+    const share = split.shares?.[id];
+    return [id, typeof share === 'number' && Number.isFinite(share) && share > 0 ? share : 0];
+  }));
+  const fallback = split.type === 'manual' && eligible.length > 0 && !eligible.some((id) => manual[id] > 0);
   const weights = split.type === 'even' || fallback
     ? Object.fromEntries(eligible.map((id) => [id, 1]))
     : manual;
