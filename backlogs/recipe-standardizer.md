@@ -52,19 +52,14 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
   - Keep this open until the user or automation confirms production/non-production deployment.
   - **Accept:** owner can complete the flow; another UID cannot read/write the recipe; deployment evidence is recorded.
 
-### P5 — Hardening, migrations, docs, and remaining touched-code findings
+### P5-M1 — Manual verification (user-assisted, non-blocking)
 
-- [p] **Complete rollout hardening before optional features.** Depends: P4.
-  > pushed — F-096 revision conflicts, F-093 bake review/annotation, saved-shape fixtures, export card fix + view-model tests, F-141 plan; checks: npm test 2411 passed (99 files), tsc, lint, build; commit: 48de054; PR: #175
-  - Test all pre-v2/v2 saved shapes with the additive nutrition fields.
-  - Add stale-write/revision conflict handling for multi-tab recipe updates or leave a separately approved AR-16 item with explicit residual risk.
-  - Prevent baked scaling from persisting an unscalable equivalent as current without review/annotation.
-  - Plan and document migration from `default-app-id` rather than making the accidental namespace permanent.
-  - Split to P8 (checklist persistence); P5 only resets ticks per recipe.
-  - Update README, Architecture, Security, scaling copy, and cross-tool contracts.
-  - Carried from P4 review (PR #168, Codex P2 on 5009f5f): disable the Export button when no *missing* basis is exportable (`NutritionExportCard.tsx:180`; base it on `selectMissingExportBasis`), plus component tests for the export modal fixes.
-  - **Findings:** F-093 addressed (bake review + persisted annotation); F-096 addressed client-side (revision transaction; rules-level enforcement retained as AR-16 residual); F-141 plan documented in ARCHITECTURE, migration retained under AR-08; F-097/F-143 confirmed closed by P1/P3 (see PR body).
-  - **Accept:** migration fixtures, concurrent-save tests, baked-equivalent tests, docs, and end-to-end export smoke pass.
+- [p] **Complete the signed-in P5 verification and export smoke.** The merged implementation is archived; this item tracks only the outstanding user-assisted checks.
+  > blocked — requires the user's signed-in Firebase and Nutrition Tracker sessions; does not block unrelated coding.
+  - In two signed-in tabs, verify update/update and overwrite conflicts, update/delete and save-as-new, stale editor/export interactions, and legacy revision 0 → 1.
+  - Verify bake review/save/reload/edit confirmation in all views, owned-only primary export disabled with row re-export available, tracker export/edited/deleted target behavior, per-recipe checklist reset, and offline update failure.
+  - Run an end-to-end export smoke from Recipe Standardizer through the Nutrition Tracker UI; record the environment, account role, and outcomes.
+  - **Accept:** each manual flow and export smoke is recorded with its outcome; file follow-up findings separately.
 
 ### P6 — Optional direct diary logging
 
@@ -78,15 +73,17 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 
 ### P8 — Persist ingredient checklist ticks (optional UX)
 
-- [ ] **Persist Shopping/Grocery checklist ticks per recipe in one versioned localStorage object.** Depends: P5.
+- [p] **Persist Shopping/Grocery checklist ticks per recipe in one versioned localStorage object.** Depends: P5.
+  > pushed — checklist store + saved-recipe hydration/persistence; review-1 P3 follow-up: preserve saved-baseline ticks through draft edits and pending deletes, carry imported ticks on first save, and keep LRU ordering monotonic; review-3: remove ticks after closing a deleted recipe, sync ticks across tabs, and avoid identical-set writes; cross-tab sync via storage events (writes replace only the tab's own saved-ingredient keys); residual: keys for renamed/removed ingredients can linger in local storage (hidden from display, bounded by the 50-recipe cap); checks: npm test (2449), npx tsc --noEmit, npm run lint, npm run build pass; commit: a52652b; PR: #178
   - Add `lib/checklistStore.ts`, key `recipe-standardizer:checklist`, value `{ version: 1, recipes: Record<recipeId, { keys: string[]; updatedAtMs: number }> }`.
   - Pure `parseChecklistStore(raw: unknown)` returns an empty store for invalid values, drops non-string keys, and caps at `MAX_RECIPES = 50` by LRU on `updatedAtMs`.
   - SSR-safe `readChecklist(recipeId)` and `saveChecklist(recipeId, keys)` guard `typeof window` and catch storage failures.
-  - Only saved recipes persist; unsaved imports keep ephemeral ticks.
-  - Keys use normalized ingredient names; prune stale keys against current shopping keys on read.
+  - Only saved recipes persist; unsaved imports keep ephemeral ticks until first save; deleting a recipe removes its local entry best-effort.
+  - Keys use the normalized shopping-list key; display ticks valid for the draft and prune persisted keys against the saved baseline.
+  - **Accept:** parser, LRU, storage round-trip/failure/removal, and stale-key helper tests pass; Shopping and Grocery modes share hydrated ticks; docs state local-only, per-device, not synced.
 
 ## Audit reconciliation
 
 PR #153 resolved F-094 (prompt/parser contract) and F-095 (workflow graph validation). Do not recreate those fixes. P5 addresses F-093 with bake review and persisted annotations, and F-096 client-side with revision transactions (rules-level enforcement remains an AR-16 residual). F-141's migration plan is documented in ARCHITECTURE; execution remains under AR-08. F-097/F-143 are confirmed closed by P1/P3: automatic/legacy links stay candidates until explicit gram-basis confirmation; target revision/fingerprint is revalidated on load, stale targets are excluded from calculations, and transactions re-verify source targets. Source-namespace provenance follows F-141 M1; actor provenance is inapplicable to single-owner recipes.
 
-P5 manual verification remains for the user in two signed-in tabs: update/update and overwrite/repeated conflict, update/delete and save-as-new, export versus stale editor and stale export, legacy revision 0 → 1, bake review/save/reload/edit confirmation in all views, owned-only primary export disabled with row re-export available, tracker export/edited/deleted target smoke, per-recipe checklist reset, and offline update failure. No production writes or browser smoke were performed by the implementer.
+P5 signed-in verification and end-to-end export smoke remain user-assisted and are tracked in P5-M1. No production writes or browser smoke were performed by the implementer.

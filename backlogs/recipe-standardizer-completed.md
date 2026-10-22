@@ -7,7 +7,7 @@ Pre-backlog context: the v1 tool itself shipped in PR #149 (merge `3dd5bd1`) bef
 backlog existed — strict-JSON import, workflow sections, gram-first scaling, Ingredients
 hub, per-user Firestore saves, and name-only nutrition links.
 
-## Completed phases (P0–P7, in order)
+## Completed phases (P1–P5, in order)
 
 ### P1 — Confirmed links and grams basis
 
@@ -27,4 +27,9 @@ hub, per-user Firestore saves, and name-only nutrition links.
 ### P4 — Export a recipe as a Nutrition Tracker food
 
 - [x] **Export per portion or per 100g cooked with collision-safe update behavior.**
-  > Resolved: 1× export per portion (preferred) or per 100 g cooked (measured final weight required), basis chooser on first export, partial-coverage confirmation (incl. lower-bound/zero-filled nutrients), `recipe.nutritionExports` back-ref + nutrition snapshot hash on the recipe only, single transaction (create-only or verified own-target update with reviewed-target binding and overwrite confirmation), stale/edited/deleted indicators, docs; no rules change; checks: npm test (1833), lint, tsc, build pass; Claude Opus full-PR review (6 P2) + Codex review (3) + Claude targeted review (1 P2) all fixed, final round reviewed clean by Claude Opus; merged: 4b7f024 (commit 576e518, final head 5009f5f, PR #168); deployed 2026-10-21 13:50 CDT (version c3760465); residual risk: Codex P2 on 5009f5f (Export button enabled when only the already-exported basis is available, `NutritionExportCard.tsx:180`) deferred to P5; no component tests for modal UI fixes; manual signed-in smoke not yet recorded.
+  > Resolved: 1× export per portion (preferred) or per 100 g cooked (measured final weight required), basis chooser on first export, partial-coverage confirmation (incl. lower-bound/zero-filled nutrients), `recipe.nutritionExports` back-ref + nutrition snapshot hash on the recipe only, single transaction (create-only or verified own-target update with reviewed-target binding and overwrite confirmation), stale/edited/deleted indicators, docs; no rules change; checks: npm test (1833), lint, tsc, build pass; Claude Opus full-PR review (6 P2) + Codex review (3) + Claude targeted review (1 P2) all fixed, final round reviewed clean by Claude Opus; merged: 4b7f024 (commit 576e518, final head 5009f5f, PR #168); deployed 2026-10-21 13:50 CDT (version c3760465); residual risk: Codex P2 on 5009f5f (Export button enabled when only the already-exported basis is available, `NutritionExportCard.tsx:180`) deferred to P5; component tests for the export modal fixes remain outstanding.
+
+### P5 — Hardening, migrations, docs, and remaining touched-code findings
+
+- [x] **Complete rollout hardening before optional features.**
+  > Resolved: F-096 client-side revision conflict handling, F-093 bake review and persisted annotation, saved-shape fixtures, concurrent-save and baked-equivalent tests, P4 export-card fix and view-model tests, F-141 migration plan, and rollout documentation; checks: npm test (2411 passed, 99 files), tsc, lint, build pass; merged: 6c53853 (commit 48de054, PR #175); residual risk: rules-level revision enforcement remains under AR-16; component tests for the P4 export modal fixes remain outstanding; signed-in verification and end-to-end export smoke remain open in P5-M1.

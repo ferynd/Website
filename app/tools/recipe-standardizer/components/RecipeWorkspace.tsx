@@ -221,6 +221,7 @@ import {
 } from '../lib/nutritionExportTx';
 import { nutritionPanelSubtitle } from '../lib/nutritionFormat';
 import { exportSubtitleSuffix } from '../lib/nutritionExportFormat';
+import { removeChecklist, saveChecklist } from '../lib/checklistStore';
 import {
   applyStepTextUpdates,
   findAffectedSteps,
@@ -336,7 +337,12 @@ export default function RecipeWorkspace() {
   const recipeSessionRef = useRef(0);
   const [recipeSession, setRecipeSession] = useState(0);
   const [checklistKey, setChecklistKey] = useState(0);
+  const checklistTicksRef = useRef<string[]>([]);
   const foodsRequestRef = useRef(0);
+
+  const handleChecklistChange = (keys: string[]) => {
+    checklistTicksRef.current = keys;
+  };
 
   const refreshFoods = async (): Promise<import('../lib/trackerFoods').TrackerFood[] | null> => {
     const request = ++foodsRequestRef.current;
@@ -420,6 +426,7 @@ export default function RecipeWorkspace() {
     importWarnings: string[],
     revision: number | null,
   ) => {
+    checklistTicksRef.current = [];
     currentIdRef.current = id;
     baseRevisionRef.current = revision;
     setBaseRevision(revision);
@@ -534,6 +541,7 @@ export default function RecipeWorkspace() {
       setStatus(VIEW_COPY.deleteFailed(error instanceof Error ? error.message : VIEW_COPY.unknownError));
       return;
     }
+    removeChecklist(recipeId);
     if (deletingOpen) {
       setStatus(VIEW_COPY.deletedFromLibrary);
     }
@@ -612,7 +620,7 @@ export default function RecipeWorkspace() {
     setDraft((prev) => (prev ? { ...prev, yield: { ...prev.yield, actualFinalWeightG: value } } : prev));
   };
 
-  const persistNew = async (recipe: Recipe): Promise<boolean> => {
+  const persistNew = async (recipe: Recipe, carryChecklist: boolean): Promise<boolean> => {
     // A double click must not create two documents for one unsaved recipe.
     if (writeInFlightRef.current) return false;
     writeInFlightRef.current = true;
@@ -626,6 +634,7 @@ export default function RecipeWorkspace() {
       setWriteInFlight(false);
       setLoadError((current) => (current === SAVING_LOAD_REASON ? '' : current));
     }
+    if (carryChecklist) saveChecklist(id, checklistTicksRef.current);
     currentIdRef.current = id;
     baseRevisionRef.current = INITIAL_RECIPE_REVISION;
     setBaseline(cleanRecipe);
@@ -647,7 +656,7 @@ export default function RecipeWorkspace() {
     }
     try {
       if (!currentId) {
-        await persistNew(draft);
+        await persistNew(draft, true);
         return;
       }
       if (remoteState.kind !== 'none') {
@@ -732,10 +741,10 @@ export default function RecipeWorkspace() {
     }
   };
 
-  const handleSaveAsNew = async (name: string): Promise<boolean> => {
+  const handleSaveAsNew = async (name: string, carryChecklist = false): Promise<boolean> => {
     if (!draft) return false;
     try {
-      const saved = await persistNew(withoutNutritionExports({ ...draft, name }).recipe);
+      const saved = await persistNew(withoutNutritionExports({ ...draft, name }).recipe, carryChecklist);
       if (saved) setSaveModalSummary(null);
       return saved;
     } catch (err) {
@@ -1312,12 +1321,15 @@ export default function RecipeWorkspace() {
               {workflow && (
                 <IngredientsView
                   key={checklistKey}
+                  recipeId={currentId}
                   recipe={draft}
+                  baselineRecipe={baseline}
                   workflow={workflow}
                   factor={scale.factor}
                   onIngredientChange={handleIngredientChange}
                   onRunNutritionMatch={runNutritionMatch}
                   onCommitIntake={commitIntake}
+                  onChecklistChange={handleChecklistChange}
                   linkAssessments={linkAssessments}
                   foods={foods}
                   linkSummary={linkSummary}
@@ -1527,11 +1539,21 @@ export default function RecipeWorkspace() {
           onSaveAsNew={async (name) => {
             if (saveBlockedWhileWriting(writeInFlightRef.current)) return;
             setConflictBusy(true);
-            const saved = await handleSaveAsNew(name);
+            // A remotely deleted source is re-saved, not forked, so its ticks carry over.
+            const sourceDeleted = conflict.kind === 'deleted';
+            const sourceId = currentIdRef.current;
+            const saved = await handleSaveAsNew(name, sourceDeleted);
+            if (saved && sourceDeleted && sourceId) removeChecklist(sourceId);
             if (saved) setConflict(null);
             setConflictBusy(false);
           }}
-          onClose={closeRecipe}
+          onClose={() => {
+            if (conflict.kind === 'deleted') {
+              const deletedRecipeId = currentIdRef.current;
+              if (deletedRecipeId !== null) removeChecklist(deletedRecipeId);
+            }
+            closeRecipe();
+          }}
           onKeepEditing={() => setConflict(null)}
         />
       )}
