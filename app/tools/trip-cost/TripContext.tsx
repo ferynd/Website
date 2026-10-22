@@ -16,7 +16,6 @@ import {
   setDoc,
   serverTimestamp,
   Timestamp,
-  updateDoc,
 } from 'firebase/firestore';
 import { db, tripDoc, tripAuditCol, userDoc } from './db';
 import { uniqueLinkedParticipant } from './utils/payer';
@@ -211,39 +210,48 @@ export const TripProvider = ({
   };
 
   const deleteParticipant = async (id: string) => {
+    if (!userProfile?.isAdmin) throw new Error('Only an admin can remove travelers.');
     if (!trip) throw new Error('No trip loaded');
 
-    if (!userProfile?.isAdmin) throw new Error('Only an admin can remove travelers.');
-    const blockers = participantRemovalBlockers({ participants, expenses, payments }, id);
-    if (blockers.length) throw new Error(participantRemovalMessage(blockers));
+    const ref = tripDoc(trip.id);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('The trip no longer exists.');
+      const data = snap.data() as Omit<Trip, 'id'>;
+      const serverTrip: Trip = {
+        id: snap.id,
+        ...data,
+        participants: data.participants || [],
+        expenses: data.expenses || [],
+        payments: data.payments || [],
+      };
+      if (!serverTrip.participants.some((person) => person.id === id)) {
+        throw new Error('That traveler is no longer on this trip.');
+      }
+      const blockers = participantRemovalBlockers(serverTrip, id);
+      if (blockers.length) throw new Error(participantRemovalMessage(blockers));
 
-    const updated = participants.filter((p) => p.id !== id);
-    const participantIds = participantIdsFor(updated);
+      const updated = serverTrip.participants.filter((person) => person.id !== id);
+      const updatedCaps = (serverTrip.spendCaps || []).filter((cap) => cap.participantId !== id);
+      const updatedDefaultSplit = { ...(serverTrip.defaultSplit || {}) };
+      delete updatedDefaultSplit[id];
 
-    // Also remove any spend cap for this participant
-    const updatedCaps = (trip.spendCaps || []).filter(
-      (c) => c.participantId !== id
-    );
+      const updatedOverage = { ...serverTrip.overageSplit };
+      if (serverTrip.overageSplit?.shares) {
+        updatedOverage.shares = { ...serverTrip.overageSplit.shares };
+        delete updatedOverage.shares[id];
+      }
 
-    // Clean up default split
-    const updatedDefaultSplit = { ...(trip.defaultSplit || {}) };
-    delete updatedDefaultSplit[id];
-
-    const updatedOverage = { ...trip.overageSplit };
-    if (trip.overageSplit?.shares) {
-      updatedOverage.shares = { ...trip.overageSplit.shares };
-      delete updatedOverage.shares[id];
-    }
-
-    // updateDoc replaces each field. setDoc merge would deep-merge defaultSplit
-    // and overageSplit and leave the removed traveler's percentages in place.
-    await updateDoc(tripDoc(trip.id), {
-      participants: updated,
-      participantIds,
-      ...(trip.overageSplit && { overageSplit: updatedOverage }),
-      spendCaps: updatedCaps,
-      defaultSplit: updatedDefaultSplit,
-      updatedAt: serverTimestamp(),
+      // Replace maps so removed shares cannot survive a deep merge. The read
+      // and cleanup retry together if the trip changes before this commits.
+      tx.update(ref, {
+        participants: updated,
+        participantIds: participantIdsFor(updated),
+        ...(serverTrip.overageSplit && { overageSplit: updatedOverage }),
+        spendCaps: updatedCaps,
+        defaultSplit: updatedDefaultSplit,
+        updatedAt: serverTimestamp(),
+      });
     });
   };
 

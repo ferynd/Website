@@ -94,9 +94,11 @@ export function participantRemovalBlockers(
 
   const expenses = trip.expenses
     .filter((expense) =>
-      Object.prototype.hasOwnProperty.call(expense.paidBy, id) ||
-      expense.splitParticipants.includes(id) ||
-      Object.prototype.hasOwnProperty.call(expense.manualSplit, id),
+      // Legacy or hand-edited documents may omit these fields (ledger.ts treats
+      // them as optional too); a missing field must not crash rendering.
+      Object.prototype.hasOwnProperty.call(expense.paidBy ?? {}, id) ||
+      (expense.splitParticipants ?? []).includes(id) ||
+      Object.prototype.hasOwnProperty.call(expense.manualSplit ?? {}, id),
     )
     .map((expense) => `Expense: ${shorten(expense.description || 'Untitled expense')}`);
 

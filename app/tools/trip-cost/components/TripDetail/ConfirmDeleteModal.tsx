@@ -11,6 +11,7 @@ import { isTopModalLayer, registerModalLayer, unregisterModalLayer } from '../ui
 
 interface ConfirmDeleteModalProps {
   itemType: string;
+  itemName?: string;
   onConfirm: () => void;
   onCancel: () => void;
   /** Shown when the confirmed deletion was rejected; the modal stays open. */
@@ -21,6 +22,7 @@ interface ConfirmDeleteModalProps {
 /** Confirmation modal shown above open Trip Cost detail sheets. */
 export default function ConfirmDeleteModal({
   itemType,
+  itemName,
   onConfirm,
   onCancel,
   error = null,
@@ -80,7 +82,7 @@ export default function ConfirmDeleteModal({
     >
       <div ref={modalRef} className="mx-4 flex max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-lg flex-col gap-4 overflow-hidden break-words rounded bg-surface-1 p-4 shadow [overflow-wrap:anywhere]">
         <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto">
-          <p id="confirm-title">Are you sure you want to delete this {itemType}?</p>
+          <p id="confirm-title">Are you sure you want to delete {itemName || `this ${itemType}`}?</p>
           {error && (
             <p role="alert" className="break-words text-sm text-error [overflow-wrap:anywhere]">
               {error}

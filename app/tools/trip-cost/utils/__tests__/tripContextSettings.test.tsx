@@ -273,7 +273,7 @@ describe('linkParticipantAccount writes', () => {
 });
 
 describe('deleteParticipant removal guard', () => {
-  it('lists blocking records and does not write', async () => {
+  it('checks server references absent from the client cache and does not write', async () => {
     const blocking: Expense = {
       id: 'dinner',
       category: 'Food',
@@ -285,17 +285,113 @@ describe('deleteParticipant removal guard', () => {
       manualSplit: {},
       createdBy: 'admin',
     };
-    const api = mount(admin, [blocking], [{
-      id: 'pay',
-      payerId: 'a',
-      payeeId: 'b',
-      amount: 5,
-      date: '2026-10-22',
-      description: 'Cash',
-    }]);
+    const api = mount(admin);
+    hooks.transactionGet.mockResolvedValue(serverSnapshot({
+      ...trip,
+      expenses: [blocking],
+      payments: [{
+        id: 'pay',
+        payerId: 'a',
+        payeeId: 'b',
+        amount: 5,
+        date: '2026-10-22',
+        description: 'Cash',
+      }],
+    }));
     await expect(api.deleteParticipant('a')).rejects.toThrow(/Saturday dinner/);
     await expect(api.deleteParticipant('a')).rejects.toThrow(/Name a to Name b \(Cash\)/);
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
     expect(hooks.setDoc).not.toHaveBeenCalled();
     expect(hooks.updateDoc).not.toHaveBeenCalled();
+  });
+});
+
+describe('deleteParticipant transaction', () => {
+  it('cleans settings using server travelers and shares, preserving concurrent additions', async () => {
+    const api = mount(admin);
+    const serverTrip: Trip = {
+      ...trip,
+      participants: [...trip.participants, person('c', 'uid-c')],
+      spendCaps: [
+        { participantId: 'a', maxAmount: 10 },
+        { participantId: 'c', maxAmount: 20 },
+      ],
+      defaultSplit: { a: 20, b: 30, c: 50 },
+      overageSplit: { type: 'manual', shares: { a: 40, b: 10, c: 50 } },
+    };
+    hooks.transactionGet.mockResolvedValue(serverSnapshot(serverTrip));
+
+    await api.deleteParticipant('a');
+
+    expect(hooks.runTransaction).toHaveBeenCalledWith(hooks.db, expect.any(Function));
+    expect(hooks.transactionGet).toHaveBeenCalledWith({ id: trip.id });
+    expect(hooks.transactionUpdate).toHaveBeenCalledTimes(1);
+    expect(hooks.transactionUpdate).toHaveBeenCalledWith({ id: trip.id }, {
+      participants: [person('b', 'uid-b'), person('c', 'uid-c')],
+      participantIds: ['uid-b', 'uid-c'],
+      spendCaps: [{ participantId: 'c', maxAmount: 20 }],
+      defaultSplit: { b: 30, c: 50 },
+      overageSplit: { type: 'manual', shares: { b: 10, c: 50 } },
+      updatedAt: 'server-time',
+    });
+    expect(hooks.setDoc).not.toHaveBeenCalled();
+    expect(hooks.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('blocks a server payment alone, including when the traveler is the payee', async () => {
+    const api = mount(admin);
+    hooks.transactionGet.mockResolvedValue(serverSnapshot({
+      ...trip,
+      payments: [{
+        id: 'p',
+        payerId: 'b',
+        payeeId: 'a',
+        amount: 5,
+        date: '2026-10-22',
+        description: 'Cash',
+      }],
+    }));
+    await expect(api.deleteParticipant('a')).rejects.toThrow('Payment: Name b to Name a (Cash)');
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
+    expect(hooks.setDoc).not.toHaveBeenCalled();
+    expect(hooks.updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('does not start a transaction for a non-admin', async () => {
+    await expect(mount(member).deleteParticipant('a')).rejects.toThrow(/admin/);
+    expect(hooks.runTransaction).not.toHaveBeenCalled();
+  });
+
+  it('reports a missing trip without writing', async () => {
+    const api = mount(admin);
+    hooks.transactionGet.mockResolvedValue({ id: trip.id, exists: () => false, data: () => undefined });
+    await expect(api.deleteParticipant('a')).rejects.toThrow('The trip no longer exists.');
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('reports a traveler removed on the server without writing', async () => {
+    const api = mount(admin);
+    hooks.transactionGet.mockResolvedValue(serverSnapshot({ ...trip, participants: [person('b')] }));
+    await expect(api.deleteParticipant('a')).rejects.toThrow('That traveler is no longer on this trip.');
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
+  });
+
+  it('treats missing reference arrays as empty', async () => {
+    const api = mount(admin);
+    const data: Partial<Omit<Trip, 'id'>> = { ...trip };
+    delete data.expenses;
+    delete data.payments;
+    hooks.transactionGet.mockResolvedValue({ id: trip.id, exists: () => true, data: () => data as Omit<Trip, 'id'> });
+    await expect(api.deleteParticipant('a')).resolves.toBeUndefined();
+    expect(hooks.transactionUpdate).toHaveBeenCalledOnce();
+  });
+
+  it('treats missing participants as a traveler that no longer exists', async () => {
+    const api = mount(admin);
+    const data: Partial<Omit<Trip, 'id'>> = { ...trip };
+    delete data.participants;
+    hooks.transactionGet.mockResolvedValue({ id: trip.id, exists: () => true, data: () => data as Omit<Trip, 'id'> });
+    await expect(api.deleteParticipant('a')).rejects.toThrow('That traveler is no longer on this trip.');
+    expect(hooks.transactionUpdate).not.toHaveBeenCalled();
   });
 });

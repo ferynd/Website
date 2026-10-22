@@ -39,6 +39,7 @@ import type {
 } from './pageTypes';
 import AuthForm from './components/AuthForm';
 import TripList from './components/TripList';
+import LoadingStatus from './components/ui/LoadingStatus';
 import TripDetail from './components/TripDetail/TripDetail';
 import { TripProvider } from './TripContext';
 
@@ -205,7 +206,13 @@ export default function TripCostPage() {
     setConfirmDeleteTrip(null);
   };
 
-  if (authLoading) return <p>Loading...</p>;
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-2">
+        <LoadingStatus>Loading…</LoadingStatus>
+      </div>
+    );
+  }
 
   if (!user || showAuth) {
     return (

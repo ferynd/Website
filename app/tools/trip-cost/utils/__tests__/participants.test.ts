@@ -138,4 +138,22 @@ describe('participant removal blockers', () => {
       `Remove or reassign these records first: ${blockers.slice(0, 5).join('; ')}; and 1 more records.`,
     );
   });
+  it('tolerates legacy expenses that omit paidBy, splitParticipants, or manualSplit', () => {
+    const legacy = {
+      ...expense({ id: 'legacy', description: 'Old dinner' }),
+      paidBy: undefined,
+      splitParticipants: undefined,
+      manualSplit: undefined,
+    } as unknown as Expense;
+    const referencing = {
+      ...expense({ id: 'ref', description: 'Taxi' }),
+      paidBy: undefined,
+      manualSplit: undefined,
+      splitParticipants: ['a'],
+    } as unknown as Expense;
+    expect(() => participantRemovalBlockers({ participants, expenses: [legacy], payments: [] }, 'a')).not.toThrow();
+    expect(participantRemovalBlockers({ participants, expenses: [legacy, referencing], payments: [] }, 'a')).toEqual([
+      'Expense: Taxi',
+    ]);
+  });
 });

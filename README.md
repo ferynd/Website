@@ -199,7 +199,7 @@ This React tool lives under **app/tools/trip-planner/** and now mirrors the Trip
 
 _“A ledger-first trip expense tracker: who paid, who owes, budget caps, and settlements.”_
 
-Travelers can be added by name and later linked by an admin to an existing registered account without creating a duplicate or resplitting saved expenses. Budget caps, overage redistribution, and the default split are edited together and saved in one write.
+Travelers can be added by name and later linked by an admin to an existing registered account without creating a duplicate or resplitting saved expenses. Budget caps, overage redistribution, and the default split are edited together and saved in one write. Removing a referenced traveler opens a scrollable list of all blocking expenses and payments; remove or reassign those records first. Removal rechecks the server trip and cleans the traveler’s settings in one transaction.
 
 This is a comprehensive web application to help groups track shared expenses on trips and calculate who owes whom. It started as a simple client-side calculator but has been upgraded into a full-stack app using Firebase for persistence.
 
