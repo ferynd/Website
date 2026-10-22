@@ -555,6 +555,11 @@ export interface ExpenseEditorState {
    * edits a share after those dollars are showing.
    */
   pendingPercents?: ExpenseDraft['manualSplit'];
+  /** Source weights for rebuilding a pending snapshot after traveler toggles. */
+  pendingPercentOrigin?: {
+    method: 'equal' | 'trip-default' | 'percent';
+    weights: DefaultSplit;
+  };
 }
 
 /** Custom $ keeps its percent snapshot read-only until it can show dollars. */
@@ -633,7 +638,7 @@ function finishMethod(
   method: ExpenseEditorMethod,
   draft: ExpenseDraft,
 ): ExpenseEditorState {
-  return { ...state, zeroOrigin: undefined, pendingPercents: undefined, method, draft };
+  return { ...state, zeroOrigin: undefined, pendingPercents: undefined, pendingPercentOrigin: undefined, method, draft };
 }
 
 /** Keep the Custom $ percent snapshot aligned with edits made before a total exists. */
@@ -642,7 +647,7 @@ function syncPending(previous: ExpenseEditorState, next: ExpenseEditorState): Ex
   if (next.method === 'amount' && manualMode(next.draft) === 'percent') {
     return { ...next, pendingPercents: cloneManualSplit(next.draft.manualSplit) };
   }
-  return { ...next, pendingPercents: undefined };
+  return { ...next, pendingPercents: undefined, pendingPercentOrigin: undefined };
 }
 
 /**
@@ -709,6 +714,12 @@ export function changeExpenseMethod(
     return {
       ...finishMethod(state, method, kept),
       pendingPercents: cloneManualSplit(kept.manualSplit),
+      pendingPercentOrigin: {
+        method: state.method === 'equal' || state.method === 'trip-default' ? state.method : 'percent',
+        weights: state.method === 'trip-default' && defaultSplit
+          ? { ...defaultSplit }
+          : Object.fromEntries(Object.entries(kept.manualSplit).map(([id, entry]) => [id, Number(entry.value)])),
+      },
     };
   }
   const draft = state.draft.splitType === 'even'
@@ -759,7 +770,7 @@ export function setExpenseShare(
     manualSplit: { ...state.draft.manualSplit, [travelerId]: { type: mode, value } },
   };
   if (!state.pendingPercents) return { ...state, draft };
-  return { ...state, draft, pendingPercents: undefined };
+  return { ...state, draft, pendingPercents: undefined, pendingPercentOrigin: undefined };
 }
 
 function zeroOriginMatches(state: ExpenseEditorState, travelerIds: string[]): boolean {
@@ -786,6 +797,26 @@ export function toggleExpenseTraveler(
     : travelerOrder.filter((id) => id === travelerId || selected.includes(id));
   const draft = { ...state.draft, splitParticipants };
   const next: ExpenseEditorState = { ...state, travelerOrder, draft };
+  if (expenseSharesAwaitTotal(state)) {
+    const pendingOrigin = state.pendingPercentOrigin;
+    const weights: DefaultSplit = pendingOrigin?.method === 'equal'
+      ? Object.fromEntries(travelerIds.map((id) => [id, 1]))
+      : { ...(pendingOrigin?.weights ?? Object.fromEntries(
+        Object.entries(state.pendingPercents ?? {}).map(([id, entry]) => [id, Number(entry.value)]),
+      )) };
+    if (!removing && !validDefaultValue(weights[travelerId])) {
+      // A missing weight gets an equal slice of the new total, preserving
+      // the other travelers' ratio regardless of the source weight scale.
+      const remainingWeight = splitParticipants.reduce((sum, id) =>
+        sum + (validDefaultValue(weights[id]) ? weights[id] : 0), 0);
+      weights[travelerId] = remainingWeight / Math.max(1, splitParticipants.length - 1) || 1;
+    }
+    return syncPending(state, {
+      ...next,
+      draft: applyTripDefault(draft, weights, editorSplitOrder(next, travelerIds)).draft,
+      pendingPercentOrigin: { method: pendingOrigin?.method ?? 'percent', weights },
+    });
+  }
   const origin = state.zeroOrigin;
   if (origin && zeroOriginMatches(state, travelerIds)) {
     const zeros = origin.zeros.filter((id) => splitParticipants.includes(id));

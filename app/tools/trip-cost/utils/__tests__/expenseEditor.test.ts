@@ -28,7 +28,7 @@ import {
 import { expenseEditStatus, expenseRevision } from '../expenseSave';
 import { allocateExpense } from '../ledger';
 import { uniqueLinkedParticipant } from '../payer';
-import type { Expense, TripParticipant } from '../../pageTypes';
+import type { DefaultSplit, Expense, TripParticipant } from '../../pageTypes';
 
 const ids = ['a', 'b', 'c'];
 const defaultSplit = { a: 50, b: 25, c: 25 };
@@ -544,6 +544,81 @@ describe('explicit zero stays reversible when travelers change', () => {
 });
 
 describe('Custom $ chosen before a total keeps shares', () => {
+  it.each<{
+    method: 'equal' | 'trip-default';
+    weights?: DefaultSplit;
+    restoredShares: Record<string, number>;
+  }>([
+    { method: 'equal', restoredShares: { a: 1667, b: 1667, c: 1666 } },
+    { method: 'trip-default', weights: { a: 2, b: 1, c: 1 }, restoredShares: { a: 2500, b: 1250, c: 1250 } },
+    { method: 'trip-default', weights: { a: 2, b: 1 }, restoredShares: { a: 2222, b: 1111, c: 1667 } },
+  ])('$method rebuilds pending shares for $weights when a traveler is removed and added', ({ method, weights, restoredShares }) => {
+    let state = createExpenseEditor(ids, 'Food', weights, 'a');
+    expect(state.method).toBe(method);
+    state = changeExpenseMethod(state, 'amount', ids, weights);
+    state = toggleExpenseTraveler(state, 'c', ids, weights);
+
+    function expectValidTotal(current: ExpenseEditorState, shares: Record<string, number>) {
+      expect(Object.values(current.draft.manualSplit).reduce(
+        (sum, entry) => sum + Math.round(Number(entry.value) * 10000), 0,
+      )).toBe(1000000);
+      expect(current.pendingPercents).toEqual(current.draft.manualSplit);
+      const converted = setExpenseTotal(current, '50', ids);
+      converted.draft.description = 'Dinner';
+      converted.draft.paidBy = { a: '50' };
+      const expense = save(converted);
+      expect(expense.splitParticipants).toEqual(current.draft.splitParticipants);
+      expect(allocateExpense(expense, ids).shares).toEqual(shares);
+      expect(Object.values(expense.manualSplit).reduce(
+        (sum, entry) => sum + Math.round(entry.value * 100), 0,
+      )).toBe(5000);
+    }
+
+    expectValidTotal(state, method === 'equal' ? { a: 2500, b: 2500 } : { a: 3333, b: 1667 });
+    state = toggleExpenseTraveler(state, 'c', ids, weights);
+    expect(Number(state.draft.manualSplit.c.value)).toBeGreaterThan(0);
+    expectValidTotal(state, restoredShares);
+  });
+
+  it('rescales a pending manual percent snapshot and gives a new traveler a positive share', () => {
+    let state = changeExpenseMethod(createExpenseEditor(ids, 'Food', undefined, 'a'), 'percent', ids);
+    state = setExpenseShare(state, 'a', '60');
+    state = setExpenseShare(state, 'b', '30');
+    state = setExpenseShare(state, 'c', '10');
+    state = changeExpenseMethod(state, 'amount', ids);
+    state = toggleExpenseTraveler(state, 'c', ids);
+    expect(state.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '66.6667' },
+      b: { type: 'percent', value: '33.3333' },
+    });
+    const four = [...ids, 'd'];
+    state = toggleExpenseTraveler(state, 'd', four);
+    expect(Number(state.draft.manualSplit.d.value)).toBeGreaterThan(0);
+    state = setExpenseTotal(state, '50', four);
+    state.draft.description = 'Dinner';
+    state.draft.paidBy = { a: '50' };
+    const checked = validateDraft(state.draft, { travelerIds: four });
+    expect(checked.errors).toEqual([]);
+    expect(checked.preview?.shares).toEqual({ a: 2222, b: 1111, d: 1667 });
+  });
+
+  it('keeps stored rounding order when rebuilding a pending snapshot', () => {
+    const original: Expense = { ...save(ready()), splitParticipants: ['c', 'b', 'a'] };
+    let state = createExpenseEditor(ids, 'Food', undefined, 'a', original);
+    state = setExpenseTotal(state, '', ids);
+    state = changeExpenseMethod(state, 'amount', ids);
+    state = toggleExpenseTraveler(state, 'b', ids);
+    state = setExpenseTotal(state, '0.01', ids);
+    state.draft.paidBy = { a: '0.01' };
+    expect(save(state).splitParticipants).toEqual(['c', 'a']);
+    expect(allocateExpense(save(state), ids).shares).toEqual({ c: 1, a: 0 });
+    state = setExpenseTotal(state, '', ids);
+    state = toggleExpenseTraveler(state, 'b', ids);
+    state = setExpenseTotal(state, '0.01', ids);
+    expect(save(state).splitParticipants).toEqual(['c', 'b', 'a']);
+    expect(allocateExpense(save(state), ids).shares).toEqual({ c: 1, b: 0, a: 0 });
+  });
+
   function controls(state: ExpenseEditorState): string {
     return renderToStaticMarkup(React.createElement(SplitMethodControl, {
       state,

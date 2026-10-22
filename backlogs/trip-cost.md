@@ -38,7 +38,7 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P4 — Shared expense editor
 
 - [p] **`ExpenseEditor` for add and edit; remove `ExpenseForm`.** Depends: TC-P2, TC-P3.
-  > in progress — PR #172 review follow-up: Custom $ remains selectable before a total, including from Trip default; pending percentage shares are read-only with unit labels and a visible hint, and share/zero edits are guarded until dollar conversion; checks: npm test (2079), tsc, lint, build pass; last reviewed head: b1b4cad; PR: #172
+  > in progress — PR #172 review follow-up: Custom $ remains selectable before a total, including from Trip default; pending percentage shares are read-only with unit labels and a visible hint, and share/zero edits are guarded until dollar conversion, and traveler toggles rebuild the pending snapshot; checks: npm test (2084), tsc, lint, build pass; last reviewed head: b1b4cad; PR: #172
   - Payer picker (single, or several on demand), traveler chips, Equal / Trip default / Custom $ / Custom %, explicit zero, live cents-exact preview, inline reasons for disabled Save, stale-edit warning.
   - **Accept:** payers and splits on historical expenses are editable; all split methods work; trip default behaves per D2; legacy mixed types load as Custom $.
 
