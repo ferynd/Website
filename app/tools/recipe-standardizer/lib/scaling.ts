@@ -311,7 +311,9 @@ export const nextEquivalentBakeFactor = (
     || oldQuantityG <= 0
     || nextQuantityG <= 0
   ) {
-    return null;
+    // Without a usable gram ratio the equivalent is still unverified after the
+    // bake, so keep the stale marker rather than presenting it as accurate.
+    return factor;
   }
   const scaled = snapFactor(factor * (nextQuantityG / oldQuantityG));
   if (!Number.isFinite(scaled) || scaled <= 0) return null;

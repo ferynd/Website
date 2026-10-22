@@ -283,14 +283,14 @@ describe('remoteConflictToShow', () => {
       baseRevision: 2,
       expected: null,
     },
-    {
-      label: 'own write behind the adopted revision',
-      conflict: { kind: 'changed', remoteRevision: 1 } as RecipeConflict,
-      baseRevision: 2,
-      expected: null,
-    },
   ])('$label is not a conflict', ({ conflict, baseRevision, expected }) => {
     expect(remoteConflictToShow(conflict, baseRevision)).toBe(expected);
+  });
+  it('shows a stored revision reset below the adopted revision', () => {
+    expect(remoteConflictToShow({ kind: 'changed', remoteRevision: 1 }, 2)).toEqual({
+      kind: 'changed',
+      remoteRevision: 1,
+    });
   });
   it('shows a changed conflict newer than the adopted revision', () => {
     expect(remoteConflictToShow({ kind: 'changed', remoteRevision: 3 }, 2)).toEqual({

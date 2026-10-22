@@ -169,7 +169,9 @@ export const remoteConflictToShow = (
   if (
     conflict.kind === 'changed'
     && baseRevision !== null
-    && conflict.remoteRevision <= baseRevision
+    // Only this tab's own adopted write matches exactly; a lower stored
+    // revision means the document was reset (e.g. recreated by an old tab).
+    && conflict.remoteRevision === baseRevision
   ) {
     return null;
   }

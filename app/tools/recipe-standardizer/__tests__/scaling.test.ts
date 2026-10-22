@@ -364,9 +364,11 @@ describe('nextEquivalentBakeFactor', () => {
     { label: 'unknown grams', grams: null },
     { label: 'zero grams', grams: 0 },
     { label: 'negative grams', grams: -1 },
-  ])('clears the annotation for $label', ({ grams }) => {
+  ])('keeps the stale-after-bake factor for $label', ({ grams }) => {
     const previous = applyScaleToRecipe(proseRecipe(), 3).ingredients[0];
-    expect(nextEquivalentBakeFactor(previous, previous.equivalent, false, grams)).toBeNull();
+    expect(nextEquivalentBakeFactor(previous, previous.equivalent, false, grams)).toBe(
+      previous.equivalentBakeFactor,
+    );
   });
 
   it('leaves an unannotated ingredient clear when grams change', () => {

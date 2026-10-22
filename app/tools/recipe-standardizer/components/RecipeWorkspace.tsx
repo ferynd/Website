@@ -17,6 +17,7 @@ const VIEW_COPY = {
     `(see Ingredients).`,
   couldNotLoadRecipe: (detail: string) => `Could not load recipe: ${detail}`,
   deletedFromLibrary: 'This recipe was deleted from the library — it is now unsaved.',
+  deleteFailed: (detail: string) => `Delete failed: ${detail}`,
   saved: (name: string) => `Saved “${name}”.`,
   nameRequired: 'Give the recipe a name before saving.',
   noChangesToSave: 'No changes to save.',
@@ -501,6 +502,8 @@ export default function RecipeWorkspace() {
 
   const handleDelete = async (recipeId: string) => {
     const deletingOpen = recipeId === currentId;
+    const previousId = currentId;
+    const previousRevision = baseRevision;
     if (deletingOpen) {
       const next = identityAfterDeleting(currentId, baseRevision, recipeId);
       currentIdRef.current = next.currentId;
@@ -508,7 +511,20 @@ export default function RecipeWorkspace() {
       setCurrentId(next.currentId);
       setBaseRevision(next.baseRevision);
     }
-    await remove(recipeId);
+    try {
+      await remove(recipeId);
+    } catch (error) {
+      // A rejected delete leaves the document in place: restore the open
+      // recipe's identity so Save keeps updating it instead of duplicating it.
+      if (deletingOpen && currentIdRef.current === null) {
+        currentIdRef.current = previousId;
+        baseRevisionRef.current = previousRevision;
+        setCurrentId(previousId);
+        setBaseRevision(previousRevision);
+      }
+      setStatus(VIEW_COPY.deleteFailed(error instanceof Error ? error.message : VIEW_COPY.unknownError));
+      return;
+    }
     if (deletingOpen) {
       setStatus(VIEW_COPY.deletedFromLibrary);
     }
@@ -586,8 +602,18 @@ export default function RecipeWorkspace() {
   };
 
   const persistNew = async (recipe: Recipe) => {
+    // A double click must not create two documents for one unsaved recipe.
+    if (writeInFlightRef.current) return;
+    writeInFlightRef.current = true;
+    setWriteInFlight(true);
     const cleanRecipe = withoutNutritionExports(recipe).recipe;
-    const id = await saveNew(cleanRecipe);
+    let id: string;
+    try {
+      id = await saveNew(cleanRecipe);
+    } finally {
+      writeInFlightRef.current = false;
+      setWriteInFlight(false);
+    }
     currentIdRef.current = id;
     baseRevisionRef.current = INITIAL_RECIPE_REVISION;
     setBaseline(cleanRecipe);
