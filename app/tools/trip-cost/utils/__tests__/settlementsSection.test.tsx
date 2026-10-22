@@ -47,6 +47,13 @@ describe('SettlementsSection markup', () => {
     expect(html.match(/>Record payment</g)).toHaveLength(1);
   });
 
+  it('names each suggestion action by payer, payee, and amount', () => {
+    useTrip.mockReturnValue({ ...input, ledger: buildLedger(input) });
+    const html = render();
+    expect(html).toContain('aria-label="Record payment from A to B, $30.00"');
+    expect(html).toContain('aria-label="Record payment from C to B, $30.00"');
+  });
+
   it.each(['unallocated', 'non-conserving'] as const)('shows the %s pause reason and no suggestion Record actions', (paused) => {
     const ledger = buildLedger(input);
     ledger.settlement = { settlements: [], paused };
@@ -68,13 +75,18 @@ describe('SettlementsSection markup', () => {
   });
 
   it('shows the settled empty state and admin-only history deletion', () => {
-    const payments = [{ id: 'p', payerId: 'a', payeeId: 'removed', amount: 10, description: 'Long note', date: '2026-10-22' }];
+    const payments = [{
+      id: 'p', payerId: 'a', payeeId: 'removed', amount: 10, description: 'Long note',
+      date: '2026-10-22', createdBy: 'unknown-recorder-uid',
+    }];
     const ledger = buildLedger({ participants, expenses: [], payments: [] });
     useTrip.mockReturnValue({ participants, payments, ledger });
     const html = render();
     expect(html).toContain('Everyone is settled.');
     expect(html).toContain('Unknown traveler');
     expect(html).toContain('Long note');
+    expect(html).toContain('Not counted (invalid)');
+    expect(html).not.toContain('unknown-recorder-uid');
     expect(html).toContain('shrink-0 text-error');
     expect(html).toContain('>Delete</button>');
     expect(render({ ...profile, isAdmin: false })).not.toContain('>Delete</button>');

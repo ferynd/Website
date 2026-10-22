@@ -5,7 +5,7 @@ import PayerPicker from '../../components/TripDetail/PayerPicker';
 import { SplitPreview } from '../../components/TripDetail/ExpenseSplitControls';
 import type { DefaultSplit } from '../../pageTypes';
 import {
-  changeExpenseMethod, createExpenseEditor, expenseMethodOptions, expensePreviewLabel,
+  changeExpenseMethod, createExpenseEditor, draftToExpenseFields, expenseExplicitZero, expenseMethodOptions, expensePreviewLabel,
   expenseSharesAwaitTotal, hasTripDefault, setExpenseExplicitZero, setExpenseShare, setExpenseTotal, validateDraft,
   type ExpenseEditorState,
 } from '../expenseDraft';
@@ -83,6 +83,51 @@ describe('TC-P4 follow-up (c): method choices reflect an actual default', () => 
 });
 
 describe('TC-P4 follow-up (d): invalid percent to dollar conversion stays editable', () => {
+  function incompletePercentages() {
+    let state = ready('percent');
+    state = setExpenseTotal(state, '', ids);
+    state = setExpenseShare(state, 'a', '50');
+    state = setExpenseShare(state, 'b', '30');
+    return setExpenseShare(state, 'c', '');
+  }
+
+  it('retains 50/30 until a total arrives and converts the entered percentages without rescaling', () => {
+    let state = changeExpenseMethod(incompletePercentages(), 'amount', ids);
+    expect(expenseSharesAwaitTotal(state)).toBe(false);
+    expect(state.pendingPercents).toMatchObject({ a: { value: '50' }, b: { value: '30' }, c: { value: '' } });
+    for (const id of ids) expect(expenseExplicitZero(state, id)).toBe(false);
+    const html = renderToStaticMarkup(<SplitPreview travelers={travelers} state={state} preview={null}
+      showInputs errorId="split-reason" onValue={() => {}} onZero={() => {}} />);
+    expect(html).not.toMatch(/checked=""|readOnly|disabled/);
+    state = setExpenseTotal(state, '1', ids);
+    expect(state.draft.manualSplit).toMatchObject({ a: { value: '0.50' }, b: { value: '0.30' }, c: { value: '' } });
+    state = setExpenseTotal(state, '100', ids);
+    expect(state.draft.manualSplit).toMatchObject({ a: { value: '50.00' }, b: { value: '30.00' }, c: { value: '' } });
+    expect(validation(state).errors.map((error) => error.code)).toEqual(['split-sum']);
+    expect(expensePreviewLabel(state, validation(state).preview, 'a')).toBe('$50.00 (not final)');
+    state = setExpenseShare(state, 'b', '50');
+    expect(validation(state).errors).toEqual([]);
+    expect(draftToExpenseFields(state.draft, { travelerIds: ids }).fields?.manualSplit).toEqual({
+      a: { type: 'amount', value: 50 }, b: { type: 'amount', value: 50 }, c: { type: 'amount', value: 0 },
+    });
+  });
+
+  it('restores the original percentages when switching back before entering a total', () => {
+    const original = incompletePercentages();
+    const dollars = changeExpenseMethod(original, 'amount', ids);
+    expect(changeExpenseMethod(dollars, 'percent', ids).draft.manualSplit).toEqual(original.draft.manualSplit);
+  });
+
+  it('lets a dollar edit replace the retained percentages before entering a total', () => {
+    let state = changeExpenseMethod(incompletePercentages(), 'amount', ids);
+    state = setExpenseShare(state, 'a', '60');
+    state = setExpenseShare(state, 'b', '40');
+    state = setExpenseTotal(state, '100', ids);
+    expect(state.pendingPercents).toBeUndefined();
+    expect(validation(state).preview?.shares).toEqual({ a: 6000, b: 4000, c: 0 });
+    expect(validation(state).errors).toEqual([]);
+  });
+
   it.each(['', '100'])('can correct Custom $ in place with total %j', (total) => {
     let state = ready('percent');
     state.draft.totalAmount = total;
@@ -110,6 +155,33 @@ describe('TC-P4 follow-up (d): invalid percent to dollar conversion stays editab
 });
 
 describe('TC-P4 follow-up (e): rounding zeros are distinct from explicit zeros', () => {
+  it('keeps blank custom zeros explicit after an Equal zero toggle', () => {
+    let state = setExpenseTotal(ready(), '90', ids);
+    state.draft.paidBy = { b: '90' };
+    state = setExpenseExplicitZero(state, 'c', true, ids);
+    state = changeExpenseMethod(state, 'percent', ids);
+    state = setExpenseShare(state, 'a', '100');
+    state = setExpenseShare(state, 'b', '');
+    expect(state.zeroOrigin).toBeDefined();
+    expect(expenseExplicitZero(state, 'b')).toBe(true);
+    expect(expensePreviewLabel(state, validation(state).preview, 'b')).toBe('$0.00 (explicit)');
+    expect(draftToExpenseFields(state.draft, { travelerIds: ids }).fields?.manualSplit.b).toEqual({ type: 'percent', value: 0 });
+  });
+
+  it('keeps missing default entries explicit after another traveler is zeroed and restored', () => {
+    const weights = { a: 1, b: 1 };
+    let state = changeExpenseMethod(ready(), 'trip-default', ids, weights);
+    expect(expenseExplicitZero(state, 'c')).toBe(true);
+    state = setExpenseExplicitZero(state, 'b', true, ids, weights);
+    expect(expenseExplicitZero(state, 'b')).toBe(true);
+    expect(expenseExplicitZero(state, 'c')).toBe(true);
+    expect(expensePreviewLabel(state, validation(state).preview, 'c')).toBe('$0.00 (explicit)');
+    expect(draftToExpenseFields(state.draft, { travelerIds: ids }).fields?.manualSplit.c).toEqual({ type: 'percent', value: 0 });
+    state = setExpenseExplicitZero(state, 'b', false, ids, weights);
+    expect(state.method).toBe('trip-default');
+    expect(expenseExplicitZero(state, 'c')).toBe(true);
+  });
+
   it('labels tiny Equal remainder zeros as money, including after converting to dollars', () => {
     let state = ready();
     state.draft.totalAmount = '0.01';

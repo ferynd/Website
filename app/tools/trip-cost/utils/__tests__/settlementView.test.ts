@@ -124,6 +124,26 @@ describe('payment dialog prefill and overpay advice', () => {
 });
 
 describe('payment history', () => {
+  it.each([
+    { amount: -1 },
+    { amount: 0 },
+    { amount: NaN },
+    { payerId: 'removed' },
+    { payeeId: 'removed' },
+    { payeeId: 'kait' },
+  ])('marks payments ignored by the ledger as not counted: %j', (invalid) => {
+    const stored = { ...payment('invalid', '2026-10-22'), ...invalid };
+    const after = buildLedger({ participants, expenses: [expense], payments: [stored] });
+    expect(after.remaining).toEqual(ledger.remaining);
+    expect(paymentHistoryRows([stored], participants, user.uid, after.travelerIds)[0].status).toBe('Not counted (invalid)');
+  });
+
+  it('uses the supplied ledger traveler ids and leaves counted payments unmarked', () => {
+    const stored = payment('valid', '2026-10-22');
+    expect(paymentHistoryRows([stored], participants, user.uid, ledger.travelerIds)[0].status).toBeNull();
+    expect(paymentHistoryRows([stored], participants, user.uid, ['kait'])[0].status).toBe('Not counted (invalid)');
+  });
+
   it('sorts newest first without mutating stored order; equal dates stay stable', () => {
     const payments = [payment('old', '2026-10-20T12:00:00Z'), payment('new', '2026-10-22T01:00:00Z'), payment('tie', '2026-10-22T01:00:00Z')];
     expect(paymentHistoryRows(payments, participants).map((row) => row.id)).toEqual(['new', 'tie', 'old']);

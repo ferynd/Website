@@ -137,6 +137,7 @@ export default function SettlementsSection({ userProfile, onDeletePayment }: {
                     size="sm"
                     className="shrink-0"
                     disabled={!allowed.allowed}
+                    aria-label={`Record payment from ${nameOf(suggestion.from)} to ${nameOf(suggestion.to)}, ${formatMoney(suggestion.cents)}`}
                     aria-describedby={allowed.allowed ? undefined : permission.allowed ? reasonId : permissionId}
                     onClick={() => setDialog(initial)}
                   >
@@ -163,10 +164,11 @@ export default function SettlementsSection({ userProfile, onDeletePayment }: {
         <h3 className="font-semibold text-text">Payment history</h3>
         {payments.length === 0 && <p className="text-sm text-text-3">No reimbursements recorded.</p>}
         <ul className="divide-y divide-border">
-          {paymentHistoryRows(payments, participants, userProfile?.uid).map((payment) => (
+          {paymentHistoryRows(payments, participants, userProfile?.uid, ledger.travelerIds).map((payment) => (
             <li key={payment.id} className="flex min-w-0 items-start gap-3 py-3">
               <div className="min-w-0 flex-1 space-y-1 break-words text-sm [overflow-wrap:anywhere]">
                 <PaymentDirection from={payment.from} to={payment.to} amount={payment.amount} />
+                {payment.status && <p className="text-warning">{payment.status}</p>}
                 {payment.note && <p className="text-text-2">{payment.note}</p>}
                 <p className="text-text-3">
                   <time dateTime={payment.dateTime}>{payment.date}</time>

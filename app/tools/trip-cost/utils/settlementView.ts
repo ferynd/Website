@@ -1,5 +1,5 @@
 import type { Payment, TripParticipant, UserProfile } from '../pageTypes';
-import type { Ledger, Settlement } from './ledger';
+import { isValidLedgerPayment, type Ledger, type Settlement } from './ledger';
 import { balanceStatus, makeNameOf } from './ledgerLabels';
 import { formatMoney, fromCents, toCents } from './money';
 import { uniqueLinkedParticipant } from './payer';
@@ -84,7 +84,12 @@ export function balanceBreakdownRows(ledger: Ledger) {
 }
 
 /** Invalid legacy dates sort last; equal dates retain stored order. */
-export function paymentHistoryRows(payments: Payment[], participants: TripParticipant[], viewerUid?: string) {
+export function paymentHistoryRows(
+  payments: Payment[],
+  participants: TripParticipant[],
+  viewerUid?: string,
+  travelerIds = participants.map((person) => person.id),
+) {
   const nameOf = makeNameOf(participants);
   const dateValue = (payment: Payment) => {
     const parsed = Date.parse(payment.date);
@@ -98,6 +103,7 @@ export function paymentHistoryRows(payments: Payment[], participants: TripPartic
       from: nameOf(payment.payerId),
       to: nameOf(payment.payeeId),
       amount: Number.isFinite(cents) ? formatMoney(cents) : 'Invalid amount',
+      status: isValidLedgerPayment(payment, travelerIds) ? null : 'Not counted (invalid)',
       note: payment.description,
       date: Number.isFinite(Date.parse(payment.date)) ? new Date(payment.date).toLocaleDateString() : 'Unknown date',
       dateTime: Number.isFinite(Date.parse(payment.date)) ? payment.date : undefined,

@@ -43,6 +43,7 @@ export default function RecordPaymentDialog({ initial, userProfile, onClose }: R
     draft.payerId, draft.payeeId, validation.cents, ledger.remaining, participants,
   );
   const close = () => {
+    if (busy.current) return;
     active.current = false;
     onClose();
   };
@@ -54,7 +55,10 @@ export default function RecordPaymentDialog({ initial, userProfile, onClose }: R
     setError('');
     try {
       await addPayment(draft.payerId, draft.payeeId, fromCents(validation.cents), draft.note.trim(), userProfile.uid);
-      if (active.current) close();
+      if (active.current) {
+        active.current = false;
+        onClose();
+      }
     } catch (failure) {
       if (active.current) {
         setError(failure instanceof Error ? failure.message : 'Could not record payment. Please try again.');
@@ -68,12 +72,12 @@ export default function RecordPaymentDialog({ initial, userProfile, onClose }: R
   };
 
   return (
-    <Dialog open title="Record payment" onClose={close} footer={
+    <Dialog open title="Record payment" onClose={close} dismissible={!saving} footer={
       <div className="min-w-0 space-y-3 break-words [overflow-wrap:anywhere]">
         <p id={reasonId} aria-live="polite" className="text-sm text-error">{reason}</p>
         <p id={`${formId}-error`} role={error ? 'alert' : undefined} className="text-sm text-error">{error}</p>
         <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={close}>Cancel</Button>
+          <Button type="button" variant="ghost" onClick={close} disabled={saving}>Cancel</Button>
           <Button
             type="submit"
             form={formId}

@@ -77,7 +77,10 @@ describe('RecordPaymentDialog save session', () => {
     dialog.props.children.props.onSubmit({ preventDefault: vi.fn() });
     expect(test.addPayment).toHaveBeenCalledOnce();
     expect(test.addPayment).toHaveBeenCalledWith('a', 'b', 25.01, 'Cash', 'user');
-    const saving = test.markup(test.render());
+    const inFlight = test.render();
+    const saving = test.markup(inFlight);
+    expect(inFlight.props.dismissible).toBe(false);
+    expect(saving).toContain('disabled="">Cancel</button>');
     expect(saving).toContain('<fieldset disabled=""');
     expect(saving).toContain('Saving payment…');
     expect(saving).toContain('aria-describedby="record-payment-reason record-payment-warning record-payment-error"');
@@ -94,26 +97,50 @@ describe('RecordPaymentDialog save session', () => {
     }
   });
 
-  it.each(['success', 'failure'] as const)('ignores late %s after the dialog closes', async (outcome) => {
+  it.each(['success', 'failure'] as const)('ignores dismissal during a save, preserving %s feedback', async (outcome) => {
     const test = session();
     const dialog = test.render();
     dialog.props.children.props.onSubmit({ preventDefault: vi.fn() });
+    // A handler retained from before the saving rerender must also respect busy.
     dialog.props.onClose();
-    const statesAtClose = [...hooks.slots];
+    const inFlight = test.render();
+    expect(inFlight.props.dismissible).toBe(false);
+    inFlight.props.onClose();
+    expect(test.onClose).not.toHaveBeenCalled();
     if (outcome === 'success') test.resolve();
     else test.reject(new Error('Late failure'));
     await test.pending.catch(() => {});
-    expect(test.onClose).toHaveBeenCalledOnce();
-    expect(hooks.slots).toEqual(statesAtClose);
+    if (outcome === 'success') expect(test.onClose).toHaveBeenCalledOnce();
+    else {
+      const failed = test.render();
+      expect(test.onClose).not.toHaveBeenCalled();
+      expect(test.markup(failed)).toContain('Late failure');
+      expect(failed.props.dismissible).toBe(true);
+      expect(test.markup(failed)).not.toContain('disabled="">Cancel</button>');
+      failed.props.onClose();
+      expect(test.onClose).toHaveBeenCalledOnce();
+    }
   });
 
-  it('ignores a completion after unmount', async () => {
+  it('allows dismissal before saving', () => {
+    const test = session();
+    const dialog = test.render();
+    expect(dialog.props.dismissible).toBe(true);
+    dialog.props.onClose();
+    expect(test.onClose).toHaveBeenCalledOnce();
+    expect(test.addPayment).not.toHaveBeenCalled();
+  });
+
+  it.each(['success', 'failure'] as const)('ignores a %s after unmount', async (outcome) => {
     const test = session();
     test.render().props.children.props.onSubmit({ preventDefault: vi.fn() });
     hooks.cleanups.forEach((cleanup) => cleanup());
-    test.resolve();
-    await test.pending;
+    const statesAtUnmount = [...hooks.slots];
+    if (outcome === 'success') test.resolve();
+    else test.reject(new Error('Failure after unmount'));
+    await test.pending.catch(() => {});
     expect(test.onClose).not.toHaveBeenCalled();
+    expect(hooks.slots).toEqual(statesAtUnmount);
   });
 
   it('prevents a disallowed pair even if submit is called directly', () => {
