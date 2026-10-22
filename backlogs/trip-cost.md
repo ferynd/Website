@@ -38,7 +38,7 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P3 — Layout and ledger table
 
 - [p] **Header, tabs, `LedgerTable`, detail sheets, local `Dialog`.** Depends: TC-P1.
-  > pushed — header, tabs, `LedgerTable` (pinned Expense column, labelled cap-adjustment / not-covered / final rows), expense and traveler detail sheets on a local responsive `Dialog`, temporary `ExpenseForm` dialog, `ExpensesList` removed, 390px overflow and small-text fixes; no math, rules, schema, or data changes; checks: npm test (1976), lint, tsc, build pass; commit: 0be3969; PR: #171
+  > pushed — header, tabs, `LedgerTable` (pinned Expense column, labelled cap-adjustment / not-covered / final rows), expense and traveler detail sheets on a local responsive `Dialog`, temporary `ExpenseForm` dialog, `ExpensesList` removed, 390px overflow and small-text fixes; no math, rules, schema, or data changes; checks: npm test (1980), lint, tsc, build pass; commit: 0be3969; PR: #171
   - Expenses tab: header (name, total spending, Add expense, balance strip, problem banner) and a real `<table>` with category groups, expense subtotal, labelled cap-adjustment rows, "Not covered by anyone", and final responsibility. Participants, settings, and audit log move unchanged to the Participants & Settings tab. The old `ExpenseForm` is hosted temporarily in the dialog; `ExpensesList` is removed.
   - Fixes F-019, F-020, F-023 for Trip Cost only.
   - **Accept:** at 390px page `scrollWidth` equals viewport width; the ledger scrolls inside its card with the Expense column pinned; no hover-only actions; adjustment and final rows have text labels; rows open `ExpenseDetailSheet` by keyboard and touch.

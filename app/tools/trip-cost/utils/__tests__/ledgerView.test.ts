@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildLedger } from '../ledger';
-import { balanceChips, buildLedgerRows, capBadge, explicitZeroLabel, payerSummary } from '../ledgerView';
+import { balanceChips, buildLedgerRows, capBadge, explicitZeroLabel, payerSummary, splitMethodLabel } from '../ledgerView';
 import type { Expense, TripParticipant } from '../../pageTypes';
 import { OHIO, traveler } from './fixtures/ohio';
 
@@ -81,6 +81,18 @@ describe('ledger view model expense cells and payers', () => {
   it('reports when no payer is recorded', () => {
     expect(payerSummary({}, participants)).toBe('No payer recorded');
   });
+
+  it('names a removed payer as an unknown traveler', () => {
+    expect(payerSummary({ removed: 50 }, participants)).toBe('Paid by Unknown traveler');
+  });
+
+  it('labels mixed legacy dollar and percentage splits', () => {
+    expect(splitMethodLabel({ splitType: 'manual', manualSplit: { a: { type: 'amount', value: 1 }, b: { type: 'percent', value: 50 } } }))
+      .toBe('Mixed custom split ($ and %)');
+    expect(splitMethodLabel({ splitType: 'manual', manualSplit: { a: { type: 'amount', value: 1 } } })).toBe('Custom dollar split');
+    expect(splitMethodLabel({ splitType: 'manual', manualSplit: { a: { type: 'percent', value: 100 } } })).toBe('Custom percentage split');
+    expect(splitMethodLabel({ splitType: 'even', manualSplit: {} })).toBe('Equal split');
+  });
 });
 
 describe('ledger view model caps and summary rows', () => {
@@ -152,13 +164,24 @@ describe('ledger view model caps and summary rows', () => {
     expect(buildLedgerRows(feasibleLedger, single).some((row) => row.type === 'uncovered')).toBe(false);
   });
 
+  it('shows unassigned data problems independently from cap uncovered costs', () => {
+    const single = [traveler('a', 'Avery')];
+    const emptySplit = evenExpense('empty', 100, { a: 100 }, []);
+    const ledger = buildLedger({ participants: single, expenses: [emptySplit], payments: [] });
+    const rows = buildLedgerRows(ledger, single);
+    expect(rows.find((row) => row.type === 'unassigned')).toMatchObject({
+      label: 'Unassigned (data problem)', totalCents: 10000, cells: { a: null },
+    });
+    expect(rows.some((row) => row.type === 'uncovered')).toBe(false);
+  });
+
   it('sets final row cells to ledger.final and total to spending minus unallocated cost', () => {
     const ledger = buildLedger(OHIO);
     const final = buildLedgerRows(ledger, OHIO.participants)
       .find((row) => row.type === 'final');
 
     expect(final?.cells).toEqual(ledger.final);
-    expect(final?.totalCents).toBe(ledger.totalSpendingCents - ledger.unallocatedCents);
+    expect(final?.totalCents).toBe(Object.values(ledger.final).reduce((sum, cents) => sum + cents, 0));
   });
 
   it('preserves the Ohio Ren Faire final figures and category order', () => {
@@ -179,5 +202,12 @@ describe('ledger view model caps and summary rows', () => {
       'Activities',
       'Food',
     ]);
+  });
+
+  it('uses positive recorded payer ids even when the payer is no longer a traveler', () => {
+    const expense = evenExpense('legacy', 50, { removed: 50 });
+    const ledger = buildLedger({ participants, expenses: [expense], payments: [] });
+    const row = buildLedgerRows(ledger, participants, [expense]).find((item) => item.type === 'expense');
+    expect(row?.type === 'expense' && row.payers).toBe('Paid by Unknown traveler');
   });
 });

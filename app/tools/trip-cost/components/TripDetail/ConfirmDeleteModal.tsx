@@ -29,13 +29,16 @@ export default function ConfirmDeleteModal({
   const btnRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const layer = useRef<symbol | null>(null);
+  const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
+    opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const token = registerModalLayer();
     layer.current = token;
     btnRef.current?.focus();
     return () => {
       unregisterModalLayer(token);
       layer.current = null;
+      if (opener.current?.isConnected) opener.current.focus();
     };
   }, []);
   return (

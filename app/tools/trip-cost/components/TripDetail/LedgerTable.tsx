@@ -81,12 +81,19 @@ function ExpenseRow({ row, travelerIds, onExpense }: LedgerRowProps) {
 function SummaryRow({ row, travelerIds }: LedgerRowProps) {
   if (row.type === 'category' || row.type === 'expense') return null;
   const uncovered = row.type === 'uncovered';
+  const unassigned = row.type === 'unassigned';
   const final = row.type === 'final';
-  const background = uncovered ? 'bg-error text-white' : final ? 'bg-surface-2' : 'bg-surface-1';
-  const rowTone = uncovered ? 'text-error' : final ? 'font-bold text-text' : 'text-text-2';
+  // Sticky cells must stay opaque so scrolled cells never show through;
+  // problem rows get an error edge instead of a translucent tint here.
+  const background = uncovered || unassigned
+    ? 'border-l-4 border-error bg-surface-1'
+    : final
+      ? 'bg-surface-2'
+      : 'bg-surface-1';
+  const rowTone = uncovered || unassigned ? 'text-error' : final ? 'font-bold text-text' : 'text-text-2';
 
   return (
-    <tr className={`border-t border-border ${rowTone} ${uncovered ? 'bg-error/10' : final ? 'bg-surface-2' : ''}`}>
+    <tr className={`border-t border-border ${rowTone} ${uncovered || unassigned ? 'bg-error/10' : final ? 'bg-surface-2' : ''}`}>
       <th scope="row" className={`sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] px-3 py-3 text-left sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem] ${background}`}>
         <span className="block break-words">{row.label}</span>
         {row.type === 'adjustment' && (
@@ -97,6 +104,7 @@ function SummaryRow({ row, travelerIds }: LedgerRowProps) {
             Raise a cap or add someone without a cap. Settlement suggestions are paused.
           </span>
         )}
+        {unassigned && <span className="mt-1 block text-xs">See the problems above; fix the expense to assign it.</span>}
       </th>
       <td className="min-w-[5.5rem] px-3 py-3 text-right">
         {money(row.totalCents)}
@@ -129,11 +137,11 @@ function LedgerDataRow(props: LedgerRowProps) {
 
 /** Responsive ledger matrix with a sticky expense column and overflow cues. */
 export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps) {
-  const { ledger, participants } = useTrip();
+  const { ledger, participants, expenses } = useTrip();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [overflows, setOverflows] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
-  const rows = buildLedgerRows(ledger, participants);
+  const rows = buildLedgerRows(ledger, participants, expenses);
 
   useEffect(() => {
     const element = scroller.current;
@@ -186,7 +194,7 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
                 key={rowKey(row)}
                 row={row}
                 travelerIds={ledger.travelerIds}
-                collapsed={row.type === 'expense' ? collapsed.has(row.category) : false}
+                collapsed={(row.type === 'expense' || row.type === 'category') && collapsed.has(row.category)}
                 onToggleCategory={toggleCategory}
                 onExpense={onExpense}
               />

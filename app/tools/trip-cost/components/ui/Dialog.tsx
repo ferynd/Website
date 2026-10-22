@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useId, useRef } from 'react';
+import { X } from 'lucide-react';
 
 const openDialogs: symbol[] = [];
 
@@ -56,6 +57,14 @@ export default function Dialog({ open, title, onClose, children, footer }: Dialo
         return;
       }
       if (event.key !== 'Tab' || !panel.current) return;
+      if (!panel.current.contains(document.activeElement)) {
+        event.preventDefault();
+        const outsideItems = Array.from(panel.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+        ));
+        (event.shiftKey ? outsideItems[outsideItems.length - 1] : outsideItems[0] ?? panel.current).focus();
+        return;
+      }
       const items = Array.from(panel.current.querySelectorAll<HTMLElement>(
         'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), ' +
           'a[href], [tabindex]:not([tabindex="-1"])',
@@ -108,7 +117,7 @@ export default function Dialog({ open, title, onClose, children, footer }: Dialo
             aria-label="Close dialog"
             className="rounded px-2 py-1 text-text-2 hover:bg-surface-2"
           >
-            ×
+            <X aria-hidden="true" size={18} />
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>

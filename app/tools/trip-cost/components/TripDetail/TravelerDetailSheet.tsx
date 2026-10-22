@@ -5,6 +5,7 @@ import Dialog from '../ui/Dialog';
 import { useTrip } from '../../TripContext';
 import { balanceStatus, makeNameOf } from '../../utils/ledgerLabels';
 import { formatMoney, toCents } from '../../utils/money';
+import { isValidLedgerPayment } from '../../utils/ledger';
 
 interface TravelerDetailSheetProps {
   travelerId: string | null;
@@ -73,7 +74,7 @@ export default function TravelerDetailSheet({ travelerId, onClose }: TravelerDet
           <h3 className="font-semibold text-text">Reimbursements</h3>
           <ul className="mt-2 space-y-1">
             {payments
-              .filter((payment) => payment.payerId === person.id || payment.payeeId === person.id)
+              .filter((payment) => isValidLedgerPayment(payment, ledger.travelerIds) && (payment.payerId === person.id || payment.payeeId === person.id))
               .map((payment) => (
                 <li key={payment.id}>
                   {payment.payerId === person.id

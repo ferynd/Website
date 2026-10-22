@@ -1,6 +1,7 @@
+import type { Expense } from '../pageTypes';
 import type { Ledger } from './ledger';
 import type { TripParticipant } from '../pageTypes';
-import { balanceStatus, capAdjustmentRows, makeNameOf } from './ledgerLabels';
+import { balanceStatus, capAdjustmentRows, makeNameOf, UNKNOWN_TRAVELER } from './ledgerLabels';
 import { formatMoney } from './money';
 
 /** Render-ready row shapes for the ledger matrix. */
@@ -48,6 +49,13 @@ export interface UncoveredRow {
   cells: Record<string, null>;
 }
 
+export interface UnassignedRow {
+  type: 'unassigned';
+  label: 'Unassigned (data problem)';
+  totalCents: number;
+  cells: Record<string, null>;
+}
+
 /** Final responsibility totals after budget cap transfers. */
 export interface FinalRow {
   type: 'final';
@@ -63,15 +71,25 @@ export type LedgerViewRow =
   | SubtotalRow
   | AdjustmentRow
   | UncoveredRow
+  | UnassignedRow
   | FinalRow;
 
 /** Summarize recorded payers without mixing purchase amounts into share cells. */
-export function payerSummary(payers: Record<string, number>, participants: TripParticipant[]): string {
-  const names = Object.keys(payers)
-    .filter((id) => payers[id] > 0)
-    .map((id) => participants.find((participant) => participant.id === id)?.name ?? 'Unknown');
+export function payerSummary(paidBy: Record<string, number>, participants: TripParticipant[]): string {
+  const nameOf = makeNameOf(participants);
+  const names = Object.keys(paidBy)
+    .filter((id) => typeof paidBy[id] === 'number' && Number.isFinite(paidBy[id]) && paidBy[id] > 0)
+    .map((id) => nameOf(id) === UNKNOWN_TRAVELER ? 'Unknown traveler' : nameOf(id));
   if (names.length > 1) return `Paid by ${names[0]} + ${names.length - 1}`;
   return names.length ? `Paid by ${names[0]}` : 'No payer recorded';
+}
+
+/** Describe the complete stored split method, including mixed legacy entries. */
+export function splitMethodLabel(expense: Pick<Expense, 'splitType' | 'manualSplit'>): string {
+  if (expense.splitType !== 'manual') return 'Equal split';
+  const types = new Set(Object.values(expense.manualSplit ?? {}).map((part) => part.type));
+  if (types.has('amount') && types.has('percent')) return 'Mixed custom split ($ and %)';
+  return types.has('percent') ? 'Custom percentage split' : 'Custom dollar split';
 }
 
 /** Return the cap and remaining room measured against final responsibility. */
@@ -95,7 +113,7 @@ export function balanceChips(ledger: Ledger, participants: TripParticipant[]) {
 }
 
 /** Derive all table rows from the ledger without changing ledger calculations. */
-export function buildLedgerRows(ledger: Ledger, participants: TripParticipant[]): LedgerViewRow[] {
+export function buildLedgerRows(ledger: Ledger, participants: TripParticipant[], storedExpenses: Expense[] = []): LedgerViewRow[] {
   const ids = ledger.travelerIds;
   const nameOf = makeNameOf(participants);
   const rows: LedgerViewRow[] = [];
@@ -119,7 +137,12 @@ export function buildLedgerRows(ledger: Ledger, participants: TripParticipant[])
         description: expense.description,
         totalCents: expense.totalCents,
         cells,
-        payers: payerSummary(expense.payers, participants),
+        payers: payerSummary(storedExpenses.find((item) => item.id === expense.expenseId)?.paidBy ?? {
+          ...expense.payers,
+          ...Object.fromEntries(expense.problems
+            .filter((problem) => problem.kind === 'unknown-payer' && problem.travelerId)
+            .map((problem) => [problem.travelerId as string, Math.max(1, problem.cents ?? 0)])),
+        }, participants),
       });
     }
   }
@@ -139,13 +162,16 @@ export function buildLedgerRows(ledger: Ledger, participants: TripParticipant[])
       travelerId: adjustment.travelerId,
     });
   }
-  if (ledger.unallocatedCents > 0) {
+  if (ledger.caps.unallocatedCents > 0) {
     rows.push({
       type: 'uncovered',
       label: 'Not covered by anyone',
-      totalCents: ledger.unallocatedCents,
+      totalCents: ledger.caps.unallocatedCents,
       cells: Object.fromEntries(ids.map((id) => [id, null])),
     });
+  }
+  if (ledger.unassignedCents > 0) {
+    rows.push({ type: 'unassigned', label: 'Unassigned (data problem)', totalCents: ledger.unassignedCents, cells: Object.fromEntries(ids.map((id) => [id, null])) });
   }
   rows.push({
     type: 'final',

@@ -7,6 +7,7 @@ import { useTrip } from '../../TripContext';
 import { expenseToDraft } from '../../utils/expenseDraft';
 import { describeProblem, makeNameOf } from '../../utils/ledgerLabels';
 import { formatMoney } from '../../utils/money';
+import { splitMethodLabel } from '../../utils/ledgerView';
 import type { ExpenseDraft, UserProfile } from '../../pageTypes';
 
 interface ExpenseDetailSheetProps {
@@ -133,11 +134,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
             </ul>
           </section>
           <p>
-            Split method: {expense.splitType === 'even'
-              ? 'Equal split'
-              : Object.values(expense.manualSplit ?? {}).some((part) => part.type === 'percent')
-                ? 'Custom percentage split'
-                : 'Custom dollar split'}
+            Split method: {splitMethodLabel(expense)}
           </p>
           <section>
             <h3 className="font-semibold text-text">Traveler shares</h3>
