@@ -96,6 +96,7 @@ import {
   checklistKeysForBaseline,
   checklistKeysForDisplay,
   CHECKLIST_STORAGE_KEY,
+  mergeStorageChecklist,
   readChecklist,
   sameChecklistKeys,
   saveChecklist,
@@ -205,6 +206,8 @@ export default function IngredientsView({
   const [checklistHydrated, setChecklistHydrated] = useState(false);
   const [hydratedRecipeId, setHydratedRecipeId] = useState<string | null>(null);
   const hydratedForRef = useRef<string | null>(null);
+  const checkedRef = useRef<Set<string>>(new Set());
+  const syncedFromStorageRef = useRef<Set<string> | null>(null);
   const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<RecipeIngredient | null>(null);
   const intakeGroupCount = useMemo(
@@ -252,15 +255,27 @@ export default function IngredientsView({
   }, [recipeId]);
 
   useEffect(() => {
+    checkedRef.current = checked;
+  }, [checked]);
+
+  useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
       if (event.key !== CHECKLIST_STORAGE_KEY && event.key !== null) return;
       const currentRecipeId = hydratedForRef.current;
       if (currentRecipeId === null || currentRecipeId !== recipeId) return;
-      setChecked(new Set(readChecklist(currentRecipeId)));
+      // Adopt the other tab's saved ticks, keep this tab's unsaved-ingredient
+      // ticks, and mark the result so it is never written back from here.
+      const next = new Set(mergeStorageChecklist(
+        readChecklist(currentRecipeId),
+        Array.from(checkedRef.current),
+        baselineShoppingKeys,
+      ));
+      syncedFromStorageRef.current = next;
+      setChecked(next);
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
-  }, [recipeId]);
+  }, [baselineShoppingKeys, recipeId]);
 
   useEffect(() => {
     if (
@@ -269,6 +284,9 @@ export default function IngredientsView({
       hydratedRecipeId !== recipeId ||
       hydratedForRef.current !== recipeId
     ) return;
+    // Ticks adopted from another tab are already stored; writing them back
+    // through a stale baseline would delete the other tab's ticks.
+    if (checked === syncedFromStorageRef.current) return;
     // Persist only ticks for saved ingredients; in-memory ticks for unsaved
     // draft ingredients stay visible without being written.
     const baselineKeys = checklistKeysForBaseline(Array.from(checked), baselineShoppingKeys);

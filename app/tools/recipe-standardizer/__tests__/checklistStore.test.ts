@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  mergeStorageChecklist,
   CHECKLIST_STORAGE_KEY,
   MAX_RECIPES,
   checklistKeysForBaseline,
@@ -156,5 +157,15 @@ describe('sameChecklistKeys', () => {
 
   it('detects a different key set', () => {
     expect(sameChecklistKeys(['flour'], ['salt'])).toBe(false);
+  });
+});
+
+describe('mergeStorageChecklist', () => {
+  it('adopts stored ticks and keeps ticks on ingredients not yet saved', () => {
+    expect(mergeStorageChecklist(['flour'], ['salt', 'milk'], ['flour', 'salt'])).toEqual(['flour', 'milk']);
+  });
+
+  it('dedupes keys present in both sets', () => {
+    expect(mergeStorageChecklist(['milk'], ['milk'], [])).toEqual(['milk']);
   });
 });

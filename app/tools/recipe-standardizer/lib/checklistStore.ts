@@ -105,6 +105,17 @@ export const sameChecklistKeys = (left: string[], right: string[]): boolean => {
   return Array.from(leftKeys).every((key) => rightKeys.has(key));
 };
 
+/** Merge another tab's stored ticks with this tab's ticks on ingredients not yet saved. */
+export const mergeStorageChecklist = (
+  storedKeys: string[],
+  currentKeys: string[],
+  baselineKeys: string[],
+): string[] => {
+  const savedKeys = new Set(baselineKeys);
+  const unsavedTicks = currentKeys.filter((key) => !savedKeys.has(key));
+  return Array.from(new Set([...storedKeys, ...unsavedTicks]));
+};
+
 /** Read one saved recipe checklist; unavailable storage and malformed data produce no ticks. */
 export const readChecklist = (recipeId: string): string[] => {
   const storage = getStorage();
