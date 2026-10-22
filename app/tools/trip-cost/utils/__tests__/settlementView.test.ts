@@ -132,8 +132,9 @@ describe('payment history', () => {
 
   it('keeps unknown participants, notes, and recorder information visible', () => {
     const rows = paymentHistoryRows([{ ...payment('p', 'bad-date'), payerId: 'removed', createdBy: 'former-account' }], participants);
-    expect(rows[0]).toMatchObject({ from: UNKNOWN_TRAVELER, to: 'James', amount: '$200.00', note: 'Venmo', recordedBy: 'former-account', date: 'Unknown date' });
+    expect(rows[0]).toMatchObject({ from: UNKNOWN_TRAVELER, to: 'James', amount: '$200.00', note: 'Venmo', recordedBy: null, date: 'Unknown date' });
     expect(paymentHistoryRows([payment('p', '2026-10-22')], participants)[0].recordedBy).toBe('Kait');
     expect(paymentHistoryRows([{ ...payment('p', '2026-10-22'), createdBy: undefined }], participants)[0].recordedBy).toBeNull();
+    expect(paymentHistoryRows([{ ...payment('p', '2026-10-22'), createdBy: 'admin-uid' }], participants, 'admin-uid')[0].recordedBy).toBe('you');
   });
 });

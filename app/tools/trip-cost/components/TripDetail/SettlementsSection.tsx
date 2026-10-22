@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
@@ -20,9 +20,24 @@ import RecordPaymentDialog from './RecordPaymentDialog';
 function BalanceBreakdown() {
   const { ledger, participants } = useTrip();
   const nameOf = makeNameOf(participants);
+  const [overflows, setOverflows] = useState(false);
+  const scroller = useRef<HTMLDivElement>(null);
+
+  // Same measured cue as LedgerTable: only shown when columns are actually hidden.
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const measure = () => setOverflows(element.scrollWidth > element.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, [ledger.travelerIds.length]);
+
   return (
     <div className="min-w-0 overflow-hidden rounded-lg border border-border">
-      <div className="overflow-x-auto" role="region" aria-label="Balance breakdown" tabIndex={0}>
+      <div ref={scroller} className="relative overflow-x-auto" role="region" aria-label="Balance breakdown" tabIndex={0}>
         <table className="isolate w-full min-w-max border-separate border-spacing-0 text-sm">
           <caption className="sr-only">Balance breakdown for every traveler, in expense ledger order</caption>
           <thead>
@@ -52,10 +67,16 @@ function BalanceBreakdown() {
             ))}
           </tbody>
         </table>
+        {overflows && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute right-0 top-0 h-full w-8 bg-gradient-to-l from-surface-1 to-transparent"
+          />
+        )}
       </div>
-      {ledger.travelerIds.length > 1 && (
+      {overflows && (
         <p className="flex items-center gap-1 px-3 py-2 text-xs text-text-3">
-          Scroll for more travelers <ArrowRight size={14} aria-hidden="true" />
+          Swipe for more travelers <ArrowRight size={14} aria-hidden="true" />
         </p>
       )}
     </div>
@@ -108,7 +129,7 @@ export default function SettlementsSection({ userProfile, onDeletePayment }: {
                       to={nameOf(suggestion.to)}
                       amount={formatMoney(suggestion.cents)}
                     />
-                    {!allowed.allowed && (
+                    {!allowed.allowed && permission.allowed && (
                       <p id={reasonId} className="mt-1 text-sm text-text-3">{allowed.reason}</p>
                     )}
                   </div>
@@ -116,7 +137,7 @@ export default function SettlementsSection({ userProfile, onDeletePayment }: {
                     size="sm"
                     className="shrink-0"
                     disabled={!allowed.allowed}
-                    aria-describedby={!allowed.allowed ? reasonId : undefined}
+                    aria-describedby={allowed.allowed ? undefined : permission.allowed ? reasonId : permissionId}
                     onClick={() => setDialog(initial)}
                   >
                     Record
@@ -142,7 +163,7 @@ export default function SettlementsSection({ userProfile, onDeletePayment }: {
         <h3 className="font-semibold text-text">Payment history</h3>
         {payments.length === 0 && <p className="text-sm text-text-3">No reimbursements recorded.</p>}
         <ul className="divide-y divide-border">
-          {paymentHistoryRows(payments, participants).map((payment) => (
+          {paymentHistoryRows(payments, participants, userProfile?.uid).map((payment) => (
             <li key={payment.id} className="flex min-w-0 items-start gap-3 py-3">
               <div className="min-w-0 flex-1 space-y-1 break-words text-sm [overflow-wrap:anywhere]">
                 <PaymentDirection from={payment.from} to={payment.to} amount={payment.amount} />

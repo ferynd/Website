@@ -84,7 +84,7 @@ export function balanceBreakdownRows(ledger: Ledger) {
 }
 
 /** Invalid legacy dates sort last; equal dates retain stored order. */
-export function paymentHistoryRows(payments: Payment[], participants: TripParticipant[]) {
+export function paymentHistoryRows(payments: Payment[], participants: TripParticipant[], viewerUid?: string) {
   const nameOf = makeNameOf(participants);
   const dateValue = (payment: Payment) => {
     const parsed = Date.parse(payment.date);
@@ -101,7 +101,10 @@ export function paymentHistoryRows(payments: Payment[], participants: TripPartic
       note: payment.description,
       date: Number.isFinite(Date.parse(payment.date)) ? new Date(payment.date).toLocaleDateString() : 'Unknown date',
       dateTime: Number.isFinite(Date.parse(payment.date)) ? payment.date : undefined,
-      recordedBy: payment.createdBy ? recorder?.name ?? payment.createdBy : null,
+      // Never show a raw account uid; unknown recorders are simply omitted.
+      recordedBy: !payment.createdBy ? null
+        : payment.createdBy === viewerUid ? 'you'
+          : recorder?.name ?? null,
     };
   });
 }
