@@ -55,6 +55,6 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P6 follow-up — Mobile ledger readability and dialog sizing
 
 - [p] **Stop the ledger scroll gradient covering traveler values; size mobile dialogs to content.** Depends: live TC-P6 hotfix (base `03c7e5a`).
-  > pushed — removed the right-edge overflow gradient (it scrolled with the table and sat over the first traveler column); sticky Expense column gets a solid border edge; Total column min width 7rem, no wrapping; cap labels may wrap; Trip Cost dialogs become content-height bottom sheets on mobile (max 90dvh, scrollable body); checks: npm test (2218), tsc, lint, build pass; PR: #<PR>
+  > pushed — removed the right-edge overflow gradient (it scrolled with the table and sat over the first traveler column); sticky Expense column gets a solid border edge; Total column min width 7rem, no wrapping; cap labels may wrap; Trip Cost dialogs become content-height bottom sheets on mobile (max 90dvh, scrollable body); checks: npm test (2218), tsc, lint, build pass; PR: #177
   - **Accept:** at 390px, scrolled or unscrolled, no overlay covers traveler values or headers; Total amounts such as `$1,095.75` are not clipped; the removal-blocker dialog on a tall phone sizes to its content with Close directly below the list.
   - **Checks:** `npm test`, `npx tsc --noEmit`, `npm run lint`, `npm run build`; coverage in `ledgerTableLayout.test.tsx` and `participantRemoval.test.tsx`. Recheck Ohio Expenses tab at 390px after deployment.
