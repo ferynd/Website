@@ -50,23 +50,15 @@ function ExpenseRow({ row, travelerIds, onExpense }: LedgerRowProps) {
   if (row.type !== 'expense') return null;
   const open = () => onExpense(row.expenseId);
   return (
-    <tr
-      tabIndex={0}
-      onClick={open}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          open();
-        }
-      }}
-      className="cursor-pointer border-b border-border/70 text-text-2 hover:bg-surface-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
-    >
+    <tr onClick={open} className="cursor-pointer border-b border-border/70 text-text-2 hover:bg-surface-2">
       <th
         scope="row"
         className="sticky left-0 z-10 w-[9.5rem] min-w-[9.5rem] bg-surface-1 px-3 py-2 text-left font-medium sm:w-56 sm:min-w-[14rem] lg:w-72 lg:min-w-[18rem]"
       >
-        <span className="line-clamp-2 break-words">{row.description}</span>
-        <span className="mt-1 block truncate text-xs text-text-3">{row.payers}</span>
+        <button type="button" onClick={(event) => { event.stopPropagation(); open(); }} aria-label={`View details for ${row.description}`} className="block min-w-0 max-w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent">
+          <span className="line-clamp-2 break-words [overflow-wrap:anywhere]">{row.description}</span>
+        </button>
+        <span className="mt-1 block min-w-0 break-words [overflow-wrap:anywhere] text-xs text-text-3">{row.payers}</span>
       </th>
       <td className="min-w-[5.5rem] px-3 py-2 text-right">{money(row.totalCents)}</td>
       {travelerIds.map((id) => (
@@ -178,8 +170,8 @@ export default function LedgerTable({ onExpense, onTraveler }: LedgerTableProps)
                 if (!participant) return null;
                 return (
                   <th key={id} scope="col" className="min-w-[5.5rem] bg-surface-1 px-2 py-2 text-right">
-                    <button type="button" onClick={() => onTraveler(id)} className="text-right text-text hover:text-accent">
-                      <span className="block">{participant.name}</span>
+                    <button type="button" onClick={() => onTraveler(id)} aria-label={`View details for ${participant.name}`} className="min-w-0 max-w-full text-right text-text hover:text-accent">
+                      <span className="block break-words [overflow-wrap:anywhere]">{participant.name}</span>
                       {capBadge(ledger, id) && (
                         <span className="block whitespace-nowrap text-xs text-text-3">{capBadge(ledger, id)}</span>
                       )}

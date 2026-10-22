@@ -6,7 +6,7 @@ import Dialog from '../ui/Dialog';
 import { useTrip } from '../../TripContext';
 import { expenseToDraft } from '../../utils/expenseDraft';
 import { isCurrentExpenseSave } from '../../utils/expenseSave';
-import { describeProblem, makeNameOf } from '../../utils/ledgerLabels';
+import { describeProblem, hasInvalidShare, makeNameOf } from '../../utils/ledgerLabels';
 import { formatMoney } from '../../utils/money';
 import { expensePayerAmounts, splitMethodLabel } from '../../utils/ledgerView';
 import type { ExpenseDraft, UserProfile } from '../../pageTypes';
@@ -154,7 +154,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
                 return (
                   <li key={person.id} className="flex min-w-0 justify-between gap-3 py-2">
                     <span className="min-w-0 break-words [overflow-wrap:anywhere]">{person.name}</span>
-                    <span className="shrink-0">{included ? share === 0 ? '$0.00 (explicit)' : formatMoney(share) : 'Not included'}</span>
+                    <span className="shrink-0">{included ? hasInvalidShare(allocation.problems, person.id) ? 'Invalid share' : share === 0 ? '$0.00 (explicit)' : formatMoney(share) : 'Not included'}</span>
                   </li>
                 );
               })}

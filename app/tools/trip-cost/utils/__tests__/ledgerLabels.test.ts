@@ -5,6 +5,7 @@ import {
   capAdjustmentLabel,
   capAdjustmentRows,
   describeProblem,
+  hasInvalidShare,
   makeNameOf,
   settlementPausedMessage,
 } from '../ledgerLabels';
@@ -18,6 +19,14 @@ const people: TripParticipant[] = ['Kait', 'James', 'Bob', 'Zoe'].map((name) => 
 }));
 const nameOf = makeNameOf(people);
 const order = people.map((p) => p.id);
+
+describe('hasInvalidShare', () => {
+  it('matches the affected traveler only', () => {
+    const problems = [{ kind: 'invalid-share', severity: 'error', expenseId: 'e1', travelerId: 'kait' }] as const;
+    expect(hasInvalidShare([...problems], 'kait')).toBe(true);
+    expect(hasInvalidShare([...problems], 'james')).toBe(false);
+  });
+});
 
 describe('capAdjustmentLabel', () => {
   it('names a single absorber without repeating the amount', () => {

@@ -36,10 +36,10 @@ export default function TripList({
       <div className="max-w-7xl mx-auto p-4">
         {/* Header */}
         <div className="bg-surface-1 rounded-lg shadow mb-6 p-4">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold text-text">Trip Cost Calculator</h1>
-            <div className="flex items-center gap-4">
-              <span className="text-text">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <h1 className="min-w-0 break-words [overflow-wrap:anywhere] text-2xl font-bold text-text">Trip Cost Calculator</h1>
+            <div className="flex shrink-0 items-center gap-4">
+              <span className="min-w-0 break-words [overflow-wrap:anywhere] text-text">
                 {userProfile?.displayName}
                 {userProfile?.isAdmin && (
                   <span className="ml-2 text-xs bg-purple/10 text-purple px-2 py-1 rounded">Admin</span>
@@ -85,7 +85,7 @@ export default function TripList({
           {trips.map((trip) => (
             <div key={trip.id} className="bg-surface-1 rounded-lg shadow hover:shadow-lg transition-shadow">
               <div className="p-4">
-                <h2 className="text-lg font-semibold text-text mb-2">{trip.name}</h2>
+                <h2 className="mb-2 break-words [overflow-wrap:anywhere] text-lg font-semibold text-text">{trip.name}</h2>
                 <div className="space-y-1 text-sm text-text mb-4">
                   <p>{trip.participants.length} participant{trip.participants.length !== 1 && 's'}</p>
                   <p>{trip.expenses.length} expense{trip.expenses.length !== 1 && 's'}</p>

@@ -171,12 +171,12 @@ export default function ExpenseForm({ onSaved, onCancel, onBusyChange }: { onSav
           </p>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {participants.map((p) => (
-              <div key={p.id} className="flex items-center gap-2">
+              <div key={p.id} className="flex min-w-0 items-center gap-2">
                 <Input
                   type="number"
                   step="0.01"
                   min="0"
-                  className="min-w-0 w-20"
+                  className="w-20 shrink-0"
                   value={newExpense.paidBy[p.id] || ''}
                   onChange={(e) =>
                     setNewExpense({
@@ -189,7 +189,7 @@ export default function ExpenseForm({ onSaved, onCancel, onBusyChange }: { onSav
                   }
                   placeholder="0.00"
                 />
-                <span className="text-text-2">{p.name}</span>
+                <span className="min-w-0 break-words [overflow-wrap:anywhere] text-text-2">{p.name}</span>
               </div>
             ))}
           </div>
@@ -307,7 +307,7 @@ export default function ExpenseForm({ onSaved, onCancel, onBusyChange }: { onSav
                   />
                   <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-text-2">{p.name}</span>
                   {newExpense.splitType === 'manual' && included && (
-                    <div className="flex items-center gap-1">
+                    <div className="flex shrink-0 items-center gap-1">
                       {splitMode === 'percent' && (
                         <span className="text-text-3 text-xs">%</span>
                       )}

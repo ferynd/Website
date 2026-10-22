@@ -306,13 +306,13 @@ export default function ParticipantsSection({
           <li className="text-text-2 italic py-2">No participants yet. Add someone above!</li>
         ) : (
           participants.map((p) => (
-            <li key={p.id} className="flex items-center gap-2 py-2">
+            <li key={p.id} className="flex min-w-0 items-center gap-2 py-2">
               {editingId === p.id ? (
                 <>
                   <Input
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="p-1 flex-1"
+                    className="min-w-0 p-1 flex-1"
                     autoFocus
                   />
                   <Button
@@ -352,7 +352,7 @@ export default function ParticipantsSection({
                       onClick={() => onDeleteParticipant(p.id)}
                       variant="ghost"
                       size="sm"
-                      className="text-error hover:text-error/90 px-2 text-xl font-bold h-auto"
+                      className="shrink-0 text-error hover:text-error/90 px-2 text-xl font-bold h-auto"
                       aria-label={`Remove ${p.name}`}
                     >
                       <X aria-hidden="true" size={16} />

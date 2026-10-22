@@ -90,9 +90,9 @@ export default function BalanceSummary({
               key={p.id}
               className="border-b border-border pb-3 last:border-0"
             >
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-text font-medium">{p.name}</span>
+              <div className="flex min-w-0 items-center justify-between gap-2 mb-1">
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                  <span className="min-w-0 break-words [overflow-wrap:anywhere] text-text font-medium">{p.name}</span>
                   {isCapped && capCents !== undefined && (
                     <span className="text-[10px] bg-warning/10 text-warning px-1.5 py-0.5 rounded font-medium">
                       CAP {formatMoney(capCents, { compact: true })}
@@ -100,7 +100,7 @@ export default function BalanceSummary({
                   )}
                 </div>
                 <span
-                  className={`font-semibold ${
+                  className={`shrink-0 text-right font-semibold ${
                     status.kind === 'is-owed'
                       ? 'text-success'
                       : status.kind === 'owes'

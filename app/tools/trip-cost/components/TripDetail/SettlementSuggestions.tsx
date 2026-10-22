@@ -48,7 +48,7 @@ export default function SettlementSuggestions() {
               <span className="mx-2 inline-flex text-text-3"><ArrowRight aria-hidden="true" size={16} /></span>
               <span className="font-medium text-text">{nameOf(s.to)}</span>
             </div>
-            <span className="font-semibold text-warning">
+            <span className="shrink-0 pl-2 text-right font-semibold text-warning">
               {formatMoney(s.cents)}
             </span>
           </li>

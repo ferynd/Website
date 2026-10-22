@@ -8,6 +8,10 @@ import { formatMoney } from './money';
 
 export const UNKNOWN_TRAVELER = 'Unknown traveler';
 
+export function hasInvalidShare(problems: LedgerProblem[], travelerId: string): boolean {
+  return problems.some((problem) => problem.kind === 'invalid-share' && problem.travelerId === travelerId);
+}
+
 export function makeNameOf(participants: Pick<TripParticipant, 'id' | 'name'>[]): (id: string) => string {
   const names = new Map(participants.map((p) => [p.id, p.name]));
   return (id) => names.get(id) || UNKNOWN_TRAVELER;

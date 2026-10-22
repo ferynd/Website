@@ -28,6 +28,7 @@ export default function ConfirmDeleteModal({
 }: ConfirmDeleteModalProps) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
   const layer = useRef<symbol | null>(null);
   const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -57,18 +58,27 @@ export default function ConfirmDeleteModal({
           return;
         }
         if (e.key === 'Tab' && layer.current && isTopModalLayer(layer.current)) {
-          if (e.shiftKey && document.activeElement === btnRef.current) {
+          const controls = Array.from(modalRef.current?.querySelectorAll<HTMLElement>(
+            'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])',
+          ) ?? []).filter((control) => !control.hidden && control.getAttribute('aria-hidden') !== 'true');
+          const first = controls[0];
+          const last = controls[controls.length - 1];
+          if (!first) {
             e.preventDefault();
-            cancelRef.current?.focus();
-          } else if (!e.shiftKey && document.activeElement === cancelRef.current) {
+            return;
+          }
+          if (e.shiftKey && (document.activeElement === first || document.activeElement === modalRef.current)) {
             e.preventDefault();
-            btnRef.current?.focus();
+            last.focus();
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
           }
         }
       }}
       tabIndex={-1}
     >
-      <div className="bg-surface-1 p-4 rounded shadow space-y-4">
+      <div ref={modalRef} className="bg-surface-1 p-4 rounded shadow space-y-4">
         <p id="confirm-title">Are you sure you want to delete this {itemType}?</p>
         {error && (
           <p role="alert" className="text-sm text-error">
