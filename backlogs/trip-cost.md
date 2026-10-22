@@ -39,6 +39,6 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P6 — Participants & Settings sections
 
 - [p] **Sectioned settings tab, account linking, one-write settings save.** Depends: TC-P2, TC-P3.
-  > in progress — travelers, caps, overage, default split, and audit log are sectioned; linking, one-write save, add-traveler notice, trip-list loading, and overpay wording are implemented locally; awaiting commit and PR
+  > pushed — Participants & Settings tab with travelers (link account, removal blockers listed), budget caps progress, overage preview, default split, audit log; one validated updateDoc with stale-edit warning; add-traveler notice; TC-P5 follow-ups (trip-list loading, overpay wording); checks: npm test (2172), tsc, lint, build pass; commit: 6c30233; PR: #174
   - Travelers (link account per D3, removal guard lists blocking records), budget caps with progress against final responsibility and near-cap marker, overage redistribution with eligibility preview, default split (blank inputs, missing-traveler warning), audit log. Validate first, then one `updateDoc` (replacing the three settings maps; `setDoc` merge would keep removed keys); warn when the trip changed since the form loaded (C13). Infeasible caps warn but save. Add-traveler notice about resplitting and overage effect (C8). README blurb.
   - **Accept:** linking a name-only participant keeps its id and history; partial saves are impossible; the new-traveler overage effect is shown.
