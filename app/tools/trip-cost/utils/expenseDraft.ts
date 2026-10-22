@@ -45,6 +45,8 @@ export interface DraftError {
 
 /** What the ledger would allocate for the draft, in integer cents. */
 export interface DraftPreview {
+  /** Invalid custom inputs are shown verbatim, never as a final allocation. */
+  notFinal?: boolean;
   totalCents: number;
   payers: Record<string, number>;
   /** Share of each included traveler, explicit zeros kept. */
@@ -296,7 +298,7 @@ function evaluateDraft(draft: ExpenseDraft, ctx: DraftContext): Evaluation {
     if (!Object.keys(payerCents).length && !payerInputError) {
       if (ctx.defaultPayerId && known.has(ctx.defaultPayerId)) {
         if (totalCents !== null) payerCents[ctx.defaultPayerId] = totalCents;
-      } else {
+      } else if (!(totalCents === null && Object.keys(draft.paidBy).some((id) => known.has(id)))) {
         errors.push({
           field: 'payers',
           code: 'payer-required',
@@ -394,6 +396,9 @@ function evaluateDraft(draft: ExpenseDraft, ctx: DraftContext): Evaluation {
     totalCents === null
       ? null
       : toPreview({ ...fields, id: original?.id ?? 'draft', createdBy: original?.createdBy ?? '' }, travelerIds);
+  if (preview && errors.some((error) => error.field === 'split')) {
+    preview.notFinal = true;
+  }
   return { errors, fields: errors.length ? null : fields, preview };
 }
 
@@ -422,8 +427,9 @@ export function draftToExpenseFields(draft: ExpenseDraft, ctx: DraftContext): Dr
  * Switches a manual split between dollars and percentages, converting the
  * entered values instead of wiping them. When the values cover the total
  * exactly, the converted values do too (largest remainder, trip order).
- * Blank entries stay blank. Percent → $ needs a valid total; without one the
- * values are cleared.
+ * Blank entries stay blank. Invalid percentages stay raw so validation still
+ * blocks saving. Percent → $ needs a valid total; without one valid values
+ * are cleared.
  */
 export function convertManualSplit(
   draft: ExpenseDraft,
@@ -436,9 +442,11 @@ export function convertManualSplit(
   const ids = includedInTripOrder(draft, travelerIds);
   const fromScale = fromMode === 'percent' ? PERCENT_SCALE : 100;
   const values: Record<string, number> = {};
+  const invalidPercents: Record<string, string> = {};
   for (const id of ids) {
     const parsed = parseScaledInput(draft.manualSplit?.[id]?.value, fromScale);
     if (parsed.kind === 'ok') values[id] = parsed.units;
+    else if (fromMode === 'percent' && parsed.kind !== 'blank') invalidPercents[id] = draft.manualSplit[id].value;
   }
   const valued = ids.filter((id) => id in values);
   const sum = sumValues(values);
@@ -468,7 +476,7 @@ export function convertManualSplit(
     const units = converted?.[id];
     manualSplit[id] = {
       type: toMode,
-      value: units === undefined ? '' : toMode === 'percent' ? percentInput(units) : centsInput(units),
+      value: units === undefined ? invalidPercents[id] ?? '' : toMode === 'percent' ? percentInput(units) : centsInput(units),
     };
   }
   return { ...draft, manualSplitMode: toMode, manualSplit };
@@ -527,9 +535,20 @@ export function applyTripDefault(
 
 export type ExpenseEditorMethod = 'equal' | 'trip-default' | 'amount' | 'percent';
 
+export function expenseMethodOptions(hasDefault: boolean): { value: ExpenseEditorMethod; label: string }[] {
+  return [
+    { value: 'equal', label: 'Equal' },
+    ...(hasDefault ? [{ value: 'trip-default' as const, label: 'Trip default' }] : []),
+    { value: 'amount', label: 'Custom $' },
+    { value: 'percent', label: 'Custom %' },
+  ];
+}
+
 export interface ExpenseEditorState {
   draft: ExpenseDraft;
   method: ExpenseEditorMethod;
+  /** Zeros produced by conversion/rounding, rather than entered by the user. */
+  implicitZeros?: string[];
   /** Retain loaded rounding order when a traveler is deselected and reselected. */
   travelerOrder?: string[];
   /** Editor-only provenance; never included in stored expense fields. */
@@ -552,9 +571,11 @@ export interface ExpenseEditorState {
   /**
    * Percent shares kept when Custom $ is chosen before a total exists.
    * Later totals recompute dollar shares from this snapshot until the user
-   * edits a share after those dollars are showing.
+   * edits a dollar share.
    */
   pendingPercents?: ExpenseDraft['manualSplit'];
+  /** Invalid percentages wait for a total without locking the dollar inputs. */
+  editablePendingPercents?: boolean;
   /** Source weights for rebuilding a pending snapshot after traveler toggles. */
   pendingPercentOrigin?: {
     method: 'equal' | 'trip-default' | 'percent';
@@ -562,9 +583,14 @@ export interface ExpenseEditorState {
   };
 }
 
-/** Custom $ keeps its percent snapshot read-only until it can show dollars. */
+/** A pending split still displayed in percentages waits for a total before editing. */
 export function expenseSharesAwaitTotal(state: ExpenseEditorState): boolean {
   return state.method === 'amount' && Boolean(state.pendingPercents) && manualMode(state.draft) === 'percent';
+}
+
+/** Zero edits wait until retained percentages can be converted to dollars. */
+export function expenseZerosAwaitTotal(state: ExpenseEditorState): boolean {
+  return state.method === 'amount' && Boolean(state.pendingPercents) && !hasPositiveTotal(state.draft);
 }
 
 /**
@@ -638,7 +664,24 @@ function finishMethod(
   method: ExpenseEditorMethod,
   draft: ExpenseDraft,
 ): ExpenseEditorState {
-  return { ...state, zeroOrigin: undefined, pendingPercents: undefined, pendingPercentOrigin: undefined, method, draft };
+  const implicitZeros = method === 'trip-default' ? [] : convertedImplicitZeros(state, draft);
+  return {
+    ...state,
+    implicitZeros,
+    zeroOrigin: undefined,
+    pendingPercents: undefined,
+    editablePendingPercents: undefined,
+    pendingPercentOrigin: undefined,
+    method,
+    draft,
+  };
+}
+
+function convertedImplicitZeros(state: ExpenseEditorState, draft: ExpenseDraft): string[] {
+  return Object.entries(draft.manualSplit).filter(([id, entry]) =>
+    entry.value.trim() !== '' && Number(entry.value) === 0 && (
+      state.draft.splitType === 'even' || state.implicitZeros?.includes(id) || Number(state.draft.manualSplit[id]?.value) > 0
+    )).map(([id]) => id);
 }
 
 /** Keep the Custom $ percent snapshot aligned with edits made before a total exists. */
@@ -647,7 +690,12 @@ function syncPending(previous: ExpenseEditorState, next: ExpenseEditorState): Ex
   if (next.method === 'amount' && manualMode(next.draft) === 'percent') {
     return { ...next, pendingPercents: cloneManualSplit(next.draft.manualSplit) };
   }
-  return { ...next, pendingPercents: undefined, pendingPercentOrigin: undefined };
+  return {
+    ...next,
+    pendingPercents: undefined,
+    editablePendingPercents: undefined,
+    pendingPercentOrigin: undefined,
+  };
 }
 
 /**
@@ -704,6 +752,34 @@ export function changeExpenseMethod(
       splitParticipants: [...state.loadedManual.participants],
     });
   }
+  if (
+    method === 'percent' && state.editablePendingPercents &&
+    state.pendingPercents && !hasPositiveTotal(state.draft)
+  ) {
+    return finishMethod(state, method, {
+      ...state.draft,
+      manualSplitMode: 'percent',
+      manualSplit: cloneManualSplit(state.pendingPercents),
+    });
+  }
+  // Invalid percentages remain editable. Without a total, retain the source
+  // values separately until dollars can be calculated or the user edits them.
+  if (method === 'amount' && state.draft.splitType === 'manual' && manualMode(state.draft) === 'percent') {
+    const entries = state.draft.splitParticipants.map((id) => parseScaledInput(state.draft.manualSplit[id]?.value, PERCENT_SCALE));
+    const sum = entries.reduce((total, entry) => total + (entry.kind === 'ok' ? entry.units : 0), 0);
+    const invalid = entries.some((entry) => entry.kind !== 'ok' && entry.kind !== 'blank');
+    if (invalid || sum !== PERCENT_TOTAL) {
+      const next = finishMethod(state, method, {
+        ...convertManualSplit(state.draft, 'amount', order),
+        splitType: 'manual',
+      });
+      return hasPositiveTotal(state.draft) ? next : {
+        ...next,
+        pendingPercents: cloneManualSplit(state.draft.manualSplit),
+        editablePendingPercents: true,
+      };
+    }
+  }
   // Custom $ needs a total to turn percentages into cents. Keep the percent
   // snapshot until that total is entered instead of clearing every share.
   if (method === 'amount' && !hasPositiveTotal(state.draft)) {
@@ -747,13 +823,22 @@ export function setExpenseTotal(
     manualSplitMode: 'percent',
     manualSplit: state.pendingPercents,
   };
-  if (!hasPositiveTotal(percentDraft)) return { ...state, draft: percentDraft };
+  if (!hasPositiveTotal(percentDraft)) {
+    return {
+      ...state,
+      draft: state.editablePendingPercents
+        ? convertManualSplit(percentDraft, 'amount', editorSplitOrder(state, travelerIds))
+        : percentDraft,
+    };
+  }
+  const converted = {
+    ...convertManualSplit(percentDraft, 'amount', editorSplitOrder({ ...state, draft: percentDraft }, travelerIds)),
+    splitType: 'manual' as const,
+  };
   return {
     ...state,
-    draft: {
-      ...convertManualSplit(percentDraft, 'amount', editorSplitOrder({ ...state, draft: percentDraft }, travelerIds)),
-      splitType: 'manual',
-    },
+    implicitZeros: convertedImplicitZeros({ ...state, draft: percentDraft }, converted),
+    draft: converted,
   };
 }
 
@@ -769,8 +854,16 @@ export function setExpenseShare(
     ...state.draft,
     manualSplit: { ...state.draft.manualSplit, [travelerId]: { type: mode, value } },
   };
-  if (!state.pendingPercents) return { ...state, draft };
-  return { ...state, draft, pendingPercents: undefined, pendingPercentOrigin: undefined };
+  const implicitZeros = state.implicitZeros?.filter((id) => id !== travelerId);
+  if (!state.pendingPercents) return { ...state, implicitZeros, draft };
+  return {
+    ...state,
+    implicitZeros,
+    draft,
+    pendingPercents: undefined,
+    editablePendingPercents: undefined,
+    pendingPercentOrigin: undefined,
+  };
 }
 
 function zeroOriginMatches(state: ExpenseEditorState, travelerIds: string[]): boolean {
@@ -797,6 +890,11 @@ export function toggleExpenseTraveler(
     : travelerOrder.filter((id) => id === travelerId || selected.includes(id));
   const draft = { ...state.draft, splitParticipants };
   const next: ExpenseEditorState = { ...state, travelerOrder, draft };
+  if (state.editablePendingPercents && expenseZerosAwaitTotal(state)) {
+    // Custom entries cannot be rescaled while invalid. Retain the raw source
+    // for excluded travelers too, so including them again restores their input.
+    return setExpenseTotal(next, draft.totalAmount, travelerIds);
+  }
   if (expenseSharesAwaitTotal(state)) {
     const pendingOrigin = state.pendingPercentOrigin;
     const weights: DefaultSplit = pendingOrigin?.method === 'equal'
@@ -878,7 +976,8 @@ export function setExpenseExplicitZero(
   travelerIds: string[],
   defaultSplit?: DefaultSplit,
 ): ExpenseEditorState {
-  if (expenseSharesAwaitTotal(state)) return state;
+  if (expenseZerosAwaitTotal(state)) return state;
+  state = { ...state, implicitZeros: state.implicitZeros?.filter((id) => id !== travelerId) };
   let origin = state.zeroOrigin;
   const automatic = state.method === 'equal' || state.method === 'trip-default';
   if (state.method === 'equal' || state.method === 'trip-default') {
@@ -957,4 +1056,30 @@ export function expenseEditorError(error: DraftError): string {
     return error.message.replace('Split totals', 'Custom split totals');
   }
   return error.message;
+}
+
+/** Invalid custom shares stay in their entered units, clearly marked not final. */
+export function expensePreviewLabel(state: ExpenseEditorState, preview: DraftPreview | null, travelerId: string): string {
+  const { draft } = state;
+  if (!draft.splitParticipants.includes(travelerId)) return 'Not included';
+  if (preview?.notFinal && draft.splitType === 'manual') {
+    const raw = draft.manualSplit[travelerId]?.value ?? '';
+    const mode = manualMode(draft);
+    const parsed = parseScaledInput(raw, mode === 'percent' ? PERCENT_SCALE : 100);
+    if (parsed.kind !== 'ok' && parsed.kind !== 'blank') return 'Invalid share (not final)';
+    const units = parsed.kind === 'ok' ? parsed.units : 0;
+    return `${mode === 'percent' ? formatPercentUnits(units) : formatMoney(units)} (not final)`;
+  }
+  const share = preview?.shares[travelerId];
+  if (share === undefined) return preview ? 'Unassigned' : 'Enter an amount';
+  return share === 0 && expenseExplicitZero(state, travelerId) ? '$0.00 (explicit)' : formatMoney(share);
+}
+
+/** Keep the checkbox and label in agreement about automatic rounding zeros. */
+export function expenseExplicitZero(state: ExpenseEditorState, travelerId: string): boolean {
+  // Empty dollar placeholders awaiting conversion are not entered zero shares.
+  if (state.editablePendingPercents && !hasPositiveTotal(state.draft)) return false;
+  // zeroOrigin tracks reversible method changes, not which custom zeros save.
+  return showsExplicitZero(state.method, state.draft.splitType, state.draft.manualSplit[travelerId]?.value ?? '')
+    && !state.implicitZeros?.includes(travelerId);
 }

@@ -37,7 +37,7 @@ export default function PayerPicker({ draft, travelers, multiple, onMultiple, on
             paidBy: event.target.value ? { [event.target.value]: draft.totalAmount } : {},
           })}
         >
-          <option value="">Pick who paid</option>
+          <option value="">Choose who paid</option>
           {travelers.map((person) => <option key={person.id} value={person.id}>{person.name}</option>)}
         </Select>
       )}

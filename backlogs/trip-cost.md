@@ -35,16 +35,10 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 
 ## Active phases
 
-### TC-P4 — Shared expense editor
-
-- [p] **`ExpenseEditor` for add and edit; remove `ExpenseForm`.** Depends: TC-P2, TC-P3.
-  > in progress — PR #172 review follow-up: Custom $ remains selectable before a total, including from Trip default; pending percentage shares are read-only with unit labels and a visible hint, and share/zero edits are guarded until dollar conversion, and traveler toggles rebuild the pending snapshot; checks: npm test (2084), tsc, lint, build pass; last reviewed head: b1b4cad; PR: #172
-  - Payer picker (single, or several on demand), traveler chips, Equal / Trip default / Custom $ / Custom %, explicit zero, live cents-exact preview, inline reasons for disabled Save, stale-edit warning.
-  - **Accept:** payers and splits on historical expenses are editable; all split methods work; trip default behaves per D2; legacy mixed types load as Custom $.
-
 ### TC-P5 — Settlements
 
-- [ ] **`SettlementsSection`, `RecordPaymentDialog`, balance strip; remove `BalanceSummary`, per-person payment forms, and the old `calc.ts` balance/cap/settlement functions.** Depends: TC-P2, TC-P3.
+- [p] **`SettlementsSection`, `RecordPaymentDialog`, balance strip; remove `BalanceSummary`, per-person payment forms, and the old `calc.ts` balance/cap/settlement functions.** Depends: TC-P2, TC-P3.
+  > needs follow-up — second-review fixes implemented locally: invalid percentage text survives immediate/deferred dollar conversion and blocks saving, zero checkboxes wait for a total, traveler toggles preserve pending percentages, and clearing the total clears converted dollars; checks: npm test (2150), tsc, lint, build pass; prior head: 5257ade; PR: #173
   - Balance breakdown rows (final, paid, reimbursements sent/received, remaining), Record buttons on suggestions, one Record payment entry point with "logs a reimbursement; does not send money" copy, overpay warning, payment history; D4 gating.
   - **Accept:** one way to record a payment; Owes / Is owed / Settled copy everywhere; reimbursements leave spending and caps unchanged (tested in TC-P1, checked by hand here).
 

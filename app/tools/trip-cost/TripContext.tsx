@@ -33,6 +33,7 @@ import { buildLedger, type Ledger } from './utils/ledger';
 import { draftToExpenseFields, type DraftContext } from './utils/expenseDraft';
 import { expenseSaveOriginal } from './utils/expenseSave';
 import { validatePayment } from './utils/payment';
+import { paymentPermission } from './utils/settlementView';
 import { fromCents } from './utils/money';
 import {
   linkParticipantAccount as linkAccount,
@@ -315,6 +316,10 @@ export const TripProvider = ({
     authorUid: string
   ) => {
     if (!trip) throw new Error('No trip loaded');
+
+    const permission = paymentPermission(userProfile, participants, { payerId, payeeId });
+    if (!permission.allowed) throw new Error(permission.reason);
+    if (authorUid !== userProfile?.uid) throw new Error('The recorder must be the signed-in user.');
 
     const { cents, errors } = validatePayment(
       { payerId, payeeId, amount },

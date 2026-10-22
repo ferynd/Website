@@ -19,3 +19,8 @@ step in `backlogs/protocol.md` (only after their commits merge to `main`).
 
 - [x] **Header, tabs, `LedgerTable`, detail sheets, local `Dialog`.**
   > Resolved: ledger-first header/tabs, contained ledger matrix with pinned Expense column and labelled adjustments/final rows, keyboard/touch expense and traveler sheets, local responsive focus-trapping Dialog, temporary ExpenseForm dialog, ExpensesList removed; F-019/F-020/F-023 fixed for Trip Cost only; checks: npm test (1986), lint, tsc, build pass; merged: 42f312b (head f09e814, PR #171); residual risk: five 390px follow-ups (trip-list title/Create Trip overflow, participant Add overflow, balance-strip overflow cue, empty Reimbursements body, and traveler-header hit-target overlap), fixed in TC-P4.
+
+### TC-P4 — Shared expense editor
+
+- [x] **`ExpenseEditor` for add and edit; remove `ExpenseForm`.**
+  > Resolved: shared add/edit dialog with payer picker, traveler selection, Equal / Trip default / Custom $ / Custom %, explicit zeros, live cents-exact preview, stale-edit confirmation, and legacy round-trip preservation; ExpenseForm removed; checks: npm test (2084), lint, tsc, build pass; merged: 7c71be8 (head 852eb19, PR #172); residual risk: TC-P4 visual follow-ups (a)–(c) and #172 P3 leftovers (d)–(e), fixed in TC-P5; accepted: legacy sub-cent precision after a total edit, large-total equal-with-zeros drift.
