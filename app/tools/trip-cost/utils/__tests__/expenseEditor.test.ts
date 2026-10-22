@@ -1,4 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it, vi } from 'vitest';
+import { SplitPreview } from '../../components/TripDetail/ExpenseSplitControls';
+
+vi.mock('@/components/Button', () => ({
+  default: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => React.createElement('button', props),
+}));
+vi.mock('@/components/Input', () => ({
+  default: (props: React.InputHTMLAttributes<HTMLInputElement>) => React.createElement('input', props),
+}));
 import {
   changeExpenseMethod,
   createExpenseEditor,
@@ -6,6 +16,9 @@ import {
   expenseEditorError,
   expensePayerRemainder,
   setExpenseExplicitZero,
+  setExpenseShare,
+  setExpenseTotal,
+  showsExplicitZero,
   toggleExpenseTraveler,
   travelersMissingFromDefault,
   validateDraft,
@@ -448,5 +461,214 @@ describe('stale edit detection', () => {
   it('distinguishes deletion / switching from a changed expense', () => {
     expect(expenseEditStatus(original, undefined)).toBe('deleted');
     expect(expenseEditStatus(original, { ...original, id: 'another' })).toBe('deleted');
+  });
+});
+
+describe('explicit zero stays reversible when travelers change', () => {
+  const four = ['a', 'b', 'c', 'd'];
+
+  function equalThree(): ExpenseEditorState {
+    const state = toggleExpenseTraveler(createExpenseEditor(four, 'Food', undefined, 'a'), 'd', four);
+    state.draft.description = 'Dinner';
+    state.draft.totalAmount = '90';
+    state.draft.paidBy = { a: '90' };
+    return state;
+  }
+
+  it('gives a newly added traveler an equal share after an Equal explicit zero', () => {
+    const state = toggleExpenseTraveler(setExpenseExplicitZero(equalThree(), 'b', true, four), 'd', four);
+    expect(state.method).toBe('percent');
+    expect(state.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '33.3334' },
+      b: { type: 'percent', value: '0' },
+      c: { type: 'percent', value: '33.3333' },
+      d: { type: 'percent', value: '33.3333' },
+    });
+    const checked = validateDraft(state.draft, { travelerIds: four });
+    expect(checked.errors).toEqual([]);
+    expect(checked.preview?.shares).toEqual({ a: 3000, b: 0, c: 3000, d: 3000 });
+    const restored = setExpenseExplicitZero(state, 'b', false, four);
+    expect(restored.method).toBe('equal');
+    expect(restored.zeroOrigin).toBeUndefined();
+    expect(validateDraft(restored.draft, { travelerIds: four }).preview?.shares).toEqual({ a: 2250, b: 2250, c: 2250, d: 2250 });
+  });
+
+  it('returns to Equal when the zeroed traveler is removed', () => {
+    const state = toggleExpenseTraveler(setExpenseExplicitZero(equalThree(), 'b', true, four), 'b', four);
+    expect(state.method).toBe('equal');
+    expect(state.zeroOrigin).toBeUndefined();
+    expect(state.draft.splitParticipants).toEqual(['a', 'c']);
+    expect(validateDraft(state.draft, { travelerIds: four }).preview?.shares).toEqual({ a: 4500, c: 4500 });
+  });
+
+  it('rescales a Trip default after a zero when another traveler is removed, then restores it', () => {
+    const weights = { a: 40, b: 30, c: 20, d: 10 };
+    let state = createExpenseEditor(four, 'Food', weights, 'a');
+    state.draft.description = 'Dinner';
+    state.draft.totalAmount = '90';
+    state.draft.paidBy = { a: '90' };
+    state = toggleExpenseTraveler(setExpenseExplicitZero(state, 'd', true, four, weights), 'c', four, weights);
+    expect(state.method).toBe('percent');
+    expect(state.draft.splitParticipants).toEqual(['a', 'b', 'd']);
+    expect(state.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '57.1429' },
+      b: { type: 'percent', value: '42.8571' },
+      d: { type: 'percent', value: '0' },
+    });
+    expect(validateDraft(state.draft, { travelerIds: four }).errors).toEqual([]);
+    state = setExpenseExplicitZero(state, 'd', false, four, weights);
+    expect(state.method).toBe('trip-default');
+    expect(state.zeroOrigin).toBeUndefined();
+    expect(state.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '50' },
+      b: { type: 'percent', value: '37.5' },
+      d: { type: 'percent', value: '12.5' },
+    });
+    expect(validateDraft(state.draft, { travelerIds: four }).errors).toEqual([]);
+  });
+
+  it('gives a hand-edited zero snapshot a positive share for a new traveler', () => {
+    const zero = setExpenseExplicitZero(equalThree(), 'b', true, four);
+    zero.draft.manualSplit.a.value = '40';
+    const state = toggleExpenseTraveler(zero, 'd', four);
+    expect(state.draft.manualSplit.a.value).toBe('40');
+    expect(state.draft.manualSplit.b.value).toBe('0');
+    expect(state.draft.manualSplit.c.value).toBe('50');
+    expect(state.draft.manualSplit.d).toEqual({ type: 'percent', value: '25' });
+    expect(validateDraft(state.draft, { travelerIds: four }).errors.map((error) => error.code)).toEqual(['split-sum']);
+    const removed = toggleExpenseTraveler(state, 'c', four);
+    expect(removed.draft.manualSplit.a.value).toBe('40');
+    expect(removed.draft.manualSplit.d.value).toBe('25');
+    expect(validateDraft(removed.draft, { travelerIds: four }).errors.map((error) => error.code)).toEqual(['split-sum']);
+  });
+});
+
+describe('Custom $ chosen before a total keeps shares', () => {
+  it('converts an Equal split once the total is entered', () => {
+    let state = createExpenseEditor(ids, 'Food', undefined, 'a');
+    state.draft.description = 'Dinner';
+    state = changeExpenseMethod(state, 'amount', ids);
+    expect(state.method).toBe('amount');
+    expect(state.pendingPercents).toBeDefined();
+    expect(state.draft.manualSplitMode).toBe('percent');
+    expect(Object.values(state.draft.manualSplit).every((entry) => entry.value.trim() !== '')).toBe(true);
+    state = setExpenseTotal(state, '3', ids);
+    expect(validateDraft({ ...state.draft, paidBy: { a: '3' } }, { travelerIds: ids }).preview?.shares).toEqual({ a: 100, b: 100, c: 100 });
+    state = setExpenseTotal(state, '30', ids);
+    state.draft.paidBy = { a: '30' };
+    expect(state.draft.manualSplitMode).toBe('amount');
+    const checked = validateDraft(state.draft, { travelerIds: ids });
+    expect(checked.errors).toEqual([]);
+    expect(checked.preview?.shares).toEqual({ a: 1000, b: 1000, c: 1000 });
+    const edited = setExpenseShare(state, 'a', '5.00');
+    const resized = setExpenseTotal(edited, '60', ids);
+    expect(resized.draft.manualSplit.a.value).toBe('5.00');
+    expect(resized.pendingPercents).toBeUndefined();
+  });
+
+  it('converts a Trip default once the total is entered', () => {
+    let state = createExpenseEditor(ids, 'Food', defaultSplit, 'a');
+    state.draft.description = 'Dinner';
+    state = changeExpenseMethod(state, 'amount', ids, defaultSplit);
+    expect(state.pendingPercents).toBeDefined();
+    expect(state.draft.manualSplit).toEqual({
+      a: { type: 'percent', value: '50' },
+      b: { type: 'percent', value: '25' },
+      c: { type: 'percent', value: '25' },
+    });
+    state = setExpenseTotal(state, '30', ids);
+    state.draft.paidBy = { a: '30' };
+    const checked = validateDraft(state.draft, { travelerIds: ids });
+    expect(checked.errors).toEqual([]);
+    expect(checked.preview?.shares).toEqual({ a: 1500, b: 750, c: 750 });
+  });
+
+  it('still converts immediately when the total is already valid', () => {
+    const state = changeExpenseMethod(ready(), 'amount', ids);
+    expect(state.pendingPercents).toBeUndefined();
+    expect(state.draft.manualSplitMode).toBe('amount');
+    expect(Object.values(state.draft.manualSplit).every((entry) => entry.type === 'amount' && entry.value !== '')).toBe(true);
+  });
+});
+
+describe('legacy manual values survive an unedited mode round trip', () => {
+  const legacy: Expense = {
+    id: 'e', createdBy: 'user', category: 'Food', description: 'Legacy',
+    totalAmount: 30, paidBy: { a: 30 }, splitType: 'manual',
+    splitParticipants: ['a', 'b', 'c'],
+    manualSplit: {
+      a: { type: 'amount', value: 10 },
+      b: { type: 'amount', value: 10 },
+      c: { type: 'amount', value: 10.01 },
+    },
+  };
+
+  it('restores the loaded Custom $ strings when switching to Custom % and back', () => {
+    let state = createExpenseEditor(ids, 'Food', undefined, undefined, legacy);
+    expect(state.draft.manualSplit.a.value).toBe('10');
+    state = changeExpenseMethod(state, 'percent', ids);
+    state = changeExpenseMethod(state, 'amount', ids);
+    expect(state.draft.manualSplit).toEqual({
+      a: { type: 'amount', value: '10' },
+      b: { type: 'amount', value: '10' },
+      c: { type: 'amount', value: '10.01' },
+    });
+    const result = draftToExpenseFields(state.draft, { travelerIds: ids, original: legacy });
+    expect(result.errors).toEqual([]);
+    expect(result.fields?.manualSplit).toEqual(legacy.manualSplit);
+  });
+
+  it('keeps an edited percent conversion instead of restoring the legacy strings', () => {
+    let state = createExpenseEditor(ids, 'Food', undefined, undefined, legacy);
+    state = changeExpenseMethod(state, 'percent', ids);
+    state.draft.manualSplit.a.value = '10';
+    state = changeExpenseMethod(state, 'amount', ids);
+    expect(state.draft.manualSplit.a.value).not.toBe('10');
+    expect(state.draft.manualSplit).not.toEqual({
+      a: { type: 'amount', value: '10' },
+      b: { type: 'amount', value: '10' },
+      c: { type: 'amount', value: '10.01' },
+    });
+  });
+});
+
+describe('explicit-zero checkbox matches blank save semantics', () => {
+  it('counts a blank Custom $ or Custom % share as checked and leaves Equal unchecked', () => {
+    expect(showsExplicitZero('amount', 'manual', '')).toBe(true);
+    expect(showsExplicitZero('percent', 'manual', '   ')).toBe(true);
+    expect(showsExplicitZero('amount', 'manual', '0')).toBe(true);
+    expect(showsExplicitZero('amount', 'manual', '0.00')).toBe(true);
+    expect(showsExplicitZero('percent', 'manual', '10')).toBe(false);
+    expect(showsExplicitZero('equal', 'even', '')).toBe(false);
+    expect(showsExplicitZero('trip-default', 'manual', '0')).toBe(true);
+    expect(showsExplicitZero('trip-default', 'manual', '')).toBe(false);
+  });
+
+  it('checks the preview box for a blank included Custom $ share', () => {
+    const state = ready('amount');
+    state.draft.totalAmount = '30';
+    state.draft.paidBy = { a: '30' };
+    state.draft.manualSplit = {
+      a: { type: 'amount', value: '15' },
+      b: { type: 'amount', value: '' },
+      c: { type: 'amount', value: '15' },
+    };
+    const preview = validateDraft(state.draft, { travelerIds: ids }).preview;
+    expect(preview?.shares.b).toBe(0);
+    const html = renderToStaticMarkup(React.createElement(SplitPreview, {
+      travelers: ids.map((id) => ({ id, name: id.toUpperCase() })),
+      state,
+      preview,
+      showInputs: true,
+      errorId: 'split-error',
+      onValue: () => {},
+      onZero: () => {},
+    }));
+    expect(html).toContain('$0.00 (explicit)');
+    const rows = html.split('<li');
+    const blankRow = rows.find((row) => row.includes('>B<'));
+    const filledRow = rows.find((row) => row.includes('>A<'));
+    expect(blankRow).toContain('checked=""');
+    expect(filledRow).not.toContain('checked=""');
   });
 });

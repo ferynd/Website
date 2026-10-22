@@ -5,7 +5,7 @@ import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { formatMoney, parseScaledInput } from '../../utils/money';
 import { hasInvalidShare } from '../../utils/ledgerLabels';
-import type { DraftPreview, ExpenseEditorMethod, ExpenseEditorState } from '../../utils/expenseDraft';
+import { showsExplicitZero, type DraftPreview, type ExpenseEditorMethod, type ExpenseEditorState } from '../../utils/expenseDraft';
 import type { Person } from '../../pageTypes';
 
 interface SplitMethodControlProps {
@@ -107,7 +107,7 @@ export function SplitPreview({ travelers, state, preview, showInputs, errorId, o
         {travelers.map((person) => {
           const included = draft.splitParticipants.includes(person.id);
           const value = draft.manualSplit[person.id]?.value ?? '';
-          const zero = draft.splitType === 'manual' && value.trim() !== '' && Number(value) === 0;
+          const zero = showsExplicitZero(state.method, draft.splitType, value);
           const share = preview?.shares[person.id];
           return (
             <li key={person.id} className="min-w-0 space-y-2 py-3 text-sm">

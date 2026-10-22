@@ -16,6 +16,8 @@ import {
   expenseEditorError,
   hasTripDefault,
   setExpenseExplicitZero,
+  setExpenseShare,
+  setExpenseTotal,
   toggleExpenseTraveler,
   travelersMissingFromDefault,
   validateDraft,
@@ -97,7 +99,8 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
     const editStatus = latest.current.status;
     if (busy.current || editStatus === 'deleted') return;
     if (editStatus === 'changed' && acknowledgedRevision !== latest.current.revision) return;
-    const result = draftToExpenseFields(draft, context);
+    const current = setExpenseTotal(state, draft.totalAmount, travelerIds);
+    const result = draftToExpenseFields(current.draft, context);
     if (!result.fields) return;
     const requestId = ++request.current;
     const sessionId = original?.id ?? 'add';
@@ -106,9 +109,9 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
     setSaving(true);
     setSaveError('');
     try {
-      if (!original) await addExpense(draft);
-      else if (editStatus === 'changed') await updateExpense(original.id, draft, original);
-      else await updateExpense(original.id, draft);
+      if (!original) await addExpense(current.draft);
+      else if (editStatus === 'changed') await updateExpense(original.id, current.draft, original);
+      else await updateExpense(original.id, current.draft);
       if (isCurrent()) onSaved(result.fields);
     } catch (error) {
       if (isCurrent()) setSaveError(error instanceof Error ? error.message : 'Could not save expense. Please try again.');
@@ -178,10 +181,10 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
                   aria-describedby={`${formId}-total`}
                   onChange={(event) => {
                     const payerId = Object.keys(draft.paidBy)[0];
-                    setState({ ...state, draft: {
-                      ...draft,
-                      totalAmount: event.target.value,
-                      paidBy: !multiple && payerId ? { [payerId]: event.target.value } : draft.paidBy,
+                    const next = setExpenseTotal(state, event.target.value, travelerIds);
+                    setState({ ...next, draft: {
+                      ...next.draft,
+                      paidBy: !multiple && payerId ? { [payerId]: event.target.value } : next.draft.paidBy,
                     } });
                   }}
                 />
@@ -253,16 +256,7 @@ export default function ExpenseEditor({ original, userProfile, onClose, onSaved 
               preview={validation.preview}
               showInputs={advanced || custom}
               errorId={splitErrorId}
-              onValue={(id, value) => setState({
-                ...state,
-                draft: {
-                  ...draft,
-                  manualSplit: {
-                    ...draft.manualSplit,
-                    [id]: { type: draft.manualSplitMode, value },
-                  },
-                },
-              })}
+              onValue={(id, value) => setState(setExpenseShare(state, id, value))}
               onZero={(id, zero) => setState(setExpenseExplicitZero(state, id, zero, travelerIds, defaultSplit))}
             />
           </div>
