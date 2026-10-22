@@ -7,6 +7,7 @@ import SettlementsSection from './SettlementsSection';
 import ParticipantsSettingsTab from './ParticipantsSettingsTab';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import ParticipantRemovalDialog from './ParticipantRemovalDialog';
+import LoadingStatus from '../ui/LoadingStatus';
 import { participantRemovalBlockers } from '../../utils/participants';
 import TripHeader from './TripHeader';
 import TripTabs from './TripTabs';
@@ -112,7 +113,7 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
   if (!trip) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-surface-2">
-        <div className="text-text-3">Loading trip details...</div>
+        <LoadingStatus>Loading trip details…</LoadingStatus>
       </div>
     );
   }
