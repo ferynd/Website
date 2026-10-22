@@ -178,7 +178,7 @@ export default function ParticipantsSection({
   };
 
   return (
-    <section className="w-full min-w-0 overflow-hidden bg-surface-1 rounded-lg shadow p-4">
+    <section className="w-full min-w-0 overflow-x-clip bg-surface-1 rounded-lg shadow p-4">
       <h2 className="text-lg font-semibold mb-3 text-text">Participants</h2>
       
       {/* Add Participant Section */}

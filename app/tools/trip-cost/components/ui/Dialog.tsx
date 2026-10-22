@@ -29,15 +29,16 @@ interface DialogProps {
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  dismissible?: boolean;
 }
 
 /** Responsive Trip Cost dialog with focus management and an optional sticky footer. */
-export default function Dialog({ open, title, onClose, children, footer }: DialogProps) {
+export default function Dialog({ open, title, onClose, children, footer, dismissible = true }: DialogProps) {
   const panel = useRef<HTMLDivElement>(null);
   const opener = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
   const titleId = useId();
-  closeRef.current = onClose;
+  closeRef.current = dismissible ? onClose : () => {};
 
   useEffect(() => {
     if (!open) return;
@@ -98,7 +99,7 @@ export default function Dialog({ open, title, onClose, children, footer }: Dialo
     <div
       className="fixed inset-0 z-50 bg-black/60 sm:flex sm:items-center sm:justify-center"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (dismissible && event.target === event.currentTarget) onClose();
       }}
     >
       <section
@@ -114,8 +115,9 @@ export default function Dialog({ open, title, onClose, children, footer }: Dialo
           <button
             type="button"
             onClick={onClose}
+            disabled={!dismissible}
             aria-label="Close dialog"
-            className="rounded px-2 py-1 text-text-2 hover:bg-surface-2"
+            className="rounded px-2 py-1 text-text-2 hover:bg-surface-2 disabled:opacity-50"
           >
             <X aria-hidden="true" size={18} />
           </button>

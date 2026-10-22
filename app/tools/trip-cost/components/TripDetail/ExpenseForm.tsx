@@ -7,7 +7,7 @@ import Select from '@/components/Select';
 import { useTrip } from '../../TripContext';
 import { EXPENSE_CATEGORIES, CURRENCY_SYMBOL } from '../../constants';
 
-export default function ExpenseForm({ onSaved, onCancel }: { onSaved?: () => void; onCancel?: () => void } = {}) {
+export default function ExpenseForm({ onSaved, onCancel, onBusyChange }: { onSaved?: () => void; onCancel?: () => void; onBusyChange?: (busy: boolean) => void } = {}) {
   const { participants, trip, newExpense, setNewExpense, addExpense } = useTrip();
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,6 +76,7 @@ export default function ExpenseForm({ onSaved, onCancel }: { onSaved?: () => voi
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
+    onBusyChange?.(true);
 
     try {
       await addExpense(newExpense);
@@ -85,6 +86,7 @@ export default function ExpenseForm({ onSaved, onCancel }: { onSaved?: () => voi
       else setError('An unexpected error occurred');
     } finally {
       setIsSubmitting(false);
+      onBusyChange?.(false);
     }
   };
 
@@ -394,7 +396,7 @@ export default function ExpenseForm({ onSaved, onCancel }: { onSaved?: () => voi
       >
         {isSubmitting ? 'Adding...' : 'Add Expense'}
       </Button>
-      {onCancel && <Button type="button" variant="ghost" className="mt-2 w-full" onClick={onCancel}>Cancel</Button>}
+      {onCancel && <Button type="button" variant="ghost" className="mt-2 w-full" onClick={onCancel} disabled={isSubmitting}>Cancel</Button>}
     </form>
   );
 }

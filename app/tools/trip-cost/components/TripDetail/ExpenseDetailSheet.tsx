@@ -24,6 +24,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
   const allocation = ledger.expenses.find((item) => item.expenseId === expenseId);
   const currentExpense = useRef(expense);
   currentExpense.current = expense;
+  const saveRequest = useRef(0);
   const canModify = Boolean(expense && (userProfile?.isAdmin || expense.createdBy === userProfile?.uid));
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<ExpenseDraft | null>(null);
@@ -31,6 +32,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    saveRequest.current += 1;
     // Firestore snapshots replace expense objects; only a different record should discard edits.
     const nextExpense = currentExpense.current;
     setEditing(false);
@@ -47,21 +49,25 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
 
   const save = async () => {
     if (!draft) return;
+    const request = ++saveRequest.current;
+    const requestExpenseId = expense.id;
     setSaving(true);
     setError('');
     try {
       await updateExpense(expense.id, draft);
+      if (saveRequest.current !== request || currentExpense.current?.id !== requestExpenseId) return;
       setEditing(false);
     } catch (saveError) {
+      if (saveRequest.current !== request || currentExpense.current?.id !== requestExpenseId) return;
       setError(saveError instanceof Error ? saveError.message : 'Could not update expense.');
     } finally {
-      setSaving(false);
+      if (saveRequest.current === request) setSaving(false);
     }
   };
 
   const footer = editing ? (
     <div className="flex justify-end gap-2">
-      <Button variant="ghost" onClick={() => setEditing(false)}>Cancel</Button>
+      <Button variant="ghost" disabled={saving} onClick={() => setEditing(false)}>Cancel</Button>
       <Button variant="success" loading={saving} onClick={() => void save()}>Save</Button>
     </div>
   ) : canModify ? (
@@ -82,7 +88,7 @@ export default function ExpenseDetailSheet({ expenseId, userProfile, onClose, on
   );
 
   return (
-    <Dialog open title={editing ? `Edit ${expense.description}` : expense.description} onClose={onClose} footer={footer}>
+    <Dialog open title={editing ? `Edit ${expense.description}` : expense.description} onClose={onClose} dismissible={!saving} footer={footer}>
       {editing && draft ? (
         <div className="space-y-3">
           <label className="block text-sm">

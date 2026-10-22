@@ -33,6 +33,7 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
   const { trip, auditEntries, deleteExpense, deletePayment, deleteParticipant } = useTrip();
   const [showAuditLog, setShowAuditLog] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
   const [expenseId, setExpenseId] = useState<string | null>(null);
   const [travelerId, setTravelerId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<DeleteTarget | null>(null);
@@ -127,8 +128,8 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
           <TripTabs expenses={expenseContent} participantsSettings={participantContent} />
         </div>
       </div>
-      <Dialog open={addOpen} title="Add expense" onClose={() => setAddOpen(false)}>
-        <ExpenseForm onSaved={() => setAddOpen(false)} onCancel={() => setAddOpen(false)} />
+      <Dialog open={addOpen} title="Add expense" dismissible={!addBusy} onClose={() => setAddOpen(false)}>
+        <ExpenseForm onBusyChange={setAddBusy} onSaved={() => setAddOpen(false)} onCancel={() => setAddOpen(false)} />
       </Dialog>
       <ExpenseDetailSheet
         expenseId={expenseId}

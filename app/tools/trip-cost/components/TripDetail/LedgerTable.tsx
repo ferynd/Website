@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useTrip } from '../../TripContext';
 import { buildLedgerRows, capBadge, explicitZeroLabel } from '../../utils/ledgerView';
 import { formatMoney } from '../../utils/money';
@@ -33,7 +34,7 @@ function CategoryRow({ row, travelerIds, collapsed, onToggleCategory }: LedgerRo
           onClick={() => onToggleCategory(row.category)}
           className="flex items-center gap-1 text-left font-semibold text-text"
         >
-          <span className="shrink-0">{collapsed ? '▸' : '▾'}</span><span>{row.category}</span>
+          {collapsed ? <ChevronRight aria-hidden="true" size={16} className="shrink-0" /> : <ChevronDown aria-hidden="true" size={16} className="shrink-0" />}<span>{row.category}</span>
         </button>
       </th>
       <td className="min-w-[5.5rem] px-3 py-2 text-right font-semibold">{money(row.totalCents)}</td>
