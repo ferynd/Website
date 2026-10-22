@@ -109,7 +109,7 @@ export default function Dialog({ open, title, onClose, children, footer, dismiss
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 sm:flex sm:items-center sm:justify-center"
+      className="fixed inset-0 z-50 flex items-end bg-black/60 sm:items-center sm:justify-center"
       onMouseDown={(event) => {
         if (dismissible && event.target === event.currentTarget) onClose();
       }}
@@ -120,7 +120,7 @@ export default function Dialog({ open, title, onClose, children, footer, dismiss
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-surface-1 shadow-xl sm:h-auto sm:max-h-[90vh] sm:max-w-2xl sm:rounded-xl"
+        className="flex h-auto min-h-0 max-h-[90dvh] w-full flex-col overflow-hidden rounded-t-xl bg-surface-1 shadow-xl sm:max-h-[90vh] sm:max-w-2xl sm:rounded-xl"
       >
         <header className="flex shrink-0 items-center justify-between border-b border-border p-4">
           <h2 id={titleId} className="min-w-0 flex-1 break-words [overflow-wrap:anywhere] text-lg font-semibold text-text">{title}</h2>
