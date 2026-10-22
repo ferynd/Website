@@ -115,6 +115,10 @@ _“Estimate CIFI research payout timing with logged rate history and interactiv
 
 This React tool lives under **app/tools/cifi-research-estimator/**. It stores configuration and local history in browser `localStorage` using the namespaced `website:tools:cifi-research-estimator:v1:*` keys, fits linear/exponential/logarithmic growth models client-side, and renders interactive SVG charts without a charting dependency.
 
+If the same recipe is saved or deleted in another tab or device, the open copy shows a notice, and saving asks whether to reload, overwrite (export links are kept), or save as a new recipe — nothing is overwritten silently by the current app. Older cached clients can bypass this guard (see SECURITY.md).
+
+Baking a scale lists equivalent measures that can't be rescaled (ranges, prose like “a generous handful”). Kept ones are marked “not rescaled after N× bake” everywhere, including the saved recipe and copied JSON, until edited.
+
 
 ### Recipe Standardizer (Firebase-backed)
 
