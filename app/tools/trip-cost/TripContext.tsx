@@ -16,7 +16,6 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { tripDoc, tripAuditCol } from './db';
-import { EXPENSE_CATEGORIES } from './constants';
 import { uniqueLinkedParticipant } from './utils/payer';
 import type {
   Trip,
@@ -32,6 +31,7 @@ import type {
 } from './pageTypes';
 import { buildLedger, type Ledger } from './utils/ledger';
 import { draftToExpenseFields, type DraftContext } from './utils/expenseDraft';
+import { expenseSaveOriginal } from './utils/expenseSave';
 import { validatePayment } from './utils/payment';
 import { fromCents } from './utils/money';
 import {
@@ -48,8 +48,6 @@ interface TripContextValue {
   auditEntries: AuditEntry[];
   /** Cents-exact ledger: allocations, caps, balances, problems, settlements. */
   ledger: Ledger;
-  newExpense: ExpenseDraft;
-  setNewExpense: React.Dispatch<React.SetStateAction<ExpenseDraft>>;
   addParticipant: (
     name: string,
     authorUid: string,
@@ -60,7 +58,7 @@ interface TripContextValue {
   linkParticipantAccount: (id: string, uid: string) => Promise<void>;
   deleteParticipant: (id: string) => Promise<void>;
   addExpense: (draft: ExpenseDraft) => Promise<void>;
-  updateExpense: (id: string, draft: ExpenseDraft) => Promise<void>;
+  updateExpense: (id: string, draft: ExpenseDraft, baseline?: Expense) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   addPayment: (
     payerId: string,
@@ -90,17 +88,6 @@ export const TripProvider = ({
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [auditEntries, setAuditEntries] = useState<AuditEntry[]>([]);
-  const emptyExpenseDraft: ExpenseDraft = {
-    category: EXPENSE_CATEGORIES[0],
-    description: '',
-    totalAmount: '',
-    paidBy: {},
-    splitType: 'even',
-    splitParticipants: [],
-    manualSplit: {},
-    manualSplitMode: 'amount',
-  };
-  const [newExpense, setNewExpense] = useState<ExpenseDraft>(emptyExpenseDraft);
 
   useEffect(() => {
     setTrip(null);
@@ -284,19 +271,21 @@ export const TripProvider = ({
       { expenses: updated, updatedAt: serverTimestamp() },
       { merge: true }
     );
-
-    setNewExpense(emptyExpenseDraft);
   };
 
-  const updateExpense = async (id: string, draft: ExpenseDraft) => {
+  const updateExpense = async (id: string, draft: ExpenseDraft, baseline?: Expense) => {
     if (!trip) throw new Error('No trip loaded');
 
-    const original = expenses.find((e) => e.id === id);
-    if (!original) throw new Error('This expense no longer exists.');
+    const live = expenses.find((e) => e.id === id);
+    if (!live) throw new Error('This expense no longer exists.');
 
     // Money fields left untouched keep their stored values, so legacy rows
     // stay editable; any changed amount or split must add up exactly (C5).
-    const { fields, errors } = draftToExpenseFields(draft, draftContext(original));
+    // "Save anyway" validates untouched fields against the editor snapshot.
+    const { fields, errors } = draftToExpenseFields(
+      draft,
+      draftContext(expenseSaveOriginal(live, baseline)),
+    );
     if (!fields) throw new Error(errors[0].message);
 
     const updated = expenses.map((e) => (e.id === id ? { ...e, ...fields } : e));
@@ -396,8 +385,6 @@ export const TripProvider = ({
     payments,
     auditEntries,
     ledger,
-    newExpense,
-    setNewExpense,
     addParticipant,
     updateParticipant,
     linkParticipantAccount,

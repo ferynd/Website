@@ -1,7 +1,7 @@
 "use client";
 
-import React from 'react';
-import { ArrowLeft } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import Button from '@/components/Button';
 import { useTrip } from '../../TripContext';
 import { balanceChips } from '../../utils/ledgerView';
@@ -17,6 +17,18 @@ interface TripHeaderProps {
 /** Trip name, spending total, expense action, and traveler balance shortcuts. */
 export default function TripHeader({ onBack, onAddExpense, onTraveler }: TripHeaderProps) {
   const { trip, participants, ledger } = useTrip();
+  const scroller = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  useEffect(() => {
+    const element = scroller.current;
+    if (!element) return;
+    const measure = () => setOverflows(element.scrollWidth > element.clientWidth);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, [participants, ledger]);
   if (!trip) return null;
 
   return (
@@ -36,18 +48,30 @@ export default function TripHeader({ onBack, onAddExpense, onTraveler }: TripHea
           Add expense
         </Button>
       </div>
-      <div className="mt-3 flex min-w-0 gap-2 overflow-x-auto pb-1">
-        {balanceChips(ledger, participants).map((chip) => (
-          <button
-            key={chip.travelerId}
-            type="button"
-            onClick={() => onTraveler(chip.travelerId)}
-            className="shrink-0 rounded-full border border-border bg-surface-2 px-3 py-2 text-sm text-text hover:border-accent"
-          >
-            {chip.label}
-          </button>
-        ))}
+      <div className="relative mt-3 min-w-0">
+        <div ref={scroller} className="min-w-0 overflow-x-auto pb-1">
+          <div className="flex min-w-max gap-2">
+            {balanceChips(ledger, participants).map((chip) => (
+              <button
+                key={chip.travelerId}
+                type="button"
+                onClick={() => onTraveler(chip.travelerId)}
+                className="max-w-64 shrink-0 break-words rounded-full border border-border bg-surface-2 px-3 py-2 text-left text-sm text-text hover:border-accent [overflow-wrap:anywhere]"
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {overflows && (
+          <div aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-surface-1 to-transparent" />
+        )}
       </div>
+      {overflows && (
+        <p className="mt-1 flex items-center gap-1 text-xs text-text-3">
+          Swipe for more balances <ArrowRight aria-hidden="true" size={14} />
+        </p>
+      )}
       <div className="mt-3"><LedgerProblems /></div>
     </header>
   );

@@ -35,17 +35,10 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 
 ## Active phases
 
-### TC-P3 — Layout and ledger table
-
-- [p] **Header, tabs, `LedgerTable`, detail sheets, local `Dialog`.** Depends: TC-P1.
-  > pushed — header, tabs, `LedgerTable` (pinned Expense column, labelled cap-adjustment / not-covered / final rows), expense and traveler detail sheets on a local responsive `Dialog`, temporary `ExpenseForm` dialog, `ExpensesList` removed, 390px overflow and small-text fixes; no math, rules, schema, or data changes; checks: npm test (1980), lint, tsc, build pass; commit: 0be3969; PR: #171
-  - Expenses tab: header (name, total spending, Add expense, balance strip, problem banner) and a real `<table>` with category groups, expense subtotal, labelled cap-adjustment rows, "Not covered by anyone", and final responsibility. Participants, settings, and audit log move unchanged to the Participants & Settings tab. The old `ExpenseForm` is hosted temporarily in the dialog; `ExpensesList` is removed.
-  - Fixes F-019, F-020, F-023 for Trip Cost only.
-  - **Accept:** at 390px page `scrollWidth` equals viewport width; the ledger scrolls inside its card with the Expense column pinned; no hover-only actions; adjustment and final rows have text labels; rows open `ExpenseDetailSheet` by keyboard and touch.
-
 ### TC-P4 — Shared expense editor
 
-- [ ] **`ExpenseEditor` for add and edit; remove `ExpenseForm`.** Depends: TC-P2, TC-P3.
+- [p] **`ExpenseEditor` for add and edit; remove `ExpenseForm`.** Depends: TC-P2, TC-P3.
+  > in progress — PR #172 review follow-up: Custom $ remains selectable before a total, including from Trip default; pending percentage shares are read-only with unit labels and a visible hint, and share/zero edits are guarded until dollar conversion, and traveler toggles rebuild the pending snapshot; checks: npm test (2084), tsc, lint, build pass; last reviewed head: b1b4cad; PR: #172
   - Payer picker (single, or several on demand), traveler chips, Equal / Trip default / Custom $ / Custom %, explicit zero, live cents-exact preview, inline reasons for disabled Save, stale-edit warning.
   - **Accept:** payers and splits on historical expenses are editable; all split methods work; trip default behaves per D2; legacy mixed types load as Custom $.
 

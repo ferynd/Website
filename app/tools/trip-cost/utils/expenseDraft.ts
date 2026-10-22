@@ -1,6 +1,6 @@
 import type { DefaultSplit, Expense, ExpenseDraft } from '../pageTypes';
 import { allocateExpense, type LedgerProblem } from './ledger';
-import { allocateCents, formatMoney, fromCents, parseScaledInput } from './money';
+import { allocateCents, formatMoney, fromCents, parseScaledInput, toCents } from './money';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -97,6 +97,48 @@ const manualMode = (draft: ExpenseDraft): 'amount' | 'percent' =>
 
 const isBlank = (value: unknown): boolean => String(value ?? '').trim() === '';
 
+const cloneManualSplit = (manualSplit: ExpenseDraft['manualSplit']): ExpenseDraft['manualSplit'] =>
+  Object.fromEntries(Object.entries(manualSplit).map(([id, entry]) => [id, { type: entry.type, value: entry.value }]));
+
+/** Split identity for "the user has not edited since this automatic value". */
+function splitSnapshot(draft: ExpenseDraft): string {
+  const manual = draft.splitType === 'manual';
+  return JSON.stringify([
+    draft.splitType,
+    draft.splitParticipants,
+    manual ? manualMode(draft) : null,
+    manual
+      ? Object.entries(draft.manualSplit || {})
+        .filter(([, entry]) => entry && !isBlank(entry.value))
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([id, entry]) => [id, entry.type, entry.value])
+      : null,
+  ]);
+}
+
+const sameList = (left: string[], right: string[]): boolean =>
+  left.length === right.length && left.every((id, index) => id === right[index]);
+
+const hasPositiveTotal = (draft: ExpenseDraft): boolean => {
+  const total = parseScaledInput(draft.totalAmount, 100);
+  return total.kind === 'ok' && total.units > 0;
+};
+
+/**
+ * Positive share used when an automatic split can no longer be rebuilt.
+ * An explicit zero is the string "0"; otherwise each included traveler is
+ * offered an equal slice and validation asks the user to rebalance.
+ */
+function fallbackShareValue(draft: ExpenseDraft, travelerIds: string[], zero: boolean): string {
+  if (zero) return '0';
+  const mode = manualMode(draft);
+  const total = parseScaledInput(draft.totalAmount, 100);
+  const units = mode === 'percent' ? PERCENT_TOTAL : total.kind === 'ok' ? total.units : 0;
+  const count = Math.max(1, includedInTripOrder(draft, travelerIds).length);
+  const restored = Math.max(1, Math.floor(units / count));
+  return mode === 'percent' ? percentInput(restored) : centsInput(restored);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Stored expense → draft                                             */
 /* ------------------------------------------------------------------ */
@@ -138,21 +180,25 @@ export function expenseToDraft(e: Expense): ExpenseDraft {
   };
 }
 
-/** Money-related draft state in a comparable form (blank entries ignored). */
-function moneyKey(draft: ExpenseDraft): string {
-  const sorted = (record: Record<string, string>) =>
-    Object.entries(record)
-      .filter(([, v]) => !isBlank(v))
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+/** Comparable payer state (blank entries ignored). */
+function payerKey(draft: ExpenseDraft): string {
+  return JSON.stringify(Object.entries(draft.paidBy || {})
+    .filter(([, value]) => !isBlank(value))
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+}
+
+/** Split state is independent of payers; participant order controls rounding. */
+function splitKey(draft: ExpenseDraft): string {
   const manual = draft.splitType === 'manual';
   return JSON.stringify([
-    String(draft.totalAmount ?? ''),
-    sorted(draft.paidBy || {}),
     draft.splitType,
     draft.splitParticipants || [],
     manual ? manualMode(draft) : null,
     manual
-      ? sorted(Object.fromEntries(Object.entries(draft.manualSplit || {}).map(([k, v]) => [k, v?.value ?? ''])))
+      ? Object.entries(draft.manualSplit || {})
+        .filter(([, entry]) => !isBlank(entry?.value))
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([id, entry]) => [id, entry.type, entry.value])
       : null,
   ]);
 }
@@ -197,27 +243,19 @@ function evaluateDraft(draft: ExpenseDraft, ctx: DraftContext): Evaluation {
   }
   const category = draft.category;
 
-  /* ---- unedited money fields keep their stored values (legacy round-trip) ---- */
-  if (original && moneyKey(draft) === moneyKey(expenseToDraft(original))) {
-    const fields: ExpenseFields = {
-      category,
-      description,
-      totalAmount: original.totalAmount,
-      paidBy: { ...(original.paidBy || {}) },
-      splitType: original.splitType,
-      splitParticipants: [...(original.splitParticipants || [])],
-      manualSplit: Object.fromEntries(
-        Object.entries(original.manualSplit || {}).map(([k, v]) => [k, { ...v }]),
-      ),
-    };
-    const preview = toPreview({ ...original, ...fields }, travelerIds);
-    return { errors, fields: errors.length ? null : fields, preview };
-  }
+  /* ---- preserve untouched groups independently (legacy round-trip) ---- */
+  const loaded = original ? expenseToDraft(original) : null;
+  const totalUnchanged = Boolean(loaded && draft.totalAmount === loaded.totalAmount);
+  // A changed total requires both payers and shares to cover the new total exactly.
+  const payersUnchanged = totalUnchanged && loaded && payerKey(draft) === payerKey(loaded);
+  const splitUnchanged = totalUnchanged && loaded && splitKey(draft) === splitKey(loaded);
 
   /* ---- total ---- */
   let totalCents: number | null = null;
   const total = parseScaledInput(draft.totalAmount, 100);
-  if (total.kind === 'fractional') {
+  if (totalUnchanged && original) {
+    totalCents = toCents(original.totalAmount);
+  } else if (total.kind === 'fractional') {
     errors.push({ field: 'total', code: 'total-fractional-cent', message: 'Enter the amount in whole cents.' });
   } else if (total.kind !== 'ok' || total.units <= 0) {
     errors.push({ field: 'total', code: 'total-invalid', message: 'Enter an amount greater than 0.' });
@@ -227,108 +265,116 @@ function evaluateDraft(draft: ExpenseDraft, ctx: DraftContext): Evaluation {
 
   /* ---- payers ---- */
   const payerCents: Record<string, number> = {};
-  let payerInputError = false;
-  for (const [id, raw] of Object.entries(draft.paidBy || {})) {
-    const parsed = parseScaledInput(raw, 100);
-    // Blank and $0 payer entries mean "didn't pay", as in the old form.
-    if (parsed.kind === 'blank' || (parsed.kind === 'ok' && parsed.units === 0)) continue;
-    if (parsed.kind !== 'ok') {
-      payerInputError = true;
+  if (!payersUnchanged) {
+    let payerInputError = false;
+    for (const [id, raw] of Object.entries(draft.paidBy || {})) {
+      const parsed = parseScaledInput(raw, 100);
+      // Blank and $0 payer entries mean "didn't pay", as in the old form.
+      if (parsed.kind === 'blank' || (parsed.kind === 'ok' && parsed.units === 0)) continue;
+      if (parsed.kind !== 'ok') {
+        payerInputError = true;
+        errors.push({
+          field: 'payers',
+          code: 'payer-invalid',
+          travelerId: id,
+          message:
+            parsed.kind === 'negative'
+              ? "Payer amounts can't be negative."
+              : parsed.kind === 'fractional'
+                ? 'Enter payer amounts in whole cents.'
+                : 'Enter a valid payer amount.',
+        });
+        continue;
+      }
+      if (!known.has(id)) {
+        payerInputError = true;
+        errors.push({ field: 'payers', code: 'payer-unknown', travelerId: id, message: "A payer isn't on this trip." });
+        continue;
+      }
+      payerCents[id] = parsed.units;
+    }
+    if (!Object.keys(payerCents).length && !payerInputError) {
+      if (ctx.defaultPayerId && known.has(ctx.defaultPayerId)) {
+        if (totalCents !== null) payerCents[ctx.defaultPayerId] = totalCents;
+      } else {
+        errors.push({
+          field: 'payers',
+          code: 'payer-required',
+          message:
+            'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
+        });
+      }
+    } else if (totalCents !== null && !payerInputError && sumValues(payerCents) !== totalCents) {
       errors.push({
         field: 'payers',
-        code: 'payer-invalid',
-        travelerId: id,
-        message:
-          parsed.kind === 'negative'
-            ? "Payer amounts can't be negative."
-            : parsed.kind === 'fractional'
-              ? 'Enter payer amounts in whole cents.'
-              : 'Enter a valid payer amount.',
-      });
-      continue;
-    }
-    if (!known.has(id)) {
-      payerInputError = true;
-      errors.push({ field: 'payers', code: 'payer-unknown', travelerId: id, message: "A payer isn't on this trip." });
-      continue;
-    }
-    payerCents[id] = parsed.units;
-  }
-  if (!Object.keys(payerCents).length && !payerInputError) {
-    if (ctx.defaultPayerId && known.has(ctx.defaultPayerId)) {
-      if (totalCents !== null) payerCents[ctx.defaultPayerId] = totalCents;
-    } else {
-      errors.push({
-        field: 'payers',
-        code: 'payer-required',
-        message:
-          'Select who paid — we can only default the payer when exactly one participant record is linked to your account.',
+        code: 'payer-sum',
+        message: `Payers total ${formatMoney(sumValues(payerCents))} of ${formatMoney(totalCents)}.`,
       });
     }
-  } else if (totalCents !== null && !payerInputError && sumValues(payerCents) !== totalCents) {
-    errors.push({
-      field: 'payers',
-      code: 'payer-sum',
-      message: `Payers total ${formatMoney(sumValues(payerCents))} of ${formatMoney(totalCents)}.`,
-    });
   }
 
   /* ---- split ---- */
-  const requested = unique(draft.splitParticipants);
-  for (const id of requested) {
-    if (!known.has(id)) {
-      errors.push({ field: 'split', code: 'split-unknown', travelerId: id, message: "Someone in the split isn't on this trip." });
-    }
-  }
-  const splitParticipants = includedInTripOrder(draft, travelerIds);
-  if (!requested.length) {
-    errors.push({ field: 'split', code: 'split-empty', message: 'Choose at least one traveler to split this expense with.' });
-  }
-
-  const splitType: Expense['splitType'] = draft.splitType === 'manual' ? 'manual' : 'even';
-  const manualSplit: Expense['manualSplit'] = {};
-  if (splitType === 'manual') {
-    const mode = manualMode(draft);
-    const scale = mode === 'percent' ? PERCENT_SCALE : 100;
-    const units: Record<string, number> = {};
-    let shareInputError = false;
-    for (const id of splitParticipants) {
-      const parsed = parseScaledInput(draft.manualSplit?.[id]?.value, scale);
-      if (parsed.kind === 'blank' || parsed.kind === 'ok') {
-        // An included traveler with no value is an explicit $0 / 0% share.
-        units[id] = parsed.kind === 'ok' ? parsed.units : 0;
-        manualSplit[id] = { type: mode, value: mode === 'percent' ? units[id] / PERCENT_SCALE : fromCents(units[id]) };
-        continue;
+  const splitType = splitUnchanged && original ? original.splitType : draft.splitType === 'manual' ? 'manual' : 'even';
+  let splitParticipants = [...(original?.splitParticipants || [])];
+  const manualSplit: Expense['manualSplit'] = splitUnchanged && original
+    ? Object.fromEntries(Object.entries(original.manualSplit || {}).map(([id, entry]) => [id, { ...entry }]))
+    : {};
+  if (!splitUnchanged) {
+    const requested = unique(draft.splitParticipants);
+    for (const id of requested) {
+      if (!known.has(id)) {
+        errors.push({ field: 'split', code: 'split-unknown', travelerId: id, message: "Someone in the split isn't on this trip." });
       }
-      shareInputError = true;
-      errors.push({
-        field: 'split',
-        code: 'share-invalid',
-        travelerId: id,
-        message:
-          parsed.kind === 'negative'
-            ? "Shares can't be negative."
-            : parsed.kind === 'fractional'
-              ? mode === 'percent'
-                ? 'Use at most 4 decimal places for percentages.'
-                : 'Enter shares in whole cents.'
-              : 'Enter a valid share.',
-      });
     }
-    const sum = sumValues(units);
-    if (!shareInputError && splitParticipants.length) {
-      if (mode === 'percent' && sum !== PERCENT_TOTAL) {
+    // Stored participant order breaks largest-remainder ties, even on total-only edits.
+    splitParticipants = requested.filter((id) => known.has(id));
+    if (!requested.length) {
+      errors.push({ field: 'split', code: 'split-empty', message: 'Choose at least one traveler to split this expense with.' });
+    }
+
+    if (splitType === 'manual') {
+      const mode = manualMode(draft);
+      const scale = mode === 'percent' ? PERCENT_SCALE : 100;
+      const units: Record<string, number> = {};
+      let shareInputError = false;
+      for (const id of splitParticipants) {
+        const parsed = parseScaledInput(draft.manualSplit?.[id]?.value, scale);
+        if (parsed.kind === 'blank' || parsed.kind === 'ok') {
+          // An included traveler with no value is an explicit $0 / 0% share.
+          units[id] = parsed.kind === 'ok' ? parsed.units : 0;
+          manualSplit[id] = { type: mode, value: mode === 'percent' ? units[id] / PERCENT_SCALE : fromCents(units[id]) };
+          continue;
+        }
+        shareInputError = true;
         errors.push({
           field: 'split',
-          code: 'split-sum',
-          message: `Percentages total ${formatPercentUnits(sum)} of 100%.`,
+          code: 'share-invalid',
+          travelerId: id,
+          message:
+            parsed.kind === 'negative'
+              ? "Shares can't be negative."
+              : parsed.kind === 'fractional'
+                ? mode === 'percent'
+                  ? 'Use at most 4 decimal places for percentages.'
+                  : 'Enter shares in whole cents.'
+                : 'Enter a valid share.',
         });
-      } else if (mode === 'amount' && totalCents !== null && sum !== totalCents) {
-        errors.push({
-          field: 'split',
-          code: 'split-sum',
-          message: `Split totals ${formatMoney(sum)} of ${formatMoney(totalCents)}.`,
-        });
+      }
+      const sum = sumValues(units);
+      if (!shareInputError && splitParticipants.length) {
+        if (mode === 'percent' && sum !== PERCENT_TOTAL) {
+          errors.push({
+            field: 'split',
+            code: 'split-sum',
+            message: `Percentages total ${formatPercentUnits(sum)} of 100%.`,
+          });
+        } else if (mode === 'amount' && totalCents !== null && sum !== totalCents) {
+          errors.push({
+            field: 'split',
+            code: 'split-sum',
+            message: `Split totals ${formatMoney(sum)} of ${formatMoney(totalCents)}.`,
+          });
+        }
       }
     }
   }
@@ -336,8 +382,10 @@ function evaluateDraft(draft: ExpenseDraft, ctx: DraftContext): Evaluation {
   const fields: ExpenseFields = {
     category,
     description,
-    totalAmount: totalCents === null ? 0 : fromCents(totalCents),
-    paidBy: Object.fromEntries(Object.entries(payerCents).map(([id, c]) => [id, fromCents(c)])),
+    totalAmount: totalUnchanged && original ? original.totalAmount : totalCents === null ? 0 : fromCents(totalCents),
+    paidBy: payersUnchanged && original
+      ? { ...(original.paidBy || {}) }
+      : Object.fromEntries(Object.entries(payerCents).map(([id, c]) => [id, fromCents(c)])),
     splitType,
     splitParticipants,
     manualSplit,
@@ -475,4 +523,438 @@ export function applyTripDefault(
     draft: { ...draft, splitType: 'manual', manualSplitMode: 'percent', manualSplit },
     missing: travelersMissingFromDefault(defaultSplit, ids),
   };
+}
+
+export type ExpenseEditorMethod = 'equal' | 'trip-default' | 'amount' | 'percent';
+
+export interface ExpenseEditorState {
+  draft: ExpenseDraft;
+  method: ExpenseEditorMethod;
+  /** Retain loaded rounding order when a traveler is deselected and reselected. */
+  travelerOrder?: string[];
+  /** Editor-only provenance; never included in stored expense fields. */
+  zeroOrigin?: {
+    method: 'equal' | 'trip-default';
+    weights: DefaultSplit;
+    zeros: string[];
+    expected: Record<string, number>;
+  };
+  /**
+   * Verbatim manual split from a loaded expense. An unedited return to this
+   * mode restores these strings so the legacy tolerance still applies.
+   */
+  loadedManual?: {
+    mode: 'amount' | 'percent';
+    totalAmount: string;
+    participants: string[];
+    manualSplit: ExpenseDraft['manualSplit'];
+  };
+  /**
+   * Percent shares kept when Custom $ is chosen before a total exists.
+   * Later totals recompute dollar shares from this snapshot until the user
+   * edits a share after those dollars are showing.
+   */
+  pendingPercents?: ExpenseDraft['manualSplit'];
+  /** Source weights for rebuilding a pending snapshot after traveler toggles. */
+  pendingPercentOrigin?: {
+    method: 'equal' | 'trip-default' | 'percent';
+    weights: DefaultSplit;
+  };
+}
+
+/** Custom $ keeps its percent snapshot read-only until it can show dollars. */
+export function expenseSharesAwaitTotal(state: ExpenseEditorState): boolean {
+  return state.method === 'amount' && Boolean(state.pendingPercents) && manualMode(state.draft) === 'percent';
+}
+
+/**
+ * Blank included shares are stored as explicit $0 / 0%. In Custom $ and Custom %
+ * the zero checkbox follows that rule; Equal and Trip default do not treat a
+ * missing box as a zero the user checked.
+ */
+export function showsExplicitZero(
+  method: ExpenseEditorMethod,
+  splitType: ExpenseDraft['splitType'],
+  value: string,
+): boolean {
+  if (splitType !== 'manual') return false;
+  if (value.trim() === '') return method === 'amount' || method === 'percent';
+  return Number(value) === 0;
+}
+
+/** Saved defaults have no provenance field: edit them as their saved Custom % snapshot. */
+export function createExpenseEditor(
+  travelerIds: string[],
+  category: string,
+  defaultSplit?: DefaultSplit,
+  payerId?: string,
+  original?: Expense,
+): ExpenseEditorState {
+  if (original) {
+    const draft = expenseToDraft(original);
+    return {
+      draft,
+      method: draft.splitType === 'even' ? 'equal' : draft.manualSplitMode,
+      travelerOrder: unique([...draft.splitParticipants, ...travelerIds]),
+      loadedManual: draft.splitType === 'manual' ? {
+        mode: draft.manualSplitMode,
+        totalAmount: draft.totalAmount,
+        participants: [...draft.splitParticipants],
+        manualSplit: cloneManualSplit(draft.manualSplit),
+      } : undefined,
+    };
+  }
+  const draft: ExpenseDraft = {
+    category,
+    description: '',
+    totalAmount: '',
+    paidBy: payerId ? { [payerId]: '' } : {},
+    splitType: 'even',
+    splitParticipants: [...travelerIds],
+    manualSplit: {},
+    manualSplitMode: 'amount',
+  };
+  return hasTripDefault(defaultSplit)
+    ? { draft: applyTripDefault(draft, defaultSplit, travelerIds).draft, method: 'trip-default' }
+    : { draft, method: 'equal' };
+}
+
+/**
+ * Rounding order for method changes and explicit zeros.
+ * Stored participants keep the cents they already have; known trip members
+ * the draft never listed follow them.
+ */
+function editorSplitOrder(state: ExpenseEditorState, travelerIds: string[]): string[] {
+  const known = new Set(travelerIds);
+  const preferred = unique([
+    ...state.draft.splitParticipants,
+    ...(state.travelerOrder ?? []),
+  ]).filter((id) => known.has(id));
+  return [...preferred, ...travelerIds.filter((id) => !preferred.includes(id))];
+}
+
+function finishMethod(
+  state: ExpenseEditorState,
+  method: ExpenseEditorMethod,
+  draft: ExpenseDraft,
+): ExpenseEditorState {
+  return { ...state, zeroOrigin: undefined, pendingPercents: undefined, pendingPercentOrigin: undefined, method, draft };
+}
+
+/** Keep the Custom $ percent snapshot aligned with edits made before a total exists. */
+function syncPending(previous: ExpenseEditorState, next: ExpenseEditorState): ExpenseEditorState {
+  if (!previous.pendingPercents) return next;
+  if (next.method === 'amount' && manualMode(next.draft) === 'percent') {
+    return { ...next, pendingPercents: cloneManualSplit(next.draft.manualSplit) };
+  }
+  return { ...next, pendingPercents: undefined, pendingPercentOrigin: undefined };
+}
+
+/**
+ * True when the open manual split is still the conversion of the loaded split.
+ * Switching back can then restore the original strings instead of rewriting them.
+ */
+function loadedSplitUnedited(state: ExpenseEditorState, travelerIds: string[]): boolean {
+  const loaded = state.loadedManual;
+  if (!loaded) return false;
+  if (state.draft.totalAmount !== loaded.totalAmount) return false;
+  if (!sameList(state.draft.splitParticipants, loaded.participants)) return false;
+  const currentMode = state.method === 'amount' || state.method === 'percent' ? state.method : null;
+  if (!currentMode || state.draft.splitType !== 'manual' || manualMode(state.draft) !== currentMode) return false;
+  if (currentMode === loaded.mode) {
+    return splitSnapshot(state.draft) === splitSnapshot({
+      ...state.draft,
+      manualSplit: loaded.manualSplit,
+      splitParticipants: loaded.participants,
+    });
+  }
+  const loadedDraft: ExpenseDraft = {
+    ...state.draft,
+    splitType: 'manual',
+    manualSplitMode: loaded.mode,
+    manualSplit: loaded.manualSplit,
+    splitParticipants: [...loaded.participants],
+    totalAmount: loaded.totalAmount,
+  };
+  const converted = convertManualSplit(loadedDraft, currentMode, editorSplitOrder(state, travelerIds));
+  return splitSnapshot(converted) === splitSnapshot(state.draft);
+}
+
+/** Changes modes through the same deterministic allocation used by draft validation. */
+export function changeExpenseMethod(
+  state: ExpenseEditorState,
+  method: ExpenseEditorMethod,
+  travelerIds: string[],
+  defaultSplit?: DefaultSplit,
+): ExpenseEditorState {
+  if (method === state.method) return state;
+  const order = editorSplitOrder(state, travelerIds);
+  if (method === 'equal') {
+    return finishMethod(state, method, { ...state.draft, splitType: 'even', manualSplit: {} });
+  }
+  if (method === 'trip-default') {
+    return finishMethod(state, method, applyTripDefault(state.draft, defaultSplit, order).draft);
+  }
+  if (state.loadedManual && method === state.loadedManual.mode && loadedSplitUnedited(state, travelerIds)) {
+    return finishMethod(state, method, {
+      ...state.draft,
+      splitType: 'manual',
+      manualSplitMode: method,
+      manualSplit: cloneManualSplit(state.loadedManual.manualSplit),
+      splitParticipants: [...state.loadedManual.participants],
+    });
+  }
+  // Custom $ needs a total to turn percentages into cents. Keep the percent
+  // snapshot until that total is entered instead of clearing every share.
+  if (method === 'amount' && !hasPositiveTotal(state.draft)) {
+    const percentDraft = state.draft.splitType === 'even'
+      ? applyTripDefault(state.draft, Object.fromEntries(order.map((id) => [id, 1])), order).draft
+      : state.draft;
+    const kept = { ...percentDraft, splitType: 'manual' as const };
+    return {
+      ...finishMethod(state, method, kept),
+      pendingPercents: cloneManualSplit(kept.manualSplit),
+      pendingPercentOrigin: {
+        method: state.method === 'equal' || state.method === 'trip-default' ? state.method : 'percent',
+        weights: state.method === 'trip-default' && defaultSplit
+          ? { ...defaultSplit }
+          : Object.fromEntries(Object.entries(kept.manualSplit).map(([id, entry]) => [id, Number(entry.value)])),
+      },
+    };
+  }
+  const draft = state.draft.splitType === 'even'
+    ? applyTripDefault(state.draft, Object.fromEntries(order.map((id) => [id, 1])), order).draft
+    : state.draft;
+  return finishMethod(state, method, { ...convertManualSplit(draft, method, order), splitType: 'manual' });
+}
+
+/**
+ * Writes the total and, when Custom $ is waiting on one, converts the pending
+ * percentages so each share follows the amount the user just entered.
+ * The percent snapshot stays in place, so typing 3 and then 30 recomputes
+ * against the same shares instead of freezing the first digit.
+ */
+export function setExpenseTotal(
+  state: ExpenseEditorState,
+  totalAmount: string,
+  travelerIds: string[],
+): ExpenseEditorState {
+  const draft = { ...state.draft, totalAmount };
+  if (!state.pendingPercents) return { ...state, draft };
+  const percentDraft: ExpenseDraft = {
+    ...draft,
+    splitType: 'manual',
+    manualSplitMode: 'percent',
+    manualSplit: state.pendingPercents,
+  };
+  if (!hasPositiveTotal(percentDraft)) return { ...state, draft: percentDraft };
+  return {
+    ...state,
+    draft: {
+      ...convertManualSplit(percentDraft, 'amount', editorSplitOrder({ ...state, draft: percentDraft }, travelerIds)),
+      splitType: 'manual',
+    },
+  };
+}
+
+/** Edits displayed shares only; a dollar edit ends pending percent conversion. */
+export function setExpenseShare(
+  state: ExpenseEditorState,
+  travelerId: string,
+  value: string,
+): ExpenseEditorState {
+  if (expenseSharesAwaitTotal(state)) return state;
+  const mode = manualMode(state.draft);
+  const draft: ExpenseDraft = {
+    ...state.draft,
+    manualSplit: { ...state.draft.manualSplit, [travelerId]: { type: mode, value } },
+  };
+  if (!state.pendingPercents) return { ...state, draft };
+  return { ...state, draft, pendingPercents: undefined, pendingPercentOrigin: undefined };
+}
+
+function zeroOriginMatches(state: ExpenseEditorState, travelerIds: string[]): boolean {
+  const origin = state.zeroOrigin;
+  if (!origin) return false;
+  if (state.method !== 'percent' || manualMode(state.draft) !== 'percent') return false;
+  const ids = includedInTripOrder(state.draft, travelerIds);
+  return ids.length === Object.keys(origin.expected).length
+    && ids.every((id) => Number(state.draft.manualSplit[id]?.value) === origin.expected[id]);
+}
+
+/** A default is rescaled only by an explicit selection change, never a Firestore refresh. */
+export function toggleExpenseTraveler(
+  state: ExpenseEditorState,
+  travelerId: string,
+  travelerIds: string[],
+  defaultSplit?: DefaultSplit,
+): ExpenseEditorState {
+  const selected = state.draft.splitParticipants;
+  const removing = selected.includes(travelerId);
+  const travelerOrder = unique([...(state.travelerOrder ?? travelerIds), ...selected, travelerId]);
+  const splitParticipants = removing
+    ? selected.filter((id) => id !== travelerId)
+    : travelerOrder.filter((id) => id === travelerId || selected.includes(id));
+  const draft = { ...state.draft, splitParticipants };
+  const next: ExpenseEditorState = { ...state, travelerOrder, draft };
+  if (expenseSharesAwaitTotal(state)) {
+    const pendingOrigin = state.pendingPercentOrigin;
+    const weights: DefaultSplit = pendingOrigin?.method === 'equal'
+      ? Object.fromEntries(travelerIds.map((id) => [id, 1]))
+      : { ...(pendingOrigin?.weights ?? Object.fromEntries(
+        Object.entries(state.pendingPercents ?? {}).map(([id, entry]) => [id, Number(entry.value)]),
+      )) };
+    if (!removing && !validDefaultValue(weights[travelerId])) {
+      // A missing weight gets an equal slice of the new total, preserving
+      // the other travelers' ratio regardless of the source weight scale.
+      const remainingWeight = splitParticipants.reduce((sum, id) =>
+        sum + (validDefaultValue(weights[id]) ? weights[id] : 0), 0);
+      weights[travelerId] = remainingWeight / Math.max(1, splitParticipants.length - 1) || 1;
+    }
+    return syncPending(state, {
+      ...next,
+      draft: applyTripDefault(draft, weights, editorSplitOrder(next, travelerIds)).draft,
+      pendingPercentOrigin: { method: pendingOrigin?.method ?? 'percent', weights },
+    });
+  }
+  const origin = state.zeroOrigin;
+  if (origin && zeroOriginMatches(state, travelerIds)) {
+    const zeros = origin.zeros.filter((id) => splitParticipants.includes(id));
+    if (!zeros.length && origin.method === 'equal') {
+      return syncPending(state, {
+        ...next,
+        method: 'equal',
+        zeroOrigin: undefined,
+        draft: { ...draft, splitType: 'even', manualSplit: {} },
+      });
+    }
+    // Equal weights cover every traveler, including one this toggle just added.
+    const baseWeights: DefaultSplit = origin.method === 'equal'
+      ? Object.fromEntries(travelerIds.map((id) => [id, 1]))
+      : origin.weights;
+    const weights: DefaultSplit = { ...baseWeights, ...Object.fromEntries(zeros.map((id) => [id, 0])) };
+    const applied = applyTripDefault(draft, weights, editorSplitOrder(next, travelerIds)).draft;
+    if (!zeros.length) {
+      return syncPending(state, { ...next, method: origin.method, zeroOrigin: undefined, draft: applied });
+    }
+    return syncPending(state, {
+      ...next,
+      method: 'percent',
+      draft: applied,
+      zeroOrigin: {
+        ...origin,
+        weights: baseWeights,
+        zeros,
+        expected: Object.fromEntries(Object.entries(applied.manualSplit).map(([id, entry]) => [id, Number(entry.value)])),
+      },
+    });
+  }
+  if (state.method === 'trip-default') {
+    return syncPending(state, { ...next, draft: applyTripDefault(draft, defaultSplit, editorSplitOrder(next, travelerIds)).draft });
+  }
+  // A hand-edited zero snapshot no longer has a share for someone just included.
+  // Leave a positive fallback instead of a blank that would save as $0.
+  if (origin && !removing && isBlank(draft.manualSplit[travelerId]?.value)) {
+    const mode = manualMode(draft);
+    return syncPending(state, {
+      ...next,
+      draft: {
+        ...draft,
+        manualSplit: {
+          ...draft.manualSplit,
+          [travelerId]: { type: mode, value: fallbackShareValue(draft, travelerIds, false) },
+        },
+      },
+    });
+  }
+  return syncPending(state, next);
+}
+
+/** Keep automatic split provenance so unedited zero toggles can be reversed. */
+export function setExpenseExplicitZero(
+  state: ExpenseEditorState,
+  travelerId: string,
+  zero: boolean,
+  travelerIds: string[],
+  defaultSplit?: DefaultSplit,
+): ExpenseEditorState {
+  if (expenseSharesAwaitTotal(state)) return state;
+  let origin = state.zeroOrigin;
+  const automatic = state.method === 'equal' || state.method === 'trip-default';
+  if (state.method === 'equal' || state.method === 'trip-default') {
+    origin = {
+      method: state.method,
+      weights: state.method === 'equal'
+        ? Object.fromEntries(travelerIds.map((id) => [id, 1]))
+        : { ...(defaultSplit ?? Object.fromEntries(
+          Object.entries(state.draft.manualSplit).map(([id, entry]) => [id, Number(entry.value)]),
+        )) },
+      zeros: [],
+      expected: {},
+    };
+  }
+  const ids = includedInTripOrder(state.draft, travelerIds);
+  const unchanged = origin && (automatic || (
+    state.method === 'percent' && state.draft.manualSplitMode === 'percent' &&
+    ids.length === Object.keys(origin.expected).length &&
+    ids.every((id) => Number(state.draft.manualSplit[id]?.value) === origin.expected[id])
+  ));
+  // A missing/zero default weight cannot restore a positive share; use the custom fallback.
+  if (origin && unchanged && (zero || origin.weights[travelerId] > 0)) {
+    const zeros = zero ? unique([...origin.zeros, travelerId]) : origin.zeros.filter((id) => id !== travelerId);
+    if (!zeros.length && origin.method === 'equal') {
+      return syncPending(state, { ...state, method: 'equal', zeroOrigin: undefined, draft: { ...state.draft, splitType: 'even', manualSplit: {} } });
+    }
+    const weights = { ...origin.weights, ...Object.fromEntries(zeros.map((id) => [id, 0])) };
+    const draft = applyTripDefault(state.draft, weights, editorSplitOrder(state, travelerIds)).draft;
+    return syncPending(state, {
+      ...state,
+      method: zeros.length ? 'percent' : origin.method,
+      draft,
+      zeroOrigin: zeros.length ? {
+        ...origin,
+        zeros,
+        expected: Object.fromEntries(Object.entries(draft.manualSplit).map(([id, entry]) => [id, Number(entry.value)])),
+      } : undefined,
+    });
+  }
+  const mode = manualMode(state.draft);
+  // Restore a positive equal share without overwriting other custom entries.
+  // If this exceeds the total, normal split validation asks the user to rebalance.
+  // Stay on Custom $ when a percent snapshot is only waiting for a total.
+  const value = fallbackShareValue(state.draft, travelerIds, zero);
+  const method = state.method === 'amount' || state.method === 'percent' ? state.method : mode;
+  return syncPending(state, {
+    ...state,
+    zeroOrigin: undefined,
+    method,
+    draft: {
+      ...state.draft,
+      manualSplit: { ...state.draft.manualSplit, [travelerId]: { type: mode, value } },
+    },
+  });
+}
+
+/** A running payer remainder uses integer cents, including overpayment. */
+export function expensePayerRemainder(draft: ExpenseDraft): number | null {
+  const total = parseScaledInput(draft.totalAmount, 100);
+  if (total.kind !== 'ok') return null;
+  let paid = 0;
+  for (const value of Object.values(draft.paidBy)) {
+    const parsed = parseScaledInput(value, 100);
+    if (parsed.kind === 'blank') continue;
+    if (parsed.kind !== 'ok') return null;
+    paid += parsed.units;
+  }
+  return total.units - paid;
+}
+
+/** Short editor copy; validation remains shared with the mutation boundary. */
+export function expenseEditorError(error: DraftError): string {
+  if (error.code === 'payer-required') return 'Pick who paid.';
+  if (error.code === 'split-empty') return 'Include at least one traveler.';
+  if (error.code === 'split-sum' && error.message.startsWith('Split totals')) {
+    return error.message.replace('Split totals', 'Custom split totals');
+  }
+  return error.message;
 }
