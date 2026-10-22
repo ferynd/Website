@@ -38,7 +38,7 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 ### TC-P5 — Settlements
 
 - [p] **`SettlementsSection`, `RecordPaymentDialog`, balance strip; remove `BalanceSummary`, per-person payment forms, and the old `calc.ts` balance/cap/settlement functions.** Depends: TC-P2, TC-P3.
-  > needs follow-up — PR review fixes implemented locally: explicit-zero display matches saved blanks/default zeros, incomplete percentages survive deferred dollar conversion with editable inputs, payment saves block dismissal, suggestion actions have accessible names, and ignored payments are marked invalid; local fixes await maintainer commit/push; checks: npm test (2143), tsc, direct ESLint on changed files pass; npm run lint/build blocked by sandbox socket listen EPERM at 127.0.0.1; commit: 3d67383 (reviewed head); PR: #173
+  > needs follow-up — second-review fixes implemented locally: invalid percentage text survives immediate/deferred dollar conversion and blocks saving, zero checkboxes wait for a total, traveler toggles preserve pending percentages, and clearing the total clears converted dollars; checks: npm test (2150), tsc, lint, build pass; prior head: 5257ade; PR: #173
   - Balance breakdown rows (final, paid, reimbursements sent/received, remaining), Record buttons on suggestions, one Record payment entry point with "logs a reimbursement; does not send money" copy, overpay warning, payment history; D4 gating.
   - **Accept:** one way to record a payment; Owes / Is owed / Settled copy everywhere; reimbursements leave spending and caps unchanged (tested in TC-P1, checked by hand here).
 

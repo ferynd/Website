@@ -427,8 +427,9 @@ export function draftToExpenseFields(draft: ExpenseDraft, ctx: DraftContext): Dr
  * Switches a manual split between dollars and percentages, converting the
  * entered values instead of wiping them. When the values cover the total
  * exactly, the converted values do too (largest remainder, trip order).
- * Blank entries stay blank. Percent → $ needs a valid total; without one the
- * values are cleared.
+ * Blank entries stay blank. Invalid percentages stay raw so validation still
+ * blocks saving. Percent → $ needs a valid total; without one valid values
+ * are cleared.
  */
 export function convertManualSplit(
   draft: ExpenseDraft,
@@ -441,9 +442,11 @@ export function convertManualSplit(
   const ids = includedInTripOrder(draft, travelerIds);
   const fromScale = fromMode === 'percent' ? PERCENT_SCALE : 100;
   const values: Record<string, number> = {};
+  const invalidPercents: Record<string, string> = {};
   for (const id of ids) {
     const parsed = parseScaledInput(draft.manualSplit?.[id]?.value, fromScale);
     if (parsed.kind === 'ok') values[id] = parsed.units;
+    else if (fromMode === 'percent' && parsed.kind !== 'blank') invalidPercents[id] = draft.manualSplit[id].value;
   }
   const valued = ids.filter((id) => id in values);
   const sum = sumValues(values);
@@ -473,7 +476,7 @@ export function convertManualSplit(
     const units = converted?.[id];
     manualSplit[id] = {
       type: toMode,
-      value: units === undefined ? '' : toMode === 'percent' ? percentInput(units) : centsInput(units),
+      value: units === undefined ? invalidPercents[id] ?? '' : toMode === 'percent' ? percentInput(units) : centsInput(units),
     };
   }
   return { ...draft, manualSplitMode: toMode, manualSplit };
@@ -583,6 +586,11 @@ export interface ExpenseEditorState {
 /** A pending split still displayed in percentages waits for a total before editing. */
 export function expenseSharesAwaitTotal(state: ExpenseEditorState): boolean {
   return state.method === 'amount' && Boolean(state.pendingPercents) && manualMode(state.draft) === 'percent';
+}
+
+/** Zero edits wait until retained percentages can be converted to dollars. */
+export function expenseZerosAwaitTotal(state: ExpenseEditorState): boolean {
+  return state.method === 'amount' && Boolean(state.pendingPercents) && !hasPositiveTotal(state.draft);
 }
 
 /**
@@ -816,7 +824,12 @@ export function setExpenseTotal(
     manualSplit: state.pendingPercents,
   };
   if (!hasPositiveTotal(percentDraft)) {
-    return { ...state, draft: state.editablePendingPercents ? draft : percentDraft };
+    return {
+      ...state,
+      draft: state.editablePendingPercents
+        ? convertManualSplit(percentDraft, 'amount', editorSplitOrder(state, travelerIds))
+        : percentDraft,
+    };
   }
   const converted = {
     ...convertManualSplit(percentDraft, 'amount', editorSplitOrder({ ...state, draft: percentDraft }, travelerIds)),
@@ -877,6 +890,11 @@ export function toggleExpenseTraveler(
     : travelerOrder.filter((id) => id === travelerId || selected.includes(id));
   const draft = { ...state.draft, splitParticipants };
   const next: ExpenseEditorState = { ...state, travelerOrder, draft };
+  if (state.editablePendingPercents && expenseZerosAwaitTotal(state)) {
+    // Custom entries cannot be rescaled while invalid. Retain the raw source
+    // for excluded travelers too, so including them again restores their input.
+    return setExpenseTotal(next, draft.totalAmount, travelerIds);
+  }
   if (expenseSharesAwaitTotal(state)) {
     const pendingOrigin = state.pendingPercentOrigin;
     const weights: DefaultSplit = pendingOrigin?.method === 'equal'
@@ -958,7 +976,7 @@ export function setExpenseExplicitZero(
   travelerIds: string[],
   defaultSplit?: DefaultSplit,
 ): ExpenseEditorState {
-  if (expenseSharesAwaitTotal(state)) return state;
+  if (expenseZerosAwaitTotal(state)) return state;
   state = { ...state, implicitZeros: state.implicitZeros?.filter((id) => id !== travelerId) };
   let origin = state.zeroOrigin;
   const automatic = state.method === 'equal' || state.method === 'trip-default';

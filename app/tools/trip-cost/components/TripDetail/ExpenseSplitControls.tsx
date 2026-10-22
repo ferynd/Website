@@ -3,7 +3,7 @@
 import React, { useId } from 'react';
 import Button from '@/components/Button';
 import Input from '@/components/Input';
-import { expenseExplicitZero, expenseMethodOptions, expensePreviewLabel, expenseSharesAwaitTotal, type DraftPreview, type ExpenseEditorMethod, type ExpenseEditorState } from '../../utils/expenseDraft';
+import { expenseExplicitZero, expenseMethodOptions, expensePreviewLabel, expenseSharesAwaitTotal, expenseZerosAwaitTotal, type DraftPreview, type ExpenseEditorMethod, type ExpenseEditorState } from '../../utils/expenseDraft';
 import type { Person } from '../../pageTypes';
 
 interface SplitMethodControlProps {
@@ -91,15 +91,18 @@ export function SplitPreview({ travelers, state, preview, showInputs, errorId, o
   const { draft } = state;
   const hintId = useId();
   const awaitingTotal = expenseSharesAwaitTotal(state);
-  const describedBy = awaitingTotal ? `${errorId} ${hintId}` : errorId;
+  const zerosAwaitTotal = expenseZerosAwaitTotal(state);
+  const describedBy = zerosAwaitTotal ? `${errorId} ${hintId}` : errorId;
   const custom = state.method === 'amount' || state.method === 'percent';
   return (
     <section className="min-w-0" aria-label="Split preview">
       <h3 className="font-semibold text-text">Split preview</h3>
       {preview?.notFinal && <p className="mt-2 text-sm text-warning">Entered shares are not final. Fix the split totals above before saving.</p>}
-      {awaitingTotal && (
+      {zerosAwaitTotal && (
         <p id={hintId} className="mt-2 text-sm text-text-3">
-          Enter the amount first; shares are converted from the current split. Share inputs and explicit zeros will then be available.
+          {awaitingTotal
+            ? 'Enter the amount first; shares are converted from the current split. Share inputs and explicit zeros will then be available.'
+            : 'Enter the amount first to use explicit zeros.'}
         </p>
       )}
       <ul className="mt-2 divide-y divide-border">
@@ -123,7 +126,7 @@ export function SplitPreview({ travelers, state, preview, showInputs, errorId, o
                       type="checkbox"
                       className="h-4 w-4 shrink-0 !p-0"
                       checked={zero}
-                      disabled={awaitingTotal}
+                      disabled={zerosAwaitTotal}
                       aria-describedby={describedBy}
                       onChange={(event) => onZero(person.id, event.target.checked)}
                     />
