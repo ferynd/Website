@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { linkParticipantAccount, participantForAccount, participantIdsFor } from '../participants';
-import type { TripParticipant } from '../../pageTypes';
+import {
+  linkParticipantAccount,
+  participantForAccount,
+  participantIdsFor,
+  participantRemovalBlockers,
+  participantRemovalMessage,
+} from '../participants';
+import type { Expense, Payment, TripParticipant } from '../../pageTypes';
 
 const traveler = (id: string, userId?: string): TripParticipant => ({
   id,
@@ -76,5 +82,60 @@ describe('linkParticipantAccount (D3)', () => {
   it('rejects an unknown traveler or a blank uid', () => {
     expect(linkParticipantAccount(people, 'ghost', 'uid-x')).toMatchObject({ ok: false, code: 'participant-unknown' });
     expect(linkParticipantAccount(people, 'kait', '')).toMatchObject({ ok: false, code: 'uid-required' });
+  });
+});
+
+const expense = (fields: Partial<Expense> & Pick<Expense, 'id'>): Expense => ({
+  category: 'Food',
+  description: fields.id,
+  totalAmount: 0,
+  paidBy: {},
+  splitType: 'even',
+  splitParticipants: [],
+  manualSplit: {},
+  createdBy: 'admin',
+  ...fields,
+});
+
+const payment = (fields: Partial<Payment> & Pick<Payment, 'id' | 'payerId' | 'payeeId'>): Payment => ({
+  amount: 1,
+  date: '2026-10-22',
+  description: '',
+  ...fields,
+});
+
+describe('participant removal blockers', () => {
+  const participants = [traveler('a'), traveler('b')];
+
+  it('lists expense descriptions and payment pairs, including zero amounts', () => {
+    const blockers = participantRemovalBlockers({
+      participants,
+      expenses: [
+        expense({ id: 'dinner', description: 'Dinner', paidBy: { a: 0 } }),
+        expense({ id: 'park', description: 'Park', splitParticipants: ['b'] }),
+        expense({ id: 'tip', description: 'Tip', manualSplit: { a: { type: 'amount', value: 0 } } }),
+      ],
+      payments: [payment({ id: 'p1', payerId: 'b', payeeId: 'a', description: 'Venmo' })],
+    }, 'a');
+    expect(blockers).toEqual([
+      'Expense: Dinner',
+      'Expense: Tip',
+      'Payment: Name b to Name a (Venmo)',
+    ]);
+    expect(participantRemovalMessage(blockers)).toBe(
+      'Remove or reassign these records first: Expense: Dinner; Expense: Tip; Payment: Name b to Name a (Venmo).',
+    );
+  });
+
+  it('truncates long labels and stops the message after five records', () => {
+    const description = 'A'.repeat(120);
+    const expenses = [0, 1, 2, 3, 4, 5].map((index) =>
+      expense({ id: `e${index}`, description: index === 0 ? description : `Item ${index}`, paidBy: { a: 1 } }),
+    );
+    const blockers = participantRemovalBlockers({ participants, expenses, payments: [] }, 'a');
+    expect(blockers[0]).toBe(`Expense: ${'A'.repeat(97)}…`);
+    expect(participantRemovalMessage(blockers)).toBe(
+      `Remove or reassign these records first: ${blockers.slice(0, 5).join('; ')}; and 1 more records.`,
+    );
   });
 });

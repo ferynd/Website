@@ -1,4 +1,4 @@
-import type { TripParticipant } from '../pageTypes';
+import type { Trip, TripParticipant } from '../pageTypes';
 
 /* ------------------------------------------------------------------ */
 /*  Participant identity helpers                                       */
@@ -76,4 +76,44 @@ export function linkParticipantAccount(
     p.id === id ? { ...p, userId: uid, isRegistered: true } : p,
   );
   return { ok: true, participants: updated, participantIds: participantIdsFor(updated) };
+}
+
+const shorten = (value: string): string => (value.length > 100 ? `${value.slice(0, 97)}…` : value);
+
+/**
+ * Expenses and payments that still reference this traveler. A stored share or
+ * payment counts even when its amount is zero or otherwise invalid, because
+ * deleting the traveler would orphan that record.
+ */
+export function participantRemovalBlockers(
+  trip: Pick<Trip, 'participants' | 'expenses' | 'payments'>,
+  id: string,
+): string[] {
+  const nameOf = (participantId: string) =>
+    trip.participants.find((person) => person.id === participantId)?.name ?? 'Unknown traveler';
+
+  const expenses = trip.expenses
+    .filter((expense) =>
+      Object.prototype.hasOwnProperty.call(expense.paidBy, id) ||
+      expense.splitParticipants.includes(id) ||
+      Object.prototype.hasOwnProperty.call(expense.manualSplit, id),
+    )
+    .map((expense) => `Expense: ${shorten(expense.description || 'Untitled expense')}`);
+
+  const payments = trip.payments
+    .filter((payment) => payment.payerId === id || payment.payeeId === id)
+    .map((payment) => {
+      const pair = `${shorten(nameOf(payment.payerId))} to ${shorten(nameOf(payment.payeeId))}`;
+      const note = payment.description ? ` (${shorten(payment.description)})` : '';
+      return `Payment: ${pair}${note}`;
+    });
+
+  return [...expenses, ...payments];
+}
+
+/** Lists up to five blocking records, then how many more were left out. */
+export function participantRemovalMessage(blockers: string[]): string {
+  const visible = blockers.slice(0, 5).join('; ');
+  const more = blockers.length > 5 ? `; and ${blockers.length - 5} more records` : '';
+  return `Remove or reassign these records first: ${visible}${more}.`;
 }

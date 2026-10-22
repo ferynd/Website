@@ -78,14 +78,16 @@ export default function ConfirmDeleteModal({
       }}
       tabIndex={-1}
     >
-      <div ref={modalRef} className="bg-surface-1 p-4 rounded shadow space-y-4">
-        <p id="confirm-title">Are you sure you want to delete this {itemType}?</p>
-        {error && (
-          <p role="alert" className="text-sm text-error">
-            {error}
-          </p>
-        )}
-        <div className="flex gap-2 justify-end">
+      <div ref={modalRef} className="mx-4 flex max-h-[calc(100dvh-2rem)] w-full min-w-0 max-w-lg flex-col gap-4 overflow-hidden break-words rounded bg-surface-1 p-4 shadow [overflow-wrap:anywhere]">
+        <div className="min-h-0 min-w-0 space-y-4 overflow-y-auto">
+          <p id="confirm-title">Are you sure you want to delete this {itemType}?</p>
+          {error && (
+            <p role="alert" className="break-words text-sm text-error [overflow-wrap:anywhere]">
+              {error}
+            </p>
+          )}
+        </div>
+        <div className="flex shrink-0 flex-wrap justify-end gap-2">
           <Button
             ref={btnRef}
             onClick={onConfirm}

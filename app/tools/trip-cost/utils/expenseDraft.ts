@@ -491,7 +491,9 @@ const validDefaultValue = (value: unknown): value is number =>
 
 /** True when the trip default gives a positive percentage to someone. */
 export function hasTripDefault(defaultSplit: DefaultSplit | undefined): boolean {
-  return Object.values(defaultSplit || {}).some((v) => validDefaultValue(v) && v > 0);
+  return Object.values(defaultSplit || {}).some((value) =>
+    validDefaultValue(value) && Math.round(value * 1e6) > 0,
+  );
 }
 
 /** Travelers with no entry in the trip default (they get an explicit 0%). */
@@ -517,7 +519,9 @@ export function applyTripDefault(
   const weights = Object.fromEntries(
     ids.map((id) => {
       const value = defaultSplit?.[id];
-      return [id, validDefaultValue(value) ? value : 0];
+      // Excluding travelers can leave only weights allocateCents rounds to zero.
+      const positive = validDefaultValue(value) && Math.round(value * 1e6) > 0;
+      return [id, positive ? value : 0];
     }),
   );
   const units =

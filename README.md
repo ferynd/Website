@@ -197,7 +197,9 @@ This React tool lives under **app/tools/trip-planner/** and now mirrors the Trip
 
 ### Trip Cost Calculator
 
-_“Split expenses and calculate balances for group trips with multi-user support.”_
+_“A ledger-first trip expense tracker: who paid, who owes, budget caps, and settlements.”_
+
+Travelers can be added by name and later linked by an admin to an existing registered account without creating a duplicate or resplitting saved expenses. Budget caps, overage redistribution, and the default split are edited together and saved in one write.
 
 This is a comprehensive web application to help groups track shared expenses on trips and calculate who owes whom. It started as a simple client-side calculator but has been upgraded into a full-stack app using Firebase for persistence.
 
@@ -218,13 +220,13 @@ This is a comprehensive web application to help groups track shared expenses on 
 - **Balance Calculations:** Automatic calculation of how much each person paid vs. how much they owe, and a summary of who should pay whom to settle up.
 - **Settlement Suggestions:** The app suggests optimal repayments to settle all debts (minimizing the number of transactions).
 - **Payment Tracking:** Users can record payments (when someone pays someone else to settle a debt). The tool keeps a full history of these payments.
-- **Auto-Save:** All changes (expenses added, edits, payments) are saved automatically to the cloud as you go. There is no "save" button – the app continuously listens and updates Firestore.
+- **Saving:** Expenses and payments save as they are added. Budget caps, overage redistribution, and the default split share one Save control, so a settings change is a single write. Rejected settings saves retain your edits; saving over a changed trip requires confirmation of its latest revision.
 
 **User Roles & Permissions:**
 
 - **Admin (Site Owner):** There is a concept of an admin user (e.g., the site owner or a designated email). The admin has full control: can create or delete any trip, and manage all participants and expenses.
 - **Regular Users:** A logged-in user can create trips and within those trips, they can add participants and expenses. Users can only see trips they created or trips to which they have been added as a participant.
-- **Guest Participants:** The tool allows adding “participants” who are not registered users (for example, a friend who doesn’t have an account). These are added by name only and can be included in expenses, so the calculations still work for them – but they obviously cannot log in.
+- **Guest Participants:** Travelers can be added by name before they have an account. An admin can later link that same traveler to an existing registered account; past expenses stay on that traveler, and a second participant is not created. Until the link, they cannot sign in.
 - **Expense Ownership:** Each expense record knows who created it. Only the creator of an expense or an admin can delete that expense. This prevents arbitrary deletion of expenses by other participants.
 
 #### Technical Implementation

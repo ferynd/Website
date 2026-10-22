@@ -32,18 +32,13 @@ Active feature backlog for the ledger-first Trip Cost Tracker (`app/tools/trip-c
 - Adding a traveler never resplits saved expense rows (`splitParticipants` is stored per expense).
 - New expense writes add up exactly (payers and Custom $ to the cent, Custom % to exactly 100%); money fields left unedited on an existing expense are saved back verbatim, so legacy rows within the old tolerance stay editable. Payments must be > $0 in whole cents between two different travelers on the trip.
 - Linking an account keeps the participant `id`; a uid may be linked to at most one traveler per trip; `participantIds` is always recomputed from `participants`.
+- Settings (`spendCaps`, `overageSplit`, `defaultSplit`) are validated together and written in one transactional update. A dirty form warns before overwriting a trip that changed after editing started; overwrite confirmation expires on another revision. Optimistic snapshots do not discard edits before server acceptance, and rejected saves retain the draft. Default totals omit former travelers and accept the legacy 0.1 percentage-point tolerance. Infeasible caps warn and still save.
 
 ## Active phases
 
-### TC-P5 — Settlements
-
-- [p] **`SettlementsSection`, `RecordPaymentDialog`, balance strip; remove `BalanceSummary`, per-person payment forms, and the old `calc.ts` balance/cap/settlement functions.** Depends: TC-P2, TC-P3.
-  > needs follow-up — second-review fixes implemented locally: invalid percentage text survives immediate/deferred dollar conversion and blocks saving, zero checkboxes wait for a total, traveler toggles preserve pending percentages, and clearing the total clears converted dollars; checks: npm test (2150), tsc, lint, build pass; prior head: 5257ade; PR: #173
-  - Balance breakdown rows (final, paid, reimbursements sent/received, remaining), Record buttons on suggestions, one Record payment entry point with "logs a reimbursement; does not send money" copy, overpay warning, payment history; D4 gating.
-  - **Accept:** one way to record a payment; Owes / Is owed / Settled copy everywhere; reimbursements leave spending and caps unchanged (tested in TC-P1, checked by hand here).
-
 ### TC-P6 — Participants & Settings sections
 
-- [ ] **Sectioned settings tab, account linking, one-write settings save.** Depends: TC-P2, TC-P3.
-  - Travelers (link account per D3, removal guard lists blocking records), budget caps with progress against final responsibility and near-cap marker, overage redistribution with eligibility preview, default split (blank inputs, missing-traveler warning), audit log. Validate first, then one `setDoc`; warn when the trip changed since the form loaded (C13). Infeasible caps warn but save. Add-traveler notice about resplitting and overage effect (C8). README blurb.
+- [p] **Sectioned settings tab, account linking, one-write settings save.** Depends: TC-P2, TC-P3.
+  > pushed — review round 2 fixes: settings save checks server revision and travelers in one transaction; overage/default weights that round to zero are treated as zero (no preview crash); Discard changes; checks: npm test (2205), tsc, lint, build pass; PR: #174
+  - Travelers (link account per D3, removal guard lists blocking records), budget caps with progress against final responsibility and near-cap marker, overage redistribution with eligibility preview, default split (blank inputs, missing-traveler warning), audit log. Validate first, then one transactional update (checking the server revision and travelers and replacing the three settings maps; `setDoc` merge would keep removed keys); warn when the trip changed since the form loaded (C13). Infeasible caps warn but save. Add-traveler notice about resplitting and overage effect (C8). README blurb.
   - **Accept:** linking a name-only participant keeps its id and history; partial saves are impossible; the new-traveler overage effect is shown.

@@ -24,3 +24,8 @@ step in `backlogs/protocol.md` (only after their commits merge to `main`).
 
 - [x] **`ExpenseEditor` for add and edit; remove `ExpenseForm`.**
   > Resolved: shared add/edit dialog with payer picker, traveler selection, Equal / Trip default / Custom $ / Custom %, explicit zeros, live cents-exact preview, stale-edit confirmation, and legacy round-trip preservation; ExpenseForm removed; checks: npm test (2084), lint, tsc, build pass; merged: 7c71be8 (head 852eb19, PR #172); residual risk: TC-P4 visual follow-ups (a)–(c) and #172 P3 leftovers (d)–(e), fixed in TC-P5; accepted: legacy sub-cent precision after a total edit, large-total equal-with-zeros drift.
+
+### TC-P5 — Settlements
+
+- [x] **`SettlementsSection`, `RecordPaymentDialog`, balance strip; remove `BalanceSummary`, per-person payment forms, and the old `calc.ts` balance/cap/settlement functions.**
+  > Resolved: settlements below the ledger with one Record payment dialog, Owes / Is owed / Settled copy, D4 client gating, and balance breakdown; BalanceSummary, per-person payment forms, and legacy calc.ts removed; checks: npm test (2150), lint, tsc, build pass; merged: 51f954f (head a93a45b, PR #173); residual risk: accepted — a new traveler added while the editor is open with an invalid percentage gets a blank share; trip-list loading flash and overpay wording follow-ups (a) and (b) are fixed in TC-P6.

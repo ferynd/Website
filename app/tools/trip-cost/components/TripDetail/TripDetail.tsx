@@ -2,11 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useTrip } from '../../TripContext';
-import ParticipantsSection from './ParticipantsSection';
 import ExpenseEditor from './ExpenseEditor';
 import SettlementsSection from './SettlementsSection';
-import AuditLog from './AuditLog';
-import TripSettings from './TripSettings';
+import ParticipantsSettingsTab from './ParticipantsSettingsTab';
 import ConfirmDeleteModal from './ConfirmDeleteModal';
 import TripHeader from './TripHeader';
 import TripTabs from './TripTabs';
@@ -29,8 +27,7 @@ interface DeleteTarget {
 
 /** Trip Cost detail page with the ledger and settings split into two tabs. */
 export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
-  const { trip, expenses, participants, auditEntries, deleteExpense, deletePayment, deleteParticipant } = useTrip();
-  const [showAuditLog, setShowAuditLog] = useState(false);
+  const { trip, expenses, participants, deleteExpense, deletePayment, deleteParticipant } = useTrip();
   const [editor, setEditor] = useState<{ original?: Expense; previousIds: string[] } | null>(null);
   const [highlightRequest, setHighlightRequest] = useState<{ previousIds: string[]; fields: ExpenseFields } | null>(null);
   const [highlightedExpenseId, setHighlightedExpenseId] = useState<string | null>(null);
@@ -123,20 +120,10 @@ export default function TripDetail({ onBack, userProfile }: TripDetailProps) {
   );
 
   const participantContent = (
-    <>
-      <ParticipantsSection
-        userProfile={userProfile}
-        onDeleteParticipant={(id) => openConfirm({ type: 'participant', id })}
-      />
-      <TripSettings userProfile={userProfile} />
-      {userProfile?.isAdmin && (
-        <AuditLog
-          entries={auditEntries}
-          show={showAuditLog}
-          onToggle={() => setShowAuditLog((shown) => !shown)}
-        />
-      )}
-    </>
+    <ParticipantsSettingsTab
+      userProfile={userProfile}
+      onDeleteParticipant={(id) => openConfirm({ type: 'participant', id })}
+    />
   );
 
   return (

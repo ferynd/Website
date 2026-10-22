@@ -8,14 +8,17 @@ import React, {
   useMemo,
 } from 'react';
 import {
+  getDoc,
   onSnapshot,
   orderBy,
   query,
+  runTransaction,
   setDoc,
   serverTimestamp,
   Timestamp,
+  updateDoc,
 } from 'firebase/firestore';
-import { tripDoc, tripAuditCol } from './db';
+import { db, tripDoc, tripAuditCol, userDoc } from './db';
 import { uniqueLinkedParticipant } from './utils/payer';
 import type {
   Trip,
@@ -25,9 +28,6 @@ import type {
   AuditEntry,
   ExpenseDraft,
   UserProfile,
-  SpendCap,
-  OverageSplit,
-  DefaultSplit,
 } from './pageTypes';
 import { buildLedger, type Ledger } from './utils/ledger';
 import { draftToExpenseFields, type DraftContext } from './utils/expenseDraft';
@@ -39,7 +39,16 @@ import {
   linkParticipantAccount as linkAccount,
   participantForAccount,
   participantIdsFor,
+  participantRemovalBlockers,
+  participantRemovalMessage,
 } from './utils/participants';
+
+import {
+  settingsWriteError,
+  tripRevision,
+  validateTripSettings,
+  type TripSettingsFields,
+} from './utils/tripSettings';
 
 interface TripContextValue {
   trip: Trip | null;
@@ -69,9 +78,7 @@ interface TripContextValue {
     authorUid: string
   ) => Promise<void>;
   deletePayment: (id: string) => Promise<void>;
-  updateSpendCaps: (caps: SpendCap[]) => Promise<void>;
-  updateOverageSplit: (split: OverageSplit) => Promise<void>;
-  updateDefaultSplit: (split: DefaultSplit) => Promise<void>;
+  updateTripSettings: (settings: TripSettingsFields, baseline: string, overwriteRevision?: string) => Promise<void>;
 }
 
 const TripContext = createContext<TripContextValue | undefined>(undefined);
@@ -167,6 +174,7 @@ export const TripProvider = ({
 
   const updateParticipant = async (id: string, name: string) => {
     if (!trip) throw new Error('No trip loaded');
+    if (!userProfile?.isAdmin) throw new Error('Only an admin can rename travelers.');
     if (!name.trim()) throw new Error('Participant name is required');
 
     const updated = participants.map((p) =>
@@ -188,6 +196,9 @@ export const TripProvider = ({
     const result = linkAccount(participants, id, uid);
     if (!result.ok) throw new Error(result.message);
 
+    const account = await getDoc(userDoc(uid));
+    if (!account.exists()) throw new Error('Choose an existing registered account.');
+
     await setDoc(
       tripDoc(trip.id),
       {
@@ -202,22 +213,9 @@ export const TripProvider = ({
   const deleteParticipant = async (id: string) => {
     if (!trip) throw new Error('No trip loaded');
 
-    // Deleting a participant used to silently orphan any expense/payment
-    // that still referenced them — paid amounts and obligations then just
-    // disappeared from balance totals with no indication why (F-089).
-    // Block deletion instead until those references are gone.
-    const referencedByExpense = expenses.some(
-      (e) =>
-        Object.prototype.hasOwnProperty.call(e.paidBy, id) ||
-        e.splitParticipants.includes(id) ||
-        Object.prototype.hasOwnProperty.call(e.manualSplit, id),
-    );
-    const referencedByPayment = payments.some((p) => p.payerId === id || p.payeeId === id);
-    if (referencedByExpense || referencedByPayment) {
-      throw new Error(
-        'This participant has expenses or payments referencing them. Remove or reassign those first.',
-      );
-    }
+    if (!userProfile?.isAdmin) throw new Error('Only an admin can remove travelers.');
+    const blockers = participantRemovalBlockers({ participants, expenses, payments }, id);
+    if (blockers.length) throw new Error(participantRemovalMessage(blockers));
 
     const updated = participants.filter((p) => p.id !== id);
     const participantIds = participantIdsFor(updated);
@@ -231,17 +229,22 @@ export const TripProvider = ({
     const updatedDefaultSplit = { ...(trip.defaultSplit || {}) };
     delete updatedDefaultSplit[id];
 
-    await setDoc(
-      tripDoc(trip.id),
-      {
-        participants: updated,
-        participantIds,
-        spendCaps: updatedCaps,
-        defaultSplit: updatedDefaultSplit,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    const updatedOverage = { ...trip.overageSplit };
+    if (trip.overageSplit?.shares) {
+      updatedOverage.shares = { ...trip.overageSplit.shares };
+      delete updatedOverage.shares[id];
+    }
+
+    // updateDoc replaces each field. setDoc merge would deep-merge defaultSplit
+    // and overageSplit and leave the removed traveler's percentages in place.
+    await updateDoc(tripDoc(trip.id), {
+      participants: updated,
+      participantIds,
+      ...(trip.overageSplit && { overageSplit: updatedOverage }),
+      spendCaps: updatedCaps,
+      defaultSplit: updatedDefaultSplit,
+      updatedAt: serverTimestamp(),
+    });
   };
 
   // Shared by add and edit. A blank payer only defaults to the caller when
@@ -356,31 +359,45 @@ export const TripProvider = ({
     );
   };
 
-  const updateSpendCaps = async (caps: SpendCap[]) => {
+  const updateTripSettings = async (
+    settings: TripSettingsFields,
+    baseline: string,
+    overwriteRevision?: string,
+  ) => {
     if (!trip) throw new Error('No trip loaded');
-    await setDoc(
-      tripDoc(trip.id),
-      { spendCaps: caps, updatedAt: serverTimestamp() },
-      { merge: true }
+    if (!userProfile?.isAdmin) throw new Error('Only an admin can save settings.');
+    const errors = validateTripSettings(
+      settings,
+      participants.map((person) => person.id),
     );
-  };
+    // Invalid settings must fail before starting any transaction read or write.
+    if (errors.length) throw new Error(errors.join(' '));
 
-  const updateOverageSplit = async (split: OverageSplit) => {
-    if (!trip) throw new Error('No trip loaded');
-    await setDoc(
-      tripDoc(trip.id),
-      { overageSplit: split, updatedAt: serverTimestamp() },
-      { merge: true }
-    );
-  };
+    const ref = tripDoc(trip.id);
+    await runTransaction(db, async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists()) throw new Error('The trip no longer exists.');
+      const data = snap.data() as Omit<Trip, 'id'>;
+      const serverTrip: Trip = { id: snap.id, ...data };
+      const serverRevision = tripRevision(serverTrip);
+      const message = settingsWriteError(
+        settings,
+        serverTrip.participants.map((person) => person.id),
+        baseline,
+        serverRevision,
+        overwriteRevision,
+      );
+      if (message) throw new Error(message);
 
-  const updateDefaultSplit = async (split: DefaultSplit) => {
-    if (!trip) throw new Error('No trip loaded');
-    await setDoc(
-      tripDoc(trip.id),
-      { defaultSplit: split, updatedAt: serverTimestamp() },
-      { merge: true }
-    );
+      // One transactional update replaces each map. setDoc merge would retain
+      // removed percentages through deep merging.
+      tx.update(ref, {
+        spendCaps: settings.spendCaps,
+        overageSplit: settings.overageSplit,
+        defaultSplit: settings.defaultSplit,
+        updatedAt: serverTimestamp(),
+      });
+    });
   };
 
   const value: TripContextValue = {
@@ -399,9 +416,7 @@ export const TripProvider = ({
     deleteExpense,
     addPayment,
     deletePayment,
-    updateSpendCaps,
-    updateOverageSplit,
-    updateDefaultSplit,
+    updateTripSettings,
   };
 
   return <TripContext.Provider value={value}>{children}</TripContext.Provider>;

@@ -86,19 +86,19 @@ describe('payment dialog prefill and overpay advice', () => {
 
   it('warns above either side of the balance, using cents without blocking validation', () => {
     expect(paymentOverpayWarnings('kait', 'james', 25000, ledger.remaining, participants)).toEqual([
-      'Kait owes $200.00; this records $250.00.',
+      'Kait owes $200.00 in total; this records $250.00.',
     ]);
     expect(validatePayment({ payerId: 'kait', payeeId: 'james', amount: '250' }, ledger.travelerIds).errors).toEqual([]);
     expect(paymentOverpayWarnings('bob', 'james', 15001, { bob: 20000, james: -15000 }, participants)).toEqual([
-      'James is owed $150.00; this records $150.01.',
+      'James is owed $150.00 in total; this records $150.01.',
     ]);
   });
 
   it('does not warn at or below balances, but warns when paying in the opposite direction', () => {
     expect(paymentOverpayWarnings('kait', 'james', 20000, ledger.remaining, participants)).toEqual([]);
     expect(paymentOverpayWarnings('james', 'kait', 1, ledger.remaining, participants)).toEqual([
-      'James owes $0.00; this records $0.01.',
-      'Kait is owed $0.00; this records $0.01.',
+      'James owes $0.00 in total; this records $0.01.',
+      'Kait is owed $0.00 in total; this records $0.01.',
     ]);
   });
 
