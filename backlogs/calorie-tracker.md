@@ -44,7 +44,7 @@ Baseline: `main` `4dd9b927ec993d7e26c1d97d833a07b9f222efab`, inspected 2026-11-0
 ### #59: Define the contract and comprehensive research queue
 
 - [p] **Record the requested workflow and population plan.** Depends: none.
-  > in progress: validating catalog identities, links, compatibility, and the planning PR.
+  > pushed: workflow contract, 1,114-entry research queue, and population plan prepared; checks: JSON/IDs/enums/links/dispatch, diff check, and independent review pass; commit: 7f1900a; PR: #179. Runtime implementation and population remain #60-#68.
   - **Surfaces:** this backlog, routing, nutrition docs/catalog, concise tool-documentation links.
   - **Accept:** expanded nutrient meanings, standard/custom fiber, source/quality model, versioned reuse, constrained quantities, missing-data choices, history, and AI boundary are explicit. Catalog covers broad food families, preparation variants, common components, and additives. All entries start queued without fabricated nutrition. Population has bounded repeatable jobs and an executable selection rule.
   - **Checks:** docs/data-only checks and independent review. **Migration/deploy:** none. The installed chat skill is a separate instruction update, not site implementation.
