@@ -12,9 +12,10 @@ Backlogs live under `backlogs/`. Use `backlogs/AGENTS.md` to create and maintain
 
 ## Active feature backlogs — default order
 
-1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. P0 and P5-M1 are user-assisted, non-blocking checks; P1–P5 implementation is merged; P6/P7 require explicit approval.
+1. `backlogs/recipe-standardizer.md` — Recipe Standardizer → Nutrition Tracker rollout. P0 and P5-M1 are user-assisted, non-blocking checks; P1–P5 implementation is merged; P6 remains optional. Nutrition enrichment formerly scoped as P7 now routes to CalorieTracker #67.
+2. `backlogs/calorie-tracker.md`: ingredient-based nutrition, expanded nutrient detail, comprehensive ingredient research/population, and database-first recipe estimates (#59-#68). Start with the first dependency-ready item after reconciling #59. This follows the existing recipe rollout without displacing it.
 
-`backlogs/trip-cost.md` and `backlogs/calorie-tracker.md` currently have no actionable items and are dormant until new work is added.
+`backlogs/trip-cost.md` has no actionable items and remains dormant until new work is added.
 
 ## Active remediation backlog
 
