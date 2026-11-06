@@ -5,14 +5,16 @@
  */
 
 import { state, parseQty } from '../state/store.js';
-import { allNutrients } from '../constants.js';
 import { showMessage, handleError, formatNutrientName, escapeHtml, flashSaveConfirmation } from '../utils/ui.js';
 import { showConfirmationModal, closeDuplicateDialog } from '../ui/modals.js';
 import { db } from '../services/firebase.js';
 import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { appId } from '../config.js';
-import { getStagedValues } from '../staging/parser.js';
+import { getStagedRecord } from '../staging/parser.js';
 import { selectFoodItem } from './manager.js';
+import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
+import { LEGACY_V1_KEYS, getNutrient } from '../../shared/nutrition/nutrientRegistry.js';
+import { NewerSchemaError, assessFoodSave, buildFoodWrite, readFoodNutrients, targetsFromStagedRecord, v1StorageNotice } from '../nutrition/nutrientRecord.js';
 
 const SAVE_CONFIG = {
   SUCCESS_MESSAGE_DURATION: 3000,
@@ -25,58 +27,78 @@ const SAVE_CONFIG = {
 export async function saveFoodItemToDatabase() {
   const foodNameInput = document.getElementById('food-item-input');
   let foodName = foodNameInput.value.trim();
-  const stagedValues = getStagedValues();
-
-  if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
-    console.log('🍽️ [FOOD-SAVE] Starting save process:', { foodName, stagedValues });
-  }
-
-  // Handle blank food name
-  if (!foodName) {
-    handleBlankName(stagedValues);
+  const record = getStagedRecord();
+  if (record.conflicts.length) {
+    showMessage('Resolve conflicting nutrient values before saving.', true);
     return;
   }
 
-  // Handle existing food item (check for duplicates)
+  if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
+    console.log('🍽️ [FOOD-SAVE] Starting save process:', { foodName, record });
+  }
+
+  if (!foodName) {
+    handleBlankName(record);
+    return;
+  }
+
   const existingFood = Array.from(state.savedFoodItems.values()).find(f => f.name.toLowerCase() === foodName.toLowerCase());
   if (existingFood) {
-    const hasDifferences = allNutrients.some(n => parseFloat(existingFood[n] || 0) !== parseFloat(stagedValues[n] || 0));
-    if (hasDifferences) {
-      showDuplicateDialog(existingFood, stagedValues, foodName);
+    const assessment = assessFoodSave(existingFood, record, resolveNutrientWriteVersion());
+    if (assessment.newerSchema) {
+      showMessage('This food was saved by a newer version — reload.', true);
+      return;
+    }
+    if (!assessment.identical) {
+      showDuplicateDialog(existingFood, record, foodName);
       return;
     }
     showMessage(`Food item "${foodName}" already exists with identical values. Ready to add to today's log!`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
     return;
   }
 
-  // Process new food item
-  await processSaveFoodItem(foodName, stagedValues);
+  await processSaveFoodItem(foodName, record);
 }
 
 /**
  * Persist a new food item to Firestore and update local state.
  * The staging area is intentionally not cleared so the user can add to today's log immediately.
  */
-async function processSaveFoodItem(foodName, stagedValues) {
+async function processSaveFoodItem(foodName, record) {
   if (!state.userId) return showMessage('Cannot save food item. Not authenticated.', true);
 
   try {
-    // Generate a consistent ID from the food name
     const foodId = foodName.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const quantity = parseQty(document.getElementById('actual-quantity')?.value);
-    const foodData = { name: foodName, quantity, ...stagedValues, lastUpdated: new Date().toISOString() };
+    const existingFood = state.savedFoodItems.get(foodId);
+    const built = buildFoodWrite(record, {
+      writeVersion: resolveNutrientWriteVersion(),
+      existingDoc: existingFood,
+      name: foodName,
+      quantity,
+      lastUpdated: new Date().toISOString(),
+    });
+    const foodData = built.doc;
 
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
-    state.savedFoodItems.set(foodId, foodData); // Update local state
+    state.savedFoodItems.set(foodId, foodData);
 
     if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
       console.log('✅ [FOOD-SAVE] Successfully saved:', { foodId, foodData });
     }
 
-    showMessage(`✅ "${foodName}" saved to database! Ready to add to today's log.`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
+    const notice = resolveNutrientWriteVersion() === 1 ? v1StorageNotice(built) : '';
+    const message = notice
+      ? `✅ "${foodName}" saved to database! ${notice}`
+      : `✅ "${foodName}" saved to database! Ready to add to today's log.`;
+    showMessage(message, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
     flashSaveConfirmation(document.getElementById('save-food-item-btn'));
     
   } catch (e) {
+    if (e instanceof NewerSchemaError || e?.name === 'NewerSchemaError') {
+      showMessage('This food was saved by a newer version — reload.', true);
+      return;
+    }
     handleError('save-food-item', e, 'Failed to save food item');
     
     if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
@@ -88,7 +110,7 @@ async function processSaveFoodItem(foodName, stagedValues) {
 /**
  * Prompt the user for a name when the food item input is blank.
  */
-function handleBlankName(stagedValues) {
+function handleBlankName(record) {
   const modal = state.dom.blankFoodNameModal;
   modal.classList.remove('hidden');
   document.getElementById('blank-food-name-input').value = '';
@@ -98,7 +120,7 @@ function handleBlankName(stagedValues) {
   // Event Listeners for the Blank Name Modal
   document.getElementById('confirm-blank-name-btn').onclick = async () => {
     modal.classList.add('hidden');
-    await processSaveFoodItem('(blank)', stagedValues);
+    await processSaveFoodItem('(blank)', record);
   };
   
   document.getElementById('enter-name-btn').onclick = () => {
@@ -111,7 +133,7 @@ function handleBlankName(stagedValues) {
     const newName = document.getElementById('blank-food-name-input').value.trim();
     if (newName) {
       modal.classList.add('hidden');
-      await processSaveFoodItem(newName, stagedValues);
+      await processSaveFoodItem(newName, record);
     } else {
       showMessage('Please enter a name or choose to save as (blank).', true);
     }
@@ -126,16 +148,27 @@ function handleBlankName(stagedValues) {
 /**
  * Show a diff dialog when the staged values differ from an existing saved food.
  */
-function showDuplicateDialog(existingFood, newValues, foodName) {
+function showDuplicateDialog(existingFood, record, foodName) {
   const modal = state.dom.duplicateFoodModal;
   const container = document.getElementById('duplicate-comparison');
   const diffs = [];
-  
-  allNutrients.forEach(n => {
-    const e = parseFloat(existingFood[n] || 0);
-    const nv = parseFloat(newValues[n] || 0);
-    if (e !== nv) {
-      diffs.push({ nutrient: formatNutrientName(n), existing: e, new: nv, delta: nv - e });
+  const existing = readFoodNutrients(existingFood);
+  const version = resolveNutrientWriteVersion();
+  const keys = version === 2 ? Object.keys(record.values) : LEGACY_V1_KEYS;
+  const projected = version === 2 ? null : targetsFromStagedRecord(record);
+
+  keys.forEach(n => {
+    const existingValue = version === 2 ? (existing.values[n] ?? null) : (typeof existing.values[n] === 'number' ? existing.values[n] : 0);
+    const stagedValue = version === 2 ? (record.values[n] ?? null) : projected[n];
+    if (existingValue !== stagedValue) {
+      const existingNumber = typeof existingValue === 'number' ? existingValue : 0;
+      const stagedNumber = typeof stagedValue === 'number' ? stagedValue : 0;
+      diffs.push({
+        nutrient: getNutrient(n)?.label || formatNutrientName(n),
+        existing: existingNumber,
+        new: stagedNumber,
+        delta: stagedNumber - existingNumber,
+      });
     }
   });
 
@@ -179,7 +212,7 @@ function showDuplicateDialog(existingFood, newValues, foodName) {
   };
   
   document.getElementById('dup-replace').onclick = async () => {
-    await processSaveFoodItem(foodName, newValues); // Overwrite the saved version
+    await processSaveFoodItem(foodName, record);
     closeDuplicateDialog();
   };
   

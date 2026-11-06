@@ -7,10 +7,12 @@ import { state } from '../state/store.js';
 import { formatDate } from '../utils/time.js';
 import { showMessage, handleError } from '../utils/ui.js';
 import { fetchTargets, fetchAllEntries, db } from '../services/firebase.js';
-import { allNutrients, NUTRIENT_MAX_BOUNDS } from '../constants.js';
+import { allNutrients } from '../constants.js';
 import { appId } from '../config.js';
-import { parseQty } from '../state/store.js';
 import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
+import { formatSavedFoodsCsv, parseSavedFoodsCsv } from './csvFormat.js';
+import { NewerSchemaError, buildFoodWrite } from '../nutrition/nutrientRecord.js';
 
 /**
  * Exports the user's baseline targets as a JSON file.
@@ -43,20 +45,7 @@ export async function exportSavedFoodsCsv() {
     const foods = Array.from(state.savedFoodItems.values());
     if (!foods.length) return showMessage('No saved food items to export.', true);
 
-    // Define headers, including all possible nutrients.
-    const headers = ['name', 'quantity', 'lastUpdated', ...allNutrients];
-    let csv = headers.map(h => `"${h}"`).join(',') + '\n';
-
-    // Create a row for each food item.
-    foods.forEach(f => {
-      const row = headers.map(h => {
-        let v = f[h] ?? '';
-        // Properly escape quotes within string values.
-        if (typeof v === 'string') v = `"${v.replace(/"/g, '""')}"`;
-        return v;
-      }).join(',');
-      csv += row + '\n';
-    });
+    const csv = formatSavedFoodsCsv(foods, resolveNutrientWriteVersion());
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -161,103 +150,63 @@ export async function exportDailyLogCsv() {
   showMessage('Daily log export complete!', false);
 }
 
-function parseCsvRow(line) {
-  const cells = [];
-  let cur = '';
-  let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (inQuotes) {
-      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-      else if (ch === '"') { inQuotes = false; }
-      else { cur += ch; }
-    } else {
-      if (ch === '"') { inQuotes = true; }
-      else if (ch === ',') { cells.push(cur); cur = ''; }
-      else { cur += ch; }
-    }
-  }
-  cells.push(cur);
-  return cells;
-}
-
-function clampNutrientSilent(nutrient, raw) {
-  if (Number.isNaN(raw) || raw < 0) return 0;
-  const max = NUTRIENT_MAX_BOUNDS[nutrient];
-  return (max != null && raw > max) ? max : raw;
-}
-
-function normalizeHeader(h) {
-  return h.replace(/^﻿/, '').trim().replace(/\s+/g, '').toLowerCase();
-}
-
 export async function importSavedFoodsCsv(file) {
   if (!state.userId) return showMessage('Cannot import foods. Not authenticated.', true);
   if (!file) return;
 
-  let text = await file.text();
-  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
-
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return showMessage('CSV file is empty or has no data rows.', true);
-
-  const rawHeaders = parseCsvRow(lines[0]);
-  const normalizedHeaders = rawHeaders.map(normalizeHeader);
-
-  const nutrientSet = new Set(allNutrients);
-  const canonicalMap = new Map();
-  allNutrients.forEach(n => canonicalMap.set(n.toLowerCase(), n));
-  canonicalMap.set('quantity', 'quantity');
-
-  const nameIdx = normalizedHeaders.indexOf('name');
-  if (nameIdx < 0) return showMessage('CSV must have a "name" column.', true);
-
-  const columnMap = normalizedHeaders.map((nh) => {
-    if (nh === 'name' || nh === 'lastupdated') return nh;
-    return canonicalMap.get(nh) || null;
-  });
-
-  const qtyColIdx = columnMap.indexOf('quantity');
+  const text = await file.text();
+  if (!String(text).replace(/^\uFEFF/, '').trim()) return showMessage('CSV file is empty or has no data rows.', true);
+  const writeVersion = resolveNutrientWriteVersion();
+  const parsed = parseSavedFoodsCsv(text, writeVersion);
+  if (parsed.missingName) return showMessage('CSV must have a "name" column.', true);
+  if (parsed.rows.length === 0) return showMessage('CSV file is empty or has no data rows.', true);
 
   let imported = 0;
   let skipped = 0;
   let clamped = 0;
+  let newer = 0;
 
-  for (let i = 1; i < lines.length; i++) {
-    const cells = parseCsvRow(lines[i]);
-    const name = (cells[nameIdx] || '').trim();
-    if (!name) { skipped++; continue; }
-
-    const foodData = { name, lastUpdated: new Date().toISOString() };
-
-    if (qtyColIdx >= 0) {
-      foodData.quantity = parseQty(cells[qtyColIdx]);
-    } else {
-      foodData.quantity = 0;
+  for (const row of parsed.rows) {
+    const existing = Array.from(state.savedFoodItems.values()).find((food) => food.name?.toLowerCase() === row.name.toLowerCase());
+    const lastUpdated = new Date().toISOString();
+    let foodData;
+    try {
+      if (writeVersion === 2) {
+        foodData = buildFoodWrite(row.record, {
+          writeVersion,
+          existingDoc: existing,
+          name: row.name,
+          quantity: row.quantity,
+          lastUpdated,
+        }).doc;
+      } else if (Number(existing?.nutrientSchemaVersion) >= 2) {
+        throw new NewerSchemaError();
+      } else {
+        foodData = { name: row.name, quantity: row.quantity, ...row.fields, lastUpdated };
+      }
+    } catch (error) {
+      if (error instanceof NewerSchemaError || error?.name === 'NewerSchemaError') {
+        newer += 1;
+        skipped += 1;
+        continue;
+      }
+      throw error;
     }
-
-    columnMap.forEach((canonical, idx) => {
-      if (!canonical || canonical === 'name' || canonical === 'lastupdated' || canonical === 'quantity') return;
-      if (!nutrientSet.has(canonical)) return;
-      const raw = parseFloat(cells[idx]);
-      if (isNaN(raw)) return;
-      const val = clampNutrientSilent(canonical, raw);
-      if (val !== raw) clamped++;
-      foodData[canonical] = val;
-    });
-
-    const foodId = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    clamped += row.clamped || 0;
+    const foodId = row.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
     try {
       await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
       state.savedFoodItems.set(foodId, foodData);
       imported++;
-    } catch (e) {
-      handleError('import-food-row', e, `Failed to import "${name}"`);
+    } catch (error) {
+      handleError('import-food-row', error, `Failed to import "${row.name}"`);
       skipped++;
     }
   }
 
   let msg = `Import complete: ${imported} food(s) imported, ${skipped} skipped.`;
   if (clamped > 0) msg += ` ${clamped} value(s) clamped to bounds.`;
+  if (newer > 0) msg += ` ${newer} skipped because they were saved by a newer version — reload.`;
+  if (parsed.unknownHeaders.length) msg += ` Unknown headers: ${parsed.unknownHeaders.join(', ')}.`;
   showMessage(msg);
 }

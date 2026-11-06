@@ -3,119 +3,168 @@
  * @description Handles parsing nutrient text and managing the staging area actions.
  */
 
-import { nutrientMap, allNutrients, SCHEMA_VERSIONS } from '../constants.js';
-import { showMessage, formatNutrientName, clampNutrient, flushPendingUndo, flashSaveConfirmation } from '../utils/ui.js';
+import { allNutrients, SCHEMA_VERSIONS } from '../constants.js';
+import { showMessage, flushPendingUndo, flashSaveConfirmation } from '../utils/ui.js';
 import { state, parseQty } from '../state/store.js';
 import { saveDailyEntry, saveTargets } from '../services/firebase.js';
 import { clearStagingArea, updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
+import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
+import { LEGACY_V1_KEYS, V2_KEYS, getNutrient } from '../../shared/nutrition/nutrientRegistry.js';
+import { parseNutritionText } from '../../shared/nutrition/nutrientText.js';
+import {
+  applyLegacyInputOverlay,
+  buildFoodWrite,
+  targetsFromStagedRecord,
+  v1StorageNotice,
+} from '../nutrition/nutrientRecord.js';
+import { renderNutrientDetail, setNutrientConflictsBlocked } from '../ui/nutrientDetail.js';
 
-// Configuration
 const PARSER_CONFIG = {
   DEFAULT_QUANTITY: 1
 };
+
+const WARN_MAX_SHOWN = 10;
 
 function getStagedQuantity() {
   return parseQty(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
 }
 
+function writeVersion() {
+  return resolveNutrientWriteVersion();
+}
+
+function renderParseFeedback(record) {
+  const warningEl = document.getElementById('parse-missing-warning');
+  if (!warningEl) return;
+  warningEl.replaceChildren();
+  const blocked = record.conflicts.length > 0;
+  setNutrientConflictsBlocked(blocked);
+
+  const lines = [];
+  if (record.unknownLabels.length) lines.push(`Unknown labels: ${record.unknownLabels.join(', ')}.`);
+  for (const warning of record.warnings) {
+    if (warning.level === 'review' && warning.code !== 'unknown_label') lines.push(warning.message);
+  }
+  const absent = LEGACY_V1_KEYS.filter((key) => record.values[key] == null && !record.conflicts.some((conflict) => conflict.key === key));
+  if (absent.length > 0) {
+    const shown = absent.slice(0, WARN_MAX_SHOWN).map((key) => getNutrient(key)?.label || key).join(', ');
+    const overflow = absent.length - WARN_MAX_SHOWN;
+    const suffix = overflow > 0 ? ` (+ ${overflow} more)` : '';
+    lines.push(`No value detected for: ${shown}${suffix}. Review parsed nutrients before adding if this looks wrong.`);
+  }
+
+  if (lines.length === 0 && !blocked) {
+    warningEl.classList.add('hidden');
+    return;
+  }
+  for (const line of lines) {
+    const paragraph = document.createElement('p');
+    paragraph.textContent = line;
+    warningEl.appendChild(paragraph);
+  }
+  if (blocked) {
+    const note = document.createElement('p');
+    note.textContent = 'Conflicting values need a choice before Add, Save, or Replace.';
+    warningEl.appendChild(note);
+    for (const conflict of record.conflicts) {
+      const row = document.createElement('div');
+      const label = document.createElement('span');
+      label.textContent = `${getNutrient(conflict.key)?.label || conflict.key}: `;
+      row.appendChild(label);
+      for (const value of conflict.values) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = value == null ? 'unknown' : String(value);
+        button.addEventListener('click', () => {
+          record.values[conflict.key] = value;
+          record.conflicts = record.conflicts.filter((item) => item.key !== conflict.key);
+          record.quality[conflict.key] = value == null ? { status: 'unknown' } : { status: 'label_reported' };
+          const input = document.getElementById(`actual-${conflict.key}`);
+          if (input) input.value = value == null ? '' : String(value);
+          state.stagedRecord = record;
+          renderParseFeedback(record);
+          renderNutrientDetail(document.getElementById('nutrient-detail-staging'), record);
+        });
+        row.appendChild(button);
+      }
+      warningEl.appendChild(row);
+    }
+  }
+  warningEl.classList.remove('hidden');
+}
+
+function countParsed(record) {
+  return V2_KEYS.filter((key) => {
+    const value = record.values[key];
+    return (typeof value === 'number' && Number.isFinite(value)) || record.quality[key]?.upperBound != null;
+  }).length;
+}
+
 /**
  * Parses text from the paste area and populates the staging input fields.
- * It uses a map of synonyms to identify nutrient names.
  */
-const WARN_MAX_SHOWN = 10;
-
 export function parseAndStage() {
   const text = document.getElementById('paste-area').value;
   const warningEl = document.getElementById('parse-missing-warning');
 
   if (!text) {
-    if (warningEl) { warningEl.textContent = ''; warningEl.removeAttribute('title'); warningEl.classList.add('hidden'); }
+    if (warningEl) {
+      warningEl.replaceChildren();
+      warningEl.classList.add('hidden');
+    }
     return showMessage('Paste area is empty.', true);
   }
 
-  // Clear stale nutrient values so fields absent from the new text don't linger.
-  // actual-quantity is intentionally preserved (user sets serving size separately).
   allNutrients.forEach(n => {
     const input = document.getElementById(`actual-${n}`);
     if (input) input.value = '';
   });
 
-  const lines = text.split('\n');
-  let valuesFound = 0;
-  const parsed = new Set();
-
-  lines.forEach(line => {
-    const lowerLine = line.toLowerCase();
-    for (const key in nutrientMap) {
-      // Use a regex with word boundaries to avoid partial matches (e.g., 'fat' in 'fat-soluble').
-      const re = new RegExp(`\\b${key}\\b`, 'i');
-      if (re.test(lowerLine)) {
-        // Extract the number from the line.
-        let numberString = lowerLine.replace(re, '').replace(/(mg|mcg|g|kcal)/gi, '').replace(/,/g, '');
-        const match = numberString.match(/-?[\d.]+/);
-        if (match) {
-          const nutrientKey = nutrientMap[key];
-          const element = document.getElementById(`actual-${nutrientKey}`);
-          if (element) {
-            element.value = parseFloat(match[0]);
-            valuesFound++;
-            parsed.add(nutrientKey); // includes explicit zeros — they are present, not missing
-          }
-          break; // Move to the next line once a nutrient is found on this one.
-        }
-      }
-    }
-  });
-
-  // Show a compact warning for nutrients absent from the pasted text.
-  if (warningEl) {
-    const absent = allNutrients.filter(n => !parsed.has(n));
-    if (absent.length > 0) {
-      const shown = absent.slice(0, WARN_MAX_SHOWN).map(formatNutrientName).join(', ');
-      const overflow = absent.length - WARN_MAX_SHOWN;
-      const suffix = overflow > 0 ? ` (+ ${overflow} more)` : '';
-      warningEl.textContent =
-        `No value detected for: ${shown}${suffix}. Review parsed nutrients before adding if this looks wrong.`;
-      if (overflow > 0) {
-        warningEl.title = `All missing: ${absent.map(formatNutrientName).join(', ')}`;
-      } else {
-        warningEl.removeAttribute('title');
-      }
-      warningEl.classList.remove('hidden');
-    } else {
-      warningEl.textContent = '';
-      warningEl.removeAttribute('title');
-      warningEl.classList.add('hidden');
-    }
+  const record = parseNutritionText(text);
+  state.stagedRecord = record;
+  for (const key of LEGACY_V1_KEYS) {
+    const input = document.getElementById(`actual-${key}`);
+    if (!input) continue;
+    const value = record.values[key];
+    input.value = value == null ? '' : String(value);
   }
+  renderParseFeedback(record);
+  renderNutrientDetail(document.getElementById('nutrient-detail-staging'), record);
 
-  if (valuesFound > 0) {
-    showMessage(`Parsed and staged ${valuesFound} fields.`);
-  } else {
-    showMessage('Could not find any recognizable nutrient values.', true);
+  const valuesFound = countParsed(record);
+  if (valuesFound > 0) showMessage(`Parsed and staged ${valuesFound} fields.`);
+  else showMessage('Could not find any recognizable nutrient values.', true);
+}
+
+/** Full staged record. Blank inputs stay null. Manual edits overlay the 24 legacy fields. */
+export function getStagedRecord() {
+  const inputs = {};
+  for (const key of LEGACY_V1_KEYS) {
+    const input = document.getElementById(`actual-${key}`);
+    if (input) inputs[key] = input.value;
   }
+  const record = applyLegacyInputOverlay(state.stagedRecord, inputs);
+  state.stagedRecord = record;
+  return record;
 }
 
 /**
  * Gathers all values currently in the staging area input fields.
- * @returns {object} An object with nutrient keys and their numeric values.
+ * @returns {object} Legacy keys mapped to clamped numbers. Nulls become 0.
  */
 export function getStagedValues() {
-  const vals = {};
-  allNutrients.forEach(n => {
-    const input = document.getElementById(`actual-${n}`);
-    if (input) vals[n] = clampNutrient(n, parseFloat(input.value) || 0);
-  });
-  return vals;
+  return targetsFromStagedRecord(getStagedRecord());
 }
 
-/**
- * Checks whether a food item with the same name and calorie value already
- * exists in today's log.  Returns the duplicate if found, otherwise null.
- */
+function blockedByConflicts(record) {
+  if (!record?.conflicts?.length) return false;
+  showMessage('Resolve conflicting nutrient values before continuing.', true);
+  return true;
+}
+
 function findDailyDuplicate(name, calories) {
   const lowerName = name.toLowerCase();
   return state.dailyFoodItems.find(
@@ -124,22 +173,50 @@ function findDailyDuplicate(name, calories) {
   ) || null;
 }
 
-/**
- * Core add-to-log logic, extracted so the duplicate confirmation can call it.
- */
-async function commitStagedToLog(staged, qty, foodName) {
+function applyLegacyDelta(entry, fields, qty, sign) {
+  for (const key of LEGACY_V1_KEYS) {
+    const amount = typeof fields[key] === 'number' && Number.isFinite(fields[key]) ? fields[key] : 0;
+    const next = (parseFloat(entry[key]) || 0) + sign * qty * amount;
+    entry[key] = sign < 0 ? Math.max(0, next) : next;
+  }
+}
+
+function foodFields(record, foodName, qty) {
+  return buildFoodWrite(record, {
+    writeVersion: writeVersion(),
+    name: foodName,
+    quantity: qty,
+    lastUpdated: new Date().toISOString(),
+  });
+}
+
+function dayItemFromFields(fields, foodName, qty) {
+  const item = {
+    id: crypto.randomUUID(),
+    name: foodName,
+    quantity: qty,
+    timestamp: new Date().toISOString(),
+    ...fields,
+  };
+  if (writeVersion() === 2) {
+    item.nutrientSchemaVersion = 2;
+  }
+  return item;
+}
+
+async function commitStagedToLog(record, qty, foodName) {
   flushPendingUndo();
 
   const dateStr = state.dom.dateInput.value;
   const todayEntry = getCurrentDailyEntry();
+  const built = foodFields(record, foodName, qty);
+  applyLegacyDelta(todayEntry, built.fields, qty, 1);
 
-  allNutrients.forEach(n => todayEntry[n] = (parseFloat(todayEntry[n]) || 0) + (qty * (staged[n] || 0)));
-
-  const foodItem = { id: crypto.randomUUID(), name: foodName, quantity: qty, timestamp: new Date().toISOString(), ...staged };
-  state.dailyFoodItems.push(foodItem);
+  state.dailyFoodItems.push(dayItemFromFields(built.fields, foodName, qty));
 
   await saveDailyEntry(dateStr, todayEntry);
-  showMessage("Staged nutrients added to today's log!");
+  const notice = writeVersion() === 1 ? v1StorageNotice(built) : '';
+  showMessage(notice ? `Staged nutrients added to today's log! ${notice}` : "Staged nutrients added to today's log!");
   flashSaveConfirmation(document.getElementById('add-day-btn'));
   clearStagingArea();
 
@@ -148,12 +225,10 @@ async function commitStagedToLog(staged, qty, foodName) {
   updateFoodItemsList();
 }
 
-/**
- * Adds the staged nutrient values to the current day's log.
- * Prompts for confirmation when a duplicate name+calories entry already exists.
- */
 export async function addStagedNutrientsToDailyLog() {
-  const staged = getStagedValues();
+  const record = getStagedRecord();
+  if (blockedByConflicts(record)) return;
+  const staged = targetsFromStagedRecord(record);
   const qty = getStagedQuantity();
   const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Entry)';
 
@@ -163,60 +238,51 @@ export async function addStagedNutrientsToDailyLog() {
     const dupCals = Math.round(dupQty * (parseFloat(dup.calories) || 0));
     showConfirmationModal(
       `"${foodName}" (${dupCals} cal) is already in today's log. Add it again?`,
-      () => commitStagedToLog(staged, qty, foodName)
+      () => commitStagedToLog(record, qty, foodName)
     );
     return;
   }
 
-  await commitStagedToLog(staged, qty, foodName);
+  await commitStagedToLog(record, qty, foodName);
 }
 
-/**
- * Subtracts the staged nutrient values from the current day's log.
- */
 export async function subtractStagedNutrientsFromDailyLog() {
   flushPendingUndo();
+  const record = getStagedRecord();
+  if (blockedByConflicts(record)) return;
 
-  const staged = getStagedValues();
   const dateStr = state.dom.dateInput.value;
-  // getCurrentDailyEntry always returns a v2-shaped entry (creates one if needed).
   const todayEntry = getCurrentDailyEntry();
   const qty = getStagedQuantity();
+  const built = foodFields(record, 'subtract', qty);
+  applyLegacyDelta(todayEntry, built.fields, qty, -1);
 
-  // Subtract staged values, ensuring totals don't go below zero.
-  allNutrients.forEach(n => todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - (qty * (staged[n] || 0))));
-
-  // Create a food item record for this subtraction with negative per-unit values.
-  // qty must NOT be pre-applied here — every downstream reader (display, recalc,
-  // remove, quantity edit) multiplies quantity × item[n] itself.
-  const negativeStaged = Object.fromEntries(Object.entries(staged).map(([k, v]) => [k, -(v || 0)]));
+  const negative = {};
+  for (const [key, value] of Object.entries(built.fields)) {
+    negative[key] = typeof value === 'number' ? -value : value;
+  }
   const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Subtraction)';
-  const foodItem = { id: crypto.randomUUID(), name: `${foodName} (subtracted)`, quantity: qty, timestamp: new Date().toISOString(), ...negativeStaged };
-  state.dailyFoodItems.push(foodItem);
+  state.dailyFoodItems.push(dayItemFromFields(negative, `${foodName} (subtracted)`, qty));
 
   await saveDailyEntry(dateStr, todayEntry);
   showMessage("Staged nutrients subtracted from today's log!");
   clearStagingArea();
 
-  // Refresh UI.
   updateDashboard();
   updateChart();
   updateFoodItemsList();
 }
 
-/**
- * Handles actions that use the staging area values, like replacing a day's log or updating baseline targets.
- * @param {string} mode - The action to perform ('replace' or 'updateTargets').
- */
 export function handleStagingAction(mode) {
-  const staged = getStagedValues();
+  const record = getStagedRecord();
+  if (blockedByConflicts(record)) return;
+  const staged = targetsFromStagedRecord(record);
   const dateStr = state.dom.dateInput.value;
 
   if (mode === 'updateTargets') {
     showConfirmationModal('Update your baseline targets with these staged values?', async () => {
       await saveTargets(staged);
       showMessage('Targets saved successfully!');
-      // Refresh UI after updating targets.
       updateDashboard();
       updateChart();
     });
@@ -228,7 +294,7 @@ export function handleStagingAction(mode) {
       flushPendingUndo();
 
       const qty = getStagedQuantity();
-      // Start with v2 defaults so the replaced entry retains schema compliance.
+      const built = foodFields(record, 'replace', qty);
       const newEntry = {
         date: dateStr,
         schemaVersion: SCHEMA_VERSIONS.ENTRY,
@@ -240,17 +306,19 @@ export function handleStagingAction(mode) {
         calorieAdjustmentItems: [],
         estimateMeta: null,
       };
-      allNutrients.forEach(n => newEntry[n] = qty * (staged[n] || 0));
+      for (const key of LEGACY_V1_KEYS) {
+        const amount = typeof built.fields[key] === 'number' ? built.fields[key] : 0;
+        newEntry[key] = qty * amount;
+      }
 
-      // Create a single food item record representing the entire day's replacement.
       const foodName = document.getElementById('food-item-input')?.value.trim() || '(Replaced Day)';
-      state.dailyFoodItems = [{ id: crypto.randomUUID(), name: foodName, quantity: qty, timestamp: new Date().toISOString(), ...staged }];
+      state.dailyFoodItems = [dayItemFromFields(built.fields, foodName, qty)];
 
       await saveDailyEntry(dateStr, newEntry);
-      showMessage("Day's log replaced with staged values!");
+      const notice = writeVersion() === 1 ? v1StorageNotice(built) : '';
+      showMessage(notice ? `Day's log replaced with staged values! ${notice}` : "Day's log replaced with staged values!");
       clearStagingArea();
 
-      // Refresh UI.
       updateDashboard();
       updateChart();
       updateFoodItemsList();

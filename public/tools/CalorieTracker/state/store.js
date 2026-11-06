@@ -70,6 +70,9 @@ export const state = {
     customCalories: new Map(),
   },
 
+  // Full nutrient staged record (null until a paste or saved food is loaded).
+  stagedRecord: null,
+
   // An object to cache frequently accessed DOM elements.
   dom: {},
 };

@@ -10,6 +10,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { projectToV1 } from '../../../shared/nutrition/nutrientRegistry.js';
+import { parseNutritionText } from '../../../shared/nutrition/nutrientText.js';
+import { applyLegacyInputOverlay } from '../nutrition/nutrientRecord.js';
 
 // ---------------------------------------------------------------------------
 // Mirror the pure construction formulas from parser.js so the test
@@ -164,5 +167,24 @@ describe('add and subtract are symmetric at same qty', () => {
     for (const n of ['calories', 'protein', 'carbs', 'fat']) {
       expect(effectiveTotal(addItem, n) + effectiveTotal(subItem, n)).toBe(0);
     }
+  });
+});
+
+describe('staged record projection', () => {
+  it('staged record keeps blanks null; v1 projection zero-fills for existing callers', () => {
+    const record = parseNutritionText('Protein: 10 g');
+    expect(record.values.protein).toBe(10);
+    expect(record.values.calories).toBeNull();
+    const overlaid = applyLegacyInputOverlay(record, { protein: '', fat: '2' });
+    expect(overlaid.values.protein).toBeNull();
+    expect(overlaid.values.fat).toBe(2);
+    expect(overlaid.values.calories).toBeNull();
+    const projected = projectToV1(overlaid);
+    expect(projected.fields.protein).toBe(0);
+    expect(projected.fields.fat).toBe(2);
+    expect(projected.fields.calories).toBe(0);
+    expect(projected.zeroFilled).toContain('protein');
+    expect(projected.zeroFilled).toContain('calories');
+    expect(projected.zeroFilled).not.toContain('fat');
   });
 });

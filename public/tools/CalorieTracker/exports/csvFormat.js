@@ -1,0 +1,183 @@
+/**
+ * Pure saved-food CSV. Version 1 keeps today's columns and omits empty cells.
+ * Version 2 appends detail keys and a nutrientMeta JSON column.
+ */
+import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
+import {
+  LEGACY_V1_KEYS,
+  V2_DETAIL_KEYS,
+  V2_KEYS,
+  emptyStagedRecord,
+  getNutrient,
+  lookupLabel,
+} from '../../shared/nutrition/nutrientRegistry.js';
+
+const LEGACY_HEADERS = ['name', 'quantity', 'lastUpdated', ...LEGACY_V1_KEYS];
+
+function quoteString(value) {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+export function parseCsvRow(line) {
+  const cells = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQuotes = false;
+      else cur += ch;
+    } else if (ch === '"') inQuotes = true;
+    else if (ch === ',') { cells.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  cells.push(cur);
+  return cells;
+}
+
+function compact(value) {
+  return String(value ?? '').replace(/^\uFEFF/, '').trim().replace(/\s+/g, '').toLowerCase();
+}
+
+const HEADER_MAP = new Map();
+for (const key of V2_KEYS) {
+  HEADER_MAP.set(compact(key), key);
+  const def = getNutrient(key);
+  HEADER_MAP.set(compact(def.label), key);
+  for (const label of def.labels || []) HEADER_MAP.set(compact(label), key);
+  for (const alias of def.legacyAliases || []) HEADER_MAP.set(compact(alias), key);
+}
+
+export function mapSavedFoodHeader(raw) {
+  const trimmed = String(raw ?? '').replace(/^\uFEFF/, '').trim();
+  const packed = compact(trimmed);
+  if (packed === 'name' || packed === 'quantity') return packed;
+  if (packed === 'lastupdated') return 'lastUpdated';
+  if (packed === 'nutrientmeta') return 'nutrientMeta';
+  if (HEADER_MAP.has(packed)) return HEADER_MAP.get(packed);
+  const looked = lookupLabel(trimmed);
+  return looked ? looked.key : null;
+}
+
+function silentClamp(key, raw) {
+  if (Number.isNaN(raw) || raw < 0) return 0;
+  const max = getNutrient(key)?.bounds?.perUnit?.max;
+  return max != null && raw > max ? max : raw;
+}
+
+export function formatSavedFoodsCsv(foods, writeVersion = resolveNutrientWriteVersion()) {
+  const headers = writeVersion === 2
+    ? [...LEGACY_HEADERS, ...V2_DETAIL_KEYS, 'nutrientMeta']
+    : [...LEGACY_HEADERS];
+  let csv = headers.map((header) => quoteString(header)).join(',') + '\n';
+  for (const food of foods || []) {
+    const row = headers.map((header) => {
+      if (header === 'nutrientMeta') {
+        if (food.nutrientMeta == null) return '';
+        return quoteString(JSON.stringify(food.nutrientMeta));
+      }
+      const value = food[header];
+      if (value == null) return '';
+      if (typeof value === 'string') return quoteString(value);
+      return value;
+    }).join(',');
+    csv += row + '\n';
+  }
+  return csv;
+}
+
+function applyMeta(record, meta) {
+  if (!meta || typeof meta !== 'object') return;
+  if (meta.fiberMeaning) record.fiberMeaning = meta.fiberMeaning;
+  if (meta.carbConvention) record.carbConvention = meta.carbConvention;
+  const quality = meta.quality && typeof meta.quality === 'object' ? meta.quality : {};
+  for (const key of Object.keys(quality)) {
+    if (!record.quality[key]) continue;
+    record.quality[key] = { ...record.quality[key], ...quality[key] };
+  }
+}
+
+/**
+ * @returns {{ rows: object[], unknownHeaders: string[], warnings: object[] }}
+ */
+export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVersion()) {
+  let source = String(text ?? '');
+  if (source.charCodeAt(0) === 0xFEFF) source = source.slice(1);
+  const lines = source.split(/\r?\n/).filter((line) => line.trim());
+  const warnings = [];
+  const unknownHeaders = [];
+  if (lines.length === 0) return { rows: [], unknownHeaders, warnings, missingName: true };
+  const rawHeaders = parseCsvRow(lines[0]);
+  const mapped = rawHeaders.map((header) => ({ raw: header, key: mapSavedFoodHeader(header) }));
+  const missingName = !mapped.some((column) => column.key === 'name');
+  for (const column of mapped) {
+    if (!String(column.raw).trim()) continue;
+    if (!column.key && !unknownHeaders.includes(column.raw.trim())) unknownHeaders.push(column.raw.trim());
+  }
+  if (unknownHeaders.length) {
+    warnings.push({
+      level: 'review',
+      code: 'unknown_header',
+      message: `Unknown CSV headers: ${unknownHeaders.join(', ')}.`,
+    });
+  }
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = parseCsvRow(lines[i]);
+    const nameColumn = mapped.findIndex((column) => column.key === 'name');
+    const name = nameColumn >= 0 ? (cells[nameColumn] || '').trim() : '';
+    if (!name) continue;
+    const quantityColumn = mapped.findIndex((column) => column.key === 'quantity');
+    const quantity = quantityColumn >= 0 ? (parseFloat(cells[quantityColumn]) || 0) : 0;
+    const record = emptyStagedRecord();
+    const fields = {};
+    let meta = null;
+    let clamped = 0;
+    mapped.forEach((column, index) => {
+      if (!column.key || column.key === 'name' || column.key === 'quantity' || column.key === 'lastUpdated') return;
+      const cell = cells[index] ?? '';
+      if (column.key === 'nutrientMeta') {
+        if (!cell.trim()) return;
+        if (writeVersion !== 2) {
+          warnings.push({ level: 'info', code: 'detail_not_stored', message: 'nutrientMeta is not stored while v2 writes are off.' });
+          return;
+        }
+        try { meta = JSON.parse(cell); } catch { warnings.push({ level: 'review', code: 'bad_meta', message: 'nutrientMeta was not valid JSON.' }); }
+        return;
+      }
+      if (cell.trim() === '') {
+        if (writeVersion === 2) record.values[column.key] = null;
+        return;
+      }
+      const raw = parseFloat(cell);
+      if (Number.isNaN(raw)) {
+        warnings.push({ level: 'review', code: 'bad_number', key: column.key, message: `Could not read ${column.key}.` });
+        return;
+      }
+      if (writeVersion === 2) {
+        record.values[column.key] = raw;
+        record.quality[column.key] = { status: 'label_reported' };
+        if (!LEGACY_V1_KEYS.includes(column.key)) {
+          /* detail kept on the record; v2 build writes it */
+        }
+      } else if (LEGACY_V1_KEYS.includes(column.key)) {
+        const val = silentClamp(column.key, raw);
+        if (val !== raw) clamped += 1;
+        fields[column.key] = val;
+        record.values[column.key] = val;
+        record.quality[column.key] = { status: 'legacy_unclassified' };
+      } else {
+        warnings.push({
+          level: 'info',
+          code: 'detail_not_stored',
+          key: column.key,
+          message: `${column.key} is stored once v2 storage is enabled.`,
+        });
+      }
+    });
+    if (meta) applyMeta(record, meta);
+    rows.push({ name, quantity, fields, record, clamped });
+  }
+  return { rows, unknownHeaders, warnings, missingName };
+}

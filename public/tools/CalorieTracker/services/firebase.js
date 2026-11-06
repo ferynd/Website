@@ -6,6 +6,7 @@
 
 import { appId } from '../config.js';
 import { allNutrients } from '../constants.js';
+import { sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
 import { state, coerceQuantity } from '../state/store.js';
 import { handleError, debugLog, showMessage } from '../utils/ui.js';
 import {
@@ -607,7 +608,8 @@ export async function removeEstimateItem(dateStr, itemId) {
     }
 
     const newItems = (existing.foodItems || []).filter(fi => fi.id !== itemId);
-    const sum = key => newItems.reduce((s, fi) => s + (parseFloat(fi.quantity ?? 1) || 0) * (parseFloat(fi[key]) || 0), 0);
+    const summed = sumLegacyDayTotals(newItems, { missingQuantity: 1 });
+    const sum = key => summed.totals[key];
 
     const allSynthetic = newItems.length > 0 && newItems.every(fi => _isSyntheticFoodItem(fi));
     const newEntryType = allSynthetic ? 'estimate' : 'logged';
