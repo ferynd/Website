@@ -129,7 +129,8 @@ Bulk population, Ingredient Library research (#69), and missing-ingredient resea
 3. **Residual fields only.** Model-assisted research (#67's server-side route) is limited to identities or fields still unresolved after deterministic sources. Group residual fields from many IDs into bounded batch requests where the provider supports it, and prefer asynchronous batch processing when latency does not matter.
 4. **Structured output.** Requests use a strict JSON schema with per-field value or `null`, unit, basis, status, and cited source. Reject invalid or uncited output; never import freeform nutrition text. Results enter normal review.
 5. **Bounded and resumable.** Configure per-batch request, token, and spend limits at the top of the script. Checkpoint after each request group; a stopped batch resumes without repeating finished work. Record attempts, model, and cost per batch.
-6. **Approval.** Provisioning credentials and running a paid batch require James's explicit approval. Until the route exists, residual fields stay explicit gaps for a later pass under the same batch IDs.
+6. **Pass IDs.** Each population unit has a source-independent parent batch ID (from priority/category/manifest set). Each deterministic or model-assisted attempt gets a distinct pass/attempt ID that includes the source or model release, so a residual AI pass never collides with a completed deterministic checkpoint and retries stay unambiguous. Progress records link pass IDs back to the parent batch.
+7. **Approval.** Provisioning credentials and running a paid batch require James's explicit approval. Until the route exists, residual fields stay explicit gaps for a later residual pass under a new pass ID on the same parent batch.
 
 ## Execution prompt
 

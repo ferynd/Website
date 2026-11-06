@@ -116,7 +116,7 @@ Suggested logical records:
 | Immutable profile revision | Identity and variant IDs, nutrient observations, source records, revision, content hash, quality review, superseded revision if applicable. |
 | Source record | Dataset/type/ID, official URL, version/date, access date, source basis and conversions, permitted-use notes. |
 | Quantity conversion | Unit and grams, food state, density or household-weight source, confidence. A tablespoon of oil is not a tablespoon of flour. |
-| Research job | Manifest ID, requested fields, candidate matches, status, error/gap reason, reviewed result, attempts, and timestamps. |
+| Research job | Target key/type (catalog jobs require manifest ID; non-catalog/private/new-ingredient jobs use namespace/owner + stable ingredient/variant identity), requested fields, candidate matches, status, error/gap reason, reviewed result, attempts, and timestamps. |
 
 A curated ingredient catalog may be bundled as public, read-only, source-licensed data. User-created profiles, meals, labels, photos, and corrections stay owner-private. Public records are never writable by arbitrary clients. User overrides create private revisions and never change other users' data.
 
@@ -216,7 +216,7 @@ A dedicated tracker tab (#69) manages the shared ingredient profiles:
 - **Add and edit:** private profiles and overrides, saved as new revisions with source and basis. Curated records are never edited in place.
 - **Review:** identity, variants, per-field status and provenance, missing nutrient fields, unit conversions, and revision history. Missing fields and missing conversions are separately filterable. An affected recipes/meals view is capability-gated until #64 exposes ingredient-graph references; do not require it in the #69 ship.
 - **Import:** label facts, manual measurements, or a reviewed research result.
-- **Research:** selected ingredients or selected missing fields through official sources (#62 jobs), or through the AI API once #67 ships. Results stay staged until reviewed.
+- **Research:** selected ingredients or selected missing fields through official sources (#62 jobs) first; the AI API (once #67 ships) only after a recorded official-source attempt leaves gaps, or via an explicit override. Results stay staged until reviewed, and model citations require evidence verification before approval.
 
 Recipe Standardizer opens the same views from its link editor rather than maintaining a second editor.
 
@@ -230,7 +230,7 @@ List all missing/ambiguous ingredients and fields in one review. Offer:
 
 - **Choose existing:** search verified variants and user overrides; explicit substitute selection is recorded as an estimate.
 - **Look up selected:** run official-source lookup (#62) for the selected identities or fields. Show progress, result quality, and a review step before persistence. Reuse any approved records if another tab populated them first.
-- **Research with AI:** available only when the authenticated server route (#67) is enabled and online. Sends only the selected identities/fields, returns schema-validated JSON with cited sources, and enters the same review step. Typically used after official lookup leaves gaps.
+- **Research with AI:** available only when the authenticated server route (#67) is enabled and online, and only after a recorded official-source attempt left the selected identity or fields unresolved (or an explicit user override of that gate). Sends only the selected identities/fields, returns schema-validated JSON with cited sources that must be evidence-verified before approval, and enters the same review step. Unverified model output is ineligible for a profile revision.
 - **Enter manually:** add a label or measured facts with source and basis.
 - **Save incomplete draft:** retain the recipe and unknowns, clearly excluded from claims of complete nutrition.
 - **Cancel:** return without committing the meal. Do not launch research or charge an AI request.
@@ -255,7 +255,7 @@ The website performs every calculation without AI whenever sufficient structured
 
 - Calls run only through an authenticated server-side route (#67) that verifies a **non-anonymous** Firebase user (reject anonymous/`signInAnonymously` guests; the tracker currently falls back to anonymous auth). OpenAI keys stay in server configuration, never in the static tracker, client bundle, or repository.
 - Calls happen only after an explicit user action, within request, size, rate, and cost bounds that resist guest churn (per verified account plus a global/IP or App Check quota, not UID-only), and can be cancelled. Offline, AI actions are disabled with a reason.
-- Requests ask for strict JSON-schema (structured) output. The server and client validate it; invalid or freeform nutrition text is rejected rather than parsed. Results carry their sources and enter the same review as any other research before a profile revision is saved.
+- Requests ask for strict JSON-schema (structured) output. The server and client validate it; invalid or freeform nutrition text is rejected rather than parsed. Cited sources must be retrieved or otherwise evidence-verified before approval; a citation-shaped field alone does not qualify. Unverified model output stays marked unverified and ineligible for a profile revision. Verified results enter the same review as any other research before a profile revision is saved.
 - Model-assisted results are labeled as such in provenance and quality.
 
 ### Offline-capable calculation
