@@ -69,7 +69,7 @@ For “continue implementing fixes,” “continue audit remediation,” or “c
 - [p] **AR-06 Add staged, release-blocking CI.** Findings F-006, F-007, F-044–F-049, F-151; test design T27. Add pinned-runtime clean install, canonical unit projects, rules emulator, API contract, public/auth browser, concurrency, docs/manifest, production build, and deploy smoke jobs in staged order.
   - **Depends:** AR-01/AR-02 for deployment/rules jobs.
   - **Accept:** P0 checks block merge/deploy; test ownership is explicit; flaky quarantine requires owner/issue/expiry; artifacts are privacy-safe.
-  > in progress — staged CI on working/audit-ar-06-ci: blocking lint/unit-core/unit-calorie-tracker/api-contract/docs-manifest/rules-emulator/build-cloudflare/browser-public behind ci-gate; deploy-smoke workflow (dispatch/daily, no secrets, SHA check pending F-152); browser-auth/concurrency pending → AR-18; Vitest consolidation → AR-19; observability → AR-20. Remaining: push, PR, James enables required checks (docs/ci.md); commit: <sha>; PR: #<n>
+  > pushed — staged CI: blocking lint/unit-core/unit-calorie-tracker/api-contract/docs-manifest/rules-emulator/build-cloudflare/browser-public behind ci-gate; deploy-smoke (dispatch/daily, SHA check pending F-152); browser-auth/concurrency → AR-18; Vitest → AR-19; observability → AR-20. Checks: lint, unit 1887, CT 584, api 42, rules 104, contract/docs, actionlint, build+smoke, cf:build; commit: a1567c6; PR: #182
 
 - [ ] **AR-07 Create a typed product manifest and static safety checks.** Findings F-010–F-017, F-135, F-149, F-151. One manifest should drive catalogues and validate route, lifecycle, sensitivity, implementation type, owner, back link, external dependency, and archive status.
   - **Depends:** AR-00 lifecycle decision.
