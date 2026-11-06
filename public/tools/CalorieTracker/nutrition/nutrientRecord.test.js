@@ -3,13 +3,16 @@ import { LEGACY_V1_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
 import { parseNutritionText } from '../../../shared/nutrition/nutrientText.js';
 import {
   NewerSchemaError,
+  NutrientBoundsError,
   applyLegacyInputOverlay,
   assessFoodSave,
   buildFoodWrite,
   deriveDayDetailTotals,
+  legacyPartialNote,
   readFoodNutrients,
   sumLegacyDayTotals,
   targetsFromStagedRecord,
+  writeLegacyDayTotals,
 } from './nutrientRecord.js';
 
 function recordWith(assignments, quality = {}) {
@@ -142,5 +145,41 @@ describe('nutrient records', () => {
     const built = buildFoodWrite(overlaid, { writeVersion: 1, name: 'A', quantity: 1, lastUpdated: 't' });
     expect(built.fields.protein).toBe(12);
     expect(built.fields.calories).toBe(0);
+  });
+
+  it('v2 writes reject values that fail both per-unit and per-100 g bounds', () => {
+    const options = { writeVersion: 1 + 1, name: 'Salt', quantity: 1, lastUpdated: 't' };
+    expect(buildFoodWrite(recordWith({ sodium: 39340 }), options).doc.sodium).toBe(39340);
+    expect(buildFoodWrite(recordWith({ protein: 150 }), options).doc.protein).toBe(150);
+    expect(buildFoodWrite(recordWith({ calories: 901 }), options).doc.calories).toBe(901);
+    expect(buildFoodWrite(recordWith({ sodium: null }), options).doc.sodium).toBeNull();
+    expect(() => buildFoodWrite(recordWith({ sodium: -1 }), options)).toThrow(NutrientBoundsError);
+    expect(() => buildFoodWrite(recordWith({ sodium: 100001 }), options)).toThrow(NutrientBoundsError);
+    expect(() => buildFoodWrite(recordWith({ protein: 5000 }), options)).toThrow(NutrientBoundsError);
+    expect(() => buildFoodWrite(recordWith({ calories: 20000 }), options)).toThrow(NutrientBoundsError);
+    const v1 = buildFoodWrite(recordWith({ sodium: 39340 }), { writeVersion: 1, name: 'Salt', quantity: 1, lastUpdated: 't' });
+    expect(v1.doc.sodium).toBe(23000);
+    expect(v1.doc).not.toHaveProperty('nutrientSchemaVersion');
+  });
+
+  it('day total writes stay numeric and do not store partialKeys', () => {
+    const entry = { name: 'day' };
+    const items = [
+      { quantity: 1, nutrientSchemaVersion: 2, calories: 10.2, sodium: null, protein: 2 },
+      { quantity: 2, calories: 3, sodium: 5 },
+    ];
+    const summed = writeLegacyDayTotals(entry, items, { missingQuantity: 0 });
+    expect(entry.calories).toBe(16.2);
+    expect(entry.sodium).toBe(10);
+    expect(entry.protein).toBe(2);
+    expect(typeof entry.calories).toBe('number');
+    expect(Object.prototype.hasOwnProperty.call(entry, 'partialKeys')).toBe(false);
+    expect(summed.partialKeys).toContain('sodium');
+    expect(legacyPartialNote(summed.partialKeys)).toBe(`Partial day totals (≥): ${summed.partialKeys.join(', ')}.`);
+    expect(legacyPartialNote([])).toBe('');
+    const rounded = {};
+    writeLegacyDayTotals(rounded, [{ calories: 10.6 }], { missingQuantity: 1, round: true });
+    expect(rounded.calories).toBe(11);
+    expect(Object.prototype.hasOwnProperty.call(rounded, 'partialKeys')).toBe(false);
   });
 });

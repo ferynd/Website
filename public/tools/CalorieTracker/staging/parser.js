@@ -15,6 +15,7 @@ import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilit
 import { LEGACY_V1_KEYS, V2_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
 import { parseNutritionText } from '../../../shared/nutrition/nutrientText.js';
 import {
+  NutrientBoundsError,
   applyLegacyInputOverlay,
   buildFoodWrite,
   targetsFromStagedRecord,
@@ -182,12 +183,21 @@ function applyLegacyDelta(entry, fields, qty, sign) {
 }
 
 function foodFields(record, foodName, qty) {
-  return buildFoodWrite(record, {
-    writeVersion: writeVersion(),
-    name: foodName,
-    quantity: qty,
-    lastUpdated: new Date().toISOString(),
-  });
+  try {
+    return buildFoodWrite(record, {
+      writeVersion: writeVersion(),
+      name: foodName,
+      quantity: qty,
+      lastUpdated: new Date().toISOString(),
+    });
+  } catch (error) {
+    if (error instanceof NutrientBoundsError || error?.name === 'NutrientBoundsError') {
+      const label = getNutrient(error.key)?.label || 'A nutrient';
+      showMessage(`${label} is outside the registry bounds and was not added.`, true);
+      return null;
+    }
+    throw error;
+  }
 }
 
 function dayItemFromFields(fields, foodName, qty) {
@@ -210,6 +220,7 @@ async function commitStagedToLog(record, qty, foodName) {
   const dateStr = state.dom.dateInput.value;
   const todayEntry = getCurrentDailyEntry();
   const built = foodFields(record, foodName, qty);
+  if (!built) return;
   applyLegacyDelta(todayEntry, built.fields, qty, 1);
 
   state.dailyFoodItems.push(dayItemFromFields(built.fields, foodName, qty));
@@ -255,6 +266,7 @@ export async function subtractStagedNutrientsFromDailyLog() {
   const todayEntry = getCurrentDailyEntry();
   const qty = getStagedQuantity();
   const built = foodFields(record, 'subtract', qty);
+  if (!built) return;
   applyLegacyDelta(todayEntry, built.fields, qty, -1);
 
   const negative = {};
@@ -295,6 +307,7 @@ export function handleStagingAction(mode) {
 
       const qty = getStagedQuantity();
       const built = foodFields(record, 'replace', qty);
+      if (!built) return;
       const newEntry = {
         date: dateStr,
         schemaVersion: SCHEMA_VERSIONS.ENTRY,

@@ -11,6 +11,7 @@ import {
   getNutrient,
   lookupLabel,
 } from '../../../shared/nutrition/nutrientRegistry.js';
+import { NewerSchemaError, NutrientBoundsError, buildFoodWrite } from '../nutrition/nutrientRecord.js';
 
 const LEGACY_HEADERS = ['name', 'quantity', 'lastUpdated', ...LEGACY_V1_KEYS];
 
@@ -132,8 +133,10 @@ export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVers
     const quantity = quantityColumn >= 0 ? (parseFloat(cells[quantityColumn]) || 0) : 0;
     const record = emptyStagedRecord();
     const fields = {};
+    const seen = new Map();
     let meta = null;
     let clamped = 0;
+    let rejected = false;
     mapped.forEach((column, index) => {
       if (!column.key || column.key === 'name' || column.key === 'quantity' || column.key === 'lastUpdated') return;
       const cell = cells[index] ?? '';
@@ -147,7 +150,7 @@ export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVers
         return;
       }
       if (cell.trim() === '') {
-        if (writeVersion === 2) record.values[column.key] = null;
+        if (writeVersion === 2 && !seen.has(column.key)) record.values[column.key] = null;
         return;
       }
       const raw = parseFloat(cell);
@@ -155,12 +158,25 @@ export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVers
         warnings.push({ level: 'review', code: 'bad_number', key: column.key, message: `Could not read ${column.key}.` });
         return;
       }
+      if (seen.has(column.key)) {
+        if (seen.get(column.key) !== raw) {
+          rejected = true;
+          delete fields[column.key];
+          record.values[column.key] = null;
+          record.quality[column.key] = { status: 'unknown' };
+          warnings.push({
+            level: 'review',
+            code: 'duplicate_column',
+            key: column.key,
+            message: `Conflicting duplicate values for ${column.key}.`,
+          });
+        }
+        return;
+      }
+      seen.set(column.key, raw);
       if (writeVersion === 2) {
         record.values[column.key] = raw;
         record.quality[column.key] = { status: 'label_reported' };
-        if (!LEGACY_V1_KEYS.includes(column.key)) {
-          /* detail kept on the record; v2 build writes it */
-        }
       } else if (LEGACY_V1_KEYS.includes(column.key)) {
         const val = silentClamp(column.key, raw);
         if (val !== raw) clamped += 1;
@@ -177,7 +193,70 @@ export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVers
       }
     });
     if (meta) applyMeta(record, meta);
-    rows.push({ name, quantity, fields, record, clamped });
+    rows.push({ name, quantity, fields, record, clamped: rejected ? 0 : clamped, rejected });
   }
   return { rows, unknownHeaders, warnings, missingName };
+}
+
+/** Firestore id shared by names that differ only by non-alphanumeric characters. */
+export function savedFoodDocId(name) {
+  return String(name ?? '').toLowerCase().replace(/[^a-z0-9]/g, '_');
+}
+
+/**
+ * Decide a saved-food CSV write from the document that actually occupies the slugged id.
+ * Flag-off writes stay the v1 object: name, quantity, present legacy fields, lastUpdated.
+ */
+export function decideCsvFoodWrite(row, existingDoc, writeVersion, lastUpdated) {
+  if (row?.rejected) return { action: 'skip', reason: 'conflict' };
+  if (writeVersion === 2) {
+    try {
+      const built = buildFoodWrite(row.record, {
+        writeVersion,
+        existingDoc,
+        name: row.name,
+        quantity: row.quantity,
+        lastUpdated,
+      });
+      return { action: 'write', doc: built.doc };
+    } catch (error) {
+      if (error instanceof NewerSchemaError || error?.name === 'NewerSchemaError') {
+        return { action: 'skip', reason: 'newer-schema' };
+      }
+      if (error instanceof NutrientBoundsError || error?.name === 'NutrientBoundsError') {
+        return { action: 'skip', reason: 'bounds' };
+      }
+      throw error;
+    }
+  }
+  if (Number(existingDoc?.nutrientSchemaVersion) >= 2) return { action: 'skip', reason: 'newer-schema' };
+  return {
+    action: 'write',
+    doc: { name: row.name, quantity: row.quantity, ...row.fields, lastUpdated },
+  };
+}
+
+/** Read the target doc inside the caller's transaction, then set only when the write is allowed. */
+export async function writeImportedFood(transaction, ref, row, writeVersion, lastUpdated) {
+  if (row?.rejected) return { action: 'skip', reason: 'conflict' };
+  const snap = await transaction.get(ref);
+  const existingDoc = typeof snap?.exists === 'function' && snap.exists() ? snap.data() : null;
+  const outcome = decideCsvFoodWrite(row, existingDoc, writeVersion, lastUpdated);
+  if (outcome.action === 'write') transaction.set(ref, outcome.doc);
+  return outcome;
+}
+
+/** Completion text for parser warnings. Unknown headers are reported separately. */
+export function summarizeCsvImportWarnings(warnings) {
+  const list = warnings || [];
+  const count = (code) => list.filter((warning) => warning.code === code).length;
+  const parts = [];
+  const detail = count('detail_not_stored');
+  const badNumbers = count('bad_number');
+  const duplicates = count('duplicate_column');
+  if (detail) parts.push(`${detail} detail value(s) were not stored while v2 writes are off.`);
+  if (badNumbers) parts.push(`${badNumbers} malformed number(s) were omitted.`);
+  if (count('bad_meta')) parts.push('nutrientMeta was not valid JSON.');
+  if (duplicates) parts.push(`${duplicates} conflicting duplicate column(s) blocked a row.`);
+  return parts.join(' ');
 }

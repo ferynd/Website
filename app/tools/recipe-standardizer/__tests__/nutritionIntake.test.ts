@@ -309,4 +309,32 @@ describe('schemaVersion 2 observations', () => {
     expect(v2.items[0].commitBlockers).toEqual([]);
     expect(V2_DETAIL_KEYS.length).toBeGreaterThan(0);
   });
+
+  it('applies macro, omega-3 and calorie checks to assembled schema 2 rows', () => {
+    const withKeys = (values: Partial<Record<string, number>>) => TRACKER_NUTRIENT_KEYS.map((key) => (
+      observation(key, values[key] ?? 0)
+    ));
+    const mass = parseNutritionJson(JSON.stringify(v2Document(withKeys({
+      protein: 100, carbs: 100, fat: 100, calories: 1700,
+    }))), { writeVersion: 2 });
+    expect(mass.ok).toBe(true);
+    if (!mass.ok) return;
+    expect(mass.items[0].errors.join(' ')).toContain('exceeds 100 g');
+    expect(mass.items[0].warnings.join(' ')).not.toContain('differs from protein/carbs/fat');
+
+    const omega = parseNutritionJson(JSON.stringify(v2Document(withKeys({
+      omega3: 10, fat: 1, calories: 9,
+    }))), { writeVersion: 2 });
+    expect(omega.ok).toBe(true);
+    if (!omega.ok) return;
+    expect(omega.items[0].errors.join(' ')).toContain('omega3 (10 g) cannot exceed fat (1 g)');
+    expect(omega.items[0].errors.join(' ')).not.toContain('exceeds 100 g');
+
+    const calories = parseNutritionJson(JSON.stringify(v2Document(withKeys({ calories: 200 }))), { writeVersion: 2 });
+    expect(calories.ok).toBe(true);
+    if (!calories.ok) return;
+    expect(calories.items[0].errors).toEqual([]);
+    expect(calories.items[0].warnings.join(' ')).toContain('differs from protein/carbs/fat');
+    expect(calories.items[0].commitBlockers).toEqual([]);
+  });
 });

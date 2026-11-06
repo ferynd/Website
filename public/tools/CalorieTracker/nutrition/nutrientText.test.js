@@ -156,6 +156,35 @@ describe('parseNutritionText', () => {
     expect(record.warnings.some((warning) => warning.code === 'negative' && warning.level === 'review')).toBe(true);
   });
 
+  it('colonless labels keep the whole nutrient name, including B12, B6 and omega-3', () => {
+    const record = parseNutritionText([
+      'Vitamin B12 2.4 mcg',
+      'Vitamin  B12   2.4 mcg',
+      'Vitamin B6 1.2 mg',
+      'Omega-3 1.5 g',
+    ].join('\n'));
+    expect(record.values.vitaminB12).toBe(2.4);
+    expect(record.values.vitaminB6).toBe(1.2);
+    expect(record.values.omega3).toBe(1.5);
+    expect(record.unknownLabels).toEqual([]);
+    expect(record.conflicts).toEqual([]);
+  });
+
+  it('colonless unknown labels and hyphenated non-labels stay out of the matched nutrient', () => {
+    const record = parseNutritionText([
+      'Unicorn dust 4 mg',
+      'fat-soluble vitamins 5 mg',
+      'sodium-free seasoning 0 mg',
+    ].join('\n'));
+    expect(record.values.fat).toBeNull();
+    expect(record.values.sodium).toBeNull();
+    expect(record.unknownLabels).toEqual([
+      'Unicorn dust',
+      'fat-soluble vitamins',
+      'sodium-free seasoning',
+    ]);
+  });
+
   it('folic acid and vitamin A/E IU are nondefensible and do not set a value', () => {
     const record = parseNutritionText('Folic acid: 200 mcg\nVitamin A: 5000 IU\nVitamin E: 30 IU\nVitamin D: 40 IU');
     expect(record.values.folate).toBeNull();

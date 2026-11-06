@@ -8,6 +8,8 @@ import {
   LEGACY_V1_KEYS,
   V2_DETAIL_KEYS,
   V2_KEYS,
+  checkPer100g,
+  checkPerUnit,
   emptyStagedRecord,
   getNutrient,
   projectToV1,
@@ -20,6 +22,24 @@ export class NewerSchemaError extends Error {
     super('saved by a newer version — reload');
     this.name = 'NewerSchemaError';
   }
+}
+
+export class NutrientBoundsError extends Error {
+  constructor(key) {
+    super(`${key} is outside the registry bounds`);
+    this.name = 'NutrientBoundsError';
+    this.key = key;
+  }
+}
+
+/** v2 numbers may exceed the legacy per-unit cap when they still fit per 100 g (salt). */
+function assertV2Value(key, value) {
+  if (value == null) return;
+  const number = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(number) || number < 0) throw new NutrientBoundsError(key);
+  if (checkPerUnit(key, number) === 'ok') return;
+  if (checkPer100g(key, number) === 'ok') return;
+  throw new NutrientBoundsError(key);
 }
 
 export function readFoodNutrients(doc) {
@@ -90,6 +110,7 @@ export function buildFoodWrite(record, options = {}) {
   const lastUpdated = options.lastUpdated;
 
   if (writeVersion === 2) {
+    for (const key of V2_KEYS) assertV2Value(key, record?.values?.[key]);
     const v2 = toV2Fields(record);
     const doc = {
       name,
@@ -175,6 +196,25 @@ export function sumLegacyDayTotals(foodItems, options = {}) {
     if (partial) partialKeys.push(key);
   }
   return { totals, partialKeys };
+}
+
+/**
+ * Write the 24 numeric day totals. Unknown v2 keys contribute 0 and are not stored on the entry.
+ * @returns {{ totals: Record<string, number>, partialKeys: string[] }}
+ */
+export function writeLegacyDayTotals(entry, foodItems, options = {}) {
+  const summed = sumLegacyDayTotals(foodItems, options);
+  const round = options?.round === true;
+  for (const key of LEGACY_V1_KEYS) {
+    const value = summed.totals[key];
+    entry[key] = round ? Math.round(value) : value;
+  }
+  return summed;
+}
+
+export function legacyPartialNote(partialKeys) {
+  if (!partialKeys?.length) return '';
+  return `Partial day totals (≥): ${partialKeys.join(', ')}.`;
 }
 
 export function legacyItemAmount(item, key, options = {}) {

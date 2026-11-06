@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assessNutritionLink, confirmNutritionLink, type LinkAssessment, type LinkReviewState } from '../lib/nutritionLink';
 import {
-  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, collectGuardFoodIds, collectLinkTargets, defaultFoodName, evaluateIntakeRows, linkTargetChanged,
+  applyIntakeLinks, buildIntakeCommitPlan, canCommitIntake, collectGuardFoodIds, collectLinkTargets, defaultFoodName, evaluateIntakeRows, intakeCreateDocument, linkTargetChanged,
   findNoLongerEligible, findPlanCollisions, initialIntakeRows, limitIntakeGroups, refreshPlanLinkTargets, reassignRow, resolveTarget, selectIntakeGroups,
   type IntakeCommitPlan,
   type IntakeRow,
@@ -211,6 +211,30 @@ describe('nutrition intake commit plan', () => {
       { ingredientId: 'a', status: 'unlinked', foodItemId: null },
       { ingredientId: 'a2', status: 'candidate', foodItemId: 'old-food' },
     ]);
+  });
+
+  it('carries intake detail and quality into a v2 food document', () => {
+    const recipe = makeRecipe(ingredient('a', 'Butter', 'unlinked'), ingredient('a2', 'butter', 'candidate', 'old-food'));
+    const item = parsedItem(0, 'a');
+    item.detail = { water: 50 };
+    item.quality = {
+      water: { status: 'measured' },
+      protein: { status: 'measured' },
+    };
+    const current = row(item, 'a');
+    const plan = buildIntakeCommitPlan([current], evaluateIntakeRows([current], groups, [], new Set()), groups, recipe);
+    expect(plan.creates[0].detail).toEqual({ water: 50 });
+    expect(plan.creates[0].quality?.protein).toEqual({ status: 'measured' });
+    const flagOff = intakeCreateDocument(plan.creates[0], 't') as Record<string, unknown>;
+    expect(flagOff).not.toHaveProperty('water');
+    expect(flagOff).not.toHaveProperty('nutrientSchemaVersion');
+    const enabled = intakeCreateDocument(plan.creates[0], 't', { writeVersion: 2 }) as Record<string, unknown>;
+    expect(enabled.water).toBe(50);
+    expect(enabled.nutrientSchemaVersion).toBe(2);
+    expect(enabled).not.toHaveProperty('fiberMeaning');
+    const meta = enabled.nutrientMeta as { quality: { water: { status: string }; protein: { status: string } } };
+    expect(meta.quality.water.status).toBe('measured');
+    expect(meta.quality.protein.status).toBe('measured');
   });
 
   it('finds a target food added after review', () => {

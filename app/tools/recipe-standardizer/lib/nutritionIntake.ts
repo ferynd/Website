@@ -196,6 +196,35 @@ const readRowIdentity = (
   return { id, name, assumptions };
 };
 
+/** Shared macro, omega-3, and calorie checks for schema 1 rows and assembled schema 2 rows. */
+const applyCrossFieldChecks = (
+  nutrients: Record<TrackerNutrientKey, number | null>,
+  path: string,
+  errors: string[],
+  rowWarnings: string[],
+) => {
+  const protein = nutrients.protein;
+  const carbs = nutrients.carbs;
+  const fat = nutrients.fat;
+  const omega3 = nutrients.omega3;
+  const calories = nutrients.calories;
+  if (protein !== null && carbs !== null && fat !== null) {
+    const sum = protein + carbs + fat;
+    if (sum > MACRO_MASS_TOLERANCE_G) {
+      errors.push(`${path}.nutrients: protein + carbs + fat = ${sum.toFixed(1)} g exceeds 100 g per 100 g — the values look per serving, not per 100 g.`);
+    }
+  }
+  if (omega3 !== null && fat !== null && omega3 > fat + 0.5) {
+    errors.push(`${path}.nutrients.omega3 (${omega3} g) cannot exceed fat (${fat} g).`);
+  }
+  if (protein !== null && carbs !== null && fat !== null && calories !== null) {
+    const estimate = 4 * protein + 4 * carbs + 9 * fat;
+    if (Math.abs(calories - estimate) > Math.max(50, 0.3 * calories)) {
+      rowWarnings.push(`${path}.nutrients.calories (${calories} kcal) differs from protein/carbs/fat (≈${Math.round(estimate)} kcal) — double-check.`);
+    }
+  }
+};
+
 /** Parse schemaVersion 2 observation rows. Parents are never filled from components. */
 const parseSchemaV2Items = (
   rawItems: unknown[],
@@ -284,6 +313,7 @@ const parseSchemaV2Items = (
       else detail[key as DetailKey] = value;
     }
     for (const key of conflictKeys) commitBlockers.push(`${path}: conflicting values for ${key} need review.`);
+    applyCrossFieldChecks(nutrients, path, errors, rowWarnings);
     if (writeVersion === 1) {
       for (const key of TRACKER_NUTRIENT_KEYS) {
         const value = nutrients[key];
@@ -448,28 +478,7 @@ export const parseNutritionJson = (raw: string, options?: { writeVersion?: 1 | 2
         .filter((key) => !TRACKER_NUTRIENT_KEYS.includes(key as TrackerNutrientKey))
         .forEach((key) => rowWarnings.push(`${path}.nutrients.${key} is not a tracked nutrient and was ignored.`));
 
-      const valid = (key: TrackerNutrientKey): number | null => nutrients[key];
-      const protein = valid('protein');
-      const carbs = valid('carbs');
-      const fat = valid('fat');
-      const omega3 = valid('omega3');
-      const calories = valid('calories');
-
-      if (protein !== null && carbs !== null && fat !== null) {
-        const sum = protein + carbs + fat;
-        if (sum > MACRO_MASS_TOLERANCE_G) {
-          errors.push(`${path}.nutrients: protein + carbs + fat = ${sum.toFixed(1)} g exceeds 100 g per 100 g — the values look per serving, not per 100 g.`);
-        }
-      }
-      if (omega3 !== null && fat !== null && omega3 > fat + 0.5) {
-        errors.push(`${path}.nutrients.omega3 (${omega3} g) cannot exceed fat (${fat} g).`);
-      }
-      if (protein !== null && carbs !== null && fat !== null && calories !== null) {
-        const estimate = 4 * protein + 4 * carbs + 9 * fat;
-        if (Math.abs(calories - estimate) > Math.max(50, 0.3 * calories)) {
-          rowWarnings.push(`${path}.nutrients.calories (${calories} kcal) differs from protein/carbs/fat (≈${Math.round(estimate)} kcal) — double-check.`);
-        }
-      }
+      applyCrossFieldChecks(nutrients, path, errors, rowWarnings);
     }
 
     return { index, path, ingredientId: id, name, assumptions, nutrients, errors, warnings: rowWarnings };

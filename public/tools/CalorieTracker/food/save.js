@@ -14,7 +14,7 @@ import { getStagedRecord } from '../staging/parser.js';
 import { selectFoodItem } from './manager.js';
 import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import { LEGACY_V1_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
-import { NewerSchemaError, assessFoodSave, buildFoodWrite, readFoodNutrients, targetsFromStagedRecord, v1StorageNotice } from '../nutrition/nutrientRecord.js';
+import { NewerSchemaError, NutrientBoundsError, assessFoodSave, buildFoodWrite, readFoodNutrients, targetsFromStagedRecord, v1StorageNotice } from '../nutrition/nutrientRecord.js';
 
 const SAVE_CONFIG = {
   SUCCESS_MESSAGE_DURATION: 3000,
@@ -97,6 +97,11 @@ async function processSaveFoodItem(foodName, record) {
   } catch (e) {
     if (e instanceof NewerSchemaError || e?.name === 'NewerSchemaError') {
       showMessage('This food was saved by a newer version — reload.', true);
+      return;
+    }
+    if (e instanceof NutrientBoundsError || e?.name === 'NutrientBoundsError') {
+      const label = getNutrient(e.key)?.label || 'A nutrient';
+      showMessage(`${label} is outside the registry bounds and was not saved.`, true);
       return;
     }
     handleError('save-food-item', e, 'Failed to save food item');

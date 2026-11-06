@@ -2,7 +2,7 @@
  * Collapsed nutrient-detail panels. Text is assigned with textContent only.
  */
 import { getNutrient, keysForGroup } from '../../../shared/nutrition/nutrientRegistry.js';
-import { deriveDayDetailTotals, sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
+import { deriveDayDetailTotals, legacyPartialNote, sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
 import { formatNutrientWithStatus } from './nutrientHelpers.js';
 
 const PANELS = [
@@ -19,6 +19,16 @@ export function setNutrientConflictsBlocked(blocked) {
     const element = document.getElementById(id);
     if (element) element.disabled = Boolean(blocked);
   }
+}
+
+/** Drop a stale parse-conflict warning and re-enable the staging actions. */
+export function releaseStagingConflictBlock() {
+  setNutrientConflictsBlocked(false);
+  const warningEl = document.getElementById('parse-missing-warning');
+  if (!warningEl) return;
+  if (typeof warningEl.replaceChildren === 'function') warningEl.replaceChildren();
+  else warningEl.textContent = '';
+  warningEl.classList?.add('hidden');
 }
 
 function panelKeys(groups) {
@@ -73,7 +83,7 @@ export function renderDayNutrientDetail(container, foodItems) {
   const root = document.createElement('div');
   if (legacy.partialKeys.length) {
     const note = document.createElement('p');
-    note.textContent = `Partial day totals (≥): ${legacy.partialKeys.join(', ')}.`;
+    note.textContent = legacyPartialNote(legacy.partialKeys);
     root.appendChild(note);
   }
   for (const panel of PANELS) {

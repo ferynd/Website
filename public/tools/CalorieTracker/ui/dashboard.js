@@ -24,6 +24,7 @@ import {
 } from '../exercise/met.js';
 import { computeTrendDirection, classifyTargetSource, resolveWeightKg } from './nutrientHelpers.js';
 import { renderDayNutrientDetail } from './nutrientDetail.js';
+import { legacyPartialNote, sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
 import { NUTRITION_CAPABILITIES } from '../../../shared/nutrition/capabilities.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
@@ -1132,6 +1133,8 @@ function renderTodayCompact(bankingData) {
   if (bankIncomplete) {
     warnings.push(`${bankMode === 'autoGoalSchedule' ? 'Schedule' : 'Bank'} incomplete — missing: ${unknownDays.join(', ')}.`);
   }
+  const partialNote = legacyPartialNote(sumLegacyDayTotals(state.dailyFoodItems, { missingQuantity: 0 }).partialKeys);
+  if (partialNote) warnings.push(partialNote);
 
   const warningHtml = warnings.length > 0
     ? `<div class="today-warnings">${warnings.map(w => `<div class="today-warning-line">⚠ ${w}</div>`).join('')}</div>`

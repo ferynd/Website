@@ -6,8 +6,8 @@
 
 import { state, coerceQuantity } from '../state/store.js';
 import { allNutrients } from '../constants.js';
-import { legacyItemAmount, readFoodNutrients } from '../nutrition/nutrientRecord.js';
-import { renderNutrientDetail } from '../ui/nutrientDetail.js';
+import { legacyItemAmount } from '../nutrition/nutrientRecord.js';
+import { applySavedFoodToStaging } from './stageSavedFood.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { saveDailyEntrySnapshot, deleteFoodItem } from '../services/firebase.js';
 import { updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
@@ -26,22 +26,7 @@ const MANAGER_CONFIG = {
  * @param {object} foodData - The food item data object.
  */
 export function populateStagingFromFood(foodData) {
-  const record = readFoodNutrients(foodData);
-  state.stagedRecord = record;
-  allNutrients.forEach(n => {
-    const input = document.getElementById(`actual-${n}`);
-    if (!input) return;
-    const value = record.values[n];
-    input.value = value == null ? '' : String(value);
-  });
-  renderNutrientDetail(document.getElementById('nutrient-detail-staging'), record);
-  renderNutrientDetail(document.getElementById('nutrient-detail-food'), record);
-
-  const quantity = foodData.quantity ?? MANAGER_CONFIG.DEFAULT_QUANTITY;
-  const qInput = document.getElementById('actual-quantity');
-  if (qInput) qInput.value = quantity;
-  const inlineQty = document.getElementById('food-inline-qty');
-  if (inlineQty) inlineQty.value = quantity;
+  applySavedFoodToStaging(foodData, MANAGER_CONFIG.DEFAULT_QUANTITY);
 }
 
 /**

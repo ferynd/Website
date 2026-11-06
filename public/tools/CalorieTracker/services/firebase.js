@@ -5,8 +5,7 @@
  */
 
 import { appId } from '../config.js';
-import { allNutrients } from '../constants.js';
-import { sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
+import { writeLegacyDayTotals } from '../nutrition/nutrientRecord.js';
 import { state, coerceQuantity } from '../state/store.js';
 import { handleError, debugLog, showMessage } from '../utils/ui.js';
 import {
@@ -608,8 +607,6 @@ export async function removeEstimateItem(dateStr, itemId) {
     }
 
     const newItems = (existing.foodItems || []).filter(fi => fi.id !== itemId);
-    const summed = sumLegacyDayTotals(newItems, { missingQuantity: 1 });
-    const sum = key => summed.totals[key];
 
     const allSynthetic = newItems.length > 0 && newItems.every(fi => _isSyntheticFoodItem(fi));
     const newEntryType = allSynthetic ? 'estimate' : 'logged';
@@ -620,12 +617,12 @@ export async function removeEstimateItem(dateStr, itemId) {
 
     const updated = {
       ...existing,
-      ...Object.fromEntries(allNutrients.map(k => [k, Math.round(sum(k))])),
       foodItems: newItems,
       entryType: newEntryType,
       vacationDayType: newVacationDayType,
       estimateMeta: newEstimateMeta,
     };
+    writeLegacyDayTotals(updated, newItems, { missingQuantity: 1, round: true });
 
     const toSave = prepareEntryForSave(updated);
     await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/dailyEntries`, dateStr), toSave);

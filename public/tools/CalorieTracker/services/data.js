@@ -18,7 +18,7 @@ import {
 import { updateDashboard, populateSettingsForm } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { allNutrients, SCHEMA_VERSIONS } from '../constants.js';
-import { sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
+import { writeLegacyDayTotals } from '../nutrition/nutrientRecord.js';
 import { clearNutrientDetailMounts } from '../ui/nutrientDetail.js';
 import {
   normalizeEntry,
@@ -688,10 +688,7 @@ window.updateItemQuantity = (id, value) => {
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
   const entry = getCurrentDailyEntry(); // always returns a v2-shaped entry
   entry.foodItems = state.dailyFoodItems;
-  const summed = sumLegacyDayTotals(state.dailyFoodItems, { missingQuantity: 0 });
-  allNutrients.forEach(n => {
-    entry[n] = summed.totals[n];
-  });
+  writeLegacyDayTotals(entry, state.dailyFoodItems, { missingQuantity: 0 });
   state.dailyEntries.set(dateStr, entry);
 
   updateFoodItemsList();

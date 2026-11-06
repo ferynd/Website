@@ -22,6 +22,7 @@ const APP_SHELL = [
   './food/dropdown.js',
   './food/manager.js',
   './food/save.js',
+  './food/stageSavedFood.js',
   './services/data.js',
   './services/firebase.js',
   './staging/parser.js',

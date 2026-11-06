@@ -9,10 +9,15 @@ import { showMessage, handleError } from '../utils/ui.js';
 import { fetchTargets, fetchAllEntries, db } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
 import { appId } from '../config.js';
-import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { doc, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
-import { formatSavedFoodsCsv, parseSavedFoodsCsv } from './csvFormat.js';
-import { NewerSchemaError, buildFoodWrite } from '../nutrition/nutrientRecord.js';
+import {
+  formatSavedFoodsCsv,
+  parseSavedFoodsCsv,
+  savedFoodDocId,
+  summarizeCsvImportWarnings,
+  writeImportedFood,
+} from './csvFormat.js';
 
 /**
  * Exports the user's baseline targets as a JSON file.
@@ -165,48 +170,45 @@ export async function importSavedFoodsCsv(file) {
   let skipped = 0;
   let clamped = 0;
   let newer = 0;
+  let bounds = 0;
 
   for (const row of parsed.rows) {
-    const existing = Array.from(state.savedFoodItems.values()).find((food) => food.name?.toLowerCase() === row.name.toLowerCase());
+    if (row.rejected) {
+      skipped += 1;
+      continue;
+    }
+    const foodId = savedFoodDocId(row.name);
+    if (!foodId) {
+      skipped += 1;
+      continue;
+    }
     const lastUpdated = new Date().toISOString();
-    let foodData;
+    const ref = doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId);
     try {
-      if (writeVersion === 2) {
-        foodData = buildFoodWrite(row.record, {
-          writeVersion,
-          existingDoc: existing,
-          name: row.name,
-          quantity: row.quantity,
-          lastUpdated,
-        }).doc;
-      } else if (Number(existing?.nutrientSchemaVersion) >= 2) {
-        throw new NewerSchemaError();
-      } else {
-        foodData = { name: row.name, quantity: row.quantity, ...row.fields, lastUpdated };
-      }
-    } catch (error) {
-      if (error instanceof NewerSchemaError || error?.name === 'NewerSchemaError') {
-        newer += 1;
+      const outcome = await runTransaction(db, (transaction) => (
+        writeImportedFood(transaction, ref, row, writeVersion, lastUpdated)
+      ));
+      if (outcome.action === 'skip') {
         skipped += 1;
+        if (outcome.reason === 'newer-schema') newer += 1;
+        if (outcome.reason === 'bounds') bounds += 1;
         continue;
       }
-      throw error;
-    }
-    clamped += row.clamped || 0;
-    const foodId = row.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-    try {
-      await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
-      state.savedFoodItems.set(foodId, foodData);
-      imported++;
+      clamped += row.clamped || 0;
+      state.savedFoodItems.set(foodId, outcome.doc);
+      imported += 1;
     } catch (error) {
       handleError('import-food-row', error, `Failed to import "${row.name}"`);
-      skipped++;
+      skipped += 1;
     }
   }
 
   let msg = `Import complete: ${imported} food(s) imported, ${skipped} skipped.`;
   if (clamped > 0) msg += ` ${clamped} value(s) clamped to bounds.`;
   if (newer > 0) msg += ` ${newer} skipped because they were saved by a newer version — reload.`;
+  if (bounds > 0) msg += ` ${bounds} skipped because a nutrient is outside the registry bounds.`;
   if (parsed.unknownHeaders.length) msg += ` Unknown headers: ${parsed.unknownHeaders.join(', ')}.`;
+  const warningText = summarizeCsvImportWarnings(parsed.warnings);
+  if (warningText) msg += ` ${warningText}`;
   showMessage(msg);
 }

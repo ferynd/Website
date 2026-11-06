@@ -3,6 +3,7 @@
  * Matching is whole-label only. Subtypes never write their parent.
  */
 import {
+  V2_KEYS,
   convertUnit,
   emptyStagedRecord,
   getNutrient,
@@ -19,14 +20,93 @@ function stripDecorations(line) {
     .trim();
 }
 
+function registeredLabelPrefixes() {
+  const labels = [];
+  for (const key of V2_KEYS) {
+    const def = getNutrient(key);
+    if (!def) continue;
+    for (const raw of [...(def.labels || []), ...(def.legacyAliases || [])]) {
+      const norm = normalizeLabel(raw);
+      if (norm) labels.push(norm);
+    }
+  }
+  return [...new Set(labels)].sort((a, b) => b.length - a.length);
+}
+
+const LABEL_PREFIXES = registeredLabelPrefixes();
+
+/** Lowercase and collapse whitespace, keeping each collapsed character's original index. */
+function collapseWithMap(line) {
+  const lower = String(line).toLowerCase();
+  let collapsed = '';
+  const map = [];
+  let pendingSpace = false;
+  for (let index = 0; index < lower.length; index += 1) {
+    if (/\s/.test(lower[index])) {
+      if (collapsed.length) pendingSpace = true;
+      continue;
+    }
+    if (pendingSpace) {
+      collapsed += ' ';
+      map.push(index);
+      pendingSpace = false;
+    }
+    collapsed += lower[index];
+    map.push(index);
+  }
+  return { collapsed, map };
+}
+
+function labelBoundary(next) {
+  return next == null || /[\s<~≈\d]/.test(next);
+}
+
+/** Match the longest registered label, then take the value after that whole label. */
+function matchRegisteredLabel(line) {
+  const { collapsed, map } = collapseWithMap(line);
+  const candidates = [collapsed];
+  if (collapsed.startsWith('includes ')) candidates.push(collapsed.slice('includes '.length));
+  for (const text of candidates) {
+    const offset = collapsed.length - text.length;
+    for (const label of LABEL_PREFIXES) {
+      if (!text.startsWith(label) || !labelBoundary(text[label.length])) continue;
+      const lastCollapsed = offset + label.length - 1;
+      if (lastCollapsed < 0 || lastCollapsed >= map.length) continue;
+      const originalEnd = map[lastCollapsed] + 1;
+      const labelText = line.slice(0, originalEnd).trim();
+      if (!labelText) continue;
+      return { label: labelText, valuePart: line.slice(originalEnd).trim() };
+    }
+  }
+  return null;
+}
+
+function splitAtValueToken(line) {
+  const spaced = line.match(/\s+([<~≈]?\d)/);
+  if (spaced && spaced.index != null) {
+    return { label: line.slice(0, spaced.index).trim(), valuePart: line.slice(spaced.index).trim() };
+  }
+  const re = /[<~≈\d]/g;
+  let match = re.exec(line);
+  while (match) {
+    if (match.index !== 0) {
+      const prev = line[match.index - 1];
+      const digitInsideWord = /[A-Za-z]/.test(prev) && /\d/.test(match[0]);
+      if (!digitInsideWord) {
+        return { label: line.slice(0, match.index).trim(), valuePart: line.slice(match.index).trim() };
+      }
+    }
+    match = re.exec(line);
+  }
+  return null;
+}
+
 function splitLabelValue(line) {
   const colon = line.indexOf(':');
   if (colon >= 0) {
     return { label: line.slice(0, colon).trim(), valuePart: line.slice(colon + 1).trim() };
   }
-  const match = line.match(/[<~≈\d]/);
-  if (!match || match.index === 0) return null;
-  return { label: line.slice(0, match.index).trim(), valuePart: line.slice(match.index).trim() };
+  return matchRegisteredLabel(line) || splitAtValueToken(line);
 }
 
 function hasNumber(text) {
