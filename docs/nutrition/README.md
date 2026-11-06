@@ -4,7 +4,7 @@ Status: planned. The research manifest and execution contract are prepared under
 
 ## Goal
 
-Research an ingredient once, keep its evidence, and reuse its versioned nutrition profile in every applicable meal. Store meals as ingredient references and quantities, with known meal facts preserved separately. Recalculate portions and repeated meals with ordinary code. Use AI only where image interpretation, difficult identification, or unresolved research benefits from it.
+Research an ingredient once, keep its evidence, and reuse its versioned nutrition profile in every applicable meal. Store meals as ingredient references and quantities, with known meal facts preserved separately. Recalculate portions and repeated meals with ordinary code. Use AI only where image interpretation, difficult identification, or unresolved research benefits from it—and default that help to cost-free assistant packets rather than a paid site API.
 
 The Nutrition Tracker is the target primary analysis interface, not only a place to import completed ChatGPT estimates. Planned surfaces:
 
@@ -46,7 +46,7 @@ Inspected against `main` commit `4dd9b927ec993d7e26c1d97d833a07b9f222efab` on 20
 5. Save ingredient versions and meal composition together, or report a recoverable partial result. Never claim a save based only on a generated calculation.
 6. Preserve known restaurant or package facts. Use ingredient calculations to supply missing facts and show disagreement.
 7. Keep private meal data outside the public research catalog.
-8. Keep the existing manual ChatGPT flow while introducing deterministic imports and calculations. A provider-backed AI route is an optional input adapter, not the calculation engine. It runs server-side behind authentication, returns schema-validated JSON, and never exposes keys to the client.
+8. Keep the existing manual ChatGPT flow while introducing deterministic imports and calculations. Default model help is a cost-free assistant request/response packet (copyable JSON + images → schema-validated import) for bots and ChatGPT project instructions James already pays for. A paid server-side OpenAI route is optional, off by default, $0-capped, and never exposes keys to the client. Neither path is the calculation engine.
 9. Calculate offline from a local cache of approved profiles when the needed records are present.
 
 ## Completion boundary
