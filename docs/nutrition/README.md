@@ -8,7 +8,7 @@ Research an ingredient once, keep its evidence, and reuse its versioned nutritio
 
 The Nutrition Tracker is the target primary analysis interface, not only a place to import completed ChatGPT estimates. Planned surfaces:
 
-- **Analyze meal** (#70): accepts photos, nutrition labels, ingredient lists, recipes, barcodes, and saved meals. It extracts evidence, matches ingredients, resolves gaps, recalculates, fits quantities, reviews differences, and saves a reusable composition. See [staged meal analysis](workflow.md#staged-meal-analysis).
+- **Analyze meal** (#70): accepts photos, nutrition labels, ingredient lists, recipes, barcodes, free text, and saved meals. It extracts evidence, matches ingredients, resolves gaps, recalculates, fits quantities, reviews differences, and saves a reusable composition. See [staged meal analysis](workflow.md#staged-meal-analysis).
 - **Ingredient Library** (#69): search, add, edit, review, import, and research ingredients, including missing nutrient fields and unit conversions.
 
 Recipe Standardizer uses the same profiles, calculation modules, and research workflow. The legacy paste parser remains as a secondary path.
