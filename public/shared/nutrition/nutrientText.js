@@ -1,15 +1,19 @@
 /**
  * One text adapter for legacy 24-field pastes and exact v2 labels.
- * Matching is whole-label only. Subtypes never write their parent.
+ * The longest registered label that matches at a word boundary wins.
+ * A shorter label is never tried, and a label does not absorb a following
+ * digit (so "Vitamin B12" cannot be read as B1, and "Vitamin D3" cannot
+ * become vitamin D = 3). Subtypes never write their parent.
  */
 import {
   V2_KEYS,
-  convertUnit,
-  emptyStagedRecord,
   getNutrient,
   lookupLabel,
   mergeObservations,
   normalizeLabel,
+  normalizeUnit,
+  resolveAmount,
+  emptyStagedRecord,
 } from './nutrientRegistry.js';
 
 function stripDecorations(line) {
@@ -59,33 +63,96 @@ function collapseWithMap(line) {
   return { collapsed, map };
 }
 
-function labelBoundary(next) {
-  return next == null || /[\s<~≈\d]/.test(next);
+/** A letter or digit continues the token. "B12", "D3" and "K2" stay one label. */
+function isWordBoundary(next) {
+  return next == null || !/[A-Za-z0-9]/.test(next);
 }
 
-/** The remainder is a value only when the number starts immediately. Extra words ("Calories from Fat 70") are not a prefix hit. */
+/** The value token: a number, a leading decimal, or < / ~ / ≈ in front of one. */
 function valueStartsImmediately(valuePart) {
   return /^(?:[<~≈]\s*)?(?:\d|\.\d)/.test(valuePart);
 }
 
-/** Match the longest registered label, then take the value after that whole label. */
+const PAREN_UNIT = /^(mcg|mg|kcal|cal|kj|iu|µg|μg|ug|g)$/i;
+
+function takeParen(rest) {
+  if (!rest.startsWith('(')) return null;
+  const close = rest.indexOf(')');
+  if (close < 0) return null;
+  const text = rest.slice(0, close + 1);
+  const inner = rest.slice(1, close).trim();
+  return { text, length: text.length, unit: PAREN_UNIT.test(inner) ? inner : null };
+}
+
+/** Separators that may sit between a label and its value. A dash glued to a digit is a sign, not a separator. */
+function takeSeparator(rest) {
+  const word = rest.match(/^(?:approximately|approx|about)\.?(?![A-Za-z])/i);
+  if (word) return { length: word[0].length, approximate: true };
+  if (/^[=:~≈]/.test(rest)) {
+    const symbol = rest[0];
+    return { length: 1, approximate: symbol === '~' || symbol === '≈' };
+  }
+  if (/^[-—–](?=\s)/.test(rest)) return { length: 1, approximate: false };
+  return null;
+}
+
+/**
+ * After the matched label, accept unit/form parentheticals and separators,
+ * then require the value. Anything else ( "from fat", "EPA + DHA" ) fails
+ * this label instead of falling through to a shorter one.
+ */
+function parseAfterLabel(line, originalEnd) {
+  let rest = line.slice(originalEnd);
+  let label = line.slice(0, originalEnd).trim();
+  let labelUnit = null;
+  let approximate = false;
+  while (rest.length) {
+    rest = rest.replace(/^\s+/, '');
+    if (!rest) break;
+    if (valueStartsImmediately(rest)) break;
+    const paren = takeParen(rest);
+    if (paren) {
+      label = `${label} ${paren.text}`.trim();
+      if (paren.unit) labelUnit = paren.unit;
+      rest = rest.slice(paren.length);
+      continue;
+    }
+    const separator = takeSeparator(rest);
+    if (separator) {
+      if (separator.approximate) approximate = true;
+      rest = rest.slice(separator.length);
+      continue;
+    }
+    return null;
+  }
+  if (!valueStartsImmediately(rest) || !label) return null;
+  return { label, valuePart: rest.trim(), labelUnit, approximate };
+}
+
+/** Longest boundary match only. A failed longest match does not try a shorter label. */
+function longestLabelSplit(line, text, offset, map) {
+  for (const label of LABEL_PREFIXES) {
+    if (!text.startsWith(label)) continue;
+    const next = text[label.length];
+    if (!isWordBoundary(next)) continue;
+    const lastCollapsed = offset + label.length - 1;
+    if (lastCollapsed < 0 || lastCollapsed >= map.length) return null;
+    const originalEnd = map[lastCollapsed] + 1;
+    const parsed = parseAfterLabel(line, originalEnd);
+    if (!parsed || !lookupLabel(parsed.label)) return null;
+    return parsed;
+  }
+  return null;
+}
+
 function matchRegisteredLabel(line) {
   const { collapsed, map } = collapseWithMap(line);
-  const candidates = [collapsed];
-  if (collapsed.startsWith('includes ')) candidates.push(collapsed.slice('includes '.length));
-  for (const text of candidates) {
+  const texts = [collapsed];
+  if (collapsed.startsWith('includes ')) texts.push(collapsed.slice('includes '.length));
+  for (const text of texts) {
     const offset = collapsed.length - text.length;
-    for (const label of LABEL_PREFIXES) {
-      if (!text.startsWith(label) || !labelBoundary(text[label.length])) continue;
-      const lastCollapsed = offset + label.length - 1;
-      if (lastCollapsed < 0 || lastCollapsed >= map.length) continue;
-      const originalEnd = map[lastCollapsed] + 1;
-      const labelText = line.slice(0, originalEnd).trim();
-      if (!labelText) continue;
-      const valuePart = line.slice(originalEnd).trim();
-      if (!valueStartsImmediately(valuePart)) continue;
-      return { label: labelText, valuePart };
-    }
+    const matched = longestLabelSplit(line, text, offset, map);
+    if (matched) return matched;
   }
   return null;
 }
@@ -95,6 +162,10 @@ const NUMBER_CORE = '(?:\\d[\\d,]*(?:\\.\\d+)?|\\.\\d+)';
 const SPACED_VALUE = new RegExp(`\\s+([<~≈]?(?:${NUMBER_CORE}))`);
 const READ_NUMBER = new RegExp(`(${NUMBER_CORE})`);
 const RANGE_NUMBER = new RegExp(`${NUMBER_CORE}\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE}`);
+const INCLUDES_ADDED_SUGARS = new RegExp(
+  `^includes\\s+(?:([<~≈])\\s*)?(${NUMBER_CORE})\\s*(mcg|mg|µg|μg|ug|g)?\\s+added sugars\\b\\s*(.*)$`,
+  'i',
+);
 
 function splitAtValueToken(line) {
   const spaced = line.match(SPACED_VALUE);
@@ -106,12 +177,13 @@ function splitAtValueToken(line) {
   while (match) {
     if (match.index !== 0) {
       const prev = line[match.index - 1];
-      const digitInsideWord = /[A-Za-z]/.test(prev) && /\d/.test(match[0]);
-      if (!digitInsideWord) {
-        return { label: line.slice(0, match.index).trim(), valuePart: line.slice(match.index).trim() };
+      // Keep B12 / D3 / K2 inside the label. A value digit follows a break.
+      if (/[A-Za-z0-9]/.test(prev)) {
+        match = re.exec(line);
+        continue;
       }
     }
-    match = re.exec(line);
+    return { label: line.slice(0, match.index).trim(), valuePart: line.slice(match.index).trim() };
   }
   return null;
 }
@@ -122,6 +194,25 @@ function splitLabelValue(line) {
     return { label: line.slice(0, colon).trim(), valuePart: line.slice(colon + 1).trim() };
   }
   return matchRegisteredLabel(line) || splitAtValueToken(line);
+}
+
+function isPercentDailyValue(rest) {
+  const text = String(rest ?? '').trim();
+  if (!text) return true;
+  return /^(?:\d+(?:\.\d+)?\s*)?%(?:\s*(?:dv|daily value))?$/i.test(text)
+    || /^\d+(?:\.\d+)?(?:\s*%)?\s*(?:dv|daily value)$/i.test(text);
+}
+
+/** US Nutrition Facts: "Includes 10g Added Sugars" or the same line with a % DV. */
+function matchIncludesAddedSugars(line) {
+  const match = String(line).match(INCLUDES_ADDED_SUGARS);
+  if (!match || !isPercentDailyValue(match[4])) return null;
+  const symbol = match[1] || '';
+  const numberText = match[2];
+  const unit = match[3] || '';
+  const gap = symbol ? ' ' : '';
+  const valuePart = `${symbol}${gap}${numberText}${unit ? ` ${unit}` : ''}`.trim();
+  return { label: 'Added Sugars', valuePart, labelUnit: null, approximate: symbol === '~' || symbol === '≈' };
 }
 
 function hasNumber(text) {
@@ -186,6 +277,68 @@ function isFolicAcidLabel(label) {
   return text === 'folic acid';
 }
 
+function readConverted(hit, valuePart, number, split) {
+  const valueUnit = readUnit(valuePart, number.end);
+  const fromParen = split.labelUnit ? normalizeUnit(split.labelUnit) : '';
+  const fromLookup = hit.unit ? normalizeUnit(hit.unit) : '';
+  if (fromParen && fromLookup && fromParen !== fromLookup) return { error: 'unit_mismatch' };
+  return resolveAmount(hit.key, number.value, valueUnit, fromLookup || fromParen);
+}
+
+function stageAmount(hit, split, number, observations, warnings) {
+  const valuePart = split.valuePart;
+  const lessThan = /^\s*</.test(valuePart);
+  const approximate = Boolean(split.approximate) || /^\s*[~≈]/.test(valuePart);
+  const converted = readConverted(hit, valuePart, number, split);
+  if (converted.error) {
+    pushWarning(warnings, {
+      level: 'review',
+      code: converted.error,
+      key: hit.key,
+      message: converted.error === 'unit_mismatch'
+        ? `${split.label} has a label unit that does not match the value unit.`
+        : `${split.label} could not be converted (${converted.error}).`,
+    });
+    return;
+  }
+  if (converted.assumed) {
+    const def = getNutrient(hit.key);
+    pushWarning(warnings, {
+      level: 'info',
+      code: 'unit_assumed',
+      key: hit.key,
+      message: `${split.label} has no unit; assumed ${def.unit}.`,
+    });
+  }
+  if (lessThan) {
+    observations.push({
+      key: hit.key,
+      value: null,
+      quality: { status: 'label_reported', upperBound: converted.value },
+    });
+    return;
+  }
+  if (approximate) {
+    observations.push({
+      key: hit.key,
+      value: converted.value,
+      quality: { status: 'estimated_from_comparable' },
+    });
+    pushWarning(warnings, {
+      level: 'review',
+      code: 'approximate',
+      key: hit.key,
+      message: `${split.label} is approximate and needs review.`,
+    });
+    return;
+  }
+  const quality = { status: 'label_reported' };
+  if (converted.value === 0) {
+    quality.roundingInterval = number.decimals === 0 ? 1 : 10 ** -number.decimals;
+  }
+  observations.push({ key: hit.key, value: converted.value, quality });
+}
+
 /**
  * @param {string} text
  * @returns {import('./nutrientRegistry.js').StagedNutrientRecord}
@@ -199,7 +352,7 @@ export function parseNutritionText(text) {
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = stripDecorations(rawLine);
     if (!line) continue;
-    const split = splitLabelValue(line);
+    const split = matchIncludesAddedSugars(line) || splitLabelValue(line);
     if (!split || !split.label) continue;
     if (!hasNumber(split.valuePart)) continue;
 
@@ -258,85 +411,9 @@ export function parseNutritionText(text) {
       continue;
     }
 
-    const lessThan = /^\s*</.test(valuePart);
-    const approximate = /^\s*[~≈]/.test(valuePart);
     const number = readNumber(valuePart);
     if (!number) continue;
-    const unit = readUnit(valuePart, number.end);
-    const def = getNutrient(hit.key);
-
-    if (lessThan) {
-      let upperBound = number.value;
-      if (unit) {
-        const converted = convertUnit(hit.key, number.value, unit);
-        if (converted.error) {
-          pushWarning(warnings, {
-            level: 'review',
-            code: converted.error,
-            key: hit.key,
-            message: `${split.label} could not be converted (${converted.error}).`,
-          });
-          continue;
-        }
-        upperBound = converted.value;
-      } else {
-        pushWarning(warnings, {
-          level: 'info',
-          code: 'unit_assumed',
-          key: hit.key,
-          message: `${split.label} has no unit; assumed ${def.unit}.`,
-        });
-      }
-      observations.push({
-        key: hit.key,
-        value: null,
-        quality: { status: 'label_reported', upperBound },
-      });
-      continue;
-    }
-
-    let stored = number.value;
-    if (unit) {
-      const converted = convertUnit(hit.key, number.value, unit);
-      if (converted.error) {
-        pushWarning(warnings, {
-          level: 'review',
-          code: converted.error,
-          key: hit.key,
-          message: `${split.label} could not be converted (${converted.error}).`,
-        });
-        continue;
-      }
-      stored = converted.value;
-    } else {
-      pushWarning(warnings, {
-        level: 'info',
-        code: 'unit_assumed',
-        key: hit.key,
-        message: `${split.label} has no unit; assumed ${def.unit}.`,
-      });
-    }
-
-    if (approximate) {
-      observations.push({
-        key: hit.key,
-        value: stored,
-        quality: { status: 'estimated_from_comparable' },
-      });
-      pushWarning(warnings, {
-        level: 'review',
-        code: 'approximate',
-        key: hit.key,
-        message: `${split.label} is approximate and needs review.`,
-      });
-      continue;
-    }
-
-    const quality = { status: 'label_reported' };
-    if (stored === 0) {
-      quality.roundingInterval = number.decimals === 0 ? 1 : 10 ** -number.decimals;
-    }
-    observations.push({ key: hit.key, value: stored, quality });
+    stageAmount(hit, split, number, observations, warnings);
   }
 
   const record = mergeObservations(observations);

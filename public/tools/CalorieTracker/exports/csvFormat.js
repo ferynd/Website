@@ -10,6 +10,7 @@ import {
   emptyStagedRecord,
   getNutrient,
   lookupLabel,
+  resolveAmount,
 } from '../../../shared/nutrition/nutrientRegistry.js';
 import { NewerSchemaError, NutrientBoundsError, buildFoodWrite } from '../nutrition/nutrientRecord.js';
 
@@ -50,15 +51,28 @@ for (const key of V2_KEYS) {
   for (const alias of def.legacyAliases || []) HEADER_MAP.set(compact(alias), key);
 }
 
-export function mapSavedFoodHeader(raw) {
+function describeHeader(raw) {
   const trimmed = String(raw ?? '').replace(/^\uFEFF/, '').trim();
   const packed = compact(trimmed);
-  if (packed === 'name' || packed === 'quantity') return packed;
-  if (packed === 'lastupdated') return 'lastUpdated';
-  if (packed === 'nutrientmeta') return 'nutrientMeta';
-  if (HEADER_MAP.has(packed)) return HEADER_MAP.get(packed);
+  if (packed === 'name' || packed === 'quantity') return { key: packed, unit: null };
+  if (packed === 'lastupdated') return { key: 'lastUpdated', unit: null };
+  if (packed === 'nutrientmeta') return { key: 'nutrientMeta', unit: null };
+  if (HEADER_MAP.has(packed)) return { key: HEADER_MAP.get(packed), unit: null };
   const looked = lookupLabel(trimmed);
-  return looked ? looked.key : null;
+  if (!looked) return { key: null, unit: null };
+  return { key: looked.key, unit: looked.unit || null };
+}
+
+export function mapSavedFoodHeader(raw) {
+  return describeHeader(raw).key;
+}
+
+/** A bare number stays as written. A trailing unit is kept so it can disagree with the header unit. */
+function splitCsvAmount(cell) {
+  const trimmed = String(cell ?? '').trim();
+  const match = trimmed.match(/^([-+]?(?:\d[\d,]*(?:\.\d+)?|\.\d+))\s*([a-zA-Zµμ]+)$/);
+  if (!match) return { value: parseFloat(trimmed), unit: '' };
+  return { value: Number(match[1].replace(/,/g, '')), unit: match[2] };
 }
 
 function silentClamp(key, raw) {
@@ -110,7 +124,10 @@ export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVers
   const unknownHeaders = [];
   if (lines.length === 0) return { rows: [], unknownHeaders, warnings, missingName: true };
   const rawHeaders = parseCsvRow(lines[0]);
-  const mapped = rawHeaders.map((header) => ({ raw: header, key: mapSavedFoodHeader(header) }));
+  const mapped = rawHeaders.map((header) => {
+    const described = describeHeader(header);
+    return { raw: header, key: described.key, unit: described.unit };
+  });
   const missingName = !mapped.some((column) => column.key === 'name');
   for (const column of mapped) {
     if (!String(column.raw).trim()) continue;
@@ -153,10 +170,26 @@ export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVers
         if (writeVersion === 2 && !seen.has(column.key)) record.values[column.key] = null;
         return;
       }
-      const raw = parseFloat(cell);
+      const parsedAmount = splitCsvAmount(cell);
+      let raw = parsedAmount.value;
       if (Number.isNaN(raw)) {
         warnings.push({ level: 'review', code: 'bad_number', key: column.key, message: `Could not read ${column.key}.` });
         return;
+      }
+      if (column.unit || parsedAmount.unit) {
+        const resolved = resolveAmount(column.key, raw, parsedAmount.unit, column.unit || '');
+        if (resolved.error) {
+          warnings.push({
+            level: 'review',
+            code: resolved.error,
+            key: column.key,
+            message: resolved.error === 'unit_mismatch'
+              ? `${String(column.raw).trim()} mixes units and was not stored.`
+              : `${String(column.raw).trim()} could not be converted (${resolved.error}).`,
+          });
+          return;
+        }
+        raw = resolved.value;
       }
       if (seen.has(column.key)) {
         if (seen.get(column.key) !== raw) {
@@ -279,5 +312,7 @@ export function summarizeCsvImportWarnings(warnings) {
   if (badNumbers) parts.push(`${badNumbers} malformed number(s) were omitted.`);
   if (count('bad_meta')) parts.push('nutrientMeta was not valid JSON.');
   if (duplicates) parts.push(`${duplicates} conflicting duplicate column(s) blocked a row.`);
+  const unitProblems = count('nondefensible_conversion') + count('unit_mismatch');
+  if (unitProblems) parts.push(`${unitProblems} value(s) were not converted and need review.`);
   return parts.join(' ');
 }

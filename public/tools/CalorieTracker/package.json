@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "serve": "vite --host 0.0.0.0 --port 3000",
-    "test": "node_modules/.bin/vitest run analysis/weightParser.test.js state/schema.test.js targets/targetEngine.test.js analysis/engine.test.js exercise/met.test.js ui/nutrientHelpers.test.js ui/banking.test.js staging/parser.test.js utils/ui.test.js nutrition/legacyGoldens.test.js nutrition/nutrientRegistry.test.js nutrition/capabilities.test.js nutrition/nutrientText.test.js nutrition/nutrientRecord.test.js exports/csvFormat.test.js food/stageSavedFood.test.js sw.test.js"
+    "test": "node_modules/.bin/vitest run analysis/weightParser.test.js state/schema.test.js targets/targetEngine.test.js analysis/engine.test.js exercise/met.test.js ui/nutrientHelpers.test.js ui/banking.test.js staging/parser.test.js utils/ui.test.js nutrition/legacyGoldens.test.js nutrition/nutrientRegistry.test.js nutrition/capabilities.test.js nutrition/nutrientText.test.js nutrition/nutrientPasteGolden.test.js nutrition/nutrientRecord.test.js exports/csvFormat.test.js food/stageSavedFood.test.js staging/stagingReview.test.js sw.test.js"
   },
   "devDependencies": {
     "vite": "^5.0.0",

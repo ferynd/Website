@@ -11,6 +11,7 @@ import { db } from '../services/firebase.js';
 import { doc, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { appId } from '../config.js';
 import { getStagedRecord, rememberStagedFoodName } from '../staging/parser.js';
+import { applyKeepBothRename } from '../ui/nutrientDetail.js';
 import { selectFoodItem } from './manager.js';
 import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import { LEGACY_V1_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
@@ -228,8 +229,8 @@ function showDuplicateDialog(existingFood, record, foodName) {
       async (newName) => {
         if (newName && newName.trim() && newName.trim().toLowerCase() !== currentName.toLowerCase()) {
           closeDuplicateDialog();
-          // Update the food name input and re-trigger save
-          document.getElementById('food-item-input').value = newName.trim();
+          // Update the visible name and the detail anchor together, then save.
+          applyKeepBothRename(newName);
           await saveFoodItemToDatabase();
         } else {
           showMessage('Please enter a unique name.', true);

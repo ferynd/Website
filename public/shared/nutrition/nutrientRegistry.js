@@ -188,7 +188,7 @@ const DEFINITIONS = [
   v1({
     key: 'vitaminD', label: 'Vitamin D', unit: 'mcg', group: 'avgVitamins', targetRole: 'average', perUnitMax: 1000,
     notes: 'not IU',
-    labels: ['Vitamin D', 'Vit D'],
+    labels: ['Vitamin D', 'Vit D', 'Vitamin D3', 'D3', 'Cholecalciferol'],
     legacyAliases: ['vitamin d', 'vit d'],
   }),
   v1({
@@ -199,7 +199,7 @@ const DEFINITIONS = [
   }),
   v1({
     key: 'vitaminK', label: 'Vitamin K', unit: 'mcg', group: 'avgVitamins', targetRole: 'average', perUnitMax: 10000,
-    labels: ['Vitamin K', 'Vit K'],
+    labels: ['Vitamin K', 'Vit K', 'Vitamin K2', 'K2', 'Menaquinone'],
     legacyAliases: ['vitamin k', 'vit k'],
   }),
   v1({
@@ -315,14 +315,25 @@ const BY_KEY = new Map(NUTRIENTS.map((def) => [def.key, def]));
 const EXACT_LABELS = new Map();
 const ALIAS_LABELS = new Map();
 
+const UNIT_WORD = 'mcg|mg|kcal|cal|kj|iu|µg|μg|ug|g';
+const TRAILING_UNIT_RE = new RegExp(`^(.*?)\\s*\\(\\s*(${UNIT_WORD})\\s*\\)\\s*$`, 'i');
+const TRAILING_UNIT_STRIP_RE = new RegExp(`\\s*\\(\\s*(?:${UNIT_WORD})\\s*\\)\\s*$`, 'i');
+
+/** A trailing "(kJ)" / "(g)" / "(IU)" is a unit, not part of the nutrient name. */
+export function splitLabelUnit(raw) {
+  const match = String(raw ?? '').trim().match(TRAILING_UNIT_RE);
+  if (!match) return { text: String(raw ?? '').trim(), unit: null };
+  return { text: match[1].trim(), unit: match[2] };
+}
+
 export function normalizeLabel(raw) {
   let text = String(raw ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
   text = text.replace(/^includes\s+/, '');
-  text = text.replace(/\s*\((?:mg|g|mcg|µg|μg|iu|kj|kcal)\)\s*$/i, '').trim();
+  text = text.replace(TRAILING_UNIT_STRIP_RE, '').trim();
   // USDA comma tails that still mean the same nutrient. Do not strip other
   // comma tails here: "Fat, saturated" must not collapse to the fat parent.
   text = text.replace(/,\s*(?:total dietary|by difference|total)\s*$/i, '').trim();
-  text = text.replace(/\s*\((?:mg|g|mcg|µg|μg|iu|kj|kcal)\)\s*$/i, '').trim();
+  text = text.replace(TRAILING_UNIT_STRIP_RE, '').trim();
   return text;
 }
 
@@ -386,23 +397,34 @@ function splitTrailingQualifier(norm) {
   return null;
 }
 
-export function lookupLabel(rawLabel) {
-  const norm = normalizeLabel(rawLabel);
+function resolveLabelNorm(norm) {
   const direct = lookupNormalized(norm);
   if (direct) return direct;
 
   const trailing = splitTrailingQualifier(norm);
   if (!trailing) return null;
   const baseHit = lookupNormalized(normalizeLabel(trailing.base));
-  const qualNorm = normalizeLabel(trailing.qualifier).replace(/^as\s+/, '').trim();
+  const rawQual = normalizeLabel(trailing.qualifier);
+  // "(as ascorbic acid)" / "(as zinc oxide)" names the chemical form, not a
+  // different nutrient. A qualifier that is itself a child (ALA, EPA) still wins.
+  const asForm = /^as\s+\S/.test(rawQual);
+  const qualNorm = rawQual.replace(/^as\s+/, '').trim();
   const qualHit = lookupNormalized(qualNorm);
   if (qualHit && baseHit) {
     if (getNutrient(qualHit.key)?.parent === baseHit.key) return qualHit;
     if (qualHit.key === baseHit.key) return baseHit;
     return null;
   }
-  if (baseHit && !qualHit && FORM_QUALIFIERS.has(qualNorm)) return baseHit;
+  if (baseHit && !qualHit && (FORM_QUALIFIERS.has(qualNorm) || asForm)) return baseHit;
   return null;
+}
+
+export function lookupLabel(rawLabel) {
+  const peeled = splitLabelUnit(rawLabel);
+  const hit = resolveLabelNorm(normalizeLabel(peeled.text));
+  if (!hit) return null;
+  if (!peeled.unit) return hit;
+  return { ...hit, unit: normalizeUnit(peeled.unit) };
 }
 
 export function targetableKeys() {
@@ -419,7 +441,7 @@ function round6(value) {
   return Math.round(value * 1e6) / 1e6;
 }
 
-function normalizeUnit(raw) {
+export function normalizeUnit(raw) {
   const text = String(raw ?? '').trim().toLowerCase().replace(/\.$/, '');
   if (text === 'µg' || text === 'μg' || text === 'ug') return 'mcg';
   if (text === 'folic acid' || text === 'folic_acid') return 'folic_acid';
@@ -427,6 +449,24 @@ function normalizeUnit(raw) {
   if (text === 'milligrams' || text === 'milligram') return 'mg';
   if (text === 'micrograms' || text === 'microgram') return 'mcg';
   return text;
+}
+
+/**
+ * Use the value's unit when it has one. A unit that lived on the label
+ * ("Energy (kJ)", "Sodium (g)") applies only when the value is bare.
+ * Disagreeing units are not converted.
+ */
+export function resolveAmount(key, value, valueUnit, labelUnit) {
+  const def = getNutrient(key);
+  if (!def || typeof value !== 'number' || !Number.isFinite(value)) return { error: 'unsupported_unit' };
+  const valueNorm = valueUnit ? normalizeUnit(valueUnit) : '';
+  const labelNorm = labelUnit ? normalizeUnit(labelUnit) : '';
+  if (valueNorm && labelNorm && valueNorm !== labelNorm) return { error: 'unit_mismatch' };
+  const from = valueNorm || labelNorm;
+  if (!from) return { value, unit: def.unit, assumed: true };
+  const converted = convertUnit(key, value, from);
+  if (converted.error) return converted;
+  return { value: converted.value, unit: converted.unit, assumed: false };
 }
 
 export function convertUnit(key, value, fromUnit) {

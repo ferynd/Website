@@ -3,6 +3,7 @@
  */
 import { getNutrient, keysForGroup } from '../../../shared/nutrition/nutrientRegistry.js';
 import { deriveDayDetailTotals, legacyPartialNote, sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
+import { state } from '../state/store.js';
 import { formatNutrientWithStatus } from './nutrientHelpers.js';
 
 const PANELS = [
@@ -19,6 +20,37 @@ export function setNutrientConflictsBlocked(blocked) {
     const element = document.getElementById(id);
     if (element) element.disabled = Boolean(blocked);
   }
+}
+
+/**
+ * An empty paste must not hide the conflict chooser while Add, Save, Replace,
+ * and Subtract stay disabled. A live conflict is left in place. With no
+ * conflict, the warning is cleared and the buttons are enabled.
+ * @returns {'kept' | 'cleared'}
+ */
+export function settleEmptyPaste(record) {
+  const blocked = (record?.conflicts?.length || 0) > 0;
+  if (blocked) return 'kept';
+  setNutrientConflictsBlocked(false);
+  const warningEl = document.getElementById('parse-missing-warning');
+  if (warningEl) {
+    if (typeof warningEl.replaceChildren === 'function') warningEl.replaceChildren();
+    else warningEl.textContent = '';
+    warningEl.classList?.add('hidden');
+  }
+  return 'cleared';
+}
+
+/**
+ * "Keep Both (Rename)" types the new name in code. Move the detail anchor
+ * with it so the loaded food's detail is not dropped on the next read.
+ */
+export function applyKeepBothRename(newName) {
+  const trimmed = String(newName ?? '').trim();
+  const input = document.getElementById('food-item-input');
+  if (input) input.value = trimmed;
+  if (state.stagedDetailFoodName) state.stagedDetailFoodName = trimmed || null;
+  return trimmed;
 }
 
 /** Drop a stale parse-conflict warning and re-enable the staging actions. */

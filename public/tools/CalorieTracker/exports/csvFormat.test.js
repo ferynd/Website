@@ -147,6 +147,40 @@ describe('saved food CSV', () => {
     });
   });
 
+  it('converts a unit written on the header and does not store a nondefensible IU amount', () => {
+    const parsed = parseSavedFoodsCsv(
+      '"name","quantity","Energy (kJ)","Sodium (g)","Vitamin A (IU)"\n"Oil","1","1000","1.2","5000"\n',
+      1,
+    );
+    const kcal = parsed.rows[0].fields.calories;
+    expect(kcal).toBeCloseTo(239, 0);
+    expect(kcal).not.toBe(1000);
+    expect(parsed.rows[0].fields.sodium).toBe(1200);
+    expect(parsed.rows[0].fields.vitaminA).toBeUndefined();
+    expect(parsed.warnings.some((warning) => warning.code === 'nondefensible_conversion' && warning.key === 'vitaminA')).toBe(true);
+    const outcome = decideCsvFoodWrite(parsed.rows[0], null, 1, 't');
+    expect(outcome.action).toBe('write');
+    expect(outcome.doc).not.toHaveProperty('nutrientSchemaVersion');
+    expect(outcome.doc).not.toHaveProperty('nutrientMeta');
+    expect(outcome.doc).not.toHaveProperty('vitaminA');
+    expect(outcome.doc.sodium).toBe(1200);
+    expect(outcome.doc.calories).toBe(kcal);
+    expect(Object.keys(outcome.doc)).toEqual(['name', 'quantity', 'calories', 'sodium', 'lastUpdated']);
+
+    const mismatch = parseSavedFoodsCsv('"name","quantity","Sodium (g)"\n"Salt","1","1.2 mg"\n', 1);
+    expect(mismatch.rows[0].fields.sodium).toBeUndefined();
+    expect(mismatch.warnings.some((warning) => warning.code === 'unit_mismatch' && warning.key === 'sodium')).toBe(true);
+    expect(decideCsvFoodWrite(mismatch.rows[0], null, 1, 't').doc).not.toHaveProperty('sodium');
+
+    const agreed = parseSavedFoodsCsv('"name","quantity","Sodium (g)","Energy (kJ)"\n"Salt","1","1.2","1000 kJ"\n', 1);
+    expect(agreed.rows[0].fields.sodium).toBe(1200);
+    expect(agreed.rows[0].fields.calories).toBe(kcal);
+    expect(agreed.warnings.some((warning) => warning.code === 'unit_mismatch' || warning.code === 'nondefensible_conversion')).toBe(false);
+    const agreedWrite = decideCsvFoodWrite(agreed.rows[0], null, 1, 't');
+    expect(agreedWrite.doc.sodium).toBe(1200);
+    expect(agreedWrite.doc).not.toHaveProperty('nutrientSchemaVersion');
+  });
+
   it('summarizes import warnings without repeating unknown headers', () => {
     const text = summarizeCsvImportWarnings([
       { code: 'unknown_header', message: 'Unknown CSV headers: Mystery.' },

@@ -120,6 +120,19 @@ describe('nutrient registry', () => {
     expect(lookupLabel('Calories from Fat')).toBeNull();
     expect(lookupLabel('Net Carbs')).toBeNull();
     expect(lookupLabel('EPA + DHA')).toBeNull();
+    expect(lookupLabel('Vitamin D3')).toMatchObject({ key: 'vitaminD' });
+    expect(lookupLabel('Cholecalciferol')).toMatchObject({ key: 'vitaminD' });
+    expect(lookupLabel('Vitamin K2')).toMatchObject({ key: 'vitaminK' });
+    expect(lookupLabel('Menaquinone')).toMatchObject({ key: 'vitaminK' });
+    expect(lookupLabel('Vitamin C (as ascorbic acid)')).toMatchObject({ key: 'vitaminC' });
+    expect(lookupLabel('Zinc (as zinc oxide)')).toMatchObject({ key: 'zinc' });
+    expect(lookupLabel('Vitamin B12 (as methylcobalamin)')).toMatchObject({ key: 'vitaminB12' });
+    expect(lookupLabel('Saturated Fat (fat)')).toBeNull();
+    expect(lookupLabel('EPA (omega-3)')).toBeNull();
+    expect(lookupLabel('Energy (kJ)')).toEqual({ key: 'calories', via: 'exact', unit: 'kj' });
+    expect(lookupLabel('Sodium (g)')).toEqual({ key: 'sodium', via: 'exact', unit: 'g' });
+    expect(lookupLabel('Vitamin A (IU)')).toEqual({ key: 'vitaminA', via: 'exact', unit: 'iu' });
+    expect(lookupLabel('Vitamin A (RAE)').unit).toBeUndefined();
     expect(FIBER_MEANINGS).toEqual(['total', 'weighted_legacy', 'unknown']);
   });
 

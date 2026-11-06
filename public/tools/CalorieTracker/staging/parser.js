@@ -24,7 +24,7 @@ import {
   v1StorageNotice,
   withoutStagedDetail,
 } from '../nutrition/nutrientRecord.js';
-import { renderNutrientDetail, setNutrientConflictsBlocked } from '../ui/nutrientDetail.js';
+import { renderNutrientDetail, setNutrientConflictsBlocked, settleEmptyPaste } from '../ui/nutrientDetail.js';
 
 const PARSER_CONFIG = {
   DEFAULT_QUANTITY: 1
@@ -112,13 +112,9 @@ function countParsed(record) {
  */
 export function parseAndStage() {
   const text = document.getElementById('paste-area').value;
-  const warningEl = document.getElementById('parse-missing-warning');
 
   if (!text) {
-    if (warningEl) {
-      warningEl.replaceChildren();
-      warningEl.classList.add('hidden');
-    }
+    settleEmptyPaste(state.stagedRecord);
     return showMessage('Paste area is empty.', true);
   }
 

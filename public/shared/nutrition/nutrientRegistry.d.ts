@@ -222,8 +222,10 @@ export interface Observation {
 }
 
 export function normalizeLabel(raw: string): string;
+export function normalizeUnit(raw: string): string;
+export function splitLabelUnit(raw: string): { text: string; unit: string | null };
 export function getNutrient(key: string): NutrientDef | undefined;
-export function lookupLabel(rawLabel: string): { key: NutrientKey; via: 'exact' | 'legacy_alias' } | null;
+export function lookupLabel(rawLabel: string): { key: NutrientKey; via: 'exact' | 'legacy_alias'; unit?: string } | null;
 export function targetableKeys(): NutrientKey[];
 export function keysForGroup(group: string, since?: 1 | 2): NutrientKey[];
 export function convertUnit(
@@ -231,6 +233,12 @@ export function convertUnit(
   value: number,
   fromUnit: string,
 ): { value: number; unit: NutrientUnit } | { error: 'unsupported_unit' | 'nondefensible_conversion' };
+export function resolveAmount(
+  key: string,
+  value: number,
+  valueUnit: string,
+  labelUnit?: string,
+): { value: number; unit: NutrientUnit; assumed: boolean } | { error: 'unsupported_unit' | 'nondefensible_conversion' | 'unit_mismatch' };
 export function checkPer100g(key: string, value: number): 'ok' | 'review' | 'reject';
 export function checkPerUnit(key: string, value: number): 'ok' | 'reject';
 export function emptyStagedRecord(): StagedNutrientRecord;
