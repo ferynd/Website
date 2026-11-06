@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "owner": "@ferynd",
+  "stages": [
+    {
+      "id": "lint",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "unit-core",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [
+        "^app/.*\\.test\\.tsx?$",
+        "^scripts/.*\\.test\\.(ts|mjs)$"
+      ],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "unit-calorie-tracker",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [
+        "^public/tools/CalorieTracker/.*\\.test\\.js$"
+      ],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "rules-emulator",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [
+        "^tests/rules/.*\\.test\\.ts$"
+      ],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "api-contract",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [
+        "^tests/api/.*\\.test\\.ts$"
+      ],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "browser-public",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "browser-auth",
+      "status": "pending",
+      "priority": "P1",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [],
+      "source": "T27; AR-06",
+      "followUp": "AR-18",
+      "reviewBy": "2027-02-01",
+      "reason": "Requires Playwright and Firebase Auth emulator personas; rules tests are not browser auth coverage."
+    },
+    {
+      "id": "concurrency",
+      "status": "pending",
+      "priority": "P1",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [],
+      "source": "T27; AR-06",
+      "followUp": "AR-18",
+      "reviewBy": "2027-02-01",
+      "reason": "Whole-document writes need two-context scenarios and AR-09 repairs; no permanent quarantine."
+    },
+    {
+      "id": "docs-manifest",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "build-cloudflare",
+      "status": "blocking",
+      "priority": "P0",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/ci.yml",
+      "tests": [],
+      "source": "T27; AR-06"
+    },
+    {
+      "id": "deploy-smoke",
+      "status": "post-deploy",
+      "priority": "P1",
+      "owner": "@ferynd",
+      "workflow": ".github/workflows/deploy-smoke.yml",
+      "tests": [],
+      "source": "T27; AR-06"
+    }
+  ]
+}

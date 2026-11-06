@@ -5,7 +5,7 @@ Compact execution queue derived from the 2026 full-site investigation. Detailed 
 ## Parameters
 
 - **Branch/PR:** one focused branch/PR per initiative from current `main`: `working/audit-<id>-<slug>` where possible.
-- **Commit scope:** affected subsystem; IDs AR-00 onward; next new ID **AR-18**; never reuse IDs.
+- **Commit scope:** affected subsystem; IDs AR-00 onward; next new ID **AR-21**; never reuse IDs.
 - **Archive:** `backlogs/audit-remediation-completed.md`.
 - **Checks:** initiative acceptance tests plus the smallest relevant commands from `AGENTS.md`. Critical/high work requires regression coverage or an explicit automation limitation.
 
@@ -66,13 +66,27 @@ For “continue implementing fixes,” “continue audit remediation,” or “c
 
 ## WAVE 1 — Delivery and regression infrastructure
 
-- [ ] **AR-06 Add staged, release-blocking CI.** Findings F-006, F-007, F-044–F-049, F-151; test design T27. Add pinned-runtime clean install, canonical unit projects, rules emulator, API contract, public/auth browser, concurrency, docs/manifest, production build, and deploy smoke jobs in staged order.
+- [p] **AR-06 Add staged, release-blocking CI.** Findings F-006, F-007, F-044–F-049, F-151; test design T27. Add pinned-runtime clean install, canonical unit projects, rules emulator, API contract, public/auth browser, concurrency, docs/manifest, production build, and deploy smoke jobs in staged order.
   - **Depends:** AR-01/AR-02 for deployment/rules jobs.
   - **Accept:** P0 checks block merge/deploy; test ownership is explicit; flaky quarantine requires owner/issue/expiry; artifacts are privacy-safe.
+  > pushed — staged CI: blocking lint/unit-core/unit-calorie-tracker/api-contract/docs-manifest/rules-emulator/build-cloudflare/browser-public behind ci-gate; deploy-smoke (dispatch/daily, SHA check pending F-152); browser-auth/concurrency → AR-18; Vitest → AR-19; observability → AR-20. Checks: lint, unit 1887, CT 584, api 42, rules 104, contract/docs, actionlint, build+smoke, cf:build; commit: a1567c6; PR: #182
 
 - [ ] **AR-07 Create a typed product manifest and static safety checks.** Findings F-010–F-017, F-135, F-149, F-151. One manifest should drive catalogues and validate route, lifecycle, sensitivity, implementation type, owner, back link, external dependency, and archive status.
   - **Depends:** AR-00 lifecycle decision.
   - **Accept:** catalogues derive from one source; invalid/private/missing routes fail CI; docs inventory and sensitive/static-sink checks run automatically.
+
+- [ ] **AR-18 Browser, authenticated, and concurrency test harness.** Findings F-044, F-045, browser part of F-046; T27 jobs 5 (full), 6 and 7. Playwright desktop/mobile, axe on public routes, keyboard/reduced-motion/no-JS, Auth-emulator multi-role workflows, two-context concurrency, redacted traces only; move `browser-auth` and `concurrency` from pending to blocking in `.github/ci/contract.json`.
+  - **Depends:** AR-06. **Evidence:** T27.
+  - **Accept:** Playwright projects pass; no critical/serious axe on selected public routes; keyboard/reduced-motion/no-JS checks; multi-role Auth-emulator workflows; two-context concurrency scenarios; redacted traces are the only artifacts; `browser-auth` and `concurrency` are blocking CI jobs.
+
+- [ ] **AR-19 Consolidate Vitest major and add a targeted coverage contract.** Findings F-007, rest of F-049. One Vitest major (or documented workspace) without breaking CalorieTracker's standalone package; coverage thresholds for security-critical/pure modules; risk-to-suite matrix from `contract.json`.
+  - **Depends:** AR-06.
+  - **Accept:** one Vitest major or documented workspace; coverage thresholds for security-critical/pure modules; matrix generated from `contract.json`.
+
+- [ ] **AR-20 Privacy-safe observability, error boundaries, and readiness.** Findings F-047, app part of F-048. Error boundaries that show the release id; event taxonomy with tests for forbidden fields; readiness probe that never reveals secrets; alerts on smoke/route failure rate.
+  - **Depends:** AR-01 (F-152).
+  - **Accept:** error boundaries show release id; taxonomy tests reject forbidden fields; readiness reveals no secrets; alerts exist for smoke and route failure rate.
+
 
 ## WAVE 2 — Shared identity, data integrity, and lifecycle
 
@@ -81,7 +95,7 @@ For “continue implementing fixes,” “continue audit remediation,” or “c
   - **Accept:** account/identity transitions and migrations are tested; foreign links cannot be syntactically valid but semantically unauthorized/stale; schema owners/versions are documented.
 
 - [ ] **AR-09 Replace destructive whole-document collaboration writes.** Findings include F-034, F-066, F-079, F-080–F-085, F-088–F-090, F-096, F-098, F-104. Use transactions, actor-addressable records/maps, version preconditions, and idempotent operation IDs.
-  - **Depends:** AR-06 concurrency harness.
+  - **Depends:** AR-18 concurrency harness.
   - **Accept:** two-client tests show no silent loss or duplicate operation; partial success is visible/recoverable; generic forms cannot overwrite member-owned fields.
 
 - [ ] **AR-10 Build shared Storage staging, ownership, retention, and cleanup.** Findings F-039, F-078, F-086 and related Planner/Date Night upload risks. Stage uploads, finalize after owning-record commit, delete replaced/deleted assets, and reconcile orphans.
@@ -95,14 +109,14 @@ For “continue implementing fixes,” “continue audit remediation,” or “c
   - **Accept:** unauthenticated/oversized/burst/injection requests fail before provider spend; Show recommendation cost is bounded; client-supplied records cannot bypass list authority; privacy-minimized contract tests pass.
 
 - [ ] **AR-12 Complete remaining Transcriber fidelity, memory, cancellation, and recovery work.** Findings F-030, F-056, F-059–F-061, F-064. Make silence deletion and suppression preservation-safe/reviewable, remove personalized default context, bound decoded-memory/chunk materialization, add cancellation, and protect undownloaded/tab-local work.
-  - **Depends:** AR-06 for browser/API/evaluation harness expansion. **Evidence:** T12, T12A.
+  - **Depends:** AR-18 for browser harness expansion; AR-06 for API contract jobs. **Evidence:** T12, T12A.
   - **Accept:** quiet/repeated-phrase corpus has no unacceptable omissions; default context is neutral; peak memory is measured/bounded; cancellation cleans provider files and retains safe progress; unload/recovery behavior is accurate and tested.
   - **Do not reimplement:** PR #152 closed F-057, F-058, F-062, and F-063.
 
 ## WAVE 4 — Tool correctness
 
 - [ ] **AR-13 Correct Trip Planner timezone, recurrence, and planner-local state.** Findings F-075–F-079 and related scheduling/storage risks. Use one zoned-time contract for create/edit/drag/display/recurrence and preserve occurrence-relative dates.
-  - **Depends:** AR-06 time/browser tests.
+  - **Depends:** AR-18 time/browser tests.
   - **Accept:** different browser zones produce the same intended instant; series edits preserve distinct occurrences; DST/cross-midnight/planner-switch/concurrency tests pass.
 
 - [ ] **AR-14 Protect Nutrition Tracker date, identity, historical values, and concurrent logs.** Findings F-098–F-106. Bind delayed saves to captured date/user, use collision-safe food identity/rename, support guest upgrade, preserve exact historical exercise, add revision-safe daily writes, and correct precision/timezone/CSV handling.

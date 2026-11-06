@@ -5,48 +5,208 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 env:
-  NODE_VERSION: "22"
   NEXT_TELEMETRY_DISABLED: "1"
+  WRANGLER_SEND_METRICS: "false"
+  FORCE_COLOR: "0"
 
 jobs:
-  site:
-    name: Site (lint, build, test)
+  lint:
+    name: lint
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
       - run: npm run lint
-      - run: npm run build
+
+  unit-core:
+    name: unit-core
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
       - run: npm test
 
-  calorie-tracker:
-    name: CalorieTracker (test)
+  unit-calorie-tracker:
+    name: unit-calorie-tracker
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
         working-directory: public/tools/CalorieTracker
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: public/tools/CalorieTracker/package-lock.json
       - run: npm ci
       - run: npm test
+
+  api-contract:
+    name: api-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run test:api
+
+  docs-manifest:
+    name: docs-manifest
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+      - run: node scripts/ci/check-contract.mjs
+      - run: node scripts/ci/check-docs-manifest.mjs
+      - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color=false .github/workflows/ci.yml .github/workflows/deploy-smoke.yml
+
+  rules-emulator:
+    name: rules-emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, unit-core, unit-calorie-tracker, api-contract, docs-manifest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npm run test:rules
+
+  build-cloudflare:
+    name: build-cloudflare
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [lint, unit-core, unit-calorie-tracker, api-contract, docs-manifest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run cf:build
+      - name: Verify Worker assets and privacy
+        run: |
+          test -f .open-next/worker.js && test -d .open-next/assets
+          maps="$(find .open-next/assets -name '*.map' -print -quit || true)"
+          if [ -n "$maps" ]; then
+            echo "source maps must not ship in Worker assets" >&2
+            exit 1
+          fi
+          node scripts/ci/check-docs-manifest.mjs --only sensitive --root .open-next/assets
+
+  browser-public:
+    name: browser-public
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint, unit-core, unit-calorie-tracker, api-contract, docs-manifest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - name: Start built app and wait for HTTP readiness
+        run: |
+          npx next start -p 3100 > /tmp/next-start.log 2>&1 &
+          echo "$!" > /tmp/next-start.pid
+          i=0
+          while [ "$i" -lt 60 ]; do
+            if curl --fail --silent --output /dev/null http://127.0.0.1:3100; then
+              exit 0
+            fi
+            i=$((i + 1))
+            sleep 1
+          done
+          exit 1
+      - run: npm run ci:smoke -- --profile local --base-url http://127.0.0.1:3100
+      - name: Show server diagnostics on failure
+        if: failure()
+        run: tail -50 /tmp/next-start.log
+      - name: Stop built app
+        if: always()
+        run: |
+          if [ -f /tmp/next-start.pid ]; then
+            kill "$(cat /tmp/next-start.pid)" || true
+          fi
+
+  ci-gate:
+    name: ci-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    needs: [lint, unit-core, unit-calorie-tracker, api-contract, docs-manifest, rules-emulator, build-cloudflare, browser-public]
+    steps:
+      - name: Require every blocking stage to succeed
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          node <<'NODE'
+          const n = JSON.parse(process.env.NEEDS_JSON);
+          const bad = Object.entries(n).filter(([, v]) => v.result !== "success");
+          for (const [k, v] of bad) console.log(`::error::${k} = ${v.result}`);
+          process.exit(bad.length ? 1 : 0);
+          NODE

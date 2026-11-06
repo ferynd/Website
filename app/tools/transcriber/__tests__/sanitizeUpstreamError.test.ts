@@ -9,16 +9,16 @@ describe('sanitizeUpstreamError', () => {
   });
 
   it('redacts Google/Gemini-style AIza keys', () => {
-    const result = sanitizeUpstreamError('Request failed for key AIzaSyD1234567890abcdefghijklmno');
+    const result = sanitizeUpstreamError('Request failed for key AIzaSyFAKE_SyD1234567890abcdefghijklmno');
     expect(result).not.toContain('SyD1234567890abcdefghijklmno');
     expect(result).toContain('AIza***');
   });
 
   it('redacts key= query-param values without dropping the rest of the URL', () => {
     const result = sanitizeUpstreamError(
-      'Fetch failed: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyD1234567890abcdefghijklmno',
+      'Fetch failed: https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=AIzaSyFAKE_SyD1234567890abcdefghijklmno',
     );
-    expect(result).not.toContain('AIzaSyD1234567890abcdefghijklmno');
+    expect(result).not.toContain('AIzaSyFAKE_SyD1234567890abcdefghijklmno');
     expect(result).toContain('generateContent?key=***');
   });
 

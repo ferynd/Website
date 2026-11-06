@@ -56,6 +56,8 @@ Use the smallest scope that provides meaningful confidence, then run every comma
 - Shared config/dependencies/routing: `npm run lint`, `npm run build`, and `npm test`.
 - Auth/rules/data-model changes: relevant tests plus `npm run test:rules` (Firestore/Storage emulator coverage under `tests/rules/`, requires Java; see AR-02 in `backlogs/audit-remediation.md`); clearly identify any manual deployment validation.
 - Critical/high fixes require a regression test or a documented reason automation is not feasible.
+- CI contract and stage ownership live in `docs/ci.md` / `.github/ci/contract.json`. New test files must match exactly one blocking stage regex; skip-style calls need a quarantine entry with owner, issue URL, and expiry ≤ 30 days.
+- API route changes: also run `npm run test:api`.
 
 Report checks concisely; do not paste successful logs.
 
