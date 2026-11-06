@@ -10,7 +10,7 @@ import { validateProposal } from '../../public/shared/nutrition/research/researc
 import { buildReviewPacket } from '../../public/shared/nutrition/research/researchReview.js';
 import { stageCatalog } from '../../public/shared/nutrition/research/stagedCatalog.js';
 import type { ResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
-import type { ResearchJobStore, SourceCache } from '../../public/shared/nutrition/research/researchPorts.js';
+import type { ResearchJobStore, SourceCache, ResearchAdapter, FetchResearchAdapter } from '../../public/shared/nutrition/research/researchPorts.js';
 import { readManifest, selectNextBatch, stateToDims } from './manifestReader';
 import { readMatchTable } from './matchTable';
 import { createFileResearchStore, createFileSourceCache, assertLocalPath } from './fileResearchStore';
@@ -31,9 +31,10 @@ async function allJobs(store: ResearchJobStore) {
     } while (cursor);
     return jobs;
 }
-export async function researchCli(args: string[], { output = (v: unknown) => process.stdout.write(typeof v === 'string' ? v + '\n' : Array.isArray(v) && v.length && v.every(item => typeof item.copyable === 'string') ? v.map(item => item.copyable).join('\n\n') + '\n' : JSON.stringify(v, null, 2) + '\n'), fetch: fetcher = globalThis.fetch }: {
+export async function researchCli(args: string[], { output = (v: unknown) => process.stdout.write(typeof v === 'string' ? v + '\n' : Array.isArray(v) && v.length && v.every(item => typeof item.copyable === 'string') ? v.map(item => item.copyable).join('\n\n') + '\n' : JSON.stringify(v, null, 2) + '\n'), fetch: fetcher = globalThis.fetch, fdcBulkAdapter }: {
     output?: (v: unknown) => void;
     fetch?: typeof fetch;
+    fdcBulkAdapter?: ResearchAdapter & FetchResearchAdapter;
 } = {}) {
     const argv = args[0] === '--' ? args.slice(1) : args;
     const command = argv[0];
@@ -79,8 +80,11 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
         }
     }
     const entries = await readManifest(), matches = await readMatchTable();
-    const release = str('release') || 'unconfigured';
-    const adapters = [createManualAdapter(), createLabelAdapter(), createFdcBulkAdapter({ cache, release, matches }), createFdcApiAdapter({ live: flags.live === true, fetch: fetcher, matches })];
+    const pin = RESEARCH_CONFIG.datasets.find(d => d.id === str('dataset'));
+    const release = str('release') || pin?.release || 'unconfigured';
+    if (fdcBulkAdapter && fdcBulkAdapter.id !== 'fdc_bulk')
+        throw new Error('Injected offline adapter must use fdc_bulk');
+    const adapters = [createManualAdapter(), createLabelAdapter(), fdcBulkAdapter || createFdcBulkAdapter({ cache, release, matches }), createFdcApiAdapter({ live: flags.live === true, fetch: fetcher, matches })];
     const service = createResearchService({ store, sourceCache: cache, adapters });
     const jobs = await allJobs(store);
     let selected = str('job') ? jobs.filter(j => j.jobId === str('job')) : str('batch') ? jobs.filter(j => j.parentBatchId === str('batch')) : jobs;
@@ -154,13 +158,25 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
                 throw new Error('review requires --job');
             const job = selected[0];
             if (str('verify-source')) {
-                result = await service.attestSource(job.jobId, str('verify-source')!, str('reviewer') || '');
+                if (job.scope === 'private' && !str('source')) {
+                    result = await service.attestSource(job.jobId, str('verify-source')!, str('reviewer') || '');
+                } else {
+                    const source = str('source') || 'fdc-bulk';
+                    if (!['fdc-bulk', 'fdc-api'].includes(source))
+                        throw new Error('Source verification requires fdc-bulk or fdc-api');
+                    if (source === 'fdc-bulk' && str('file')) {
+                        if (!pin) throw new Error('--file requires a pinned --dataset');
+                        if (release !== pin.release) throw new Error('--release must match the dataset pin');
+                        await indexBulk(str('file')!, pin, cache);
+                    }
+                    result = await service.verifySource(job.jobId, str('verify-source')!, source.replace('-', '_'));
+                }
                 break;
             }
             if (str('decide'))
                 result = await service.review(job.jobId, { decision: str('decide') as 'approve' | 'reject' | 'block', reviewer: str('reviewer') || '', approvedContentHash: str('hash'), acknowledgedWarnings: str('ack')?.split('|') || [], attestation: flags.attest === true });
             else
-                result = buildReviewPacket(job);
+                result = await buildReviewPacket(job);
             break;
         }
         case 'stage': {

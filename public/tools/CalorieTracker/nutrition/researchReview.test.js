@@ -2,7 +2,7 @@ import { it, expect, describe } from 'vitest';
 import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
 import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
 import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
-import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION } from '../../../shared/nutrition/research/researchReview.js';
+import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION, reviewContentHash } from '../../../shared/nutrition/research/researchReview.js';
 async function makeJobWithDraft(values = { protein: 10, calories: 40 }) {
     const staged = emptyStagedRecord();
     for (const k of V2_KEYS) {
@@ -61,7 +61,7 @@ describe('Research Review', () => {
     });
     it('builds review packet with JSON, Markdown and checklist v1', async () => {
         const { job } = await makeJobWithDraft();
-        const packet = buildReviewPacket(job);
+        const packet = await buildReviewPacket(job);
         expect(packet.json.checklistVersion).toBe(CHECKLIST_VERSION);
         expect(packet.json.jobId).toBe(job.jobId);
         expect(packet.markdown).toContain('# Research Review');
@@ -70,40 +70,40 @@ describe('Research Review', () => {
     });
     it('approves a job when approvedContentHash matches and warnings are acknowledged', async () => {
         const { job, draft } = await makeJobWithDraft();
-        const approvedJob = applyReviewDecision(job, {
+        const approvedJob = await applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: draft.contentHash,
+            approvedContentHash: await reviewContentHash(job.proposal),
             acknowledgedWarnings: [],
         });
         expect(approvedJob.state).toBe('approved');
         expect(approvedJob.review.reviewer).toBe('James');
-        expect(approvedJob.review.approvedContentHash).toBe(draft.contentHash);
+        expect(approvedJob.review.approvedContentHash).toBe(await reviewContentHash(job.proposal));
         expect(approvedJob.version).toBe(2);
     });
     it('rejects approval if contentHash does not match approvedContentHash', async () => {
         const { job } = await makeJobWithDraft();
-        expect(() => applyReviewDecision(job, {
+        await expect(applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
             approvedContentHash: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
             acknowledgedWarnings: [],
-        })).toThrow('Approved content hash mismatch');
+        })).rejects.toThrow('Approved content hash mismatch');
     });
     it('blocks approval if there are unacknowledged validation warnings', async () => {
         const { job, draft } = await makeJobWithDraft();
         job.validation.warnings = ['Target food state is unspecified'];
-        expect(() => applyReviewDecision(job, {
+        await expect(applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: draft.contentHash,
+            approvedContentHash: await reviewContentHash(job.proposal),
             acknowledgedWarnings: [], // omitted acknowledgment!
-        })).toThrow('unacknowledged warnings');
+        })).rejects.toThrow('unacknowledged warnings');
         // With acknowledgment, it passes
-        const approvedJob = applyReviewDecision(job, {
+        const approvedJob = await applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: draft.contentHash,
+            approvedContentHash: await reviewContentHash(job.proposal),
             acknowledgedWarnings: ['Target food state is unspecified'],
         });
         expect(approvedJob.state).toBe('approved');
@@ -111,11 +111,24 @@ describe('Research Review', () => {
     it('blocks approval if there are validation errors', async () => {
         const { job, draft } = await makeJobWithDraft();
         job.validation.errors = ['Explicit conflict: target is raw but source is cooked'];
-        expect(() => applyReviewDecision(job, {
+        await expect(applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: draft.contentHash,
+            approvedContentHash: await reviewContentHash(job.proposal),
             acknowledgedWarnings: [],
-        })).toThrow('Cannot approve job with validation errors');
+        })).rejects.toThrow('Cannot approve job with validation errors');
     });
+});
+it('rejects a stale approval after conversion-only edits and displays the full weights/evidence', async () => {
+    const { job } = await makeJobWithDraft();
+    job.proposal.conversions = [{ unit: 'cup', amount: 1, grams: 125, state: 'raw', source: { type: 'manual', title: 'Synthetic portion' } }];
+    const packet = await buildReviewPacket(job);
+    expect(packet.json.conversions).toEqual(job.proposal.conversions);
+    expect(packet.json.diff.addedConversions).toEqual(job.proposal.conversions);
+    expect(packet.markdown).toContain('1 cup: 125 g');
+    const decision = { decision: 'approve', reviewer: 'r', approvedContentHash: packet.json.contentHash };
+    const unchanged = await applyReviewDecision(job, decision);
+    expect(unchanged.state).toBe('approved');
+    job.proposal.conversions[0].grams = 250;
+    await expect(applyReviewDecision(job, decision)).rejects.toThrow('Approved content hash mismatch');
 });

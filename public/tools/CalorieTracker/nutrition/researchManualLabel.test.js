@@ -157,3 +157,40 @@ it('requires gram units and honors an explicit per-100g label basis', async () =
     const perServing = await adapter.toSourceResult({ servingSize: 50, servingSizeUnit: 'grams', nutrients: { protein: 2 } });
     expect(normalizeSourceResult(perServing).nutrients.protein).toBe(4);
 });
+it.each(['manual', 'label'])('%s rejects unsupported nutrient keys even when their values are null', async type => {
+    const adapter = type === 'manual' ? createManualAdapter() : createLabelAdapter();
+    for (const key of ['protien', 'fiberWeightedLegacy']) {
+        for (const value of [null, 2]) {
+            await expect(adapter.toSourceResult({ source: { type: 'manual' }, originalBasis: 'per_100g_edible', nutrients: { [key]: value } })).rejects.toThrow('Unknown stored nutrient key');
+        }
+    }
+});
+it('converts manual LOQ bounds and estimate ranges from mg into registry grams', async () => {
+    const result = await createManualAdapter().toSourceResult({
+        source: { type: 'manual' }, nutrients: {
+            omega3: { value: 100, unit: 'mg', status: 'estimated_from_comparable', range: { min: 80, max: 120 }, comparatorRef: 'fixture', transferReason: 'Synthetic comparison' },
+            omega6: { value: null, unit: 'mg', status: 'below_quantification_limit', upperBound: 50 },
+        },
+    });
+    // Exercise both registry conversion and the existing serving scale.
+    for (const scale of [1, 2]) {
+        const proposal = normalizeSourceResult({ ...result, originalBasis: scale === 1 ? 'per_100g_edible' : 'per_serving_50g', servingSize: 50, servingSizeUnit: 'g' });
+        expect(proposal.nutrients.omega3).toBeCloseTo(0.1 * scale);
+        expect(proposal.fieldProvenance.omega3.range.min).toBeCloseTo(0.08 * scale);
+        expect(proposal.fieldProvenance.omega3.range.max).toBeCloseTo(0.12 * scale);
+        expect(proposal.nutrients.omega6).toBeNull();
+        expect(proposal.nutrientMeta.quality.omega6.upperBound).toBeCloseTo(0.05 * scale);
+    }
+});
+it('extracts cooked and unsalted state evidence from label productName and blocks a raw target', async () => {
+    const adapter = createLabelAdapter();
+    const raw = { productName: 'Cooked Ham, Unsalted', originalBasis: 'per_100g_edible', nutrients: { protein: 10 } };
+    const result = await adapter.toSourceResult(raw);
+    expect(result.extractedStateWords).toEqual(expect.arrayContaining(['cooked', 'unsalted']));
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [adapter] });
+    const job = await service.enqueue({ fields: ['protein'], target: { manifestId: 'ham', dims: { state: 'raw' } } });
+    const reviewed = await service.runJob(job.jobId, { adapterId: 'label', context: { labelRecord: raw } });
+    expect(reviewed.validation.isValid).toBe(false);
+    expect(reviewed.validation.errors).toContain('Explicit conflict: target is raw but source is cooked/prepared');
+});

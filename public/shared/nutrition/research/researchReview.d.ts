@@ -35,6 +35,7 @@ export interface ReviewDecision {
     };
     notes?: string;
 }
-export declare function buildRevisionDiff(base: any, draft: any): RevisionDiff;
-export declare function buildReviewPacket(job: ResearchJob): ReviewPacket;
-export declare function applyReviewDecision(job: ResearchJob, decision: ReviewDecision): ResearchJob;
+export declare function buildRevisionDiff(base: any, draft: any, conversions?: any[]): RevisionDiff;
+export declare function reviewContentHash(proposal: any): Promise<string>;
+export declare function buildReviewPacket(job: ResearchJob): Promise<ReviewPacket>;
+export declare function applyReviewDecision(job: ResearchJob, decision: ReviewDecision): Promise<ResearchJob>;

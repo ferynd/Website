@@ -1,7 +1,7 @@
 import { createAssistantPacketAdapter } from './assistantPacketAdapter.js';
 import { PACKET_LIMITS } from './researchPacket.js';
 import { packetProposal } from './packetProposal.js';
-import { canonicalJson } from '../contentHash.js';
+import { canonicalJson, contentHashOf } from '../contentHash.js';
 import { emptyStagedRecord } from '../nutrientRegistry.js';
 import { buildRevisionDraft, revisionToStagedRecord } from '../ingredientProfile.js';
 import { buildConversion } from '../ingredientConversion.js';
@@ -249,10 +249,47 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
                 identityId = identityId || job.target.manifestId;
                 variantId = variantId || job.target.manifestId;
             }
-            // Staged record for buildRevisionDraft
-            const stagedRecord = emptyStagedRecord();
-            stagedRecord.values = proposal.nutrients;
-            stagedRecord.quality = proposal.nutrientMeta.quality;
+            // Seed a field-limited pass from the stored revision, then overlay only
+            // the requested fields. A first pass still keeps the normalizer's
+            // explicit unknown gaps; sparse revision storage drops a bare unknown.
+            const base = job.target.baseRevision || null;
+            const requested = job.requestedFields === '*' ? Object.keys(proposal.nutrients) : job.requestedFields;
+            // Keep the base's evidence intact, even when both passes use the same
+            // adapter source key for different records/releases.
+            if (base?.sources?.[proposal.sourceKey] && canonicalJson(base.sources[proposal.sourceKey]) !== canonicalJson(proposal.sourceRecord)) {
+                const oldKey = proposal.sourceKey;
+                proposal.sourceKey = oldKey + ':' + await contentHashOf(proposal.sourceRecord);
+                proposal.sources = { [proposal.sourceKey]: proposal.sourceRecord };
+                for (const evidence of Object.values(proposal.fieldProvenance))
+                    if (evidence.sourceKey === oldKey) evidence.sourceKey = proposal.sourceKey;
+            }
+            const stagedRecord = base ? revisionToStagedRecord(base) : emptyStagedRecord();
+            const fieldProvenance = { ...(base?.fieldProvenance || {}) };
+            if (base) {
+                for (const key of requested) {
+                    stagedRecord.values[key] = proposal.nutrients[key];
+                    stagedRecord.quality[key] = proposal.nutrientMeta.quality[key];
+                    delete fieldProvenance[key];
+                    if (proposal.fieldProvenance[key])
+                        fieldProvenance[key] = proposal.fieldProvenance[key];
+                }
+            }
+            else {
+                stagedRecord.values = { ...proposal.nutrients };
+                stagedRecord.quality = { ...proposal.nutrientMeta.quality };
+                Object.assign(fieldProvenance, proposal.fieldProvenance);
+            }
+            for (const key of Object.keys(stagedRecord.values)) {
+                const quality = stagedRecord.quality[key];
+                const bareUnknown = !quality?.status || (quality.status === 'unknown' && quality.roundingInterval == null && quality.upperBound == null && !quality.qualifier);
+                if (bareUnknown)
+                    stagedRecord.quality[key] = proposal.nutrientMeta.quality?.[key]?.qualifier ? proposal.nutrientMeta.quality[key] : { status: 'unknown', qualifier: 'gap:not_requested' };
+            }
+            proposal.sources = { ...(base?.sources || {}), ...proposal.sources };
+            proposal.fieldProvenance = fieldProvenance;
+            proposal.nutrients = stagedRecord.values;
+            proposal.nutrientMeta.quality = stagedRecord.quality;
+            proposal.gaps = Object.fromEntries(Object.entries(proposal.gaps).filter(([key]) => requested.includes(key)));
             const revisionDraft = await buildRevisionDraft({
                 identityId,
                 variantId,
@@ -267,7 +304,6 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
                 base: job.target.baseRevision || null,
             });
             proposal.revisionDraft = revisionDraft;
-            proposal.diff = buildRevisionDiff(null, revisionDraft);
             // Attach variantRef to portion conversions
             const variantRef = {
                 refVersion: 1,
@@ -294,6 +330,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
                 }
             }
             proposal.conversions = conversions;
+            proposal.diff = buildRevisionDiff(base, revisionDraft, conversions);
             // Validate proposal
             const validation = await validateProposal({
                 ...job,
@@ -489,7 +526,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
                 source: proposal.assistantResult.conversions[i].sourceIds[0] === sourceId ? normalized.sourceRecord : c.source,
             });
         }));
-        proposal.diff = buildRevisionDiff(job.target.baseRevision || null, proposal.revisionDraft);
+        proposal.diff = buildRevisionDiff(job.target.baseRevision || null, proposal.revisionDraft, proposal.conversions);
         proposal.sourceVerification[sourceId] = { status: 'verified', method: 'deterministic_refetch', verifiedAt: new Date(now()).toISOString() };
         const updated = { ...job, proposal, validation: await validateProposal({ ...job, proposal }), version: job.version + 1 };
         await store.save(updated, { expectedVersion: job.version });
@@ -500,7 +537,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         if (!job)
             throw new Error(`Job not found: ${jobId}`);
         const validation = await validateProposal(job);
-        const updated = applyReviewDecision({ ...job, validation }, decision);
+        const updated = await applyReviewDecision({ ...job, validation }, decision);
         await store.save(updated, { expectedVersion: job.version });
         return updated;
     }

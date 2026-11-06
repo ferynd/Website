@@ -6,8 +6,10 @@ import { researchCli, packetForJobs } from './researchCli';
 import { createFileResearchStore } from './fileResearchStore';
 import { buildResearchPackets, canonicalRequestBody } from '../../public/shared/nutrition/research/researchPacket.js';
 import type { ResearchRequest } from '../../public/shared/nutrition/research/researchPacket.js';
-import { responseFor } from '../../public/tools/CalorieTracker/nutrition/researchPacketFixtures.js';
+import { packetFixture, responseFor } from '../../public/tools/CalorieTracker/nutrition/researchPacketFixtures.js';
 import { transition, passIdFor } from '../../public/shared/nutrition/research/researchJob.js';
+import type { ResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
+import { reviewContentHash } from '../../public/shared/nutrition/research/researchReview.js';
 const temp: string[] = [];
 const output = () => { };
 afterEach(async () => { await Promise.all(temp.splice(0).map(p => rm(p, { recursive: true, force: true }))); vi.unstubAllEnvs(); });
@@ -85,4 +87,75 @@ it('packet without --batch partitions persisted jobs by parent and uses their ow
         const passId = await passIdFor({ parentBatchId: jobs[0]!.parentBatchId!, adapter: 'assistant-packet', sourceRelease: request.requestId, purpose: request.purpose });
         expect(jobs.every(j => j!.passId === passId)).toBe(true);
     }
+});
+function offlineBulkAdapter(permit = 'CC0 fixture license') {
+    const fetched: string[] = [];
+    return {
+        fetched,
+        adapter: {
+            id: 'fdc_bulk',
+            scope: ['curated', 'private'] as ('curated' | 'private')[],
+            runsIn: ['cli'] as 'cli'[],
+            requiresSecret: false,
+            release: async () => 'fixture',
+            match: async () => null,
+            fetch: async (id: string) => { fetched.push(id); return { fdcId: id }; },
+            toSourceResult: async () => ({
+                type: 'fdc', recordId: '9900001', dataType: 'Foundation', description: 'Synthetic apple',
+                release: 'fixture-v1', accessedAt: '2026-11-06', permittedUse: permit, originalBasis: 'per_100g_edible',
+                nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }],
+            }),
+        },
+    };
+}
+it('curated --verify-source refetches through a deterministic adapter and never attests', async () => {
+    const f = await packetFixture();
+    f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    f.response.results[0].unresolved = [];
+    const [accepted] = await f.service.acceptResponse(f.response);
+    const root = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
+    const disk = await createFileResearchStore(root);
+    await disk.save(accepted, { expectedVersion: 0 });
+    const file = path.join(root, 'jobs.json'), before = await readFile(file, 'utf8');
+    await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--reviewer', 'should-not-attest'], { output, fetch })).rejects.toThrow('Pinned bulk record not indexed');
+    expect(await readFile(file, 'utf8')).toBe(before);
+    expect((await disk.get(accepted.jobId))?.proposal?.sourceVerification?.s1?.status).toBe('unverified');
+    const offline = offlineBulkAdapter();
+    const preview = await researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1'], { output, fetch, fdcBulkAdapter: offline.adapter }) as ResearchJob;
+    expect(offline.fetched).toEqual(['9900001']);
+    expect(preview.proposal?.sourceVerification?.s1).toMatchObject({ status: 'verified', method: 'deterministic_refetch' });
+    const sourceKey = preview.proposal!.assistantSourceKeys!.s1;
+    expect(preview.proposal!.revisionDraft!.sources[sourceKey].permittedUse).toBe('CC0 fixture license');
+    expect(preview.validation?.isValid).toBe(true);
+    expect(await readFile(file, 'utf8')).toBe(before);
+    await researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--write'], { output, fetch, fdcBulkAdapter: offline.adapter });
+    const saved = await disk.get(accepted.jobId);
+    expect(saved?.proposal?.sourceVerification?.s1?.method).toBe('deterministic_refetch');
+    expect(saved?.proposal?.revisionDraft?.sources[sourceKey].permittedUse).toBe('CC0 fixture license');
+    expect(saved?.validation?.errors?.some((error: string) => error.includes('unresolved permittedUse'))).toBe(false);
+    const warnings = saved!.validation?.warnings || [];
+    const approveArgs = ['review', '--store', root, '--job', accepted.jobId, '--decide', 'approve', '--reviewer', 'reviewer', '--hash', await reviewContentHash(saved!.proposal), '--write'];
+    if (warnings.length)
+        approveArgs.push('--ack', warnings.join('|'));
+    const approved = await researchCli(approveArgs, { output, fetch, fdcBulkAdapter: offline.adapter }) as ResearchJob;
+    expect(approved.state).toBe('approved');
+    expect(approved.review?.approvedContentHash).toBe(await reviewContentHash(saved!.proposal));
+    vi.stubEnv('FDC_API_KEY', '');
+    await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('--live');
+    await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api', '--live'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('FDC_API_KEY');
+    expect(fetch).not.toHaveBeenCalled();
+});
+it('private --verify-source without --source keeps reviewer attestation', async () => {
+    const f = await packetFixture({ scope: 'private' });
+    const [accepted] = await f.service.acceptResponse(f.response);
+    const root = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
+    const disk = await createFileResearchStore(root);
+    await disk.save(accepted, { expectedVersion: 0 });
+    const offline = offlineBulkAdapter();
+    const attested = await researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--reviewer', 'pat', '--write'], { output, fetch, fdcBulkAdapter: offline.adapter }) as ResearchJob;
+    expect(offline.fetched).toEqual([]);
+    expect(attested.proposal?.sourceVerification?.s1).toMatchObject({ status: 'verified', method: 'reviewer_attestation', reviewer: 'pat' });
+    const sourceKey = attested.proposal!.assistantSourceKeys!.s1;
+    expect(attested.proposal!.revisionDraft!.sources[sourceKey].permittedUse).toBe('review_required');
+    expect(fetch).not.toHaveBeenCalled();
 });

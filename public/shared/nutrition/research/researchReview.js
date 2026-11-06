@@ -1,3 +1,4 @@
+import { contentHashOf } from '../contentHash.js';
 import { PROFILE_FIELDS as V2_KEYS } from './profileFields.js';
 import { transition } from './researchJob.js';
 export const CHECKLIST_VERSION = 1;
@@ -8,7 +9,7 @@ export const PLAYBOOK_CHECKLIST = Object.freeze([
     { id: 'evidence_documented', text: 'Every non-null value has documented provenance and evidence' },
     { id: 'warnings_acknowledged', text: 'All validation warnings reviewed and acknowledged' },
 ]);
-export function buildRevisionDiff(base, draft) {
+export function buildRevisionDiff(base, draft, conversions = []) {
     const nutrientChanges = {};
     let totalChanges = 0;
     for (const key of V2_KEYS) {
@@ -34,7 +35,7 @@ export function buildRevisionDiff(base, draft) {
         }
     }
     const baseConvs = new Map((base?.conversions || []).map(c => [c.conversionId, c]));
-    const draftConvs = draft?.conversions || [];
+    const draftConvs = conversions;
     const addedConversions = draftConvs.filter(c => !baseConvs.has(c.conversionId));
     const supersededConversions = draftConvs.filter(c => c.supersedes && baseConvs.has(c.supersedes));
     return {
@@ -45,9 +46,16 @@ export function buildRevisionDiff(base, draft) {
         supersededConversions,
     };
 }
-export function buildReviewPacket(job) {
+/** Approval covers the revision and every staged conversion, including source evidence. */
+export async function reviewContentHash(proposal) {
+    return contentHashOf({ revisionContentHash: proposal.revisionDraft.contentHash,
+        conversions: JSON.parse(JSON.stringify(proposal.conversions || [])) });
+}
+export async function buildReviewPacket(job) {
     const draft = job.proposal?.revisionDraft;
-    const diff = job.proposal?.diff || buildRevisionDiff(null, draft);
+    const conversions = job.proposal?.conversions || [];
+    const diff = buildRevisionDiff(job.target?.baseRevision, draft, conversions);
+    const contentHash = draft ? await reviewContentHash(job.proposal) : null;
     const validation = job.validation || { isValid: false, errors: [], warnings: [] };
     const mdLines = [
         `# Research Review: ${job.target?.manifestId || job.target?.variantId || job.jobId}`,
@@ -55,6 +63,7 @@ export function buildReviewPacket(job) {
         `- **Job ID:** \`${job.jobId}\``,
         `- **Target Kind:** ${job.target?.targetKind}`,
         `- **State:** ${job.target?.dims?.state || 'unspecified'}`,
+        `- **Approval Content Hash:** \`${contentHash || 'none'}\``,
         `- **Draft Content Hash:** \`${draft?.contentHash || 'none'}\``,
         `- **Status:** ${job.state}`,
         `- **Validation:** ${validation.isValid ? 'VALID' : 'INVALID'} (${validation.errors.length} errors, ${validation.warnings.length} warnings)`,
@@ -81,6 +90,10 @@ export function buildReviewPacket(job) {
     mdLines.push(`- **Fat:** ${draft?.nutrients?.fat ?? 'unknown'} g`);
     mdLines.push(`- **Fiber:** ${draft?.nutrients?.fiber ?? 'unknown'} g`);
     mdLines.push(``);
+    mdLines.push(`### Proposed Conversions`);
+    for (const c of conversions)
+        mdLines.push(`- ${c.amount} ${c.unit}${c.unitQualifier ? ' (' + c.unitQualifier + ')' : ''}: ${c.grams ?? c.gramsPerMl} ${c.kind === 'density' ? 'g/mL' : 'g'}; state: ${c.state}; source: ${JSON.stringify(c.source)}`);
+    mdLines.push(``);
     mdLines.push(`### Checklist (Version ${CHECKLIST_VERSION})`);
     for (const item of PLAYBOOK_CHECKLIST) {
         mdLines.push(`- [ ] **${item.id}**: ${item.text}`);
@@ -90,7 +103,9 @@ export function buildReviewPacket(job) {
         checklistVersion: CHECKLIST_VERSION,
         jobId: job.jobId,
         target: job.target,
-        contentHash: draft?.contentHash,
+        contentHash,
+        revisionContentHash: draft?.contentHash,
+        conversions,
         validation,
         diff,
         nutrients: draft?.nutrients,
@@ -102,7 +117,7 @@ export function buildReviewPacket(job) {
         markdown: mdLines.join('\n'),
     };
 }
-export function applyReviewDecision(job, decision) {
+export async function applyReviewDecision(job, decision) {
     if (!decision || typeof decision !== 'object') {
         throw new TypeError('Invalid decision: expected object');
     }
@@ -146,8 +161,9 @@ export function applyReviewDecision(job, decision) {
     if (!draft || !draft.contentHash) {
         throw new Error('Cannot approve job: proposal is missing revisionDraft or contentHash');
     }
-    if (draft.contentHash !== approvedContentHash) {
-        throw new Error(`Approved content hash mismatch: approved ${approvedContentHash} !== draft ${draft.contentHash}`);
+    const contentHash = await reviewContentHash(job.proposal);
+    if (contentHash !== approvedContentHash) {
+        throw new Error(`Approved content hash mismatch: approved ${approvedContentHash} !== proposal ${contentHash}`);
     }
     if (job.validation?.errors?.length) {
         throw new Error(`Cannot approve job with validation errors: ${job.validation.errors.join('; ')}`);

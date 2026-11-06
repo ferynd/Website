@@ -1,3 +1,4 @@
+import { reviewContentHash } from './researchReview.js';
 import { validateProposal } from './researchValidator.js';
 import { buildCatalogShards } from '../ingredientCatalog.js';
 export function toCatalogRecord(job) {
@@ -74,7 +75,7 @@ export async function stageCatalog(jobs) {
     for (const job of jobs) {
         toCatalogRecord(job);
         const validation = await validateProposal(job);
-        if (!validation.isValid || job.review?.approvedContentHash !== job.proposal.revisionDraft.contentHash)
+        if (!validation.isValid || job.review?.approvedContentHash !== await reviewContentHash(job.proposal))
             throw new TypeError('Staging requires valid reviewed content hash');
     }
     const records = jobs.map(toCatalogRecord);

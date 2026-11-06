@@ -260,6 +260,8 @@ export async function validateResearchResponse(input, { request, jobs, now = Dat
                 if (['unknown', 'below_quantification_limit'].includes(n.status))
                     fail(np + '.status', 'null required');
             }
+            if (n.value === null && !['unknown', 'below_quantification_limit', 'not_applicable'].includes(n.status))
+                fail(np + '.status', 'non-null value required for observational status');
             if (n.value === null && n.status === 'unknown' && !result.unresolved.some(u => u.field === key && u.reason))
                 fail(np, 'unknown needs reason');
             if (n.status === 'below_quantification_limit' && n.upperBound === undefined)

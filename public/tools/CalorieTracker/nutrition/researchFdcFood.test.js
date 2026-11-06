@@ -69,3 +69,16 @@ describe('FDC Food Parser', () => {
         expect(extractStateWords('Plain flour')).toEqual([]);
     });
 });
+it.each([
+    ['tablespoon', 'tbsp', 'tbsp', undefined],
+    ['tbsp', 'Tablespoons', 'tbsp', undefined],
+    ['cups', 'cup', 'cup', undefined],
+    ['cup', 'sliced', 'cup', 'sliced'],
+    ['cup', 'cup, chopped', 'cup', 'cup, chopped'],
+    ['piece', 'large', 'piece', 'large'],
+])('normalizes FDC portion %s / %s without redundant qualifiers', async (measure, modifier, unit, unitQualifier) => {
+    const raw = loadFixture('apple-bulk.json');
+    raw.foodPortions = [{ amount: 1, gramWeight: 125, measureUnit: { name: measure }, modifier }];
+    const result = await parseFdcFood(raw);
+    expect(result.portions).toEqual([{ kind: unit === 'piece' ? 'piece' : 'household', unit, unitQualifier, amount: 1, grams: 125 }]);
+});

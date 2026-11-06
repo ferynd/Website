@@ -1,3 +1,4 @@
+import { reviewContentHash } from '../../../shared/nutrition/research/researchReview.js';
 import { CURATED_CATALOG_ID } from '../../../shared/nutrition/ingredientIds.js';
 import { it, expect, describe } from 'vitest';
 import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
@@ -89,7 +90,7 @@ async function makeApprovedCuratedJob({ manifestId = 'apple-raw-with-skin', cano
         decision: 'approve',
         reviewer: 'James',
         reviewedAt: '2026-11-06T12:00:00Z',
-        approvedContentHash: draft.contentHash,
+        approvedContentHash: await reviewContentHash(job.proposal),
         acknowledgedWarnings: [],
     };
     job.state = 'approved';
@@ -177,4 +178,17 @@ describe('Staged Catalog', () => {
         expect(() => toCatalogRecord(job)).toThrow('Cannot stage private job');
         await expect(stageCatalog([job])).rejects.toThrow('Cannot stage private job');
     });
+});
+it.each(['grams', 'amount', 'unit', 'state', 'source', 'range', 'removed', 'added'])('refuses staging when conversions change after review: %s', async field => {
+    const job = await makeApprovedCuratedJob();
+    const conv = job.proposal.conversions[0];
+    if (field === 'grams') conv.grams = 200;
+    if (field === 'amount') conv.amount = 2;
+    if (field === 'unit') conv.unit = 'tbsp';
+    if (field === 'state') conv.state = 'cooked';
+    if (field === 'source') conv.source.permittedUse = 'CC0 changed';
+    if (field === 'range') conv.range = { min: 100, max: 150 };
+    if (field === 'removed') job.proposal.conversions = [];
+    if (field === 'added') job.proposal.conversions.push({ ...conv, unit: 'tbsp' });
+    await expect(stageCatalog([job])).rejects.toThrow('valid reviewed content hash');
 });

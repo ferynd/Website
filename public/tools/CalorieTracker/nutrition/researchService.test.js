@@ -1,3 +1,4 @@
+import { createManualAdapter } from '../../../shared/nutrition/research/manualAdapters.js';
 import { it, expect, describe, vi } from 'vitest';
 import fs from 'node:fs';
 import { createMemoryResearchStore, createMemorySourceCache } from '../../../shared/nutrition/research/memoryResearchStore.js';
@@ -234,4 +235,40 @@ describe('Research Service', () => {
         // Save with wrong expectedVersion
         await expect(store.save(job, { expectedVersion: 999 })).rejects.toThrow('Compare-and-swap conflict');
     });
+});
+it('seeds a field-limited deterministic pass from its base and preserves original source evidence', async () => {
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [createManualAdapter()] });
+    const target = { manifestId: 'residual-fixture', dims: { state: 'raw' } };
+    const first = await service.enqueue({ target, fields: ['protein', 'calories', 'sodium'] });
+    const original = await service.runJob(first.jobId, { adapterId: 'manual', context: { manualRecord: {
+        recordId: 'base-record', source: { type: 'manual' }, nutrients: {
+            protein: { value: 10, unit: 'g', status: 'measured' },
+            calories: { value: 40, unit: 'kcal', status: 'calculated', derivation: 'Synthetic base' },
+            sodium: { value: 20, unit: 'mg', status: 'measured' },
+        },
+    } } });
+    const base = { ...original.proposal.revisionDraft, revision: 1, revisionId: 'residual-fixture~r1' };
+    const baseRef = { refVersion: 1, scope: 'curated', namespace: 'catalog:nutrition-curated', identityId: base.identityId, variantId: base.variantId, revision: 1, revisionId: base.revisionId, contentHash: base.contentHash };
+    const next = await service.enqueue({ target: { ...target, baseRevision: base, baseRef }, fields: ['sodium', 'iodine'] });
+    const reviewed = await service.runJob(next.jobId, { adapterId: 'manual', context: { manualRecord: {
+        recordId: 'new-record', source: { type: 'manual' }, nutrients: {
+            // Unrequested observations must not overwrite the base either.
+            protein: { value: 99, unit: 'g', status: 'measured' },
+            sodium: { value: 30, unit: 'mg', status: 'measured' },
+        },
+    } } });
+    const draft = reviewed.proposal.revisionDraft;
+    expect(reviewed.validation.isValid).toBe(true);
+    expect(draft.nutrients).toMatchObject({ protein: 10, calories: 40, sodium: 30, iodine: null });
+    for (const key of ['protein', 'calories']) {
+        expect(draft.nutrientMeta.quality[key]).toEqual(base.nutrientMeta.quality[key]);
+        expect(draft.fieldProvenance[key]).toEqual(base.fieldProvenance[key]);
+        expect(draft.sources[draft.fieldProvenance[key].sourceKey]).toEqual(base.sources[base.fieldProvenance[key].sourceKey]);
+        expect(reviewed.proposal.diff.nutrientChanges[key]).toBeUndefined();
+        expect(reviewed.proposal.gaps[key]).toBeUndefined();
+    }
+    expect(draft.sources[draft.fieldProvenance.sodium.sourceKey].recordId).toBe('new-record');
+    expect(draft.fieldProvenance.sodium.sourceKey).not.toBe(base.fieldProvenance.sodium.sourceKey);
+    expect(draft.supersedes).toEqual({ revision: 1, revisionId: base.revisionId, contentHash: base.contentHash });
 });

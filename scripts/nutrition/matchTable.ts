@@ -25,7 +25,7 @@ export async function validateMatchTable(raw: unknown) {
     for (const e of doc.entries) {
         if (!['fdc_bulk', 'fdc_api'].includes(e.adapter) || !/^\d+$/.test(e.fdcId) || e.checklistVersion !== 1 || !Number.isFinite(Date.parse(e.reviewedAt)) || ['manifestId', 'dataType', 'release', 'description', 'stateEvidence', 'rationale', 'reviewer'].some(k => !String(e[k as keyof MatchEntry] || '').trim()))
             throw new TypeError('Invalid reviewed match');
-        const key = e.manifestId + ':' + e.adapter, source = e.adapter + ':' + e.release + ':' + e.fdcId;
+        const key = e.manifestId + ':' + e.adapter, source = JSON.stringify([e.release, e.fdcId]);
         if (seen.has(key))
             throw new TypeError('Duplicate manifest match');
         const previous = fdc.get(source);

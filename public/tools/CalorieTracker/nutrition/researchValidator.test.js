@@ -195,3 +195,26 @@ describe('Research Validator', () => {
         expect(outcome.errors.some(e => e.includes('non-public permittedUse'))).toBe(true);
     });
 });
+it.each(['measured', 'label_reported', 'calculated', 'estimated_from_comparable'])('rejects a null value that carries observational status %s', async status => {
+    const job = await makeValidJob({ values: { fat: null }, qualities: { fat: { status } } });
+    const validation = await validateProposal(job);
+    expect(validation.isValid).toBe(false);
+    expect(validation.errors).toContain('Field fat observational status requires non-null value');
+});
+it.each(['unknown', 'below_quantification_limit', 'not_applicable'])('allows a null value with %s status', async status => {
+    const job = await makeValidJob({
+        values: { fat: null },
+        qualities: { fat: status === 'below_quantification_limit' ? { status, upperBound: 0.05 } : { status, qualifier: 'gap:not_reported_by_source' } },
+    });
+    expect((await validateProposal(job)).errors.some(error => error.includes('observational status'))).toBe(false);
+});
+it.each(['accessedAt', 'publishedAt'])('rejects invalid source %s dates before approval', async field => {
+    for (const date of ['', 'not-a-date', '2026-13-01']) {
+        const job = await makeValidJob({ sources: { bad: { type: 'manual', version: 'fixture', permittedUse: 'CC0', accessedAt: '2026-11-06', [field]: date } } });
+        const validation = await validateProposal(job);
+        expect(validation.isValid).toBe(false);
+        expect(validation.errors).toContain(`Source bad invalid ${field === 'accessedAt' ? 'access' : 'publication'} date`);
+    }
+    const valid = await makeValidJob({ sources: { valid: { type: 'label', version: 'fixture', permittedUse: 'CC0', accessedAt: '2026-11-06T12:00:00Z', publishedAt: '2025-01-01' } } });
+    expect((await validateProposal(valid)).isValid).toBe(true);
+});

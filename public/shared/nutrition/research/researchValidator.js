@@ -32,6 +32,8 @@ export async function validateProposal(job, { base = null } = {}) {
     // 3. Status for all V2_KEYS
     const quality = draft.nutrientMeta?.quality || {};
     for (const key of V2_KEYS) {
+        if (draft.nutrients[key] === null && ['measured', 'label_reported', 'calculated', 'estimated_from_comparable'].includes(quality[key]?.status))
+            errors.push(`Field ${key} observational status requires non-null value`);
         if (!quality[key]?.status) {
             errors.push(`Field ${key} has no status`);
         }
@@ -122,9 +124,10 @@ export async function validateProposal(job, { base = null } = {}) {
         if (!src.version || typeof src.version !== 'string') {
             errors.push(`Source ${sKey} missing version`);
         }
-        if (!src.accessedAt || typeof src.accessedAt !== 'string') {
-            errors.push(`Source ${sKey} missing access date`);
-        }
+        if (typeof src.accessedAt !== 'string' || !Number.isFinite(Date.parse(src.accessedAt)))
+            errors.push(`Source ${sKey} invalid access date`);
+        if (src.publishedAt !== undefined && (typeof src.publishedAt !== 'string' || !Number.isFinite(Date.parse(src.publishedAt))))
+            errors.push(`Source ${sKey} invalid publication date`);
         if (!src.permittedUse || typeof src.permittedUse !== 'string') {
             errors.push(`Source ${sKey} missing permittedUse (license)`);
         }

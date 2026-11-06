@@ -1,3 +1,4 @@
+import { reviewContentHash, buildReviewPacket } from '../../../shared/nutrition/research/researchReview.js';
 import { it, expect, vi } from 'vitest';
 import { packetFixture, responseFor } from './researchPacketFixtures.js';
 import { buildResearchPackets, canonicalRequestBody, requestDigestFor, copyableResearchPacket, PACKET_LIMITS } from '../../../shared/nutrition/research/researchPacket.js';
@@ -22,14 +23,14 @@ it('starts assistant values unverified and gates curated/private approval', asyn
         f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
         const [j] = await f.service.acceptResponse(f.response);
         expect(j.validation.errors.length).toBe(scope === 'curated' ? 1 : 0);
-        const decision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: j.proposal.revisionDraft.contentHash, acknowledgedWarnings: j.validation.warnings };
+        const decision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: await reviewContentHash(j.proposal), acknowledgedWarnings: j.validation.warnings };
         await expect(f.service.review(j.jobId, decision)).rejects.toThrow(scope === 'curated' ? 'unresolved permittedUse' : 'attestation');
         if (scope === 'curated') {
             await f.service.attestSource(j.jobId, 's1', 'reviewer');
             await expect(f.service.review(j.jobId, decision)).rejects.toThrow('unresolved permittedUse');
             const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }], permittedUse: 'CC0 fixture' }) }] });
             const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
-            decision.approvedContentHash = verified.proposal.revisionDraft.contentHash;
+            decision.approvedContentHash = await reviewContentHash(verified.proposal);
         }
         const approved = await f.service.review(j.jobId, { ...decision, attestation: true });
         expect(approved.state).toBe('approved');
@@ -115,7 +116,7 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     response.results[0].nutrients = {};
     response.results[0].conversions = [{ unit: 'cup', grams: 125, state: 'raw', sourceIds: ['s1'], confidence: 1 }];
     const [j] = await f.service.acceptResponse(response);
-    const decision = { decision: 'approve', reviewer: 'r', approvedContentHash: j.proposal.revisionDraft.contentHash };
+    const decision = { decision: 'approve', reviewer: 'r', approvedContentHash: await reviewContentHash(j.proposal) };
     await f.service.attestSource(j.jobId, 's1', 'r');
     await expect(f.service.review(j.jobId, decision)).rejects.toThrow('unresolved permittedUse');
     await expect(stageCatalog([{ ...j, state: 'approved', proposal: { ...j.proposal, sourceVerification: { s1: { status: 'verified' } } }, review: { approvedContentHash: decision.approvedContentHash } }])).rejects.toThrow('valid reviewed content hash');
@@ -129,7 +130,7 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     expect(conv.conversionId).not.toBe(j.proposal.conversions[0].conversionId);
     expect(verified.validation.isValid).toBe(true);
     await expect(service.review(j.jobId, decision)).rejects.toThrow('hash mismatch');
-    const approved = await service.review(j.jobId, { ...decision, approvedContentHash: draft.contentHash });
+    const approved = await service.review(j.jobId, { ...decision, approvedContentHash: await reviewContentHash(verified.proposal) });
     expect((await stageCatalog([approved])).manifest.profileCount).toBe(1);
 });
 it.each([
@@ -276,4 +277,33 @@ it('copies selected text label evidence and strips alias metadata; rejects neste
     expect(JSON.stringify(request)).not.toContain('private-metadata');
     job.target.labelEvidence.nutrients = { meal: { ingredients: ['private meal'] } };
     await expect(buildResearchPackets([job], { includeLabelEvidence: true })).rejects.toThrow('requestedFields');
+});
+it.each(['measured', 'label_reported', 'calculated', 'estimated_from_comparable'])('rejects null packet values with %s status', async status => {
+    const f = await packetFixture();
+    const n = f.response.results[0].nutrients.protein;
+    Object.assign(n, { value: null, status, sourceIds: ['s1'], derivation: 'Synthetic calculation', comparator: { name: 'Synthetic comparator', sourceId: 's1', transferReason: 'Fixture' }, range: { min: 0, max: 1 } });
+    await expect(f.service.acceptResponse(f.response)).rejects.toThrow('non-null value required');
+    expect((await f.store.get(f.job.jobId)).state).toBe('awaiting_response');
+});
+it.each(['unknown', 'below_quantification_limit', 'not_applicable'])('allows null packet values with %s status', async status => {
+    const f = await packetFixture();
+    Object.assign(f.response.results[0].nutrients.protein, { status, sourceIds: ['s1'], ...(status === 'below_quantification_limit' ? { upperBound: 0.1 } : {}) });
+    const [job] = await f.service.acceptResponse(f.response);
+    expect(job.proposal.revisionDraft.nutrients.protein).toBeNull();
+    expect(job.proposal.revisionDraft.nutrientMeta.quality.protein.status).toBe(status);
+});
+it('includes packet conversions in the review diff and review content hash', async () => {
+    const f = await packetFixture();
+    await f.service.cancelRequest(f.request.requestId);
+    const [request] = await f.service.prepareRequest([f.job.jobId], { purpose: 'conversion' });
+    const response = responseFor(request);
+    response.results[0].nutrients = {};
+    response.results[0].conversions = [{ unit: 'cup', grams: 125, state: 'raw', sourceIds: ['s1'], confidence: 1 }];
+    const [job] = await f.service.acceptResponse(response);
+    expect(job.proposal.diff.addedConversions).toEqual(job.proposal.conversions);
+    const packet = await buildReviewPacket(job);
+    expect(packet.json.conversions).toEqual(job.proposal.conversions);
+    expect(packet.json.diff.addedConversions).toEqual(job.proposal.conversions);
+    expect(packet.markdown).toContain('1 cup: 125 g');
+    expect(packet.json.contentHash).not.toBe(job.proposal.revisionDraft.contentHash);
 });

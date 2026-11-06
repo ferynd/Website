@@ -1,3 +1,4 @@
+import { PROFILE_FIELDS } from './profileFields.js';
 import { extractStateWords } from './fdcFood.js';
 import { getNutrient, NUTRIENT_STATUSES } from '../nutrientRegistry.js';
 import { canonicalJson, sha256Hex } from '../contentHash.js';
@@ -68,6 +69,8 @@ export function createManualAdapter() {
                 throw new TypeError('Source record required');
             const nutrients = [];
             for (const [key, item] of Object.entries(raw.nutrients || {})) {
+                if (!PROFILE_FIELDS.includes(key))
+                    throw new TypeError('Unknown stored nutrient key: ' + key);
                 if (item === null || item === undefined)
                     continue;
                 let amount = null;
@@ -109,7 +112,7 @@ export function createManualAdapter() {
                 recordId: await inlineRecordId('manual', raw),
                 title: raw.title || raw.source.title || 'Manual Entry',
                 version: raw.version || raw.source?.version || '1',
-                publishedAt: raw.publishedAt,
+                publishedAt: raw.publishedAt ?? raw.source?.publishedAt,
                 accessedAt: raw.accessedAt || raw.source?.accessedAt || new Date().toISOString().slice(0, 10),
                 originalBasis: 'per_100g_edible',
                 permittedUse: raw.permittedUse || raw.source.permittedUse || 'permitted_review',
@@ -124,7 +127,7 @@ export function createManualAdapter() {
                 sourceRecord,
                 nutrients,
                 portions: raw.portions || [],
-                extractedStateWords: extractStateWords([raw.state, raw.description, raw.title].filter(Boolean).join(' ')),
+                extractedStateWords: extractStateWords([raw.state, raw.description, raw.title, raw.productName].filter(Boolean).join(' ')),
                 checksum,
             };
         },
@@ -166,6 +169,8 @@ export function createLabelAdapter() {
             }
             const nutrients = [];
             for (const [key, val] of Object.entries(raw.nutrients || {})) {
+                if (!PROFILE_FIELDS.includes(key))
+                    throw new TypeError('Unknown stored nutrient key: ' + key);
                 if (val === null || val === undefined)
                     continue;
                 const numVal = typeof val === 'number' ? val : val.value;
@@ -193,7 +198,7 @@ export function createLabelAdapter() {
                 recordId: await inlineRecordId('label', raw),
                 title: raw.title || raw.productName || 'Nutrition Facts Label',
                 version: raw.version || raw.source?.version || '1',
-                publishedAt: raw.publishedAt,
+                publishedAt: raw.publishedAt ?? raw.source?.publishedAt,
                 accessedAt: raw.accessedAt || raw.source?.accessedAt || new Date().toISOString().slice(0, 10),
                 originalBasis,
                 permittedUse: raw.permittedUse || 'Fair use / factual nutrition data',
@@ -209,7 +214,7 @@ export function createLabelAdapter() {
                 sourceRecord,
                 nutrients,
                 portions: raw.portions || [],
-                extractedStateWords: extractStateWords([raw.state, raw.description, raw.title].filter(Boolean).join(' ')),
+                extractedStateWords: extractStateWords([raw.state, raw.description, raw.title, raw.productName].filter(Boolean).join(' ')),
                 servingSize: raw.servingSize !== undefined ? raw.servingSize : null,
                 servingSizeUnit: raw.servingSizeUnit || null,
                 checksum,

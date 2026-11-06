@@ -43,5 +43,5 @@ export async function packetProposal(job, result) {
     const conversions = [];
     for (const c of result.conversions)
         conversions.push(await buildConversion({ variantRef, kind: 'household', unit: c.unit, amount: 1, grams: c.grams, state: c.state, source: sources[assistantSourceKeys[c.sourceIds[0]]], confidence: c.confidence, ...(c.range ? { range: c.range } : {}) }));
-    return { assistantSourceKeys, revisionDraft, conversions, gaps, extractedStateWords: extractStateWords(result.identityMatch.state), identityConflict: result.identityMatch.conflict, assistantResult: result, verification: 'unverified', sourceVerification: Object.fromEntries(result.sources.map(s => [s.sourceId, { status: 'unverified' }])), diff: buildRevisionDiff(base, revisionDraft) };
+    return { assistantSourceKeys, revisionDraft, conversions, gaps, extractedStateWords: extractStateWords(result.identityMatch.state), identityConflict: result.identityMatch.conflict, assistantResult: result, verification: 'unverified', sourceVerification: Object.fromEntries(result.sources.map(s => [s.sourceId, { status: 'unverified' }])), diff: buildRevisionDiff(base, revisionDraft, conversions) };
 }

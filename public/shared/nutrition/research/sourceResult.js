@@ -262,12 +262,18 @@ export function normalizeSourceResult(result, target = {}) {
         if (!item.key || !V2_KEYS.includes(item.key))
             continue;
         const key = item.key;
-        const value = item.amount == null ? null : convertUnit(key, item.amount * scale, item.unit).value;
-        if (item.amount != null && value === undefined)
-            throw new TypeError(`Unconvertible unit: ${key}`);
+        const convert = amount => {
+            if (!Number.isFinite(amount) || amount < 0)
+                throw new TypeError(`Invalid observation bound/value: ${key}`);
+            const converted = convertUnit(key, amount * scale, item.unit);
+            if (converted.error)
+                throw new TypeError(`Unconvertible unit: ${key}`);
+            return converted.value;
+        };
+        const value = item.amount == null ? null : convert(item.amount);
         nutrients[key] = value;
-        quality[key] = { status: item.status, ...(item.roundingInterval !== undefined ? { roundingInterval: item.roundingInterval * scale } : {}), ...(item.upperBound !== undefined ? { upperBound: item.upperBound * scale } : {}), ...(value === null ? { qualifier: 'gap:' + (item.reason || 'not_reported_by_source') } : {}) };
-        fieldProvenance[key] = { sourceKey, ...(item.derivation ? { derivation: item.derivation } : {}), ...(item.comparatorRef ? { comparatorRef: item.comparatorRef } : {}), ...(item.range ? { range: { min: item.range.min * scale, max: item.range.max * scale } } : {}) };
+        quality[key] = { status: item.status, ...(item.roundingInterval !== undefined ? { roundingInterval: convert(item.roundingInterval) } : {}), ...(item.upperBound !== undefined ? { upperBound: convert(item.upperBound) } : {}), ...(value === null ? { qualifier: 'gap:' + (item.reason || 'not_reported_by_source') } : {}) };
+        fieldProvenance[key] = { sourceKey, ...(item.derivation ? { derivation: item.derivation } : {}), ...(item.comparatorRef ? { comparatorRef: item.comparatorRef } : {}), ...(item.range ? { range: { min: convert(item.range.min), max: convert(item.range.max) } } : {}) };
     }
     // Guarantee every key in V2_KEYS has a status and value
     for (const key of V2_KEYS) {

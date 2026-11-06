@@ -91,3 +91,15 @@ it('does not import the operator-only API adapter from app/public', async () => 
     for (const file of [...await walk('app'), ...await walk('public/shared'), ...await walk('public/tools/CalorieTracker/services')])
         expect(await readFile(file, 'utf8')).not.toMatch(/from\s+['"][^'"]*fdcApiAdapter/);
 });
+it.each(['neither', 'first', 'second', 'both'])('checks shared FDC records across bulk/API transports with %s justifications', async which => {
+    const raw = JSON.parse(await readFile('scripts/fixtures/nutrition/match-table-mini.json', 'utf8'));
+    const first = { ...raw.entries[0] }, second = { ...first, manifestId: 'other-identity', adapter: 'fdc_api' };
+    if (which === 'first' || which === 'both') first.sharedJustification = 'Reviewed shared record';
+    if (which === 'second' || which === 'both') second.sharedJustification = 'Reviewed shared record';
+    const table = { schemaVersion: 1, entries: [first, second] };
+    if (which === 'both') expect(await validateMatchTable(table)).toHaveLength(2);
+    else await expect(validateMatchTable(table)).rejects.toThrow('Shared FDC record requires justification');
+    // A distinct release is separate evidence.
+    second.release += '-next';
+    expect(await validateMatchTable(table)).toHaveLength(2);
+});

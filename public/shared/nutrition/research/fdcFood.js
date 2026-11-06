@@ -165,7 +165,8 @@ export async function parseFdcFood(json, { release = 'unknown', accessedAt } = {
             const amount = Number.isFinite(Number(p.amount)) && Number(p.amount) > 0 ? Number(p.amount) : 1;
             const unitRaw = p.measureUnit?.name || p.modifier || 'portion';
             const unit = normalizePortionUnit(unitRaw);
-            const unitQualifier = p.modifier && p.measureUnit?.name ? String(p.modifier).trim() : undefined;
+            const modifier = typeof p.modifier === 'string' ? p.modifier.trim() : '';
+            const unitQualifier = modifier && p.measureUnit?.name && normalizePortionUnit(modifier).toLowerCase() !== unit.toLowerCase() ? modifier : undefined;
             const kind = classifyPortionKind(unit, p.modifier);
             portions.push({
                 kind,
