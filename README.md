@@ -302,6 +302,8 @@ _“Log meals, track full nutrition, monitor energy trends, and auto-generate ta
 
 This is a full-featured nutrition tracker built as a static client-side app (plain JS/HTML, no React). It lives in **public/tools/CalorieTracker/** and is accessed at `/tools/CalorieTracker/index.html`. Firebase Auth and Firestore provide persistent, per-user storage across sessions and devices.
 
+**Planned ingredient-based expansion:** [CalorieTracker #59-#70](backlogs/calorie-tracker.md) defines reusable ingredient profiles, expanded fat/fiber and other nutrients, source-backed population of a comprehensive [ingredient catalog](docs/nutrition/ingredient-catalog.json), constrained recipe estimates, the tracker as primary meal-analysis interface (Ingredient Library + staged analysis), and explicit missing-ingredient choices. The [nutrition contract](docs/nutrition/README.md) explains the target flow and its relationship to Recipe Standardizer. These are planning artifacts; the catalog contains research tasks, and current runtime behavior remains as documented below until the implementation phases ship.
+
 #### Tab structure
 
 | Tab | What it does |
