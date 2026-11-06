@@ -8,13 +8,17 @@ const EVERYWHERE = [
   ['github-token', /\bgh[pousr]_[A-Za-z0-9_]{20,}/g],
   ['slack-token', /\bxox?[a-z]?-[A-Za-z0-9-]{10,}/g],
   ['google-api-key', /\bAIza[A-Za-z0-9_-]{30,}/g],
+  // TMDB_READ_ACCESS_TOKEN (and any other committed bearer JWT): header.payload.signature.
+  ['jwt-token', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{16,}/g],
 ];
+// TMDB_API_KEY is a bare 32-hex v3 key; only flag it near TMDB/api-key context so
+// unrelated hashes do not fail CI.
+const TMDB_KEY = /(?<![A-Za-z0-9])[a-f0-9]{32}(?![A-Za-z0-9])/gi;
+const TMDB_CONTEXT = /tmdb|themoviedb|api[_-]?key/i;
 const SCOPED = /^(?:public\/trips\/|tests\/|scripts\/fixtures\/)|(?:^|\/)__tests__\//;
 const SAFE_DOMAIN = /^(?:.*\.)?(?:example\.(?:com|org|net)|test|invalid|localhost)$/i;
-const SKIP_FILES = /^(?:PLAN\.md|VERIFY\.md|.*\/PLAN\.md)$/;
 
 export function scanSensitive(file, source) {
-  if (SKIP_FILES.test(file)) return [];
   const hits = [];
   const add = (pattern, regex) => {
     for (const match of source.matchAll(new RegExp(regex.source, regex.flags))) {
@@ -23,6 +27,11 @@ export function scanSensitive(file, source) {
     }
   };
   for (const [pattern, regex] of EVERYWHERE) add(pattern, regex);
+  for (const match of source.matchAll(TMDB_KEY)) {
+    const idx = match.index ?? 0;
+    if (!TMDB_CONTEXT.test(source.slice(Math.max(0, idx - 160), idx + match[0].length + 160))) continue;
+    hits.push({ file, pattern: 'tmdb-api-key', match: match[0] });
+  }
   if (SCOPED.test(file)) {
     for (const match of source.matchAll(/\b[A-Z0-9._%+-]+@([A-Z0-9.-]+\.[A-Z]{2,}|localhost)\b/gi)) {
       const domain = match[1];

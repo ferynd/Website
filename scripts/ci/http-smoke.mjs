@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { CATALOGUES, catalogueHrefs } from './lib/catalogue.mjs';
+import { scriptChunks } from './lib/smoke.mjs';
 const args = process.argv.slice(2), options = {};
 for (let i = 0; i < args.length; i += 2) {
   if (!['--profile', '--base-url', '--target'].includes(args[i]) || !args[i + 1]) { console.error('Invalid smoke arguments'); process.exit(2); }
@@ -61,10 +62,11 @@ for (const path of ['/', '/tools/social-security/index.html']) {
   check([401, 403].includes(response.status), 'POST', path, response.status, 'auth-before-work');
 }
 {
-  const home = await request('/');
-  const chunk = home.body.match(/<script\b[^>]*\bsrc="(\/_next\/static\/[^"?]+\.js)(?:\?[^"<>]*)?"/i)?.[1];
-  if (!chunk) check(false, 'GET', '/', home.status, 'source-map-chunk-discovery');
-  else {
+  // Probe the map for every chunk referenced by any smoked page, not just the first one on /.
+  const chunks = new Set();
+  for (const path of paths) for (const chunk of scriptChunks((await request(path)).body)) chunks.add(chunk);
+  if (!chunks.size) check(false, 'GET', '/', (await request('/')).status, 'source-map-chunk-discovery');
+  for (const chunk of [...chunks].sort()) {
     const path = `${chunk}.map`, response = await request(path);
     check(response.status === 404, 'GET', path, response.status, 'source-map-absent');
   }

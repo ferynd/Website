@@ -19,9 +19,11 @@ Staged, release-blocking checks for `ferynd/Website` (AR-06 / T27). Workflow: `.
 | `concurrency` | pending → AR-18 | @ferynd | — |
 | `deploy-smoke` | post-deploy only | @ferynd | `node scripts/ci/http-smoke.mjs --profile deployed --target production\|workers-dev` |
 
-Pending stages are recorded in `contract.json` with owner, follow-up, and review-by date. They are **not** workflow jobs, so they cannot show a fake green check. `docs-manifest` fails if any T27 stage is neither a job nor a valid pending entry.
+Pending stages are recorded in `contract.json` with owner, follow-up, and review-by date. They are **not** workflow jobs, so they cannot show a fake green check. `docs-manifest` fails if any T27 stage is neither a job nor a valid pending entry, or if a pending/post-deploy stage lists `tests` patterns (only blocking stages run tests).
 
-`browser-public` is HTTP-level only in AR-06 (catalogue routes, no-JS catalogue links, Japan 404, security headers, unauthenticated transcriber probes, no source maps). Accessibility, keyboard, mobile, reduced-motion, and real browser-auth/concurrency harnesses are AR-18.
+`docs-manifest` also enforces workflow policy (SHA-pinned actions, no artifact upload, `persist-credentials: false`, no `write` permission in any quoting, and no `secrets` context access in `ci.yml` in any form) and validates documentation links, including `#fragment` targets against GitHub-style heading slugs or explicit `id`/`name` anchors in Markdown files.
+
+`browser-public` is HTTP-level only in AR-06 (catalogue routes, no-JS catalogue links, Japan 404, security headers, unauthenticated transcriber probes, and a 404 for the `.map` of every JS chunk referenced by any smoked page). Accessibility, keyboard, mobile, reduced-motion, and real browser-auth/concurrency harnesses are AR-18.
 
 ## Required checks for James (branch protection)
 
@@ -44,7 +46,7 @@ Do **not** require `deploy-smoke` on pull requests.
 ## Registering a test
 
 1. Put the file where its stage owns it (`app/**/*.test.ts(x)`, `scripts/**/*.test.ts`, `public/tools/CalorieTracker/**/*.test.js`, `tests/rules/**`, or `tests/api/**`).
-2. Confirm `.github/ci/contract.json` already maps that path via a stage `tests` regex (or extend the regex in the same PR).
+2. Confirm `.github/ci/contract.json` already maps that path via exactly one **blocking** stage's `tests` regex (or extend the regex in the same PR). `.test.*` and registered `.spec.*` files are both subject to ownership and quarantine scanning.
 3. CalorieTracker tests must also be listed in `public/tools/CalorieTracker/package.json`'s `test` script.
 4. Root Vitest excludes CalorieTracker, `tests/rules`, and `tests/api` so each suite has one owner.
 
@@ -67,7 +69,7 @@ Every skip-style call (`.skip`, `.todo`, `.fails`, `xit`, `xdescribe`) needs a `
 }
 ```
 
-Rules: owner, real issue URL, expiry ≤ 30 days after `added`. `.only`, Vitest `retry > 0`, and `--retry` are always forbidden. Expired/orphaned entries fail `docs-manifest`. Quarantine never makes a stage non-blocking.
+Rules: owner, real issue URL, expiry ≤ 30 days after `added`. `.only`, Vitest `retry` (quoted, computed, or assigned spellings included), and `--retry` are always forbidden. Expired/orphaned entries fail `docs-manifest`. Quarantine never makes a stage non-blocking.
 
 ## Artifacts and privacy
 
@@ -76,6 +78,8 @@ AR-06 uploads **no** CI artifacts. Scripts print method/path/status/check name o
 ## Sensitive allowlist
 
 `.github/ci/sensitive-allowlist.json` entries need `file`, `pattern`, `owner`, `reason`, `reviewBy` (and optional exact `match`). Firebase web keys (`AIza…`) are public client identifiers (AGENTS.md). The allowlist permits **only the exact** Firebase `apiKey` string (any path, including bundles). Any other `AIza…` value (for example a leaked `GEMINI_API_KEY`) fails CI. The allowlist is also seeded for the already-public admin email in rules fixtures and the synthetic OpenAI-shaped redaction fixture. New hits outside the allowlist fail CI; do not silently broaden patterns — ask before allowlisting real content.
+
+Patterns include private keys, OpenAI/GitHub/Slack/Google key shapes, bearer JWTs (`jwt-token`, which covers `TMDB_READ_ACCESS_TOKEN`), and 32-hex TMDB v3 keys (`tmdb-api-key`, flagged only within TMDB/`api_key` context). There are no filename-based exemptions: `PLAN.md`, `VERIFY.md`, and other notes are scanned like any file. Synthetic fixtures use a `FAKE`/`EXAMPLE` marker inside the matched value, or (for shapes that cannot carry one, such as hex keys) an exact `file` + `pattern` + `match` allowlist entry.
 
 ## Deploy smoke
 

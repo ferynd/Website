@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { catalogueErrors, catalogueHrefs, routeCandidates } from '../lib/catalogue.mjs';
-import { docLinkErrors, hasBackLink } from '../lib/docs.mjs';
+import { docLinkErrors, hasBackLink, markdownAnchors } from '../lib/docs.mjs';
 
 describe('catalogue resolution', () => {
   it('parses literal JSX and object hrefs and deduplicates', () => {
@@ -32,6 +32,27 @@ describe('documentation checks', () => {
   });
   it('still validates archive links while allowing historical code paths', () => {
     expect(docLinkErrors('backlogs/example-completed.md', '[Broken](gone.md) `app/gone.ts`', () => false, { checkCodePaths: false })).toEqual(['doc-link: backlogs/example-completed.md -> gone.md']);
+  });
+  it('validates same-file and cross-file Markdown fragments against headings and anchors', () => {
+    const docs: Record<string, string> = {
+      'README.md': '# Project\n\n## Deployment & Rollback\n\n## Deployment & Rollback\n\nSetext Title\n---\n\n<a id="custom-anchor"></a>\n```md\n# Fenced heading\n```\n',
+    };
+    const options = { read: (file: string) => docs[file] };
+    const exists = (file: string) => file in docs;
+    const source = '# Local `Heading` *one*\n[a](#local-heading-one) [b](../README.md#deployment--rollback) [c](../README.md#deployment--rollback-1) '
+      + '[d](../README.md#setext-title) [e](/README.md#Custom-Anchor) [f](../app/route.ts#L10) [g](../README.md)';
+    expect(docLinkErrors('docs/ci.md', source, (file: string) => exists(file) || file === 'app/route.ts', options)).toEqual([]);
+    const broken = '[a](#renamed-heading) [b](../README.md#missing) [c](../README.md#fenced-heading) [d](../README.md#deployment--rollback-2)';
+    expect(docLinkErrors('docs/ci.md', broken, exists, options)).toEqual([
+      'doc-anchor: docs/ci.md -> #renamed-heading',
+      'doc-anchor: docs/ci.md -> ../README.md#missing',
+      'doc-anchor: docs/ci.md -> ../README.md#fenced-heading',
+      'doc-anchor: docs/ci.md -> ../README.md#deployment--rollback-2',
+    ]);
+  });
+  it('produces GitHub-compatible heading slugs', () => {
+    const anchors = markdownAnchors('## AR-06 — Staged CI (P0)\n### `docs/ci.md` & [links](x.md)\n## Ünïcode_name\n');
+    expect([...anchors]).toEqual(['ar-06--staged-ci-p0', 'docscimd--links', 'ünïcode_name']);
   });
   it('rejects documentation links that escape the repository', () => {
     const errors = docLinkErrors('docs/a.md', '[x](../../../etc/passwd)', () => true);

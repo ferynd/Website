@@ -34,19 +34,27 @@ export function stageErrors(contract, workflows, now = new Date()) {
         !/^\d{4}-\d{2}-\d{2}$/.test(stage.reviewBy ?? '') || !(new Date(`${stage.reviewBy}T23:59:59Z`) > now)) errors.push(`stages: invalid pending ${stage.id}`);
       if (Object.values(workflows).some((workflow) => workflowJobs(workflow)[stage.id])) errors.push(`stages: pending job ${stage.id}`);
     } else errors.push(`stages: invalid status ${stage.id}`);
+    if (stage.status !== 'blocking' && stage.tests?.length) errors.push(`stages: non-blocking stage owns tests ${stage.id}`);
   }
   const blocking = stages.filter((stage) => stage.status === 'blocking').map((stage) => stage.id).sort();
   const needs = workflowJobs(workflows['.github/workflows/ci.yml'] ?? '')['ci-gate']?.needs ?? [];
   if (JSON.stringify([...needs].sort()) !== JSON.stringify(blocking)) errors.push('stages: ci-gate needs must equal blocking stages');
   return errors;
 }
+// Shared by ownership and quarantine collection so every runnable naming
+// convention (.test and .spec) is subject to the same contract.
+export function isTestFile(file) {
+  return /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file);
+}
 export function ownershipErrors(files, stages) {
-  return files.filter((file) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file)).flatMap((file) => {
+  return files.filter(isTestFile).flatMap((file) => {
     const matches = stages.filter((stage) => (stage.tests ?? []).some((pattern) => new RegExp(pattern).test(file)));
     if (/\.spec\.[cm]?[jt]sx?$/.test(file) && matches.length === 0) {
       return [`ownership: ${file} uses unsupported .spec naming (use .test.ts or register a stage)`];
     }
-    return matches.length === 1 ? [] : [`ownership: ${file} has ${matches.length} owners`];
+    if (matches.length !== 1) return [`ownership: ${file} has ${matches.length} owners`];
+    // Only blocking stages have a CI job that runs their tests.
+    return matches[0].status === 'blocking' ? [] : [`ownership: ${file} owned by non-blocking stage ${matches[0].id}`];
   });
 }
 export function calorieErrors(files, script) {
@@ -90,8 +98,10 @@ export function quarantineErrors(quarantine, sources, stages, now = new Date()) 
   for (const id of ids) if (!used.has(id)) errors.push(`quarantine-orphan: ${id}`);
   return { errors, warnings };
 }
+// Unquoted, quoted, computed and assigned spellings of a Vitest `retry` option.
+const RETRY = /(?<![\w$])retry\s*:|(["'`])retry\1\s*\]?\s*:|\.\s*retry\s*=(?!=)|\[\s*(["'`])retry\2\s*\]\s*=(?!=)/;
 export function retryErrors(configs, scripts) {
-  return [...Object.entries(configs).filter(([, source]) => /\bretry\s*:/.test(source)).map(([file]) => `retry: ${file}`),
+  return [...Object.entries(configs).filter(([, source]) => RETRY.test(source)).map(([file]) => `retry: ${file}`),
     ...Object.entries(scripts).filter(([, script]) => /--retry\b/.test(script)).map(([name]) => `retry: npm ${name}`)];
 }
 export function workflowErrors(workflows) {
@@ -113,11 +123,17 @@ export function workflowErrors(workflows) {
         if (!step.some((line) => /^\s+persist-credentials:\s*false\s*$/.test(line))) errors.push(`checkout-credentials: ${file}:${i + 1}`);
       }
     }
-    if (file === '.github/workflows/ci.yml' && /\bsecrets\s*\./.test(source)) errors.push(`secrets: ${file}`);
+    // Any `secrets` context access (secrets.X, secrets['X'], toJSON(secrets)) or
+    // reusable-workflow `secrets:` passing makes ci.yml no longer secret-free.
+    if (file === '.github/workflows/ci.yml' &&
+      ([...source.matchAll(/\$\{\{([\s\S]*?)\}\}/g)].some((expr) => /\bsecrets\b/.test(expr[1])) || /\bsecrets\s*(?:\.|\[)|^\s*secrets:/m.test(source))) {
+      errors.push(`secrets: ${file}`);
+    }
     const permissions = source.match(/^permissions:\s*\n((?:[ \t]+[^\n]*\n|\n)*)/m)?.[1];
-    if (!permissions || /:\s*write\b|write-all/.test(permissions) || !/^  contents: read\s*$/m.test(permissions)) errors.push(`permissions: ${file}`);
+    // YAML values may be single- or double-quoted; GitHub grants the scope either way.
+    if (!permissions || /:\s*["']?write\b|write-all/.test(permissions) || !/^  contents: (["']?)read\1\s*(?:#.*)?$/m.test(permissions)) errors.push(`permissions: ${file}`);
     // No job-level permission escalation either.
-    if (/^\s+permissions:[^\n]*(?:write|\{)/m.test(source) || /^\s{6,}\w[\w-]*:\s*write\s*$/m.test(source)) errors.push(`permissions: ${file}`);
+    if (/^\s+permissions:[^\n]*(?:write|\{)/m.test(source) || /^\s{6,}[\w-]+:\s*(["']?)write(?:-all)?\1\s*(?:#.*)?$/m.test(source)) errors.push(`permissions: ${file}`);
   }
   return errors;
 }

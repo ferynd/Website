@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { NextRequest } from 'next/server';
 import { vi } from 'vitest';
 import { firebaseConfig } from '../../app/tools/trip-cost/firebaseConfig';
@@ -46,4 +48,20 @@ export function installFetchGuard() {
     throw new Error('Contract test blocked an unexpected network request.');
   }));
   return calls;
+}
+
+const HTTP_METHODS = ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'];
+
+// Enumerate the module namespace rather than scanning source text, so export
+// lists (`export { POST }`), aliases and `export *` re-exports are all registered.
+export async function exportedRouteHandlers(root: string): Promise<string[]> {
+  const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory() ? walk(path.join(dir, entry.name)) : /^route\.[cm]?[jt]sx?$/.test(entry.name) ? [path.join(dir, entry.name)] : []);
+  const handlers: string[] = [];
+  for (const file of walk(path.resolve(root))) {
+    const route = path.relative(path.resolve(root), path.dirname(file)).split(path.sep).join('/');
+    const module = await import(/* @vite-ignore */ file);
+    for (const method of HTTP_METHODS) if (method in module) handlers.push(`${method} ${route}`);
+  }
+  return handlers.sort();
 }

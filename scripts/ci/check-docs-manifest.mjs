@@ -35,7 +35,7 @@ const run = (rule, fn) => { if (!only || only === rule) errors.push(...fn()); };
 run('catalogue', () => catalogueErrors(Object.fromEntries(['app/page.tsx', 'app/tools/page.tsx', 'app/games/page.tsx', 'app/trips/page.tsx'].map((file) => [file, read(file)])), exists));
 run('back-links', () => files.filter((file) => /^public\/.*\/index\.html$/.test(file) && !hasBackLink(read(file))).map((file) => `back-link: ${file}`));
 run('docs', () => files.filter((file) => /^(?:README|AGENTS|CLAUDE|ARCHITECTURE|SECURITY|BACKLOG|CONTRIBUTING)\.md$|^(?:backlogs|docs)\/.+\.md$/.test(file))
-  .flatMap((file) => docLinkErrors(file, read(file), exists, { checkCodePaths: !/-completed\.md$/.test(file) })));
+  .flatMap((file) => docLinkErrors(file, read(file), exists, { checkCodePaths: !/-completed\.md$/.test(file), read })));
 run('secret-files', () => (inRepo ? tracked : files).filter(secretFile).map((file) => `secret-file: ${file}`));
 run('sensitive', () => {
   const hits = files.flatMap((file) => {

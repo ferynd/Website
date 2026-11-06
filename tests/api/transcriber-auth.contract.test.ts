@@ -1,7 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { FAKE_KEYS, GOOGLE_KEYS_URL, fakeJwt, installFetchGuard, makeRequest, stubKeys } from './helpers';
+import { FAKE_KEYS, GOOGLE_KEYS_URL, exportedRouteHandlers, fakeJwt, installFetchGuard, makeRequest, stubKeys } from './helpers';
 
 const handlers = [
   { route: 'classify', method: 'POST', load: () => import('../../app/api/transcriber/classify/route') },
@@ -60,14 +58,11 @@ it('status keeps key presence private for an unauthenticated request', async () 
   expect(calls).toEqual([]);
 });
 
-it('registers every exported transcriber HTTP handler', () => {
-  const root = path.resolve('app/api/transcriber');
-  const walk = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) =>
-    entry.isDirectory() ? walk(path.join(dir, entry.name)) : entry.name === 'route.ts' ? [path.join(dir, entry.name)] : []);
-  const actual = walk(root).flatMap((file) => {
-    const route = path.relative(root, path.dirname(file)).split(path.sep).join('/');
-    return [...fs.readFileSync(file, 'utf8').matchAll(/export\s+(?:(?:async\s+)?function\s+|(?:const|let|var)\s+)(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)\b/g)]
-      .map((match) => `${match[1]} ${route}`);
-  });
-  expect(actual.sort()).toEqual([...handlers.map(({ method, route }) => `${method} ${route}`), 'GET status'].sort());
+it('registers every exported transcriber HTTP handler', async () => {
+  const actual = await exportedRouteHandlers('app/api/transcriber');
+  expect(actual).toEqual([...handlers.map(({ method, route }) => `${method} ${route}`), 'GET status'].sort());
+});
+
+it('registry enumeration includes export-list and aliased handlers', async () => {
+  expect(await exportedRouteHandlers('tests/api/fixtures/routes')).toEqual(['GET reexported', 'POST reexported', 'PUT reexported/nested']);
 });

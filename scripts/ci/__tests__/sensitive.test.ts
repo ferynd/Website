@@ -40,6 +40,34 @@ describe('sensitive content', () => {
     const built = scanSensitive('_next/static/chunks/app/tools/trip-cost/page.js', key);
     expect(unexpectedSensitive(built, [{ file: 're:^_next/static/chunks/app/tools/trip-cost/.*\\.js$', pattern: 'google-api-key' }])).toEqual([]);
   });
+  it('scans plan and verification notes like any other file', () => {
+    const header = ['-----BEGIN', 'PRIVATE KEY-----'].join(' ');
+    for (const path of ['PLAN.md', 'VERIFY.md', 'docs/nested/PLAN.md']) {
+      expect(scanSensitive(path, header).map((hit: { pattern: string }) => hit.pattern)).toEqual(['private-key']);
+      expect(scanSensitive(path, `${key}`).map((hit: { pattern: string }) => hit.pattern)).toEqual(['openai-key']);
+    }
+  });
+  it('flags TMDB v3 API keys in TMDB or api_key context only', () => {
+    const tmdbKey = '0123456789abcdef'.repeat(2);
+    const patterns = (file: string, source: string) => scanSensitive(file, source).map((hit: { pattern: string }) => hit.pattern);
+    expect(patterns('app/x.ts', `TMDB_API_KEY=${tmdbKey}`)).toEqual(['tmdb-api-key']);
+    expect(patterns('_next/static/chunks/a.js', `fetch("https://api.themoviedb.org/3/x?api_key=${tmdbKey}")`)).toEqual(['tmdb-api-key']);
+    expect(patterns('app/x.ts', `const apiKey = "${tmdbKey.toUpperCase()}";`)).toEqual(['tmdb-api-key']);
+    expect(patterns('app/x.ts', `const checksum = "${tmdbKey}";`)).toEqual([]);
+    expect(patterns('app/x.ts', `TMDB commit ${tmdbKey}01234567`)).toEqual([]);
+    const hits = scanSensitive('tests/fixture.test.ts', `TMDB_API_KEY=${tmdbKey}`);
+    expect(unexpectedSensitive(hits, [{ file: 'tests/fixture.test.ts', pattern: 'tmdb-api-key', match: tmdbKey }])).toEqual([]);
+    expect(unexpectedSensitive(hits, [{ file: 'tests/fixture.test.ts', pattern: 'tmdb-api-key', match: tmdbKey.replace('0', '1') }])).toHaveLength(1);
+  });
+  it('flags TMDB read access tokens and other bearer JWTs', () => {
+    const segment = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
+    const token = [segment({ alg: 'HS256' }), segment({ aud: '0123456789abcdef', sub: 'synthetic', scopes: ['api_read'] }), 'c2lnbmF0dXJlLXNpZ25hdHVyZS1zaWduYXR1cmU'].join('.');
+    expect(scanSensitive('app/x.ts', `Authorization: Bearer ${token}`).map((hit: { pattern: string }) => hit.pattern)).toEqual(['jwt-token']);
+    expect(scanSensitive('.open-next/assets/a.js', `t="${token}"`)[0]?.pattern).toBe('jwt-token');
+    expect(scanSensitive('app/x.ts', `${token.split('.').slice(0, 2).join('.')}`)).toEqual([]);
+    const fake = [segment({ alg: 'HS256' }), segment({ sub: 'FAKE-synthetic-user' }), 'FAKE_signature_value_123'].join('.');
+    expect(scanSensitive('tests/x.test.ts', fake)).toEqual([]);
+  });
   it('rejects tracked secret files but permits the environment template', () => {
     for (const path of ['.env', '.env.local', '.dev.vars', 'key.pem', 'service-account-prod.json', '.wrangler/cache', '.open-next/worker.js', '.firebase/cache']) expect(secretFile(path)).toBe(true);
     expect(secretFile('.env.example')).toBe(false);
