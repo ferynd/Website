@@ -115,3 +115,7 @@ The Cloudflare Workers hosting cutover is a separate track; see README "Deployme
 5. Deferred, as a separate future release: Storage. It needs Blaze billing, a default bucket, the Storage service agent with `roles/firebaserules.firestoreServiceAgent`, and then `storage` re-added to `firebase.json` and deployed on its own.
 
 If cutover fails, keep maintenance in place and use the captured previous releases/client artifacts to plan a compatible rollback. Do not roll back privacy rules to broad readable drafts or overwrite historical data wholesale. Record remaining blockers in AR-02/AR-03/AR-04; these initiatives remain open until merge, production acceptance and their other recorded criteria are satisfied.
+
+## Ingredient store #61 (source ahead of live)
+
+The #61 Part A ingredient rules are repository source only, pending the separate [ingredient-store Part B runbook](nutrition/ingredient-store-release.md). The named collection wildcard and immutable collections are emulator-verified; they have not been deployed. Both write flags remain off. Do not treat Part A merge or passing emulators as authorization to deploy rules, run the production census, create live fixtures, or enable writes. #60 Part B remains separate.

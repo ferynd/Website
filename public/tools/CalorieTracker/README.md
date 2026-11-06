@@ -4,7 +4,7 @@ Foods named “(per portion)” or “(per 100 g cooked)” come from Recipe Sta
 
 A Firebase-backed, client-side nutrition tracker built with plain JavaScript ES modules and Chart.js. Runs as a standalone static app under `/public/tools/CalorieTracker/` and is linked from the main site's Tools page.
 
-**Nutrient registry:** [the nutrition design](../../../docs/nutrition/README.md) and backlog #59-#70 cover the ingredient catalog, versioned profiles, and later screens. #60 puts the shared registry in `public/shared/nutrition/`. Paste still accepts the 24-field block, and anchored detail labels (saturated fat, EPA, DHA, and the other registry labels) stage without overwriting parent totals. Saves, diary items, and saved-food CSV rows stay the 24-number v1 shape while `NUTRIENT_V2_WRITES_ENABLED` is false. Food save and saved-food CSV import use a Firestore transaction so a newer nutrient document cannot be overwritten; that transaction is not queued, so an offline save or import fails with "Offline — not saved" instead of waiting. Settings shows `Nutrient registry v2 · storage v1 · build nutritrack-v3`.
+**Nutrient registry:** [the nutrition design](../../../docs/nutrition/README.md) and backlog #59-#70 cover the ingredient catalog, versioned profiles, and later screens. #60 puts the shared registry in `public/shared/nutrition/`. Paste still accepts the 24-field block, and anchored detail labels (saturated fat, EPA, DHA, and the other registry labels) stage without overwriting parent totals. Saves, diary items, and saved-food CSV rows stay the 24-number v1 shape while `NUTRIENT_V2_WRITES_ENABLED` is false. Food save and saved-food CSV import use a Firestore transaction so a newer nutrient document cannot be overwritten; that transaction is not queued, so an offline save or import fails with "Offline — not saved" instead of waiting. Settings shows `Nutrient registry v2 · storage v1 · ingredient store v1 (writes off) · build nutritrack-v4`.
 
 > **Active work:** See [`backlogs/calorie-tracker.md`](../../../backlogs/calorie-tracker.md) at the repo root — the single source of truth for ongoing CalorieTracker work (parameters, invariants, and the prioritized item list; the shared session protocol lives in [`backlogs/protocol.md`](../../../backlogs/protocol.md)). To pick up where a prior session left off, start a new session with any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, or a close paraphrase — the protocol (reconcile merged items, then work the top-priority items) runs automatically.
 
@@ -43,7 +43,7 @@ CalorieTracker/
 ├── firebaseConfig.js       # Firebase project keys (excluded from version control)
 ├── config.js               # App-level config: appId, chart colors, debug flag
 ├── constants.js            # Derives allNutrients, NUTRIENT_MAX_BOUNDS, and nutrientMap from the shared registry
-├── sw.js                   # App-shell cache nutritrack-v3; network-first for JS/HTML; Firebase stays network-only
+├── sw.js                   # App-shell cache nutritrack-v4; network-first for JS/HTML; Firebase stays network-only
 │
 ├── state/
 │   ├── store.js            # Global state object and DOM cache (state.{userId, dailyEntries, ...})
@@ -97,7 +97,7 @@ CalorieTracker/
 
 The registry itself lives in `public/shared/nutrition/` (`nutrientRegistry.js`, `capabilities.js`, `nutrientText.js`), outside this folder. Test files (`*.test.js`) live alongside their subjects and run via Vitest.
 
-**Service worker:** `sw.js` precaches the app shell, including the shared nutrition modules. Cache name `nutritrack-v3` matches `NUTRITRACK_CACHE_NAME`. Same-origin JavaScript, HTML, and navigations are network-first with cache fallback. CSS and images stay cache-first. Firestore, Auth, and the other Firebase hosts are not cached. A controlling worker does not reload JavaScript that is already running.
+**Service worker:** `sw.js` precaches the app shell, including the shared nutrition modules. Cache name `nutritrack-v4` matches `NUTRITRACK_CACHE_NAME`. Same-origin JavaScript, HTML, and navigations are network-first with cache fallback. CSS and images stay cache-first. Firestore, Auth, and the other Firebase hosts are not cached. A controlling worker does not reload JavaScript that is already running.
 
 ---
 
@@ -354,3 +354,5 @@ Vitest is installed at the repo root (`node_modules/.bin/vitest`). Run `npm inst
 - The weight analysis engine requires at least 14 days of paired weight + calorie data for any estimate; results below 28 days should be treated as rough guides.
 - Guest (anonymous) users' data is tied to the browser session. Signing out as a guest permanently loses all data unless the account is upgraded to email/password before sign-out (not currently implemented).
 - The CSV importer covers Withings, Garmin, and Apple Health export formats. Other smart scale exports may need manual column mapping.
+
+#61 Part A adds the shared ingredient store service and owner-scoped IndexedDB cache (`nutrition-profile-cache-v1`), with `nutritrack-v4` readers. Ingredient writes and nutrient v2 food/day writes remain off. The curated catalog is empty; rules are emulator-verified repository source pending [Part B](../../../docs/nutrition/ingredient-store-release.md). There is no Ingredient Library UI yet.

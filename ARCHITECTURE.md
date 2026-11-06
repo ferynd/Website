@@ -64,7 +64,7 @@ public/
   Path: `/tools/transcriber`
 - **Recipe Standardizer** — Firebase-backed, phone-first kitchen workflow for ChatGPT-converted recipes: strict-JSON import (schema v2 with named prep groups, named step results, and a structured timeline; v1 recipes load via a silent compat path), a workflow timeline with active/passive time and overlapped waits, Prep/Execution views built on named intermediates, gram-first scaling, an Ingredients hub grouped by prep group with workflow/shopping-pantry/grocery modes, a derived Nutrition panel, and per-user Firestore saves with revision conflict resolution and bake review.
   Path: `/tools/recipe-standardizer`
-- **Calorie Tracker** — Static ES-module nutrition tracker. Nutrient keys, labels, and bounds come from `public/shared/nutrition/`. Detail nutrients are readable in the staged record; food writes stay the historical 24-number shape while `NUTRIENT_V2_WRITES_ENABLED` is false. The service worker cache is `nutritrack-v3` and is network-first for JavaScript and HTML.
+- **Calorie Tracker** — Static ES-module nutrition tracker. Nutrient keys, labels, and bounds come from `public/shared/nutrition/`. Detail nutrients are readable in the staged record; food writes stay the historical 24-number shape while `NUTRIENT_V2_WRITES_ENABLED` is false. The service worker cache is `nutritrack-v4` and is network-first for JavaScript and HTML.
   Path: `/tools/CalorieTracker/index.html`
 - **Social Security (interactive guide)** — Learn how benefits and earnings interact through simulations.  
   Path: `/tools/social-security/index.html`
@@ -188,3 +188,13 @@ Authority is enforced by Firestore Security Rules (see SECURITY.md).
 `lib/reflectionSubscriptions.ts` listens to the current user's assigned reflection document and the parent conflict. Only two valid server-confirmed submission timestamps add the partner's named document listener. Cache-only and pending local parent writes cannot unlock the remote read. Cleanup cancels parent and child listeners, and unavailable reflection data is removed on errors or access-gate changes. `ConflictContext` clears selection/account state and exposes reflection errors to the detail view.
 
 Submission commits the reflection and exact parent mirror in one transaction, validated by Firestore `getAfter`; retries keep the first stored timestamp. Deletion batches `personA`, `personB`, and the parent without a collection query. The trusted Node-only migration under `scripts/firebase/` is a development/admin tool, never part of the web client. See `docs/firebase-release.md` for the approval and client/data/rules cutover contract.
+
+### Ingredient store (#61 Part A)
+
+Both nutrition tools use `public/shared/nutrition/ingredientStore.js` and its pure ID, variant, reference, profile/hash, conversion, matcher, and catalog modules. The shared store imports no Firebase; the tracker binds CDN Firestore 11.6.1 in `services/ingredientStore.js`, while Recipe Standardizer binds the npm SDK in `lib/ingredientStore.ts`. The existing pinned tracker namespace is passed by each caller.
+
+Flat owner-private `ingredientIdentities`, `ingredientVariants`, `ingredientRevisions`, and `ingredientConversions` collections live beneath the existing tracker user prefix. Identity keys are frozen, revisions/conversions are immutable, heads advance atomically, and references pin namespace plus revision/hash. Private overrides reference static curated variants without a private identity requirement. The bundled `nutrition-curated` manifest is empty; catalog readers fetch bounded content-addressed shards on demand. No research importer or population job is included.
+
+IndexedDB `nutrition-profile-cache-v1` holds owner metadata, revisions, heads, conversions and a failed-save outbox. Owner transitions/sign-out delete it in both tools. It is separate from `nutritrack-v4` Cache Storage, which caches the shell and static catalog; Firestore requests remain network-only. Broader same-origin API caching remains a separate #67 concern. Recipe workspace resolves pinned refs before per-100-g calculation, preserving legacy food links and explicit nutrient gaps. Newer heads never rewrite pinned totals.
+
+`INGREDIENT_STORE_WRITES_ENABLED` and `NUTRIENT_V2_WRITES_ENABLED` both remain false. Rules source is ahead of live until the approval-gated [ingredient release](docs/nutrition/ingredient-store-release.md). F-141 M4 must copy all four new collections; refs record the namespace so future cutover can be explicit. No namespace cutover or historical data copy occurs in Part A.

@@ -66,3 +66,8 @@ Compact merged history for `public/tools/CalorieTracker/`. Read only for reconci
 ## Preserved calculation invariants
 
 Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium METs, centered-window true-up, 10% trimmed mean, protein-basis priority, confidence thresholds, and fat floor were previously verified and should not regress without explicit product review.
+
+## #60 Part A — nutrient contracts and lossless parsing
+
+- [x] **Implement the versioned registry and quality-aware imports/exports, readers first.**
+  > Resolved: shared nutrient registry, anchored parser, quality/null handling, fingerprint compatibility, v1-identical writes with v2 overwrite protection, recipe readers/detail, `nutritrack-v3`, and a built/unrun census; checks: baseline acceptance reverified in #61 tracker (664/19) and root (1947/99) suites, registry/parsing/golden/fingerprint tests; prior PR acceptance records lint/build/contract/docs and rules passes; merged: 326a748 (PR #185); residual risk: v2 food/day writes remain disabled and production census/backup/enablement/deploy remain open as #60 Part B. No historical rewrite or production data action was required for Part A.

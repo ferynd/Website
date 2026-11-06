@@ -25,13 +25,13 @@ The current request establishes the plan, catalog, population instructions, and 
 
 ## Verified current state
 
-Baseline: `main` `4dd9b927ec993d7e26c1d97d833a07b9f222efab`, inspected 2026-11-05.
+Baseline: `main` `326a748` (#60 Part A / PR #185), inspected 2026-11-06. #61 Part A below is local work pending coordinator publication and merge.
 
-- Tracker: 24 keys, word-matching paste parser, missing staged values become zero, name-slug food IDs, fixed-shape food saves, and diary snapshots. Expanded fat/fiber lines are unsafe for the current parser.
+- Tracker: shared v2 nutrient registry/readers and anchored detail parsing are merged. Food/day writes still use the 24-key v1 shape while `NUTRIENT_V2_WRITES_ENABLED` is false; name-slug food IDs and diary snapshots remain.
 - Recipe Standardizer: confirmed links, gram bases, revision fingerprints, manual per-100-g research import, totals, and create/update export transactions already exist. Extend them.
 - Exported foods flatten composition and zero-fill gaps after partial-coverage confirmation. Their recipe back-reference does not make the saved tracker food an ingredient recipe.
 - Data remains under `default-app-id`; source-namespace migration stays owned by F-141. Production records and authenticated sessions have not been inspected for this plan.
-- There is no local ingredient-profile cache, Ingredient Library tab, or nutrition AI route. Existing `app/api` routes do not serve nutrition. The tracker's service worker (`public/tools/CalorieTracker/sw.js`) precaches the app shell but also cache-matches/stores successful same-origin responses outside its network-only Firebase patterns; private same-origin API responses are therefore at risk of Cache Storage persistence across account switches unless #67 (and related work) marks nutrition/API routes network-only and clears legacy entries on sign-out.
+- #61 Part A adds an owner-scoped IndexedDB ingredient-profile cache with both write flags off. There is no Ingredient Library tab or nutrition AI route. Existing `app/api` routes do not serve nutrition. The tracker's service worker (`public/tools/CalorieTracker/sw.js`) precaches the app shell but also cache-matches/stores successful same-origin responses outside its network-only Firebase patterns; private same-origin API responses are therefore at risk of Cache Storage persistence across account switches unless #67 (and related work) marks nutrition/API routes network-only and clears legacy entries on sign-out.
 
 ## Invariants
 
@@ -62,26 +62,23 @@ Dependency order: #59 → #60 → #61 → #62 → #63 (batches) → #69 → #64 
   - **Accept:** expanded nutrient meanings, standard/custom fiber, source/quality model, versioned reuse, constrained quantities, missing-data choices, history, and AI boundary are explicit. Catalog covers broad food families, preparation variants, common components, and additives. All entries start queued without fabricated nutrition. Population has bounded repeatable jobs and an executable selection rule.
   - **Checks:** docs/data-only checks and independent review. **Migration/deploy:** none. The installed chat skill is a separate instruction update, not site implementation.
 
-### #60: Expand nutrient contracts and make parsing lossless
+### #60 Part B: Enable nutrient v2 food/day writes
 
-- [p] **Implement a versioned registry and quality-aware imports/exports.** Depends: #59.
-  > in progress — Part A is committed locally on `working/calorie-tracker-60-nutrient-registry` (shared registry, readers, v1-identical writes, service worker `nutritrack-v3`, census script built and not run). Not pushed and no PR. Part B (census, backup, flag, deploy) still needs James's approval. checks: tracker 626/16, root 1935/99, lint, build, ci:contract, ci:docs, rules 107/7; commits: 27fadc7, 3561499, 67107a2, 051be4e, e68f0ee
-  - **Surfaces:** tracker constants/parser/staging/save/display/export/targets; recipe `trackerFoods`, `nutritionIntake`, calculation/export formats and parity tests.
-  - **Accept:** saturated/trans/mono/poly fat and planned groups supported; exact labels cannot overwrite parent totals; null/rounded-zero/measured/estimated states survive round trips. EPA/DHA cannot overwrite total omega-3. Unknown keys warn; conflicting duplicate keys require review. Units/carbohydrate conventions explicit. Per-100-g bounds accommodate salt/additives. Legacy fiber preserved and classified only with evidence. New fields are not all minimum targets.
-  - **Shared module:** one registry module is consumed by the Vite tracker and the React tool (shared source or build artifact, chosen and documented here); no per-tool copies. Parity tests guard any generated artifact.
-  - **Legacy paste:** the existing paste parser keeps accepting the 24-field block with anchored labels; it becomes a secondary adapter onto the same staged record, not a separate data model.
-  - **Checks:** tracker/root suites; lint/build for UI; regression cases for subtype collisions, unknowns, unit conversion, fiber ambiguity, and parity.
-  - **Migration/deploy:** version readers before writers, preserve v1, and declare capabilities. Part A does not deploy rules and does not enable v2 writes. Part B (read-only census, backup, flag, and deploy) is still open. Verify cached/PWA clients cannot erase v2 fields before enabling writes. **Requires James's explicit approval** before enabling v2 writes against production data.
-  - **Fingerprint compatibility:** version the quantity/nutrient hash and retain v1 verification for existing confirmed links and export references. Test that dictionary expansion neither silently trusts a changed source nor invalidates unchanged legacy links.
+- [ ] **Complete the approval-gated nutrient storage rollout.** Depends: #60 Part A (merged `326a748`, PR #185).
+  - **Surfaces:** [Firebase release](../docs/firebase-release.md), read-only census/backup, food/day shape flag, deployment and compatibility verification.
+  - **Accept:** perform the separately approved census and backup, deploy readers before writers, verify cached/PWA clients cannot erase v2 fields, then enable the food/day shape flag in a separate reviewed release. Preserve all historical logs and fingerprint compatibility.
+  - **Checks:** the release runbook, tracker/root/rules suites and lint/build; record actual manual/deployment evidence.
+  - **Migration/deploy:** **Requires James's explicit approval** for production inspection/census/backup, enabling v2 writes, and deployment. None is performed in #61 Part A. `NUTRIENT_V2_WRITES_ENABLED` remains false. #61 Part A is unblocked because its new collections have a separate disabled write gate.
 
 ### #61: Add versioned ingredient storage and identity matching
 
-- [ ] **Implement ingredient identities, variants, sources, and revisions.** Depends: #60.
-  - **Surfaces:** shared nutrition modules, tracker manager/services, recipe links/types/database, local profile cache, canonical rules and emulator tests.
+- [p] **Implement ingredient identities, variants, sources, and revisions (Part A).** Depends: #60 Part A (merged); #60 Part B is separate.
+  > in progress — Part A implemented and verified; local code commit: 0cdac51; PR: pending (coordinator). Checks: tracker 711/27, root 1974/102, rules 128/8, lint/build/ci:contract/ci:docs/diff pass. Ingredient and nutrient food/day writes remain off, curated catalog empty, rules not deployed, census not run. Publication/merge and separately approved Part B remain. Local commits use isolated Git metadata because the linked worktree Git directory is read-only; coordinator must import them before pushing.
+  - **Surfaces:** shared nutrition modules, tracker services, recipe links/types/database, local profile cache, canonical rules and emulator tests.
   - **Accept:** stable IDs; raw/cooked/drained/fat/fortification/brand variants; per-100-g basis and sourced unit conversions (household measures, densities, piece weights) as records; field provenance; immutable revisions; private overrides over curated data. Exact confirmed IDs reuse without research; ambiguous aliases require review. Cross-user/public-catalog client writes fail at the boundary. Concurrent creates deduplicate; failed saves are recoverable. Both tools read and write through the same identity/profile/conversion services; Recipe Standardizer links resolve to these IDs rather than a parallel store.
   - **Checks:** tracker/root/rules suites; identity, revision, collision, concurrency, ownership tests; cache staleness/eviction/sign-out tests; lint/build for UI.
   - **Lookup contract:** indexed/paginated search and bounded caches; do not load the whole catalog on tool open. The current matcher strips raw/cooked/salt descriptors, so it remains suggestion-only; exact automatic reuse requires variant compatibility.
-  - **Offline cache:** a versioned local cache (for example IndexedDB) of used/approved profile revisions and conversions lets matching and calculation run offline. Entries are keyed by namespace/catalog + profile ID + revision, revalidated on reconnect, bounded, scoped to the signed-in owner, and cleared on sign-out. A stale or missing entry is reported, never treated as zero.
+  - **Offline cache:** IndexedDB `nutrition-profile-cache-v1` of used/approved profile revisions and conversions lets matching and calculation run offline. Entries are keyed by namespace/catalog + profile ID + revision, revalidated on reconnect, bounded, scoped to the signed-in owner, and cleared on sign-out. A stale or missing entry is reported, never treated as zero.
   - **Migration/deploy:** legacy foods retain unknown basis/meaning where necessary. Preserve the current namespace contract/constants; any resolver is explicit work coordinated with F-141. Stage rules release; require dry-run report, backup, and rollback before live copies. **Requires James's explicit approval** for the Firestore rules deploy and any live data copy.
 
 ### #62: Build source ingestion and resumable research jobs

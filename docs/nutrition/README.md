@@ -1,6 +1,6 @@
 # Ingredient-based nutrition
 
-Status: registry and readers implemented in #60; v2 storage disabled pending approval. The research manifest and execution contract were prepared under CalorieTracker item #59. Database population, ingredient identity, calculations, and website screens remain separate backlog work. This document does not describe a deployed v2 write path.
+Status: #60 registry/readers and #61 Part A ingredient identities, revisions, conversions, shared store/cache, and recipe dual-read are implemented. Both write flags remain false; ingredient rules are repo source pending Part B deployment. The static curated catalog ships empty (0 profiles); #62/#63 research and population remain separate. See [ingredient release](ingredient-store-release.md).
 
 ## Goal
 
