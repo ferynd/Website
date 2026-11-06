@@ -195,7 +195,7 @@ Architecture decision (2026-11-06, James): external-assistant ingredient import 
 
 Open design questions (resolve in the owning item; none blocks #62):
 
-- #67: `schemaVersion` vs `instructionsVersion` compatibility; one fenced JSON block policy; controlled state/preparation vocabulary (with #62); confirmation UX for underspecified matches, bulk confirmation, and curated vs private aliases.
+- #67: `schemaVersion` vs `instructionsVersion` compatibility; one fenced JSON block policy; state/preparation vocabulary contents (owned by #62's first slice); confirmation UX for underspecified matches, bulk confirmation, and curated vs private aliases.
 - #64 Part A: status aggregation, interval propagation, uncertainty ranking; weighted fiber per ingredient (recommended) vs per meal.
 - #64 Part B: diary v2 detail via a private meal-version record referenced by a v1 diary projection (recommended) vs waiting for #60 Part B; applying facts to portions consumed and raw vs cooked basis.
 - #65: dependency-free bounded least-squares/LP design, residual weights from rounding intervals, non-uniqueness detection, yield, tie-breaking, and weighting `user_stated` facts.

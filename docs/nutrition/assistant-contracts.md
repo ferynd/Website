@@ -47,16 +47,16 @@ Versioning rules for every contract:
 | `ingredients[]` | 1–100 lines (the same cap as the Recipe Standardizer `MAX_INTAKE_ITEMS`). |
 | `line.lineId` | `^[a-z0-9_-]{1,24}$`, unique. |
 | `line.name` | ≤120 characters. Display/alias text only, never an identity. |
-| `line.kind` | `generic\|branded\|additive\|compound` |
+| `line.kind` | Optional `generic\|branded\|additive\|compound`; absent means `generic`. |
 | `line.variant` | Mirrors #61 `VariantDims`: `state`, `preparation`, `drained`, `salt`, `fortification`, `fortificationDetail`, `sweetening`, `fatPercent`, `leanPercent`, `ediblePortion`, `brand{brand, product, gtin, market, labelDate, formulationNote}`. `drained`/`salt`/`fortification` use `VARIANT_ENUMS`; `state`/`preparation` use the shared controlled vocabulary #62 introduces. `unspecified` is allowed. |
 | `line.quantity` (Q) | `{g: number\|null, gMin?, gMax?, basis: measured\|label\|recipe_stated\|estimated, original?: {amount, unit, text ≤60}}` |
-| `line.role` | `main\|cooking_fat\|sauce\|seasoning\|garnish\|beverage\|other` |
+| `line.role` | Optional `main\|cooking_fat\|sauce\|seasoning\|garnish\|beverage\|other`; absent means unstated (no default role is inferred). |
 | `line.parentLineId` | Optional compound parent; must exist and must not form a cycle. A parent and its children are never both counted. |
 | `line.order` | Optional `{group, position, tail?: boolean}` (label order and the ≤2 % tail). |
-| `line.confidence` | `{identity, quantity}`, each `low\|medium\|high`. |
+| `line.confidence` | Optional `{identity, quantity}`, each `low\|medium\|high`; absent means unstated and is shown as such in review. |
 | `line.notes`, `line.assumptionIds[]` | Optional. |
 | `knownFacts[]` | ≤10. `{factId, provenance: official_label\|restaurant_published\|manufacturer_site\|user_measured\|user_stated, source: {title, url (https), capturedAt, market}, appliesTo: {scope: meal\|serving\|line, lineId?}, basis: {servings?, servingWeight?: Q, description?}, nutrients: {<registry key or label>: {value, unit, rounding?: fda_label\|exact\|unknown, qualifier?: less_than}}, ingredientStatement? ≤2000}` |
-| `constraints[]` | ≤50. Each is `{type, …}` with `type` one of `fixed{lineIds}`, `ratio{num, den, min, max}`, `order{lineIds (descending), group}`, `tail_max_percent{lineIds, maxPercent}`, `sum{lineIds, gMin, gMax}` (for example `{"type": "fixed", "lineIds": ["salsa"]}`). |
+| `constraints[]` | ≤50. Each is `{type, …}` with `type` one of `fixed{lineIds}`, `ratio{num: lineId, den: lineId, min, max}` (grams of `num` divided by grams of `den`; one line each), `order{lineIds (descending), group}`, `tail_max_percent{lineIds, maxPercent}`, `sum{lineIds, gMin, gMax}` (for example `{"type": "fixed", "lineIds": ["salsa"]}`). |
 | `assumptions[]` | ≤30. `{id, text, appliesTo: [lineId \| factId \| "meal"]}` |
 | `overallConfidence` | `{level: low\|medium\|high, note?}` |
 
@@ -84,10 +84,11 @@ A human-readable view of a subset of the JSON. The parser is deterministic, repo
 
 Round trips run **paste → JSON → paste**: parsing paste text and rendering the result again reproduces the same canonical paste text (normalized spacing and numbering). JSON that uses any field outside the subset cannot be shown as paste; the site says the list is JSON-only rather than dropping fields. JSON → paste is offered only for lists entirely inside the subset.
 
-- **Subset:** the meta lines below; per line `lineId`, `name`, `state`/`preparation`/`drained` form words, other variant dimensions as `key=val`, quantity (`g`, range, basis, `original`), and nesting; facts with provenance, basis (`<n> serving(s)`, `meal`, or `line <N>`), `factId`, `source`, and nutrient value/unit; `fixed`, `order`, `ratio`, and `tail_max_percent` constraints; assumptions with their `appliesTo`.
-- **JSON-only:** `producer`, `inputs`, `meal.yield`, `line.role`, `line.confidence`, `line.order`, `line.notes`, `line.assumptionIds`, fact `rounding`/`qualifier`/`ingredientStatement`/`basis.servingWeight`/`basis.description`, `sum` constraints, `overallConfidence.note`, and `extensions`.
+- **Subset:** the meta lines below; per line `lineId`, `name`, `kind` as `kind=<value>` (omitted when `generic`), `state`/`preparation`/`drained` form words, other variant dimensions as `key=val`, quantity (`g`, range, basis, `original`), and nesting; facts with provenance, basis (`<n> serving(s)`, `meal`, or `line <N>`), `factId`, `source`, and nutrient value/unit; `fixed`, `order`, `ratio`, and `tail_max_percent` constraints; assumptions whose `appliesTo` names only lines or `meal`.
+- **JSON-only:** `producer`, `inputs`, `meal.yield`, `line.role`, `line.confidence`, `line.order`, `line.notes`, `line.assumptionIds`, fact `rounding`/`qualifier`/`ingredientStatement`/`basis.servingWeight`/`basis.description`, assumptions whose `appliesTo` names a `factId`, `sum` constraints, `overallConfidence.note`, and `extensions`.
 - **Line IDs:** paste line `N` maps to `lineId` `l<N>` and child `N.M` to `l<N>-<M>`, unless the line carries `id=<lineId>`. Constraints and assumptions refer to paste line numbers, which the parser resolves to those `lineId`s. Rendering emits `id=` only when the `lineId` differs from its default. Facts get `factId` `f<K>` in order unless the fact line carries `(id=<factId>)`; assumptions get `a<K>`.
 - **Registry version:** when any fact is present, the parser sets `registryVersion` to the site's current `NUTRIENT_REGISTRY_VERSION` and resolves nutrient labels through `lookupLabel` at that version; the review preview shows the version. JSON with a different `registryVersion` is JSON-only.
+- **Fact basis:** `per <n> serving(s)` maps to `appliesTo: {scope: "serving"}` with `basis: {servings: <n>}`; `per meal` maps to `appliesTo: {scope: "meal"}` with an empty `basis`; `per line <N>` maps to `appliesTo: {scope: "line", lineId: <line N's lineId>}` with an empty `basis`. Rendering applies the same mapping in reverse; any other `appliesTo`/`basis` combination is JSON-only.
 
 | Element | Syntax |
 | --- | --- |
@@ -197,7 +198,7 @@ Ingredient list (restaurant item with published facts; one measured line):
 }
 ```
 
-A paste rendering of a subset of that list. `producer`, `inputs`, `role`, `confidence`, and `rounding` are JSON-only, so this text parses to the JSON above without those fields (with `registryVersion` filled from the site's current registry):
+A paste rendering of a subset of that list. `producer`, `inputs`, `role`, `confidence`, and `rounding` are JSON-only, so this text parses to the JSON above without those fields (with `registryVersion` filled from the site's current registry). Every `kind` survives: `generic` lines omit it and the salsa line carries `kind=compound`. Because the JSON above uses JSON-only fields, the site would not offer this rendering for it; the text is the round-trip fixture for the subset:
 
 ```text
 NUTRITION-INGREDIENTS v1
@@ -209,7 +210,7 @@ Confidence: medium
 1. white rice | cooked | 180 g (140-220) | estimated | id=rice
 2. grilled chicken thigh | cooked, grilled | 120 g (100-150) | estimated | id=chicken
 3. black beans | canned, drained | 110 g (80-140) | estimated | id=beans
-4. tomato salsa | | 60 g | measured | id=salsa
+4. tomato salsa | | 60 g | measured | id=salsa; kind=compound
 Fact restaurant_published per 1 serving (id=menu): Calories 690 kcal; Protein 45 g
 Source: Restaurant nutrition calculator | https://example.com/nutrition | 2026-11-06 | US
 Constraints: fixed 4

@@ -43,7 +43,7 @@ Accept ingredient-list v1 JSON or paste, a saved meal or recipe, a Recipe Standa
 3. Show missing profiles and ambiguous matches together. A profile can exist while particular nutrients remain unknown. Missing-profile and missing-nutrient lists must be distinct.
 4. Resolve missing items through the user's selected action. External research is limited to the selected missing identities or fields. Cache approved results.
 5. Calculate totals, retain source-reported meal facts, and show estimated ingredients, coverage, assumptions, and unresolved discrepancies.
-6. When eligible known facts exist, apply known quantities, ingredient order, those facts, yield, and plausible recipe ratios as constraints. Fit only estimated quantities and explicitly permitted preparation assumptions, never canonical ingredient nutrient values, then recalculate.
+6. When eligible known facts exist, apply known quantities, ingredient order, those facts, yield, and plausible recipe ratios as constraints. Fit only `estimated` quantities, never canonical ingredient nutrient values, then recalculate.
 7. On Save, persist the meal's ingredient list, exact profile revisions, quantities, constraints, known facts, and nutrition snapshot. Create missing approved ingredient profiles once. Reuse existing IDs across meals.
 
 Interpretation happens in the external assistant; the site validates what it receives. A saved recipe with resolved ingredients, a portion change, or an approved structured import must use zero model calls for matching confirmed IDs, scaling, aggregation, and saving. After any missing record is resolved, recalculate the meal from step 5 onward.
