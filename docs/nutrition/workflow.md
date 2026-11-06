@@ -23,9 +23,9 @@ The tracker's meal-analysis workspace (#70) runs these stages in order. Each sta
 
 | Stage | Behavior | Owner |
 | --- | --- | --- |
-| 1. Extract evidence | Accept a photo, nutrition label, ingredient list, recipe, barcode, free text, saved meal, or legacy paste. Use deterministic parsers and on-device OCR first; optional AI vision only on user action when they cannot supply needed evidence. Show extracted facts for correction. | #67 |
+| 1. Extract evidence | Accept a photo, nutrition label, ingredient list, recipe, barcode, free text, saved meal, or legacy paste. Use deterministic parsers and on-device OCR first. If AI vision is needed, default to a cost-free assistant request packet (copyable JSON + images) and schema-validated import; optional paid OpenAI route stays off. Show extracted facts for correction. | #67 |
 | 2. Match | Match identities/forms against cached, private, and curated profiles with exact variant compatibility. | #61 |
-| 3. Resolve gaps | List missing and ambiguous items together. Per item: choose existing, enter manually, research through official sources, research with the AI API, save an incomplete draft, or cancel. | #66 (choices), #62 (research jobs), #67 (AI research) |
+| 3. Resolve gaps | List missing and ambiguous items together. Per item: choose existing, enter manually, research through official sources, research with AI via assistant packet (default) or optional paid route, save an incomplete draft, or cancel. | #66 (choices), #62 (research jobs), #67 (AI packets) |
 | 4. Recalculate | Recalculate automatically through the shared module once records are resolved, without repeating finished research. | #64, #66 |
 | 5. Fit quantities | Run the deterministic constrained solver from label calories, macros, sodium, fiber, serving weights, ingredient order, preparation states, and plausible ratios. Respect rounding and uncertainty; never change known facts; flag non-unique or infeasible fits. | #65 |
 | 6. Review | Show label-versus-calculated differences, estimated quantities with ranges, and the quality and source of derived nutrition. | #66 |
@@ -216,7 +216,7 @@ A dedicated tracker tab (#69) manages the shared ingredient profiles:
 - **Add and edit:** private profiles and overrides, saved as new revisions with source and basis. Curated records are never edited in place.
 - **Review:** identity, variants, per-field status and provenance, missing nutrient fields, unit conversions, and revision history. Missing fields and missing conversions are separately filterable. An affected recipes/meals view is capability-gated until #64 exposes ingredient-graph references; do not require it in the #69 ship.
 - **Import:** label facts, manual measurements, or a reviewed research result.
-- **Research:** selected ingredients or selected missing fields through official sources (#62 jobs) first; the AI API (once #67 ships) only after a recorded official-source attempt leaves gaps, or via an explicit override. Results stay staged until reviewed, and model citations require evidence verification before approval.
+- **Research:** selected ingredients or selected missing fields through official sources (#62 jobs) first; AI help (once #67 ships) only after a recorded official-source attempt leaves gaps, or via an explicit override. Default AI is the cost-free assistant-packet export/import; the optional paid route stays off. Results stay staged until reviewed, and model citations require evidence verification before approval.
 
 Recipe Standardizer opens the same views from its link editor rather than maintaining a second editor.
 
@@ -230,7 +230,7 @@ List all missing/ambiguous ingredients and fields in one review. Offer:
 
 - **Choose existing:** search verified variants and user overrides; explicit substitute selection is recorded as an estimate.
 - **Look up selected:** run official-source lookup (#62) for the selected identities or fields. Show progress, result quality, and a review step before persistence. Reuse any approved records if another tab populated them first.
-- **Research with AI:** available only when the authenticated server route (#67) is enabled and online, and only after a recorded official-source attempt left the selected identity or fields unresolved (or an explicit user override of that gate). Sends only the selected identities/fields, returns schema-validated JSON with cited sources that must be evidence-verified before approval, and enters the same review step. Unverified model output is ineligible for a profile revision.
+- **Research with AI:** available after a recorded official-source attempt left the selected identity or fields unresolved (or an explicit user override of that gate). **Default:** export a structured assistant request packet (JSON + needed images) for James's already-paid bots or ChatGPT project instructions, then import the schema-validated JSON result. **Optional:** the feature-flagged paid OpenAI route (off by default, $0 cap) may send the same packet schemas when explicitly enabled. Cited sources must be evidence-verified before approval; unverified model output is ineligible for a profile revision.
 - **Enter manually:** add a label or measured facts with source and basis.
 - **Save incomplete draft:** retain the recipe and unknowns, clearly excluded from claims of complete nutrition.
 - **Cancel:** return without committing the meal. Do not launch research or charge an AI request.
@@ -253,10 +253,10 @@ Display only relevant comparison targets. Do not create minimum targets for tran
 
 The website performs every calculation without AI whenever sufficient structured information is available. Models never compute totals, scale portions, match confirmed IDs, or alter known facts. They may help with image interpretation, difficult ingredient identification, or research left unresolved by official sources.
 
-- Calls run only through an authenticated server-side route (#67) that verifies a **non-anonymous** Firebase user (reject anonymous/`signInAnonymously` guests; the tracker currently falls back to anonymous auth). OpenAI keys stay in server configuration, never in the static tracker, client bundle, or repository.
-- Calls happen only after an explicit user action, within request, size, rate, and cost bounds that resist guest churn (per verified account plus a global/IP or App Check quota, not UID-only), and can be cancelled. Offline, AI actions are disabled with a reason.
-- Requests ask for strict JSON-schema (structured) output. The server and client validate it; invalid or freeform nutrition text is rejected rather than parsed. Cited sources must be retrieved or otherwise evidence-verified before approval; a citation-shaped field alone does not qualify. Unverified model output stays marked unverified and ineligible for a profile revision. Verified results enter the same review as any other research before a profile revision is saved.
-- Model-assisted results are labeled as such in provenance and quality.
+- **Default (cost-free):** for those model-assisted steps, the site builds a structured **assistant request packet**—copyable JSON plus the needed images—and imports a matching JSON result validated against a strict schema. James sends the packet to assistant bots that already run on subscriptions he pays for (Claude/Codex/ChatGPT) or to ChatGPT project instructions, then returns the result—the same screenshot-and-return flow. No metered site API call is required.
+- **Optional paid route:** an authenticated server-side OpenAI route (#67) may implement the same schemas later. It is **off by default**, feature-flagged, and capped at **$0** spend until James explicitly enables it and raises the cap. If enabled, it verifies a **non-anonymous** Firebase user (reject anonymous/`signInAnonymously` guests), keeps keys in server configuration only, and applies abuse-resistant rate/cost bounds (per verified account plus global/IP or App Check quota).
+- Requests (packet or paid) ask for strict JSON-schema output. Invalid or freeform nutrition text is rejected rather than parsed. Cited sources must be retrieved or otherwise evidence-verified before approval; a citation-shaped field alone does not qualify. Unverified model output stays marked unverified and ineligible for a profile revision. Verified results enter the same review as any other research before a profile revision is saved.
+- Model-assisted results are labeled as such in provenance and quality. Deterministic calculation remains the primary path.
 
 ### Offline-capable calculation
 
@@ -268,7 +268,7 @@ The tracker and Recipe Standardizer use one nutrient registry (#60), one set of 
 
 ## ChatGPT and import compatibility
 
-The legacy paste parser remains supported, but structured ingredient-level data is the primary future interface. The project's current installed instructions cover full ingredient estimation, source hierarchy, scaling, hidden ingredients, weighted fiber, FODMAP equivalents, adjusted carbs, and the fixed 24-field copy format. The updated chat workflow should apply the database-first and evidence rules above without pretending a connector can access the live Firebase database.
+The legacy paste parser remains supported, but structured ingredient-level data is the primary future interface. The structured assistant request/response packets (#67) are the preferred bridge to ChatGPT project instructions and other assistants; freeform paste is the fallback. The project's current installed instructions cover full ingredient estimation, source hierarchy, scaling, hidden ingredients, weighted fiber, FODMAP equivalents, adjusted carbs, and the fixed 24-field copy format. The updated chat workflow should apply the database-first and evidence rules above without pretending a connector can access the live Firebase database.
 
 Until #60 and #64 ship and the target capability is verified:
 

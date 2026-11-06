@@ -69,7 +69,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 ### P7: Nutrition enrichment routed to CalorieTracker #67
 
 - This unimplemented scope is consolidated into [CalorieTracker #67](calorie-tracker.md#67-add-photo-label-list-and-recipe-input-adapters), following the ingredient-database request of 2026-11-05. Do not open a duplicate enrichment workstream here or treat P7 as completed.
-- Keep the existing manual P2 path. The successor uses shared versioned nutrient contracts, source lookup, missing-ingredient choices, and the reviewed save flow. Provider-backed AI remains optional, runs only through #67's authenticated server-side route, and is selected/configured during implementation.
+- Keep the existing manual P2 path. The successor uses shared versioned nutrient contracts, source lookup, missing-ingredient choices, and the reviewed save flow. Provider-backed AI remains optional: default is #67's cost-free assistant-packet path; the paid server-side OpenAI route stays off unless James enables it.
 - Recipe Standardizer consumes the same ingredient profiles, calculation/solver modules, research jobs, and resolution components as the tracker (CalorieTracker #61, #62, #64-#66). Ingredient editing and research open the shared [Ingredient Library](calorie-tracker.md#69-add-the-ingredient-library-tab) views; do not add a recipe-side copy of these data models or workflows.
 
 ### P8 — Persist ingredient checklist ticks (optional UX)
