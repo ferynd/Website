@@ -90,7 +90,7 @@ async function makeApprovedCuratedJob({ manifestId = 'apple-raw-with-skin', cano
         decision: 'approve',
         reviewer: 'James',
         reviewedAt: '2026-11-06T12:00:00Z',
-        approvedContentHash: await reviewContentHash(job.proposal),
+        approvedContentHash: await reviewContentHash(job),
         acknowledgedWarnings: [],
     };
     job.state = 'approved';
@@ -191,4 +191,30 @@ it.each(['grams', 'amount', 'unit', 'state', 'source', 'range', 'removed', 'adde
     if (field === 'removed') job.proposal.conversions = [];
     if (field === 'added') job.proposal.conversions.push({ ...conv, unit: 'tbsp' });
     await expect(stageCatalog([job])).rejects.toThrow('valid reviewed content hash');
+});
+it('refuses staging when gaps or published identity change after approval', async () => {
+    const renamed = await makeApprovedCuratedJob();
+    renamed.target.canonicalName = 'Pear';
+    await expect(stageCatalog([renamed])).rejects.toThrow('valid reviewed content hash');
+    const realias = await makeApprovedCuratedJob();
+    realias.target.aliases = ['changed apple'];
+    await expect(stageCatalog([realias])).rejects.toThrow('valid reviewed content hash');
+    const cooked = await makeApprovedCuratedJob();
+    cooked.target.dims = { ...cooked.target.dims, state: 'cooked' };
+    await expect(stageCatalog([cooked])).rejects.toThrow('valid reviewed content hash');
+    const gaps = await makeApprovedCuratedJob();
+    gaps.proposal.gaps = { carbs: 'not_computed' };
+    await expect(stageCatalog([gaps])).rejects.toThrow('valid reviewed content hash');
+});
+it('refuses private text anywhere in the staged record even when the review hash matches', async () => {
+    for (const mutate of [
+        job => { job.proposal.gaps = { iodine: 'see /users/hidden confidential note' }; },
+        job => { job.target.aliases = ['/users/hidden']; },
+        job => { job.target.canonicalName = 'confidential blend'; },
+    ]) {
+        const job = await makeApprovedCuratedJob();
+        mutate(job);
+        job.review.approvedContentHash = await reviewContentHash(job);
+        await expect(stageCatalog([job])).rejects.toThrow('refuses private');
+    }
 });

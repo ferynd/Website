@@ -134,12 +134,12 @@ it('curated --verify-source refetches through a deterministic adapter and never 
     expect(saved?.proposal?.revisionDraft?.sources[sourceKey].permittedUse).toBe('CC0 fixture license');
     expect(saved?.validation?.errors?.some((error: string) => error.includes('unresolved permittedUse'))).toBe(false);
     const warnings = saved!.validation?.warnings || [];
-    const approveArgs = ['review', '--store', root, '--job', accepted.jobId, '--decide', 'approve', '--reviewer', 'reviewer', '--hash', await reviewContentHash(saved!.proposal), '--write'];
+    const approveArgs = ['review', '--store', root, '--job', accepted.jobId, '--decide', 'approve', '--reviewer', 'reviewer', '--hash', await reviewContentHash(saved!), '--write'];
     if (warnings.length)
         approveArgs.push('--ack', warnings.join('|'));
     const approved = await researchCli(approveArgs, { output, fetch, fdcBulkAdapter: offline.adapter }) as ResearchJob;
     expect(approved.state).toBe('approved');
-    expect(approved.review?.approvedContentHash).toBe(await reviewContentHash(saved!.proposal));
+    expect(approved.review?.approvedContentHash).toBe(await reviewContentHash(saved!));
     vi.stubEnv('FDC_API_KEY', '');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('--live');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api', '--live'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('FDC_API_KEY');

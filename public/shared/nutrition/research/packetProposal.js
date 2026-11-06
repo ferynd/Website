@@ -5,6 +5,7 @@ import { CURATED_CATALOG_ID } from '../ingredientIds.js';
 import { PROFILE_FIELDS } from './profileFields.js';
 import { extractStateWords } from './fdcFood.js';
 import { buildRevisionDiff } from './researchReview.js';
+import { applyStagedConventions } from './sourceResult.js';
 export async function packetProposal(job, result) {
     const stagedRecord = emptyStagedRecord(), sources = {}, fieldProvenance = {};
     for (const key of PROFILE_FIELDS) {
@@ -16,12 +17,17 @@ export async function packetProposal(job, result) {
     if (base) {
         Object.assign(stagedRecord.values, base.nutrients);
         Object.assign(stagedRecord.quality, base.nutrientMeta.quality);
+        if (base.nutrientMeta.fiberMeaning)
+            stagedRecord.fiberMeaning = base.nutrientMeta.fiberMeaning;
+        if (base.nutrientMeta.carbConvention)
+            stagedRecord.carbConvention = base.nutrientMeta.carbConvention;
         Object.assign(sources, base.sources);
         Object.assign(fieldProvenance, base.fieldProvenance);
     }
     stagedRecord.values.fiberWeightedLegacy = null;
     delete stagedRecord.quality.fiberWeightedLegacy;
     delete fieldProvenance.fiberWeightedLegacy;
+    applyStagedConventions(stagedRecord, { fiberMeaning: 'total', carbConvention: 'includes_fiber' }, { base, requested: job.requestedFields });
     const assistantSourceKeys = Object.fromEntries(result.sources.map(s => [s.sourceId, job.pendingRequest.requestId + ':' + s.sourceId]));
     for (const s of result.sources)
         sources[assistantSourceKeys[s.sourceId]] = { type: ['fdc', 'label', 'manufacturer'].includes(s.type) ? s.type : 'comparable', recordId: s.recordId || s.sourceId, title: s.title, url: s.url, version: s.version || 'assistant-cited-v1', accessedAt: s.accessedAt, permittedUse: 'review_required' };

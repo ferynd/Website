@@ -7,10 +7,38 @@ import { buildRevisionDraft, revisionToStagedRecord } from '../ingredientProfile
 import { buildConversion } from '../ingredientConversion.js';
 import { CURATED_CATALOG_ID } from '../ingredientIds.js';
 import { PermanentSourceError } from './fdcFood.js';
-import { normalizeSourceResult } from './sourceResult.js';
+import { applyStagedConventions, normalizeSourceResult } from './sourceResult.js';
 import { validateProposal } from './researchValidator.js';
 import { buildRevisionDiff, applyReviewDecision } from './researchReview.js';
 import { jobKeyV1, createResearchJob, transition, passIdFor } from './researchJob.js';
+function citedObservation({ value, status, upperBound, roundingInterval, qualifier, derivation }) {
+    const observation = { value: value ?? null, status: status ?? null };
+    if (upperBound != null)
+        observation.upperBound = upperBound;
+    if (roundingInterval != null)
+        observation.roundingInterval = roundingInterval;
+    if (qualifier)
+        observation.qualifier = qualifier;
+    if (derivation)
+        observation.derivation = derivation;
+    return observation;
+}
+function adapterObservation(normalized, key) {
+    const quality = normalized.nutrientMeta?.quality?.[key] || {};
+    const provenance = normalized.fieldProvenance?.[key] || {};
+    return citedObservation({
+        value: normalized.nutrients?.[key],
+        status: quality.status,
+        upperBound: quality.upperBound,
+        roundingInterval: quality.roundingInterval,
+        qualifier: quality.qualifier,
+        derivation: provenance.derivation,
+    });
+}
+function sameRange(left, right) {
+    const range = value => value == null ? null : { min: value.min, max: value.max };
+    return canonicalJson(range(left)) === canonicalJson(range(right));
+}
 export function createResearchService({ store, sourceCache, adapters = [], now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)), random = () => Math.random(), retry: retryConfig = { maxAttempts: 3, baseMs: 1000, maxMs: 30000 }, } = {}) {
     const adapterMap = new Map();
     for (const a of adapters) {
@@ -285,6 +313,12 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
                 if (bareUnknown)
                     stagedRecord.quality[key] = proposal.nutrientMeta.quality?.[key]?.qualifier ? proposal.nutrientMeta.quality[key] : { status: 'unknown', qualifier: 'gap:not_requested' };
             }
+            applyStagedConventions(stagedRecord, proposal.nutrientMeta, {
+                base,
+                requested: job.requestedFields,
+                explicit: proposal.conventionOverrides,
+            });
+            delete proposal.conventionOverrides;
             proposal.sources = { ...(base?.sources || {}), ...proposal.sources };
             proposal.fieldProvenance = fieldProvenance;
             proposal.nutrients = stagedRecord.values;
@@ -498,32 +532,58 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         const raw = await adapter.fetch(source.recordId, context), result = await adapter.toSourceResult(raw, context), normalized = normalizeSourceResult(result, job.target);
         if (String(result.recordId) !== source.recordId)
             await mismatch('Source record changed');
-        for (const [key, n] of Object.entries(job.proposal.assistantResult.nutrients))
-            if (n.sourceIds.includes(sourceId) && canonicalJson(normalized.nutrients[key]) !== canonicalJson(n.value))
-                await mismatch('Source value mismatch: ' + key);
+        const cited = Object.entries(job.proposal.assistantResult.nutrients).filter(([, n]) => n.sourceIds.includes(sourceId));
+        for (const [key, n] of cited)
+            if (canonicalJson(adapterObservation(normalized, key)) !== canonicalJson(citedObservation(n)))
+                await mismatch('Source observation mismatch: ' + key);
         // Packet weights describe one unit. FDC portions may describe several;
-        // compare grams per unit, and refuse unexpressed portion qualifiers.
+        // compare grams per unit and ranges, and refuse unexpressed portion qualifiers.
         for (const c of job.proposal.assistantResult.conversions) {
             if (!c.sourceIds.includes(sourceId)) continue;
             const portions = normalized.conversions.filter(p => p.unit === c.unit && p.state === c.state && !p.unitQualifier);
-            if (!portions.length || portions.some(p => !Number.isFinite(p.grams / p.amount) || Math.abs(p.grams / p.amount - c.grams) > 1e-6))
+            if (!portions.length || portions.some(p => !Number.isFinite(p.grams / p.amount) || Math.abs(p.grams / p.amount - c.grams) > 1e-6 || !sameRange(p.range, c.range)))
                 await mismatch('Source conversion mismatch: ' + c.unit);
         }
         const proposal = structuredClone(job.proposal);
         const sourceKey = proposal.assistantSourceKeys[sourceId];
         proposal.revisionDraft.sources[sourceKey] = normalized.sourceRecord;
         const draft = proposal.revisionDraft;
+        // Keep the assistant source key so the rewritten source stays attached,
+        // and replace each cited field with the deterministic observation before hashing.
+        const stagedRecord = revisionToStagedRecord(draft);
+        const fieldProvenance = { ...draft.fieldProvenance };
+        for (const [key] of cited) {
+            stagedRecord.values[key] = normalized.nutrients[key] ?? null;
+            stagedRecord.quality[key] = { ...(normalized.nutrientMeta.quality[key] || { status: 'unknown' }) };
+            const from = normalized.fieldProvenance[key] || {};
+            const keptKey = fieldProvenance[key]?.sourceKey || sourceKey;
+            fieldProvenance[key] = {
+                sourceKey: keptKey,
+                ...(from.sourceNutrientId ? { sourceNutrientId: from.sourceNutrientId } : {}),
+                ...(from.derivation ? { derivation: from.derivation } : {}),
+                ...(from.comparatorRef ? { comparatorRef: from.comparatorRef } : {}),
+                ...(from.confidence !== undefined ? { confidence: from.confidence } : {}),
+                ...(from.range ? { range: from.range } : {}),
+            };
+        }
         proposal.revisionDraft = { ...draft, ...await buildRevisionDraft({
             identityId: draft.identityId, variantId: draft.variantId,
-            stagedRecord: revisionToStagedRecord(draft), sources: draft.sources,
-            fieldProvenance: draft.fieldProvenance, basis: draft.basis,
-            basedOn: draft.basedOn, base: job.target.baseRevision || null,
+            stagedRecord, sources: draft.sources, fieldProvenance,
+            basis: draft.basis, basedOn: draft.basedOn, base: job.target.baseRevision || null,
         }) };
         proposal.conversions = await Promise.all(proposal.conversions.map((c, i) => {
             const { conversionId, ...input } = c;
-            return buildConversion({ ...input,
+            const citedConversion = proposal.assistantResult.conversions[i];
+            const citedHere = citedConversion?.sourceIds?.[0] === sourceId;
+            const portion = citedHere
+                ? normalized.conversions.find(p => p.unit === citedConversion.unit && p.state === citedConversion.state && !p.unitQualifier && sameRange(p.range, citedConversion.range) && Number.isFinite(p.grams / p.amount) && Math.abs(p.grams / p.amount - citedConversion.grams) <= 1e-6)
+                : null;
+            const range = portion?.range ? { min: portion.range.min, max: portion.range.max } : null;
+            return buildConversion({
+                ...input,
+                ...(range ? { range } : {}),
                 variantRef: { ...c.variantRef, contentHash: proposal.revisionDraft.contentHash },
-                source: proposal.assistantResult.conversions[i].sourceIds[0] === sourceId ? normalized.sourceRecord : c.source,
+                source: citedHere ? normalized.sourceRecord : c.source,
             });
         }));
         proposal.diff = buildRevisionDiff(job.target.baseRevision || null, proposal.revisionDraft, proposal.conversions);

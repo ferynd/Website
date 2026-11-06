@@ -46,16 +46,32 @@ export function buildRevisionDiff(base, draft, conversions = []) {
         supersededConversions,
     };
 }
-/** Approval covers the revision and every staged conversion, including source evidence. */
-export async function reviewContentHash(proposal) {
-    return contentHashOf({ revisionContentHash: proposal.revisionDraft.contentHash,
-        conversions: JSON.parse(JSON.stringify(proposal.conversions || [])) });
+/** Identity fields copied onto the public catalog record. */
+export function publishedIdentityFor(job) {
+    const target = job?.target || {};
+    return {
+        canonicalName: target.canonicalName || target.name || target.manifestId || null,
+        aliases: target.aliases || [],
+        dims: target.dims || { state: 'unspecified' },
+    };
+}
+/** Approval covers the revision, every staged conversion, the gap report, and the published identity. */
+export async function reviewContentHash(job) {
+    const proposal = job.proposal;
+    return contentHashOf({
+        revisionContentHash: proposal.revisionDraft.contentHash,
+        conversions: JSON.parse(JSON.stringify(proposal.conversions || [])),
+        gaps: JSON.parse(JSON.stringify(proposal.gaps || {})),
+        identity: JSON.parse(JSON.stringify(publishedIdentityFor(job))),
+    });
 }
 export async function buildReviewPacket(job) {
     const draft = job.proposal?.revisionDraft;
     const conversions = job.proposal?.conversions || [];
     const diff = buildRevisionDiff(job.target?.baseRevision, draft, conversions);
-    const contentHash = draft ? await reviewContentHash(job.proposal) : null;
+    const contentHash = draft ? await reviewContentHash(job) : null;
+    const identity = publishedIdentityFor(job);
+    const gaps = job.proposal?.gaps || {};
     const validation = job.validation || { isValid: false, errors: [], warnings: [] };
     const mdLines = [
         `# Research Review: ${job.target?.manifestId || job.target?.variantId || job.jobId}`,
@@ -94,6 +110,18 @@ export async function buildReviewPacket(job) {
     for (const c of conversions)
         mdLines.push(`- ${c.amount} ${c.unit}${c.unitQualifier ? ' (' + c.unitQualifier + ')' : ''}: ${c.grams ?? c.gramsPerMl} ${c.kind === 'density' ? 'g/mL' : 'g'}; state: ${c.state}; source: ${JSON.stringify(c.source)}`);
     mdLines.push(``);
+    mdLines.push(`### Published identity`);
+    mdLines.push(`- **Canonical name:** ${identity.canonicalName || 'unknown'}`);
+    mdLines.push(`- **Aliases:** ${Array.isArray(identity.aliases) && identity.aliases.length ? identity.aliases.join(', ') : 'none'}`);
+    mdLines.push(`- **Dimensions:** ${JSON.stringify(identity.dims)}`);
+    mdLines.push(``);
+    mdLines.push(`### Gaps`);
+    const gapEntries = Object.entries(gaps);
+    if (!gapEntries.length)
+        mdLines.push('- none');
+    for (const [field, reason] of gapEntries)
+        mdLines.push(`- **${field}:** ${reason}`);
+    mdLines.push(``);
     mdLines.push(`### Checklist (Version ${CHECKLIST_VERSION})`);
     for (const item of PLAYBOOK_CHECKLIST) {
         mdLines.push(`- [ ] **${item.id}**: ${item.text}`);
@@ -106,6 +134,8 @@ export async function buildReviewPacket(job) {
         contentHash,
         revisionContentHash: draft?.contentHash,
         conversions,
+        gaps,
+        identity,
         validation,
         diff,
         nutrients: draft?.nutrients,
@@ -161,7 +191,7 @@ export async function applyReviewDecision(job, decision) {
     if (!draft || !draft.contentHash) {
         throw new Error('Cannot approve job: proposal is missing revisionDraft or contentHash');
     }
-    const contentHash = await reviewContentHash(job.proposal);
+    const contentHash = await reviewContentHash(job);
     if (contentHash !== approvedContentHash) {
         throw new Error(`Approved content hash mismatch: approved ${approvedContentHash} !== proposal ${contentHash}`);
     }

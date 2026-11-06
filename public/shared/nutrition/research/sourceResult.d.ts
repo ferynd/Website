@@ -1,5 +1,5 @@
 import type { ProfileNutrientKey } from './profileFields';
-import type { NutrientQuality, FiberMeaning, CarbConvention } from '../nutrientRegistry';
+import type { NutrientQuality, FiberMeaning, CarbConvention, StagedNutrientRecord } from '../nutrientRegistry';
 import type { SourceRecord, FieldProvenance } from '../ingredientProfile';
 import type { VariantDims } from '../ingredientVariants';
 import type { FdcSourceResult } from './fdcFood';
@@ -30,5 +30,20 @@ export interface NormalizedProposal {
     gaps: Partial<Record<ProfileNutrientKey, string>>;
     flags: string[];
     extractedStateWords: string[];
+    conventionOverrides?: {
+        fiberMeaning: boolean;
+        carbConvention: boolean;
+    };
 }
+export declare function applyStagedConventions(stagedRecord: StagedNutrientRecord, conventions?: {
+    fiberMeaning?: FiberMeaning;
+    carbConvention?: CarbConvention;
+}, options?: {
+    base?: unknown;
+    requested?: ProfileNutrientKey[] | '*' | null;
+    explicit?: {
+        fiberMeaning?: boolean;
+        carbConvention?: boolean;
+    };
+}): StagedNutrientRecord;
 export declare function normalizeSourceResult(result: FdcSourceResult | any, target?: NormalizationTarget): NormalizedProposal;

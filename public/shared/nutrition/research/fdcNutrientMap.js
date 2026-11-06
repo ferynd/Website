@@ -17,7 +17,8 @@ export const FDC_NUTRIENT_ENTRIES = Object.freeze([
     // Energy (preference: 1008, then 2048, then 2047)
     { fdcNutrientId: 1008, nutrientNumber: '208', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy' },
     { fdcNutrientId: 2048, nutrientNumber: '268', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy (Atwater general factors)' },
-    { fdcNutrientId: 2047, nutrientNumber: '269', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy (Atwater specific factors)' },
+    // USDA nutrient number 957. Number 269 is total sugars (id 2000).
+    { fdcNutrientId: 2047, nutrientNumber: '957', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy (Atwater specific factors)' },
     // Macros & base components
     { fdcNutrientId: 1003, nutrientNumber: '203', key: 'protein', sourceUnit: 'g', policy: 'exact', note: 'Protein' },
     { fdcNutrientId: 1004, nutrientNumber: '204', key: 'fat', sourceUnit: 'g', policy: 'exact', note: 'Total lipid (fat)' },
@@ -83,9 +84,14 @@ export function getFdcMapping(fdcNutrientId) {
 export function getFdcMappingByNumber(nutrientNumber) {
     return BY_NUMBER.get(String(nutrientNumber)) ?? null;
 }
-export function validateFdcNutrientMappings() {
+export function validateFdcNutrientMappings(entries = FDC_NUTRIENT_ENTRIES) {
     const errors = [];
-    for (const entry of FDC_NUTRIENT_ENTRIES) {
+    const seenNumbers = new Set();
+    for (const entry of entries) {
+        const number = String(entry.nutrientNumber);
+        if (seenNumbers.has(number))
+            errors.push(`Duplicate nutrient number ${number}`);
+        seenNumbers.add(number);
         if (!V2_KEYS.includes(entry.key)) {
             errors.push(`Mapping ${entry.fdcNutrientId} targets unknown key: ${entry.key}`);
             continue;

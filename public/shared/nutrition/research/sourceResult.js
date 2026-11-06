@@ -1,5 +1,5 @@
 import { PROFILE_FIELDS as V2_KEYS } from './profileFields.js';
-import { convertUnit } from '../nutrientRegistry.js';
+import { CARB_CONVENTIONS, FIBER_MEANINGS, convertUnit } from '../nutrientRegistry.js';
 import { FDC_NUTRIENT_ENTRIES } from './fdcNutrientMap.js';
 export const GAP_REASONS = Object.freeze([
     'not_reported_by_source',
@@ -13,6 +13,32 @@ export const GAP_REASONS = Object.freeze([
     'source_unavailable',
 ]);
 const round6 = n => Math.round(n * 1e6) / 1e6;
+/**
+ * A first pass and a full-field residual pass take the normalizer's conventions.
+ * A field-limited residual pass keeps the base revision's conventions unless the
+ * source explicitly overrides one of them.
+ */
+export function applyStagedConventions(stagedRecord, conventions = {}, { base = null, requested = null, explicit = {} } = {}) {
+    const fullPass = !base || requested == null || requested === '*';
+    if ((fullPass || explicit.fiberMeaning) && conventions.fiberMeaning && conventions.fiberMeaning !== 'unknown')
+        stagedRecord.fiberMeaning = conventions.fiberMeaning;
+    if ((fullPass || explicit.carbConvention) && conventions.carbConvention && conventions.carbConvention !== 'unknown')
+        stagedRecord.carbConvention = conventions.carbConvention;
+    return stagedRecord;
+}
+function conventionFields(result, quality) {
+    const explicitFiber = FIBER_MEANINGS.includes(result.fiberMeaning) && result.fiberMeaning !== 'unknown';
+    const explicitCarb = CARB_CONVENTIONS.includes(result.carbConvention) && result.carbConvention !== 'unknown';
+    return {
+        nutrientMeta: {
+            registryVersion: 2,
+            quality,
+            fiberMeaning: explicitFiber ? result.fiberMeaning : 'total',
+            carbConvention: explicitCarb ? result.carbConvention : 'includes_fiber',
+        },
+        conventionOverrides: { fiberMeaning: explicitFiber, carbConvention: explicitCarb },
+    };
+}
 export function normalizeSourceResult(result, target = {}) {
     const dims = target.dims || {};
     const requestedFields = target.requestedFields;
@@ -71,12 +97,7 @@ export function normalizeSourceResult(result, target = {}) {
             sourceRecord,
             sources,
             nutrients,
-            nutrientMeta: {
-                registryVersion: 2,
-                quality,
-                fiberMeaning: 'total',
-                carbConvention: 'includes_fiber',
-            },
+            ...conventionFields(result, quality),
             fieldProvenance,
             conversions: [],
             gaps,
@@ -293,7 +314,7 @@ export function normalizeSourceResult(result, target = {}) {
     const conversions = [];
     if (Array.isArray(result.portions)) {
         for (const p of result.portions) {
-            conversions.push({
+            const portion = {
                 schemaVersion: 1,
                 variantRef: target.variantRef || undefined,
                 kind: p.kind,
@@ -304,7 +325,10 @@ export function normalizeSourceResult(result, target = {}) {
                 state: dims.state || 'unspecified',
                 source: sourceRecord,
                 confidence: 1,
-            });
+            };
+            if (p.range && Number.isFinite(p.range.min) && Number.isFinite(p.range.max))
+                portion.range = { min: p.range.min, max: p.range.max };
+            conversions.push(portion);
         }
     }
     return {
@@ -312,12 +336,7 @@ export function normalizeSourceResult(result, target = {}) {
         sourceRecord,
         sources,
         nutrients,
-        nutrientMeta: {
-            registryVersion: 2,
-            quality,
-            fiberMeaning: 'total',
-            carbConvention: 'includes_fiber',
-        },
+        ...conventionFields(result, quality),
         fieldProvenance,
         conversions,
         gaps,

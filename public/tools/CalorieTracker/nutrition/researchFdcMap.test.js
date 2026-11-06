@@ -46,4 +46,17 @@ describe('FDC Nutrient Map', () => {
         expect(byNum?.key).toBe('protein');
         expect(getFdcMapping(999999)).toBeNull();
     });
+    it('assigns USDA nutrient number 957 to Atwater-specific energy and rejects duplicate numbers', () => {
+        expect(getFdcMapping(2047).nutrientNumber).toBe('957');
+        expect(getFdcMappingByNumber('957').fdcNutrientId).toBe(2047);
+        expect(getFdcMappingByNumber('957').key).toBe('calories');
+        expect(getFdcMapping(2000).nutrientNumber).toBe('269');
+        expect(getFdcMappingByNumber('269').key).toBe('sugarsTotal');
+        expect(validateFdcNutrientMappings()).toEqual([]);
+        const duplicate = validateFdcNutrientMappings([
+            getFdcMapping(2000),
+            { ...getFdcMapping(2047), nutrientNumber: '269' },
+        ]);
+        expect(duplicate.some(error => error.includes('Duplicate nutrient number 269'))).toBe(true);
+    });
 });

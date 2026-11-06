@@ -1,6 +1,20 @@
-import { reviewContentHash } from './researchReview.js';
+import { publishedIdentityFor, reviewContentHash } from './researchReview.js';
 import { validateProposal } from './researchValidator.js';
 import { buildCatalogShards } from '../ingredientCatalog.js';
+const PRIVATE_DATA = /private|restricted|confidential|blob:|data:|\/users\//i;
+function hasPrivatePayload(value) {
+    if (!value || typeof value !== 'object')
+        return false;
+    if (Array.isArray(value))
+        return value.some(hasPrivatePayload);
+    for (const [key, child] of Object.entries(value)) {
+        if (key === 'ownerUid' && child)
+            return true;
+        if (hasPrivatePayload(child))
+            return true;
+    }
+    return false;
+}
 export function toCatalogRecord(job) {
     if (!job || typeof job !== 'object') {
         throw new TypeError('Invalid job: expected object');
@@ -11,7 +25,7 @@ export function toCatalogRecord(job) {
     if (job.scope !== 'curated') {
         throw new Error(`Cannot stage private job into curated catalog: ${job.jobId}`);
     }
-    if (job.ownerUid || job.target?.ownerUid || job.proposal?.conversions?.some(c => c.ownerUid || /private|restricted|confidential|blob:|data:|\/users\//i.test(JSON.stringify(c.source))) || /private|restricted|confidential|blob:|data:|\/users\//i.test(JSON.stringify(job.proposal?.revisionDraft?.sources || {})))
+    if (job.ownerUid || job.target?.ownerUid)
         throw new TypeError('Curated staging refuses private data');
     if (job.proposal?.assistantResult && job.proposal.assistantResult.sources.some(s => job.proposal.sourceVerification?.[s.sourceId]?.status !== 'verified'))
         throw new TypeError('Verified sources required');
@@ -26,16 +40,17 @@ export function toCatalogRecord(job) {
     const identityId = draft.identityId || manifestId;
     const variantId = draft.variantId || manifestId;
     const revisionNumber = draft.revision || (job.target.baseRef?.revision || 0) + 1;
+    const published = publishedIdentityFor(job);
     const identity = {
-        canonicalName: job.target.canonicalName || job.target.name || manifestId,
+        canonicalName: published.canonicalName,
         category: job.target.category || 'other',
         kind: job.target.kind || 'generic',
-        aliases: job.target.aliases || [],
+        aliases: published.aliases,
     };
     const variant = {
         variantId,
         identityId,
-        dims: job.target.dims || { state: 'unspecified' },
+        dims: published.dims,
         headRevision: revisionNumber,
         headRevisionId: draft.revisionId || `${variantId}~r${revisionNumber}`,
         headContentHash: draft.contentHash,
@@ -60,13 +75,16 @@ export function toCatalogRecord(job) {
         reviewer: job.review?.reviewer || 'unknown',
         checklistVersion: job.review?.checklistVersion || 1,
     };
-    return {
+    const record = {
         identity,
         variant,
         revisions: [revisionRecord],
         conversions,
         research,
     };
+    if (hasPrivatePayload(record) || PRIVATE_DATA.test(JSON.stringify(record)))
+        throw new TypeError('Curated staging refuses private data');
+    return record;
 }
 export async function stageCatalog(jobs) {
     if (!Array.isArray(jobs)) {
@@ -75,7 +93,7 @@ export async function stageCatalog(jobs) {
     for (const job of jobs) {
         toCatalogRecord(job);
         const validation = await validateProposal(job);
-        if (!validation.isValid || job.review?.approvedContentHash !== await reviewContentHash(job.proposal))
+        if (!validation.isValid || job.review?.approvedContentHash !== await reviewContentHash(job))
             throw new TypeError('Staging requires valid reviewed content hash');
     }
     const records = jobs.map(toCatalogRecord);

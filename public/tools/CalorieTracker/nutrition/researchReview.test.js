@@ -2,7 +2,7 @@ import { it, expect, describe } from 'vitest';
 import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
 import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
 import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
-import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION, reviewContentHash } from '../../../shared/nutrition/research/researchReview.js';
+import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION, publishedIdentityFor, reviewContentHash } from '../../../shared/nutrition/research/researchReview.js';
 async function makeJobWithDraft(values = { protein: 10, calories: 40 }) {
     const staged = emptyStagedRecord();
     for (const k of V2_KEYS) {
@@ -73,12 +73,12 @@ describe('Research Review', () => {
         const approvedJob = await applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: await reviewContentHash(job.proposal),
+            approvedContentHash: await reviewContentHash(job),
             acknowledgedWarnings: [],
         });
         expect(approvedJob.state).toBe('approved');
         expect(approvedJob.review.reviewer).toBe('James');
-        expect(approvedJob.review.approvedContentHash).toBe(await reviewContentHash(job.proposal));
+        expect(approvedJob.review.approvedContentHash).toBe(await reviewContentHash(job));
         expect(approvedJob.version).toBe(2);
     });
     it('rejects approval if contentHash does not match approvedContentHash', async () => {
@@ -96,14 +96,14 @@ describe('Research Review', () => {
         await expect(applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: await reviewContentHash(job.proposal),
+            approvedContentHash: await reviewContentHash(job),
             acknowledgedWarnings: [], // omitted acknowledgment!
         })).rejects.toThrow('unacknowledged warnings');
         // With acknowledgment, it passes
         const approvedJob = await applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: await reviewContentHash(job.proposal),
+            approvedContentHash: await reviewContentHash(job),
             acknowledgedWarnings: ['Target food state is unspecified'],
         });
         expect(approvedJob.state).toBe('approved');
@@ -114,7 +114,7 @@ describe('Research Review', () => {
         await expect(applyReviewDecision(job, {
             decision: 'approve',
             reviewer: 'James',
-            approvedContentHash: await reviewContentHash(job.proposal),
+            approvedContentHash: await reviewContentHash(job),
             acknowledgedWarnings: [],
         })).rejects.toThrow('Cannot approve job with validation errors');
     });
@@ -131,4 +131,31 @@ it('rejects a stale approval after conversion-only edits and displays the full w
     expect(unchanged.state).toBe('approved');
     job.proposal.conversions[0].grams = 250;
     await expect(applyReviewDecision(job, decision)).rejects.toThrow('Approved content hash mismatch');
+});
+it('binds the review hash and packet to gaps and the published identity', async () => {
+    const { job } = await makeJobWithDraft();
+    job.target.canonicalName = 'Synthetic apple';
+    job.target.aliases = ['fixture alias'];
+    job.proposal.gaps = { iodine: 'not_reported_by_source' };
+    const packet = await buildReviewPacket(job);
+    expect(packet.json.gaps).toEqual(job.proposal.gaps);
+    expect(packet.json.identity).toEqual(publishedIdentityFor(job));
+    expect(packet.json.contentHash).toBe(await reviewContentHash(job));
+    expect(packet.markdown).toContain('Synthetic apple');
+    expect(packet.markdown).toContain('fixture alias');
+    expect(packet.markdown).toContain('not_reported_by_source');
+    const decision = { decision: 'approve', reviewer: 'James', approvedContentHash: packet.json.contentHash, acknowledgedWarnings: [] };
+    expect((await applyReviewDecision(job, decision)).state).toBe('approved');
+    const changed = structuredClone(job);
+    changed.proposal.gaps = { iodine: 'edited_after_approval' };
+    await expect(applyReviewDecision(changed, decision)).rejects.toThrow('hash mismatch');
+    const renamed = structuredClone(job);
+    renamed.target.canonicalName = 'Pear';
+    await expect(applyReviewDecision(renamed, decision)).rejects.toThrow('hash mismatch');
+    const realias = structuredClone(job);
+    realias.target.aliases = ['other alias'];
+    await expect(applyReviewDecision(realias, decision)).rejects.toThrow('hash mismatch');
+    const cooked = structuredClone(job);
+    cooked.target.dims = { ...cooked.target.dims, state: 'cooked' };
+    await expect(applyReviewDecision(cooked, decision)).rejects.toThrow('hash mismatch');
 });

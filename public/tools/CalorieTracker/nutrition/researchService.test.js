@@ -272,3 +272,47 @@ it('seeds a field-limited deterministic pass from its base and preserves origina
     expect(draft.fieldProvenance.sodium.sourceKey).not.toBe(base.fieldProvenance.sodium.sourceKey);
     expect(draft.supersedes).toEqual({ revision: 1, revisionId: base.revisionId, contentHash: base.contentHash });
 });
+it('copies fiber and carbohydrate conventions onto a deterministic revision', async () => {
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [createFakeFdcAdapter()] });
+    const job = await service.enqueue({ target: { manifestId: 'apple-raw-with-skin', dims: { state: 'raw' } }, fields: '*' });
+    const reviewed = await service.runJob(job.jobId);
+    const draft = reviewed.proposal.revisionDraft;
+    expect(draft.nutrientMeta.fiberMeaning).toBe('total');
+    expect(draft.nutrientMeta.carbConvention).toBe('includes_fiber');
+    expect(draft.fieldProvenance.fiber.derivation).toBe('same_as:fiberTotal');
+});
+it('keeps base conventions on a field-limited pass unless the source overrides them', async () => {
+    const { buildRevisionDraft } = await import('../../../shared/nutrition/ingredientProfile.js');
+    const { emptyStagedRecord } = await import('../../../shared/nutrition/nutrientRegistry.js');
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [createManualAdapter()] });
+    async function pass(manifestId, fields, manualRecord) {
+        const staged = emptyStagedRecord();
+        staged.values.protein = 10;
+        staged.quality.protein = { status: 'measured' };
+        staged.fiberMeaning = 'weighted_legacy';
+        staged.carbConvention = 'excludes_fiber';
+        const base = await buildRevisionDraft({
+            identityId: manifestId, variantId: manifestId, stagedRecord: staged,
+            basis: { kind: 'per_100g_edible', state: 'raw' },
+            sources: { 'base-source': { type: 'manual', title: 'Base', version: '1', accessedAt: '2026-11-06', permittedUse: 'CC0' } },
+            fieldProvenance: { protein: { sourceKey: 'base-source' } },
+        });
+        base.revision = 1;
+        base.revisionId = manifestId + '~r1';
+        const baseRef = { refVersion: 1, scope: 'curated', namespace: 'catalog:nutrition-curated', identityId: manifestId, variantId: manifestId, revision: 1, revisionId: base.revisionId, contentHash: base.contentHash };
+        const job = await service.enqueue({ target: { manifestId, dims: { state: 'raw' }, baseRevision: base, baseRef }, fields, sourceRelease: manifestId });
+        return service.runJob(job.jobId, { adapterId: 'manual', context: { manualRecord } });
+    }
+    const iodine = (recordId, extra = {}) => ({ recordId, source: { type: 'manual' }, nutrients: { iodine: { value: 1, unit: 'mcg', status: 'measured' } }, ...extra });
+    const kept = await pass('residual-keep', ['iodine'], iodine('iodine-keep'));
+    expect(kept.proposal.revisionDraft.nutrientMeta.fiberMeaning).toBe('weighted_legacy');
+    expect(kept.proposal.revisionDraft.nutrientMeta.carbConvention).toBe('excludes_fiber');
+    const overridden = await pass('residual-override', ['iodine'], iodine('iodine-override', { fiberMeaning: 'total' }));
+    expect(overridden.proposal.revisionDraft.nutrientMeta.fiberMeaning).toBe('total');
+    expect(overridden.proposal.revisionDraft.nutrientMeta.carbConvention).toBe('excludes_fiber');
+    const full = await pass('residual-full', '*', iodine('iodine-full'));
+    expect(full.proposal.revisionDraft.nutrientMeta.fiberMeaning).toBe('total');
+    expect(full.proposal.revisionDraft.nutrientMeta.carbConvention).toBe('includes_fiber');
+});

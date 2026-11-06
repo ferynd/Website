@@ -128,6 +128,8 @@ export function createManualAdapter() {
                 nutrients,
                 portions: raw.portions || [],
                 extractedStateWords: extractStateWords([raw.state, raw.description, raw.title, raw.productName].filter(Boolean).join(' ')),
+                ...(raw.fiberMeaning ? { fiberMeaning: raw.fiberMeaning } : {}),
+                ...(raw.carbConvention ? { carbConvention: raw.carbConvention } : {}),
                 checksum,
             };
         },
@@ -215,6 +217,8 @@ export function createLabelAdapter() {
                 nutrients,
                 portions: raw.portions || [],
                 extractedStateWords: extractStateWords([raw.state, raw.description, raw.title, raw.productName].filter(Boolean).join(' ')),
+                ...(raw.fiberMeaning ? { fiberMeaning: raw.fiberMeaning } : {}),
+                ...(raw.carbConvention ? { carbConvention: raw.carbConvention } : {}),
                 servingSize: raw.servingSize !== undefined ? raw.servingSize : null,
                 servingSizeUnit: raw.servingSizeUnit || null,
                 checksum,

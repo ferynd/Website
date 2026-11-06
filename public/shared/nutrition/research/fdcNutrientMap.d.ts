@@ -13,4 +13,4 @@ export declare const ENERGY_PREFERENCE_ORDER: readonly number[];
 export declare const FDC_NUTRIENT_ENTRIES: readonly FdcNutrientMapping[];
 export declare function getFdcMapping(fdcNutrientId: number): FdcNutrientMapping | null;
 export declare function getFdcMappingByNumber(nutrientNumber: string): FdcNutrientMapping | null;
-export declare function validateFdcNutrientMappings(): string[];
+export declare function validateFdcNutrientMappings(entries?: readonly FdcNutrientMapping[]): string[];

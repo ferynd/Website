@@ -1,3 +1,4 @@
+import { verifyRevisionHash } from '../../../shared/nutrition/ingredientProfile.js';
 import { reviewContentHash, buildReviewPacket } from '../../../shared/nutrition/research/researchReview.js';
 import { it, expect, vi } from 'vitest';
 import { packetFixture, responseFor } from './researchPacketFixtures.js';
@@ -23,14 +24,14 @@ it('starts assistant values unverified and gates curated/private approval', asyn
         f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
         const [j] = await f.service.acceptResponse(f.response);
         expect(j.validation.errors.length).toBe(scope === 'curated' ? 1 : 0);
-        const decision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: await reviewContentHash(j.proposal), acknowledgedWarnings: j.validation.warnings };
+        const decision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: await reviewContentHash(j), acknowledgedWarnings: j.validation.warnings };
         await expect(f.service.review(j.jobId, decision)).rejects.toThrow(scope === 'curated' ? 'unresolved permittedUse' : 'attestation');
         if (scope === 'curated') {
             await f.service.attestSource(j.jobId, 's1', 'reviewer');
             await expect(f.service.review(j.jobId, decision)).rejects.toThrow('unresolved permittedUse');
             const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }], permittedUse: 'CC0 fixture' }) }] });
             const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
-            decision.approvedContentHash = await reviewContentHash(verified.proposal);
+            decision.approvedContentHash = await reviewContentHash(verified);
         }
         const approved = await f.service.review(j.jobId, { ...decision, attestation: true });
         expect(approved.state).toBe('approved');
@@ -116,7 +117,7 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     response.results[0].nutrients = {};
     response.results[0].conversions = [{ unit: 'cup', grams: 125, state: 'raw', sourceIds: ['s1'], confidence: 1 }];
     const [j] = await f.service.acceptResponse(response);
-    const decision = { decision: 'approve', reviewer: 'r', approvedContentHash: await reviewContentHash(j.proposal) };
+    const decision = { decision: 'approve', reviewer: 'r', approvedContentHash: await reviewContentHash(j) };
     await f.service.attestSource(j.jobId, 's1', 'r');
     await expect(f.service.review(j.jobId, decision)).rejects.toThrow('unresolved permittedUse');
     await expect(stageCatalog([{ ...j, state: 'approved', proposal: { ...j.proposal, sourceVerification: { s1: { status: 'verified' } } }, review: { approvedContentHash: decision.approvedContentHash } }])).rejects.toThrow('valid reviewed content hash');
@@ -130,7 +131,7 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     expect(conv.conversionId).not.toBe(j.proposal.conversions[0].conversionId);
     expect(verified.validation.isValid).toBe(true);
     await expect(service.review(j.jobId, decision)).rejects.toThrow('hash mismatch');
-    const approved = await service.review(j.jobId, { ...decision, approvedContentHash: await reviewContentHash(verified.proposal) });
+    const approved = await service.review(j.jobId, { ...decision, approvedContentHash: await reviewContentHash(verified) });
     expect((await stageCatalog([approved])).manifest.profileCount).toBe(1);
 });
 it.each([
@@ -306,4 +307,115 @@ it('includes packet conversions in the review diff and review content hash', asy
     expect(packet.json.diff.addedConversions).toEqual(job.proposal.conversions);
     expect(packet.markdown).toContain('1 cup: 125 g');
     expect(packet.json.contentHash).not.toBe(job.proposal.revisionDraft.contentHash);
+});
+it('refuses a cited observation that disagrees in status, bound, rounding, qualifier, or derivation', async () => {
+    const f = await packetFixture({ fields: ['sodium', 'calories'] });
+    f.response.results[0].nutrients.sodium = { value: null, unit: 'mg', status: 'below_quantification_limit', upperBound: 500, sourceIds: ['s1'] };
+    f.response.results[0].nutrients.calories = { value: 100, unit: 'kcal', status: 'measured', sourceIds: ['s1'] };
+    const [j] = await f.service.acceptResponse(f.response);
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [
+        { nutrientId: 1093, amount: 0, unitName: 'mg', loq: 0.2, isBelowLoq: true },
+        { nutrientId: 2048, amount: 100, unitName: 'kcal' },
+    ] }) }] });
+    await expect(service.verifySource(j.jobId, 's1', 'fdc_bulk')).rejects.toThrow(/observation mismatch/);
+    const rejected = await f.store.get(j.jobId);
+    expect(rejected.proposal.sourceVerification.s1.status).toBe('unverified');
+    expect(rejected.proposal.sourceVerification.s1.method).toBeUndefined();
+    expect(rejected.proposal.revisionDraft.nutrientMeta.quality.sodium.upperBound).toBe(500);
+    expect(rejected.proposal.revisionDraft.nutrientMeta.quality.calories.status).toBe('measured');
+    expect(rejected.proposal.revisionDraft.contentHash).toBe(j.proposal.revisionDraft.contentHash);
+    for (const tweak of [
+        { roundingInterval: 0.1 },
+        { qualifier: 'lab' },
+        { derivation: 'lab method' },
+    ]) {
+        const g = await packetFixture();
+        g.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'], ...tweak };
+        const [accepted] = await g.service.acceptResponse(g.response);
+        const narrow = createResearchService({ store: g.store, sourceCache: g.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] }) }] });
+        await expect(narrow.verifySource(accepted.jobId, 's1', 'fdc_bulk')).rejects.toThrow(/observation mismatch/);
+        const saved = await g.store.get(accepted.jobId);
+        expect(saved.proposal.sourceVerification.s1.status).toBe('unverified');
+        expect(saved.proposal.revisionDraft.contentHash).toBe(accepted.proposal.revisionDraft.contentHash);
+        if (tweak.roundingInterval)
+            expect(saved.proposal.revisionDraft.nutrientMeta.quality.protein.roundingInterval).toBe(0.1);
+        if (tweak.qualifier)
+            expect(saved.proposal.revisionDraft.nutrientMeta.quality.protein.qualifier).toBe('lab');
+        if (tweak.derivation)
+            expect(saved.proposal.revisionDraft.fieldProvenance.protein.derivation).toBe('lab method');
+    }
+});
+it('writes the matching deterministic observation onto the draft before hashing', async () => {
+    const f = await packetFixture({ fields: ['sodium', 'calories'] });
+    f.response.results[0].nutrients.sodium = { value: null, unit: 'mg', status: 'below_quantification_limit', upperBound: 0.2, sourceIds: ['s1'] };
+    f.response.results[0].nutrients.calories = { value: 100, unit: 'kcal', status: 'calculated', derivation: 'atwater_general_factors', sourceIds: ['s1'] };
+    const [j] = await f.service.acceptResponse(f.response);
+    expect(j.proposal.revisionDraft.nutrientMeta.quality.sodium.qualifier).toMatch(/^gap:/);
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', permittedUse: 'CC0 fixture', nutrients: [
+        { nutrientId: 1093, amount: 0, unitName: 'mg', loq: 0.2, isBelowLoq: true },
+        { nutrientId: 2048, amount: 100, unitName: 'kcal' },
+    ] }) }] });
+    const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
+    const draft = verified.proposal.revisionDraft;
+    const sourceKey = verified.proposal.assistantSourceKeys.s1;
+    expect(verified.proposal.sourceVerification.s1).toMatchObject({ status: 'verified', method: 'deterministic_refetch' });
+    expect(draft.nutrientMeta.quality.sodium).toEqual({ status: 'below_quantification_limit', upperBound: 0.2 });
+    expect(draft.fieldProvenance.sodium).toMatchObject({ sourceKey, sourceNutrientId: '1093' });
+    expect(draft.nutrientMeta.quality.calories.status).toBe('calculated');
+    expect(draft.fieldProvenance.calories).toMatchObject({ sourceKey, sourceNutrientId: '2048', derivation: 'atwater_general_factors' });
+    expect(await verifyRevisionHash(draft)).toBe(true);
+});
+it('compares cited conversion ranges and records a matching range', async () => {
+    async function conversionJob(assistantRange, portionRange) {
+        const f = await packetFixture();
+        await f.service.cancelRequest(f.request.requestId);
+        const [request] = await f.service.prepareRequest([f.job.jobId], { purpose: 'conversion' });
+        const response = responseFor(request);
+        response.results[0].nutrients = {};
+        response.results[0].conversions = [{ unit: 'cup', grams: 125, state: 'raw', sourceIds: ['s1'], confidence: 1, ...(assistantRange ? { range: assistantRange } : {}) }];
+        const [j] = await f.service.acceptResponse(response);
+        const portion = { kind: 'household', unit: 'cup', amount: 2, grams: 250, ...(portionRange ? { range: portionRange } : {}) };
+        const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [], portions: [portion], permittedUse: 'CC0 fixture' }) }] });
+        return { f, j, service };
+    }
+    for (const [assistantRange, portionRange] of [
+        [{ min: 120, max: 130 }, { min: 100, max: 110 }],
+        [null, { min: 100, max: 110 }],
+        [{ min: 120, max: 130 }, null],
+    ]) {
+        const mismatch = await conversionJob(assistantRange, portionRange);
+        await expect(mismatch.service.verifySource(mismatch.j.jobId, 's1', 'fdc_bulk')).rejects.toThrow(/conversion mismatch/);
+        expect((await mismatch.f.store.get(mismatch.j.jobId)).proposal.sourceVerification.s1.status).toBe('unverified');
+    }
+    const match = await conversionJob({ min: 120, max: 130 }, { min: 120, max: 130 });
+    const verified = await match.service.verifySource(match.j.jobId, 's1', 'fdc_bulk');
+    expect(verified.proposal.sourceVerification.s1.status).toBe('verified');
+    expect(verified.proposal.conversions[0].range).toEqual({ min: 120, max: 130 });
+});
+it('copies normalizer conventions onto a first packet and keeps them from the base on a field-limited packet', async () => {
+    const first = await packetFixture();
+    const [job] = await first.service.acceptResponse(first.response);
+    expect(job.proposal.revisionDraft.nutrientMeta.fiberMeaning).toBe('total');
+    expect(job.proposal.revisionDraft.nutrientMeta.carbConvention).toBe('includes_fiber');
+    const { buildRevisionDraft } = await import('../../../shared/nutrition/ingredientProfile.js');
+    const { emptyStagedRecord } = await import('../../../shared/nutrition/nutrientRegistry.js');
+    const record = emptyStagedRecord();
+    record.values.calories = 40;
+    record.quality.calories = { status: 'measured' };
+    record.fiberMeaning = 'weighted_legacy';
+    record.carbConvention = 'excludes_fiber';
+    const base = await buildRevisionDraft({ identityId: 'synthetic-identity', variantId: 'synthetic-variant', stagedRecord: record, basis: { kind: 'per_100g_edible', state: 'raw' }, sources: { 'base-source': { type: 'manual', title: 'Base', version: '1', accessedAt: '2026-11-06', permittedUse: 'CC0' } }, fieldProvenance: { calories: { sourceKey: 'base-source' } } });
+    base.revision = 1;
+    base.revisionId = base.variantId + '~r1';
+    const baseRef = { refVersion: 1, scope: 'curated', namespace: 'catalog:nutrition-curated', identityId: base.identityId, variantId: base.variantId, revision: 1, revisionId: base.revisionId, contentHash: base.contentHash };
+    const residual = await packetFixture({ baseRevision: base, baseRef });
+    residual.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    const [next] = await residual.service.acceptResponse(residual.response);
+    expect(next.proposal.revisionDraft.nutrientMeta.fiberMeaning).toBe('weighted_legacy');
+    expect(next.proposal.revisionDraft.nutrientMeta.carbConvention).toBe('excludes_fiber');
+    expect(next.proposal.revisionDraft.nutrients.calories).toBe(40);
+    const full = await packetFixture({ fields: '*', baseRevision: base, baseRef });
+    const [fullJob] = await full.service.acceptResponse(full.response);
+    expect(fullJob.proposal.revisionDraft.nutrientMeta.fiberMeaning).toBe('total');
+    expect(fullJob.proposal.revisionDraft.nutrientMeta.carbConvention).toBe('includes_fiber');
 });
