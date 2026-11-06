@@ -106,4 +106,3 @@ The module table above covers each implementation file and its matching declarat
 | [Nutrition documentation](README.md) | README.md, workflow.md, population-playbook.md, research-pipeline.md | Updated pointers and new implementation/runbook/handoff. |
 
 Verification at PR time: tracker **963 tests**, root **1,999 tests**, API contract suite **43 tests**; lint, build, ci:contract, ci:docs, unchanged Firestore rules/indexes, zero-profile curated manifest, and diff checks pass. No live research, Firebase production work, catalog population, or deployment was performed.
-
