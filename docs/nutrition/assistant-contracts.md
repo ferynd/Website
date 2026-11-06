@@ -34,6 +34,8 @@ Versioning rules for every contract:
 - Text fields are capped at 300 characters unless stated otherwise. Every array has the size limit given below.
 - No base64, data URIs, images, or attachments anywhere. Photos stay with the assistant.
 
+The state/preparation source of truth is [variantVocabulary.js](../../public/shared/nutrition/variantVocabulary.js) (`VOCABULARY_VERSION = 1`) for the future manifest reader, import parser, and packet targets. `parseFormWords` returns `{dims, unknownWords}` using exact normalized lookup; conflicts throw. `stateToDims` returns `{dims, needsReview, unknownWords}`; unknown states become unspecified and require review. Catalog descriptors have explicit mappings. Preparation-only paste words leave state unspecified (write `cooked, grilled`); the catalog's `grilled` state explicitly supplies cooked/grilled. `formWordsFor` renders canonical vocabulary words; other dimensions use paste `key=val`. Drained/salt/fortification values come from `VARIANT_ENUMS`, including when supplied by compound form words. The #61 free-text normalizer and deterministic ID keys remain frozen.
+
 ## Ingredient-list import v1
 
 `kind: "nutrition.ingredientList"`, `schemaVersion: 1`. `Q` below is the quantity object defined under `line.quantity`.
