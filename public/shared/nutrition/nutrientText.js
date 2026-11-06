@@ -17,6 +17,8 @@ function stripDecorations(line) {
     .replace(/^\s*[-*•]\s+/, '')
     .replace(/\*\*/g, '')
     .replace(/`/g, '')
+    .replace(/\|/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
     .trim();
 }
 
@@ -61,6 +63,11 @@ function labelBoundary(next) {
   return next == null || /[\s<~≈\d]/.test(next);
 }
 
+/** The remainder is a value only when the number starts immediately. Extra words ("Calories from Fat 70") are not a prefix hit. */
+function valueStartsImmediately(valuePart) {
+  return /^(?:[<~≈]\s*)?(?:\d|\.\d)/.test(valuePart);
+}
+
 /** Match the longest registered label, then take the value after that whole label. */
 function matchRegisteredLabel(line) {
   const { collapsed, map } = collapseWithMap(line);
@@ -75,7 +82,9 @@ function matchRegisteredLabel(line) {
       const originalEnd = map[lastCollapsed] + 1;
       const labelText = line.slice(0, originalEnd).trim();
       if (!labelText) continue;
-      return { label: labelText, valuePart: line.slice(originalEnd).trim() };
+      const valuePart = line.slice(originalEnd).trim();
+      if (!valueStartsImmediately(valuePart)) continue;
+      return { label: labelText, valuePart };
     }
   }
   return null;
@@ -86,7 +95,6 @@ const NUMBER_CORE = '(?:\\d[\\d,]*(?:\\.\\d+)?|\\.\\d+)';
 const SPACED_VALUE = new RegExp(`\\s+([<~≈]?(?:${NUMBER_CORE}))`);
 const READ_NUMBER = new RegExp(`(${NUMBER_CORE})`);
 const RANGE_NUMBER = new RegExp(`${NUMBER_CORE}\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE}`);
-const NEGATIVE_NUMBER = new RegExp(`(?:^|[^\\d.])-(?:${NUMBER_CORE})`);
 
 function splitAtValueToken(line) {
   const spaced = line.match(SPACED_VALUE);
@@ -144,12 +152,21 @@ function readUnit(text, start) {
   return match ? match[1] : '';
 }
 
+const LEADING_VALUE = new RegExp(`^(${NUMBER_CORE}(?:\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE})?)`);
+
+/** Range and sign apply only to the first number, before the unit or any later note. */
+function leadingValueToken(text) {
+  const trimmed = String(text).trim().replace(/^[<~≈]\s*/, '');
+  const match = trimmed.match(LEADING_VALUE);
+  return match ? match[1] : '';
+}
+
 function isRange(text) {
-  return RANGE_NUMBER.test(String(text));
+  return RANGE_NUMBER.test(leadingValueToken(text));
 }
 
 function isNegative(text) {
-  return NEGATIVE_NUMBER.test(String(text));
+  return new RegExp(`^\\s*-\\s*${NUMBER_CORE}`).test(String(text).trim().replace(/^[<~≈]\s*/, ''));
 }
 
 function pushWarning(warnings, warning) {
@@ -160,6 +177,13 @@ function fiberMeaningFor(key) {
   if (key === 'fiberTotal') return 'total';
   if (key === 'fiberWeightedLegacy') return 'weighted_legacy';
   return null;
+}
+
+function isFolicAcidLabel(label) {
+  let text = normalizeLabel(label);
+  text = text.replace(/\s*\([^)]*\)\s*$/, '').trim();
+  text = text.replace(/,\s*[^,]+$/, '').trim();
+  return text === 'folic acid';
 }
 
 /**
@@ -179,7 +203,7 @@ export function parseNutritionText(text) {
     if (!split || !split.label) continue;
     if (!hasNumber(split.valuePart)) continue;
 
-    if (normalizeLabel(split.label) === 'folic acid') {
+    if (isFolicAcidLabel(split.label)) {
       pushWarning(warnings, {
         level: 'review',
         code: 'nondefensible_conversion',

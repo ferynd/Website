@@ -246,6 +246,27 @@ export async function writeImportedFood(transaction, ref, row, writeVersion, las
   return outcome;
 }
 
+/**
+ * Import summary. Errored rows are failures, not skips, so the toast is an
+ * error when any transaction failed. `offline` adds the unavailable message.
+ */
+export function summarizeCsvImport(counts) {
+  const imported = counts?.imported || 0;
+  const skipped = counts?.skipped || 0;
+  const errored = counts?.errored || 0;
+  let message = errored > 0
+    ? `Import complete: ${imported} food(s) imported, ${skipped} skipped, ${errored} failed.`
+    : `Import complete: ${imported} food(s) imported, ${skipped} skipped.`;
+  if (counts?.clamped > 0) message += ` ${counts.clamped} value(s) clamped to bounds.`;
+  if (counts?.newer > 0) message += ` ${counts.newer} skipped because they were saved by a newer version — reload.`;
+  if (counts?.bounds > 0) message += ` ${counts.bounds} skipped because a nutrient is outside the registry bounds.`;
+  if (counts?.unknownHeaders?.length) message += ` Unknown headers: ${counts.unknownHeaders.join(', ')}.`;
+  const warningText = summarizeCsvImportWarnings(counts?.warnings);
+  if (warningText) message += ` ${warningText}`;
+  if (counts?.offline) message += ' Offline — not saved.';
+  return { message, isError: errored > 0 };
+}
+
 /** Completion text for parser warnings. Unknown headers are reported separately. */
 export function summarizeCsvImportWarnings(warnings) {
   const list = warnings || [];

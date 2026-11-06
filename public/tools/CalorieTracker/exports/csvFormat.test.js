@@ -5,11 +5,21 @@ import {
   formatSavedFoodsCsv,
   parseSavedFoodsCsv,
   savedFoodDocId,
+  summarizeCsvImport,
   summarizeCsvImportWarnings,
   writeImportedFood,
 } from './csvFormat.js';
 
 describe('saved food CSV', () => {
+  it('counts errored import rows as failures and keeps a clean import green', () => {
+    const ok = summarizeCsvImport({ imported: 2, skipped: 1, errored: 0, clamped: 0, newer: 0, bounds: 0 });
+    expect(ok.isError).toBe(false);
+    expect(ok.message).toBe('Import complete: 2 food(s) imported, 1 skipped.');
+    const failed = summarizeCsvImport({ imported: 0, skipped: 1, errored: 2, offline: true });
+    expect(failed.isError).toBe(true);
+    expect(failed.message).toBe('Import complete: 0 food(s) imported, 1 skipped, 2 failed. Offline — not saved.');
+  });
+
   it('legacy CSV columns keep order and v2 columns are appended', () => {
     const food = {
       name: 'Egg "large"',

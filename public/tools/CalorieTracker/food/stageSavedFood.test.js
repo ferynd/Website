@@ -49,6 +49,7 @@ function textOf(node) {
 describe('saved food staging', () => {
   afterEach(() => {
     state.stagedRecord = null;
+    state.stagedDetailFoodName = null;
     delete globalThis.document;
   });
 
@@ -76,6 +77,7 @@ describe('saved food staging', () => {
     expect(record.values.protein).toBe(6);
     expect(record.values.sodium).toBeNull();
     expect(state.stagedRecord.values.protein).toBe(6);
+    expect(state.stagedDetailFoodName).toBe('Yogurt');
     expect(documentStub.getElementById('actual-protein').value).toBe('6');
     expect(documentStub.getElementById('actual-sodium').value).toBe('');
     expect(documentStub.getElementById('actual-quantity').value).toBe(2);

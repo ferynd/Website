@@ -196,6 +196,23 @@ const readRowIdentity = (
   return { id, name, assumptions };
 };
 
+/**
+ * Same per-100 g intake cap schema v1 uses. Tracker-cap keys (sodium and the
+ * other storage ceilings) are omitted by the caller when a per-100 g amount is
+ * still physically allowed, so pure salt stays a v1 commit blocker.
+ */
+const intakeLimitMessage = (
+  nutrientPath: string,
+  key: TrackerNutrientKey,
+  value: number,
+): string | null => {
+  const nutrientSpec = NUTRIENT_INTAKE_SPEC[key];
+  if (!(value > nutrientSpec.max)) return null;
+  return nutrientSpec.trackerCap
+    ? `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g the Nutrition Tracker can store. Skip this row and link the ingredient to a smaller-unit food (for example per 1 g) from its nutrition badge.`
+    : `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the plausible maximum of ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g — check the unit (mg vs mcg, IU vs mcg) and that the value is per 100 g.`;
+};
+
 /** Shared macro, omega-3, and calorie checks for schema 1 rows and assembled schema 2 rows. */
 const applyCrossFieldChecks = (
   nutrients: Record<TrackerNutrientKey, number | null>,
@@ -288,6 +305,13 @@ const parseSchemaV2Items = (
           return;
         }
         if (bound === 'review') rowWarnings.push(`${obsPath}: ${key} is high for a per-100 g food and needs review.`);
+        if (LEGACY_KEY_SET.has(key) && !NUTRIENT_INTAKE_SPEC[key as TrackerNutrientKey].trackerCap) {
+          const limitMessage = intakeLimitMessage(obsPath, key as TrackerNutrientKey, value);
+          if (limitMessage) {
+            errors.push(limitMessage);
+            return;
+          }
+        }
       }
       const previous = seen.get(key);
       if (previous !== undefined) {
@@ -465,10 +489,9 @@ export const parseNutritionJson = (raw: string, options?: { writeVersion?: 1 | 2
           errors.push(`${nutrientPath} must be 0 or more.`);
           continue;
         }
-        if (value > nutrientSpec.max) {
-          errors.push(nutrientSpec.trackerCap
-            ? `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g the Nutrition Tracker can store. Skip this row and link the ingredient to a smaller-unit food (for example per 1 g) from its nutrition badge.`
-            : `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the plausible maximum of ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g — check the unit (mg vs mcg, IU vs mcg) and that the value is per 100 g.`);
+        const limitMessage = intakeLimitMessage(nutrientPath, key, value);
+        if (limitMessage) {
+          errors.push(limitMessage);
           continue;
         }
         nutrients[key] = Object.is(value, -0) ? 0 : value;

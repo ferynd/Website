@@ -9,7 +9,7 @@ import {
   getCurrentDailyEntry, persistExerciseSession, updateExerciseSessionsList,
 } from '../services/data.js';
 import { setupFoodDropdown } from '../food/dropdown.js';
-import { parseAndStage, addStagedNutrientsToDailyLog, subtractStagedNutrientsFromDailyLog, handleStagingAction } from '../staging/parser.js';
+import { parseAndStage, addStagedNutrientsToDailyLog, subtractStagedNutrientsFromDailyLog, handleStagingAction, syncStagingInputs } from '../staging/parser.js';
 import { exportTargetsJson, exportSavedFoodsCsv, exportDailyLogCsv, importSavedFoodsCsv } from '../exports/exporters.js';
 import { openFoodManager, closeFoodManager, selectFoodItem, editFoodItem, deleteFoodItemFromManager, removeFoodItem } from '../food/manager.js';
 import { closeBlankFoodNameModal, closeDuplicateDialog } from '../ui/modals.js';
@@ -267,6 +267,11 @@ function wireStagingEvents() {
       actualQty.addEventListener('input', () => { inlineQty.value = actualQty.value; });
     }
 
+    for (const key of allNutrients) {
+      const input = document.getElementById(`actual-${key}`);
+      if (input) input.addEventListener('input', syncStagingInputs);
+    }
+
     debugLog('wire', 'Staging events wired');
   } catch (error) {
     handleError('wire-staging', error, 'Failed to wire staging events');
@@ -287,6 +292,7 @@ function wireFoodDatabaseEvents() {
     }
     
     if (foodInput) {
+      foodInput.addEventListener('input', syncStagingInputs);
       foodInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') {
           e.preventDefault();

@@ -11,6 +11,7 @@ export function applySavedFoodToStaging(foodData, defaultQuantity = 1) {
   releaseStagingConflictBlock();
   const record = readFoodNutrients(foodData);
   state.stagedRecord = record;
+  state.stagedDetailFoodName = String(foodData?.name ?? '').trim() || null;
   allNutrients.forEach((nutrient) => {
     const input = document.getElementById(`actual-${nutrient}`);
     if (!input) return;

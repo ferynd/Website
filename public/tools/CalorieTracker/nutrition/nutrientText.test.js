@@ -206,6 +206,96 @@ describe('parseNutritionText', () => {
     ]);
   });
 
+  it('parses common label lines with a colon and without one', () => {
+    const cases = [
+      ['Total Carbohydrate: 30 g', 'carbs', 30],
+      ['Total Carbohydrate 30 g', 'carbs', 30],
+      ['Total Carbohydrates: 27g', 'carbs', 27],
+      ['Total Carbohydrates 27 g', 'carbs', 27],
+      ['Total Calories: 200 kcal', 'calories', 200],
+      ['Total Calories 180 kcal', 'calories', 180],
+      ['Carbohydrate, by difference: 25 g', 'carbs', 25],
+      ['Carbohydrate, by difference 25 g', 'carbs', 25],
+      ['Fat, total: 10 g', 'fat', 10],
+      ['Fat, total 10 g', 'fat', 10],
+      ['Fiber, total dietary: 4 g', 'fiber', 4],
+      ['Fiber, total dietary 4 g', 'fiber', 4],
+      ['Vitamin A (RAE): 6 mcg', 'vitaminA', 6],
+      ['Vitamin A (RAE) 6 mcg', 'vitaminA', 6],
+      ['Vitamin A, RAE: 9 mcg', 'vitaminA', 9],
+      ['Vitamin A, RAE 9 mcg', 'vitaminA', 9],
+      ['Folate (DFE): 40 mcg', 'folate', 40],
+      ['Folate (DFE) 40 mcg', 'folate', 40],
+      ['Sodium (Na): 74 mg', 'sodium', 74],
+      ['Sodium (Na) 74 mg', 'sodium', 74],
+      ['Iron (Fe): 2 mg', 'iron', 2],
+      ['Iron (Fe) 2 mg', 'iron', 2],
+      ['Vitamin E (alpha-tocopherol): 1.1 mg', 'vitaminE', 1.1],
+      ['Vitamin E (alpha-tocopherol) 1.1 mg', 'vitaminE', 1.1],
+      ['| Protein | 25 g |', 'protein', 25],
+      ['| Total Carbohydrate | 30 g |', 'carbs', 30],
+    ];
+    for (const [line, key, value] of cases) {
+      const record = parseNutritionText(line);
+      expect({ line, key, value: record.values[key], unknown: record.unknownLabels }).toEqual({
+        line, key, value, unknown: [],
+      });
+    }
+  });
+
+  it('keeps a DV range note from turning the leading amount into a range', () => {
+    const record = parseNutritionText('Iron: 2 mg (10-15% DV)\nIron 3 mg (10-15% DV)');
+    expect(record.values.iron).toBeNull();
+    expect(record.conflicts).toEqual([{ key: 'iron', values: [2, 3] }]);
+    expect(record.warnings.some((warning) => warning.code === 'range')).toBe(false);
+    const single = parseNutritionText('Iron: 2 mg (10-15% DV)');
+    expect(single.values.iron).toBe(2);
+    expect(single.warnings.some((warning) => warning.code === 'range')).toBe(false);
+  });
+
+  it('does not map different-meaning labels or component qualifiers onto parents', () => {
+    const fromFat = parseNutritionText('Calories from Fat: 70 kcal');
+    expect(fromFat.values.calories).toBeNull();
+    expect(fromFat.unknownLabels).toEqual(['Calories from Fat']);
+    const fromFatPlain = parseNutritionText('Calories from Fat 70 kcal');
+    expect(fromFatPlain.values.calories).toBeNull();
+    expect(fromFatPlain.unknownLabels).toEqual(['Calories from Fat']);
+
+    const net = parseNutritionText('Net Carbs: 8 g');
+    expect(net.values.carbs).toBeNull();
+    expect(net.unknownLabels).toEqual(['Net Carbs']);
+    const netPlain = parseNutritionText('Net Carbs 8 g');
+    expect(netPlain.values.carbs).toBeNull();
+    expect(netPlain.unknownLabels).toEqual(['Net Carbs']);
+
+    const ala = parseNutritionText('Omega-3 (ALA): 0.4 g');
+    expect(ala.values.omega3ALA).toBe(0.4);
+    expect(ala.values.omega3).toBeNull();
+    const alaPlain = parseNutritionText('Omega-3 (ALA) 0.2 g');
+    expect(alaPlain.values.omega3ALA).toBe(0.2);
+    expect(alaPlain.values.omega3).toBeNull();
+
+    const saturated = parseNutritionText('Fat, saturated: 3 g');
+    expect(saturated.values.fat).toBeNull();
+    expect(saturated.values.fatSaturated).toBe(3);
+    const saturatedPlain = parseNutritionText('Fat, saturated 3 g');
+    expect(saturatedPlain.values.fat).toBeNull();
+    expect(saturatedPlain.values.fatSaturated).toBe(3);
+
+    const epa = parseNutritionText('EPA + DHA: 0.5 g');
+    expect(epa.values.omega3).toBeNull();
+    expect(epa.values.omega3EPA).toBeNull();
+    expect(epa.values.omega3DHA).toBeNull();
+    expect(epa.unknownLabels).toEqual(['EPA + DHA']);
+    const epaPlain = parseNutritionText('EPA + DHA 0.5 g');
+    expect(epaPlain.values.omega3).toBeNull();
+    expect(epaPlain.unknownLabels).toEqual(['EPA + DHA']);
+
+    const explicitFiber = parseNutritionText('Fiber (total dietary): 8 g');
+    expect(explicitFiber.values.fiberTotal).toBe(8);
+    expect(explicitFiber.values.fiber).toBeNull();
+  });
+
   it('folic acid and vitamin A/E IU are nondefensible and do not set a value', () => {
     const record = parseNutritionText('Folic acid: 200 mcg\nVitamin A: 5000 IU\nVitamin E: 30 IU\nVitamin D: 40 IU');
     expect(record.values.folate).toBeNull();
@@ -213,5 +303,8 @@ describe('parseNutritionText', () => {
     expect(record.values.vitaminE).toBeNull();
     expect(record.values.vitaminD).toBe(1);
     expect(record.warnings.filter((warning) => warning.code === 'nondefensible_conversion')).toHaveLength(3);
+    const qualified = parseNutritionText('Folic acid (DFE): 200 mcg');
+    expect(qualified.values.folate).toBeNull();
+    expect(qualified.warnings.some((warning) => warning.code === 'nondefensible_conversion')).toBe(true);
   });
 });

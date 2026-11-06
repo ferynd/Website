@@ -73,6 +73,10 @@ export const state = {
   // Full nutrient staged record (null until a paste or saved food is loaded).
   stagedRecord: null,
 
+  // Food name the staged detail belongs to after a save or a saved-food load.
+  // Null on a fresh paste, so naming that paste does not drop its detail.
+  stagedDetailFoodName: null,
+
   // An object to cache frequently accessed DOM elements.
   dom: {},
 };

@@ -292,6 +292,38 @@ describe('schemaVersion 2 observations', () => {
     expect(v2.ok && v2.items[0].commitBlockers).toEqual([]);
   });
 
+  it('rejects vitamin D 400 mcg on a schemaVersion 2 row with the schema v1 message', () => {
+    const plausible = 'is 400 mcg, above the plausible maximum of 300 mcg per 100 g — check the unit (mg vs mcg, IU vs mcg) and that the value is per 100 g.';
+    const v1 = parseNutritionJson(JSON.stringify(document([item({ nutrients: { ...nutrients(), vitaminD: 400 } })])));
+    expect(v1.ok).toBe(true);
+    if (!v1.ok) return;
+    expect(v1.items[0].errors.join(' ')).toContain(`items[0].nutrients.vitaminD ${plausible}`);
+    expect(v1.items[0].nutrients.vitaminD).toBeNull();
+
+    for (const writeVersion of [1, 2] as const) {
+      const result = parseNutritionJson(JSON.stringify(v2Document([
+        observation('vitaminD', 400),
+      ])), { writeVersion });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.items[0].nutrients.vitaminD).toBeNull();
+      expect(result.items[0].errors.join(' ')).toContain(`items[0].observations[0] ${plausible}`);
+      expect(result.items[0].detail?.vitaminD).toBeUndefined();
+    }
+
+    const atCap = parseNutritionJson(JSON.stringify(v2Document([observation('vitaminD', 300)])));
+    expect(atCap.ok).toBe(true);
+    if (!atCap.ok) return;
+    expect(atCap.items[0].errors).toEqual([]);
+    expect(atCap.items[0].nutrients.vitaminD).toBe(300);
+
+    const b6 = parseNutritionJson(JSON.stringify(v2Document([observation('vitaminB6', 500)])));
+    expect(b6.ok).toBe(true);
+    if (!b6.ok) return;
+    expect(b6.items[0].nutrients.vitaminB6).toBeNull();
+    expect(b6.items[0].errors.join(' ')).toContain('above the plausible maximum of 50 mg');
+  });
+
   it('per-100-g salt accepted', () => {
     const observations = TRACKER_NUTRIENT_KEYS.map((key) => observation(key, key === 'sodium' ? 39340 : 0));
     const v1 = parseNutritionJson(JSON.stringify(v2Document(observations)));

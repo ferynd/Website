@@ -5,7 +5,15 @@ import { describe, it, expect, vi } from 'vitest';
 globalThis.document ??= { documentElement: {} };
 globalThis.getComputedStyle ??= () => ({ getPropertyValue: () => '' });
 
-const { escapeHtml, clampNutrient } = await import('./ui.js');
+const { escapeHtml, clampNutrient, transactionFailureMessage } = await import('./ui.js');
+
+describe('transactionFailureMessage', () => {
+  it('names an offline transaction and leaves other failures unchanged', () => {
+    expect(transactionFailureMessage({ code: 'unavailable' }, 'Failed to save food item')).toBe('Offline — not saved');
+    expect(transactionFailureMessage({ code: 'permission-denied' }, 'Failed to save food item')).toBe('Failed to save food item');
+    expect(transactionFailureMessage(null, 'Failed to import "Oats"')).toBe('Failed to import "Oats"');
+  });
+});
 
 describe('escapeHtml', () => {
   it('escapes angle brackets', () => {

@@ -71,6 +71,27 @@ function cloneRecord(record) {
   return next;
 }
 
+/** True once staged detail is anchored to a saved or loaded food and the name no longer matches. */
+export function foodNameLeavesStagedDetail(anchorName, currentName) {
+  const anchor = String(anchorName ?? '').trim();
+  if (!anchor) return false;
+  return anchor.toLowerCase() !== String(currentName ?? '').trim().toLowerCase();
+}
+
+/** Drop v2 detail so a later hand-edit cannot write an earlier food's components. */
+export function withoutStagedDetail(record) {
+  const next = cloneRecord(record);
+  const detail = new Set(V2_DETAIL_KEYS);
+  for (const key of V2_DETAIL_KEYS) {
+    next.values[key] = null;
+    next.quality[key] = { status: 'unknown' };
+  }
+  next.conflicts = next.conflicts.filter((conflict) => !detail.has(conflict.key));
+  next.warnings = next.warnings.filter((warning) => !warning.key || !detail.has(warning.key));
+  next.fiberMeaning = 'unknown';
+  return next;
+}
+
 /** Manual staging inputs win. A blank input stays null and never becomes the string "null". */
 export function applyLegacyInputOverlay(record, inputs) {
   const next = cloneRecord(record);

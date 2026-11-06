@@ -5,12 +5,12 @@
  */
 
 import { state, parseQty } from '../state/store.js';
-import { showMessage, handleError, formatNutrientName, escapeHtml, flashSaveConfirmation } from '../utils/ui.js';
+import { showMessage, handleError, formatNutrientName, escapeHtml, flashSaveConfirmation, transactionFailureMessage } from '../utils/ui.js';
 import { showConfirmationModal, closeDuplicateDialog } from '../ui/modals.js';
 import { db } from '../services/firebase.js';
 import { doc, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { appId } from '../config.js';
-import { getStagedRecord } from '../staging/parser.js';
+import { getStagedRecord, rememberStagedFoodName } from '../staging/parser.js';
 import { selectFoodItem } from './manager.js';
 import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import { LEGACY_V1_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
@@ -93,7 +93,8 @@ async function processSaveFoodItem(foodName, record) {
       : `✅ "${foodName}" saved to database! Ready to add to today's log.`;
     showMessage(message, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
     flashSaveConfirmation(document.getElementById('save-food-item-btn'));
-    
+    rememberStagedFoodName(foodName);
+
   } catch (e) {
     if (e instanceof NewerSchemaError || e?.name === 'NewerSchemaError') {
       showMessage('This food was saved by a newer version — reload.', true);
@@ -104,7 +105,7 @@ async function processSaveFoodItem(foodName, record) {
       showMessage(`${label} is outside the registry bounds and was not saved.`, true);
       return;
     }
-    handleError('save-food-item', e, 'Failed to save food item');
+    handleError('save-food-item', e, transactionFailureMessage(e, 'Failed to save food item'));
     
     if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
       console.error('❌ [FOOD-SAVE] Save failed:', e);

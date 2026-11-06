@@ -107,7 +107,7 @@ function v2(spec) {
 const DEFINITIONS = [
   v1({
     key: 'calories', label: 'Calories', unit: 'kcal', group: 'macros', targetRole: 'floor', perUnitMax: 10000,
-    labels: ['Calories', 'Energy'],
+    labels: ['Calories', 'Total Calories', 'Energy'],
     legacyAliases: ['calories', 'cal', 'kcal'],
   }),
   v1({
@@ -118,7 +118,7 @@ const DEFINITIONS = [
   v1({
     key: 'carbs', label: 'Carbs', unit: 'g', group: 'macros', targetRole: 'floor', perUnitMax: 1000,
     notes: 'total carbohydrate',
-    labels: ['Carbs', 'Carbohydrate', 'Carbohydrates'],
+    labels: ['Carbs', 'Carbohydrate', 'Carbohydrates', 'Total Carbohydrate', 'Total Carbohydrates', 'Carbohydrate, by difference'],
     legacyAliases: ['carbohydrate', 'carbohydrates', 'carbs', 'cho'],
   }),
   v1({
@@ -319,6 +319,10 @@ export function normalizeLabel(raw) {
   let text = String(raw ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
   text = text.replace(/^includes\s+/, '');
   text = text.replace(/\s*\((?:mg|g|mcg|µg|μg|iu|kj|kcal)\)\s*$/i, '').trim();
+  // USDA comma tails that still mean the same nutrient. Do not strip other
+  // comma tails here: "Fat, saturated" must not collapse to the fat parent.
+  text = text.replace(/,\s*(?:total dietary|by difference|total)\s*$/i, '').trim();
+  text = text.replace(/\s*\((?:mg|g|mcg|µg|μg|iu|kj|kcal)\)\s*$/i, '').trim();
   return text;
 }
 
@@ -351,11 +355,53 @@ export function getNutrient(key) {
   return BY_KEY.get(key);
 }
 
-export function lookupLabel(rawLabel) {
-  const norm = normalizeLabel(rawLabel);
+function lookupNormalized(norm) {
   if (!norm) return null;
   if (EXACT_LABELS.has(norm)) return { key: EXACT_LABELS.get(norm), via: 'exact' };
   if (ALIAS_LABELS.has(norm)) return { key: ALIAS_LABELS.get(norm), via: 'legacy_alias' };
+  return null;
+}
+
+/**
+ * Form notes that do not name a different nutrient. A qualifier that is itself
+ * a component (ALA on omega-3, saturated on fat) is resolved separately and
+ * must not fall through to the parent.
+ */
+const FORM_QUALIFIERS = new Set([
+  'rae', 'dfe', 'na', 'fe', 'ca', 'k', 'zn', 'se', 'mg', 'p', 'i', 'cu', 'mn',
+  'alpha-tocopherol', 'alpha tocopherol', 'α-tocopherol', 'a-tocopherol',
+  'd-alpha-tocopherol', 'd-alpha tocopherol',
+  'retinol activity equivalents', 'dietary folate equivalents',
+]);
+
+function splitTrailingQualifier(norm) {
+  const paren = norm.match(/^(.*?)\s*\(\s*([^()]*)\s*\)\s*$/);
+  if (paren && paren[1].trim() && paren[2].trim()) {
+    return { base: paren[1].trim(), qualifier: paren[2].trim() };
+  }
+  const comma = norm.match(/^(.*?),\s*([^,]+)$/);
+  if (comma && comma[1].trim() && comma[2].trim()) {
+    return { base: comma[1].trim(), qualifier: comma[2].trim() };
+  }
+  return null;
+}
+
+export function lookupLabel(rawLabel) {
+  const norm = normalizeLabel(rawLabel);
+  const direct = lookupNormalized(norm);
+  if (direct) return direct;
+
+  const trailing = splitTrailingQualifier(norm);
+  if (!trailing) return null;
+  const baseHit = lookupNormalized(normalizeLabel(trailing.base));
+  const qualNorm = normalizeLabel(trailing.qualifier).replace(/^as\s+/, '').trim();
+  const qualHit = lookupNormalized(qualNorm);
+  if (qualHit && baseHit) {
+    if (getNutrient(qualHit.key)?.parent === baseHit.key) return qualHit;
+    if (qualHit.key === baseHit.key) return baseHit;
+    return null;
+  }
+  if (baseHit && !qualHit && FORM_QUALIFIERS.has(qualNorm)) return baseHit;
   return null;
 }
 

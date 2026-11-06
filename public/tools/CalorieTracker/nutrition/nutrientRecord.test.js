@@ -10,10 +10,12 @@ import {
   commitSavedFoodWrite,
   deriveDayDetailTotals,
   diaryFoodItem,
+  foodNameLeavesStagedDetail,
   legacyPartialNote,
   readFoodNutrients,
   sumLegacyDayTotals,
   targetsFromStagedRecord,
+  withoutStagedDetail,
   writeLegacyDayTotals,
 } from './nutrientRecord.js';
 
@@ -248,6 +250,12 @@ describe('nutrient records', () => {
     expect(replaced.values.protein).toBe(4);
     expect(replaced.quality.protein).toEqual({ status: 'label_reported' });
 
+    const conflict = parseNutritionText('Protein: 10 g\nProtein: 12 g');
+    expect(conflict.values.protein).toBeNull();
+    const typed = applyLegacyInputOverlay(conflict, { protein: '12' });
+    expect(typed.conflicts).toEqual([]);
+    expect(typed.values.protein).toBe(12);
+
     const v2 = buildFoodWrite(overlaid, { writeVersion: 2, name: 'Yogurt', quantity: 1, lastUpdated: 't' });
     expect(v2.doc.protein).toBeNull();
     expect(v2.doc.nutrientMeta.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 1 });
@@ -257,6 +265,25 @@ describe('nutrient records', () => {
     expect(v1.doc.fat).toBe(3);
     expect(v1.doc).not.toHaveProperty('nutrientSchemaVersion');
     expect(v1.doc).not.toHaveProperty('nutrientMeta');
+  });
+
+  it('drops anchored detail when the food name changes and keeps legacy values', () => {
+    const record = parseNutritionText('Protein: 20 g\nSaturated Fat: 3 g\nFiber (total dietary): 4 g');
+    expect(record.values.fatSaturated).toBe(3);
+    expect(record.values.fiberTotal).toBe(4);
+    expect(record.fiberMeaning).toBe('total');
+    expect(foodNameLeavesStagedDetail(null, 'Chicken')).toBe(false);
+    expect(foodNameLeavesStagedDetail('Salmon', 'salmon')).toBe(false);
+    expect(foodNameLeavesStagedDetail('Salmon', 'Chicken')).toBe(true);
+    const stripped = withoutStagedDetail(record);
+    expect(stripped.values.protein).toBe(20);
+    expect(stripped.values.fatSaturated).toBeNull();
+    expect(stripped.values.fiberTotal).toBeNull();
+    expect(stripped.fiberMeaning).toBe('unknown');
+    const built = buildFoodWrite(stripped, { writeVersion: 2, name: 'Chicken', quantity: 1, lastUpdated: 't' });
+    expect(built.doc.protein).toBe(20);
+    expect(built.doc.fatSaturated).toBeNull();
+    expect(built.doc.fiberTotal).toBeNull();
   });
 
   it('v2 writes reject values that fail both per-unit and per-100 g bounds', () => {

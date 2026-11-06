@@ -105,6 +105,21 @@ describe('nutrient registry', () => {
     expect(lookupLabel('Saturated Fat')?.key).toBe('fatSaturated');
     expect(lookupLabel('fat')?.key).toBe('fat');
     expect(lookupLabel('folic acid')).toBeNull();
+    expect(lookupLabel('Total Carbohydrate')?.key).toBe('carbs');
+    expect(lookupLabel('Total Carbohydrates')?.key).toBe('carbs');
+    expect(lookupLabel('Total Calories')?.key).toBe('calories');
+    expect(lookupLabel('Carbohydrate, by difference')?.key).toBe('carbs');
+    expect(lookupLabel('Fat, total')?.key).toBe('fat');
+    expect(lookupLabel('Fiber, total dietary')?.key).toBe('fiber');
+    expect(lookupLabel('Fiber (total dietary)')?.key).toBe('fiberTotal');
+    expect(lookupLabel('Vitamin A (RAE)')?.key).toBe('vitaminA');
+    expect(lookupLabel('Folate (DFE)')?.key).toBe('folate');
+    expect(lookupLabel('Omega-3 (ALA)')?.key).toBe('omega3ALA');
+    expect(lookupLabel('Fat, saturated')?.key).toBe('fatSaturated');
+    expect(lookupLabel('Fat, saturated')?.key).not.toBe('fat');
+    expect(lookupLabel('Calories from Fat')).toBeNull();
+    expect(lookupLabel('Net Carbs')).toBeNull();
+    expect(lookupLabel('EPA + DHA')).toBeNull();
     expect(FIBER_MEANINGS).toEqual(['total', 'weighted_legacy', 'unknown']);
   });
 

@@ -5,7 +5,7 @@
 
 import { state } from '../state/store.js';
 import { formatDate } from '../utils/time.js';
-import { showMessage, handleError } from '../utils/ui.js';
+import { showMessage, handleError, transactionFailureMessage } from '../utils/ui.js';
 import { fetchTargets, fetchAllEntries, db } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
 import { appId } from '../config.js';
@@ -15,7 +15,7 @@ import {
   formatSavedFoodsCsv,
   parseSavedFoodsCsv,
   savedFoodDocId,
-  summarizeCsvImportWarnings,
+  summarizeCsvImport,
   writeImportedFood,
 } from './csvFormat.js';
 
@@ -168,9 +168,11 @@ export async function importSavedFoodsCsv(file) {
 
   let imported = 0;
   let skipped = 0;
+  let errored = 0;
   let clamped = 0;
   let newer = 0;
   let bounds = 0;
+  let offline = false;
 
   for (const row of parsed.rows) {
     if (row.rejected) {
@@ -198,17 +200,22 @@ export async function importSavedFoodsCsv(file) {
       state.savedFoodItems.set(foodId, outcome.doc);
       imported += 1;
     } catch (error) {
-      handleError('import-food-row', error, `Failed to import "${row.name}"`);
-      skipped += 1;
+      errored += 1;
+      if (error?.code === 'unavailable') offline = true;
+      handleError('import-food-row', error, transactionFailureMessage(error, `Failed to import "${row.name}"`));
     }
   }
 
-  let msg = `Import complete: ${imported} food(s) imported, ${skipped} skipped.`;
-  if (clamped > 0) msg += ` ${clamped} value(s) clamped to bounds.`;
-  if (newer > 0) msg += ` ${newer} skipped because they were saved by a newer version — reload.`;
-  if (bounds > 0) msg += ` ${bounds} skipped because a nutrient is outside the registry bounds.`;
-  if (parsed.unknownHeaders.length) msg += ` Unknown headers: ${parsed.unknownHeaders.join(', ')}.`;
-  const warningText = summarizeCsvImportWarnings(parsed.warnings);
-  if (warningText) msg += ` ${warningText}`;
-  showMessage(msg);
+  const summary = summarizeCsvImport({
+    imported,
+    skipped,
+    errored,
+    clamped,
+    newer,
+    bounds,
+    unknownHeaders: parsed.unknownHeaders,
+    warnings: parsed.warnings,
+    offline,
+  });
+  showMessage(summary.message, summary.isError);
 }

@@ -432,6 +432,7 @@ export function clearStagingArea() {
     warningEl.classList.add('hidden');
   }
   state.stagedRecord = null;
+  state.stagedDetailFoodName = null;
   clearNutrientDetailMounts();
 
   debugLog('data-ui', 'Staging area cleared', { fieldsCleared: clearedCount });

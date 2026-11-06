@@ -19,8 +19,10 @@ import {
   applyLegacyInputOverlay,
   buildFoodWrite,
   diaryFoodItem,
+  foodNameLeavesStagedDetail,
   targetsFromStagedRecord,
   v1StorageNotice,
+  withoutStagedDetail,
 } from '../nutrition/nutrientRecord.js';
 import { renderNutrientDetail, setNutrientConflictsBlocked } from '../ui/nutrientDetail.js';
 
@@ -127,6 +129,7 @@ export function parseAndStage() {
 
   const record = parseNutritionText(text);
   state.stagedRecord = record;
+  state.stagedDetailFoodName = null;
   for (const key of LEGACY_V1_KEYS) {
     const input = document.getElementById(`actual-${key}`);
     if (!input) continue;
@@ -141,6 +144,14 @@ export function parseAndStage() {
   else showMessage('Could not find any recognizable nutrient values.', true);
 }
 
+function currentFoodName() {
+  return document.getElementById('food-item-input')?.value.trim() || '';
+}
+
+function detailAnchorStale() {
+  return foodNameLeavesStagedDetail(state.stagedDetailFoodName, currentFoodName());
+}
+
 /** Full staged record. Blank inputs stay null. Manual edits overlay the 24 legacy fields. */
 export function getStagedRecord() {
   const inputs = {};
@@ -148,9 +159,35 @@ export function getStagedRecord() {
     const input = document.getElementById(`actual-${key}`);
     if (input) inputs[key] = input.value;
   }
-  const record = applyLegacyInputOverlay(state.stagedRecord, inputs);
+  let base = state.stagedRecord;
+  if (detailAnchorStale()) {
+    base = withoutStagedDetail(base);
+    state.stagedDetailFoodName = null;
+  }
+  const record = applyLegacyInputOverlay(base, inputs);
   state.stagedRecord = record;
   return record;
+}
+
+/** Lock staged detail to a food that was just saved or loaded. */
+export function rememberStagedFoodName(name) {
+  const trimmed = String(name ?? '').trim();
+  state.stagedDetailFoodName = trimmed || null;
+}
+
+/**
+ * Re-read the staging inputs. A typed nutrient value clears a paste conflict.
+ * Renaming a saved or loaded food drops detail that belonged to the previous name.
+ */
+export function syncStagingInputs(event) {
+  const fromName = event?.target?.id === 'food-item-input';
+  const conflicts = (state.stagedRecord?.conflicts?.length || 0) > 0;
+  const staleDetail = detailAnchorStale();
+  if (fromName && !staleDetail) return;
+  if (!fromName && !conflicts && !staleDetail) return;
+  const record = getStagedRecord();
+  renderParseFeedback(record);
+  renderNutrientDetail(document.getElementById('nutrient-detail-staging'), record);
 }
 
 /**
