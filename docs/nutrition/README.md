@@ -4,12 +4,19 @@ Status: planned. The research manifest and execution contract are prepared under
 
 ## Goal
 
-Research an ingredient once, keep its evidence, and reuse its versioned nutrition profile in every applicable meal. Store meals as ingredient references and quantities, with known meal facts preserved separately. Recalculate portions and repeated meals with ordinary code. Use AI only where identification, uncertain recipe reconstruction, or missing-source research benefits from it.
+Research an ingredient once, keep its evidence, and reuse its versioned nutrition profile in every applicable meal. Store meals as ingredient references and quantities, with known meal facts preserved separately. Recalculate portions and repeated meals with ordinary code. Use AI only where image interpretation, difficult identification, or unresolved research benefits from it.
+
+The Nutrition Tracker is the target primary analysis interface, not only a place to import completed ChatGPT estimates. Planned surfaces:
+
+- **Analyze meal** (#70): accepts photos, nutrition labels, ingredient lists, recipes, and saved meals. It extracts evidence, matches ingredients, resolves gaps, recalculates, fits quantities, reviews differences, and saves a reusable composition. See [staged meal analysis](workflow.md#staged-meal-analysis).
+- **Ingredient Library** (#69): search, add, edit, review, import, and research ingredients, including missing nutrient fields and unit conversions.
+
+Recipe Standardizer uses the same profiles, calculation modules, and research workflow. The legacy paste parser remains as a secondary path.
 
 ## Entry points
 
 - [Active backlog](../../backlogs/calorie-tracker.md): dependency order, acceptance criteria, checks, and release steps.
-- [Workflow and data contract](workflow.md): ingredient identity, expanded nutrients, inference, saving, and website behavior.
+- [Workflow and data contract](workflow.md): staged analysis, ingredient identity, expanded nutrients, inference, saving, AI/offline boundaries, and website behavior.
 - [Population playbook](population-playbook.md): how to research, review, and populate every manifest entry accurately.
 - [Ingredient research catalog](ingredient-catalog.json): executable research queue. It contains identities and requested forms, not nutrition values.
 
@@ -35,11 +42,12 @@ Inspected against `main` commit `4dd9b927ec993d7e26c1d97d833a07b9f222efab` on 20
 1. Match exact ingredient variants. Treat automatic name matches as suggestions until their physical basis and food state are verified.
 2. Keep standard total dietary fiber and the existing weighted-fiber estimate as separate concepts.
 3. Keep unknown, label-rounded, measured, and estimated values distinguishable.
-4. Prompt once for a batch of missing ingredients. Offer existing match, research, manual entry, incomplete draft, and cancel.
+4. Prompt once for a batch of missing ingredients. Offer existing match, manual entry, official-source research, AI research, incomplete draft, and cancel. Recalculate after resolution.
 5. Save ingredient versions and meal composition together, or report a recoverable partial result. Never claim a save based only on a generated calculation.
 6. Preserve known restaurant or package facts. Use ingredient calculations to supply missing facts and show disagreement.
 7. Keep private meal data outside the public research catalog.
-8. Keep the existing manual ChatGPT flow while introducing deterministic imports and calculations. A provider-backed AI route is an optional input adapter, not the calculation engine.
+8. Keep the existing manual ChatGPT flow while introducing deterministic imports and calculations. A provider-backed AI route is an optional input adapter, not the calculation engine. It runs server-side behind authentication, returns schema-validated JSON, and never exposes keys to the client.
+9. Calculate offline from a local cache of approved profiles when the needed records are present.
 
 ## Completion boundary
 
