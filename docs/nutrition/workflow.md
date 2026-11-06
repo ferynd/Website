@@ -206,7 +206,7 @@ Retain the confidence note, ingredient quantities, nutrition-only copy block, se
 
 ### Intake
 
-One entry point in the tracker's meal-analysis workspace (#70) accepts photo, label, recipe, ingredient list, barcode, saved meal, or legacy paste. Show the parsed item and serving basis before final save. A user can correct an identity or quantity without rerunning research for already resolved profiles.
+One entry point in the tracker's meal-analysis workspace (#70) accepts photo, label, recipe, ingredient list, barcode, free text, saved meal, or legacy paste. Show the parsed item and serving basis before final save. A user can correct an identity or quantity without rerunning research for already resolved profiles.
 
 ### Ingredient Library tab
 
@@ -214,7 +214,7 @@ A dedicated tracker tab (#69) manages the shared ingredient profiles:
 
 - **Search:** indexed, paginated, alias- and variant-aware; works offline over cached profiles.
 - **Add and edit:** private profiles and overrides, saved as new revisions with source and basis. Curated records are never edited in place.
-- **Review:** identity, variants, per-field status and provenance, missing nutrient fields, unit conversions, revision history, and affected recipes and meals. Missing fields and missing conversions are separately filterable.
+- **Review:** identity, variants, per-field status and provenance, missing nutrient fields, unit conversions, and revision history. Missing fields and missing conversions are separately filterable. An affected recipes/meals view is capability-gated until #64 exposes ingredient-graph references; do not require it in the #69 ship.
 - **Import:** label facts, manual measurements, or a reviewed research result.
 - **Research:** selected ingredients or selected missing fields through official sources (#62 jobs), or through the AI API once #67 ships. Results stay staged until reviewed.
 
@@ -253,14 +253,14 @@ Display only relevant comparison targets. Do not create minimum targets for tran
 
 The website performs every calculation without AI whenever sufficient structured information is available. Models never compute totals, scale portions, match confirmed IDs, or alter known facts. They may help with image interpretation, difficult ingredient identification, or research left unresolved by official sources.
 
-- Calls run only through an authenticated server-side route (#67) that verifies the signed-in user. OpenAI keys stay in server configuration, never in the static tracker, client bundle, or repository.
-- Calls happen only after an explicit user action, within request, size, rate, and cost bounds, and can be cancelled. Offline, AI actions are disabled with a reason.
+- Calls run only through an authenticated server-side route (#67) that verifies a **non-anonymous** Firebase user (reject anonymous/`signInAnonymously` guests; the tracker currently falls back to anonymous auth). OpenAI keys stay in server configuration, never in the static tracker, client bundle, or repository.
+- Calls happen only after an explicit user action, within request, size, rate, and cost bounds that resist guest churn (per verified account plus a global/IP or App Check quota, not UID-only), and can be cancelled. Offline, AI actions are disabled with a reason.
 - Requests ask for strict JSON-schema (structured) output. The server and client validate it; invalid or freeform nutrition text is rejected rather than parsed. Results carry their sources and enter the same review as any other research before a profile revision is saved.
 - Model-assisted results are labeled as such in provenance and quality.
 
 ### Offline-capable calculation
 
-A versioned local cache (#61) holds the profile revisions and conversions a user has used or approved. Matching, aggregation, scaling, and quantity fitting run offline from it. Entries are keyed by profile ID and revision, bounded, revalidated on reconnect, scoped to the signed-in owner, and cleared on sign-out. A missing or stale entry is reported as such, never treated as zero. Saves made offline are queued or fail visibly; success is reported only after commit. This cache is separate from the existing service-worker app-shell cache.
+A versioned local cache (#61) holds the profile revisions and conversions a user has used or approved. Matching, aggregation, scaling, and quantity fitting run offline from it. Entries are keyed by namespace/catalog plus profile ID and revision, bounded, revalidated on reconnect, scoped to the signed-in owner, and cleared on sign-out. A missing or stale entry is reported as such, never treated as zero. Saves made offline are queued or fail visibly; success is reported only after commit. This cache is separate from the existing service-worker app-shell cache.
 
 ### Shared modules
 
