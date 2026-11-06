@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "manifestId": "apple-raw-with-skin",
+      "sourceAdapter": "fdc_bulk",
+      "sourceId": "110001",
+      "sourceRelease": "2024-10-31",
+      "matchConfidence": 1.0,
+      "matchType": "exact",
+      "rationale": "Exact match for raw apple with skin",
+      "reviewedBy": "test-reviewer",
+      "reviewedAt": "2026-11-06"
+    },
+    {
+      "manifestId": "olive-oil-extra-virgin-as-sold",
+      "sourceAdapter": "fdc_bulk",
+      "sourceId": "110002",
+      "sourceRelease": "2024-10-31",
+      "matchConfidence": 1.0,
+      "matchType": "exact",
+      "rationale": "Exact match for extra virgin olive oil",
+      "reviewedBy": "test-reviewer",
+      "reviewedAt": "2026-11-06"
+    },
+    {
+      "manifestId": "lentils-mature-seeds-cooked-boiled-without-salt",
+      "sourceAdapter": "fdc_bulk",
+      "sourceId": "110003",
+      "sourceRelease": "2024-10-31",
+      "matchConfidence": 1.0,
+      "matchType": "exact",
+      "rationale": "Exact match for boiled drained lentils",
+      "reviewedBy": "test-reviewer",
+      "reviewedAt": "2026-11-06"
+    },
+    {
+      "manifestId": "sodium-chloride-iodized-food-grade-dry",
+      "sourceAdapter": "fdc_bulk",
+      "sourceId": "110004",
+      "sourceRelease": "2024-10-31",
+      "matchConfidence": 1.0,
+      "matchType": "exact",
+      "rationale": "Exact match for iodized table salt",
+      "reviewedBy": "test-reviewer",
+      "reviewedAt": "2026-11-06"
+    }
+  ]
+}

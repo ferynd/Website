@@ -1,0 +1,30 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 110002,
+  "description": "Oil, olive, extra virgin, synthetic test item",
+  "dataType": "Foundation",
+  "publicationDate": "2020-10-30",
+  "foodNutrients": [
+    { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 884 },
+    { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 0 },
+    { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 100 },
+    { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 0 },
+    { "nutrient": { "id": 1051, "number": "255", "name": "Water", "unitName": "g" }, "amount": 0 },
+    { "nutrient": { "id": 1258, "number": "606", "name": "Fatty acids, total saturated", "unitName": "g" }, "amount": 13.8 },
+    { "nutrient": { "id": 1292, "number": "645", "name": "Fatty acids, total monounsaturated", "unitName": "g" }, "amount": 73.0 },
+    { "nutrient": { "id": 1293, "number": "646", "name": "Fatty acids, total polyunsaturated", "unitName": "g" }, "amount": 10.5 },
+    { "nutrient": { "id": 1404, "number": "851", "name": "18:3 n-3 c,c,c (ALA)", "unitName": "g" }, "amount": 0.76 },
+    { "nutrient": { "id": 1278, "number": "629", "name": "20:5 n-3 (EPA)", "unitName": "g" }, "amount": 0.0 },
+    { "nutrient": { "id": 1272, "number": "621", "name": "22:6 n-3 (DHA)", "unitName": "g" }, "amount": 0.0 },
+    { "nutrient": { "id": 1109, "number": "323", "name": "Vitamin E (alpha-tocopherol)", "unitName": "mg" }, "amount": 14.3 }
+  ],
+  "foodPortions": [
+    {
+      "id": 1003,
+      "gramWeight": 13.5,
+      "amount": 1,
+      "modifier": "tbsp",
+      "measureUnit": { "id": 1003, "name": "tablespoon" }
+    }
+  ]
+}

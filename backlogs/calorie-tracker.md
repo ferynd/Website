@@ -25,7 +25,7 @@ The current request establishes the plan, catalog, population instructions, and 
 
 ## Verified current state
 
-Baseline: `main` `326a748` (#60 Part A / PR #185), inspected 2026-11-06. #61 Part A is under review in draft PR #186 (not merged).
+Baseline: `main` `3843254` (#61 Part A / PR #186), inspected 2026-11-06.
 
 - Tracker: shared v2 nutrient registry/readers and anchored detail parsing are merged. Food/day writes still use the 24-key v1 shape while `NUTRIENT_V2_WRITES_ENABLED` is false; name-slug food IDs and diary snapshots remain.
 - Recipe Standardizer: confirmed links, gram bases, revision fingerprints, manual per-100-g research import, totals, and create/update export transactions already exist. Extend them.
@@ -54,14 +54,6 @@ Baseline: `main` `326a748` (#60 Part A / PR #185), inspected 2026-11-06. #61 Par
 
 Dependency order: #59 → #60 → #61 → #62 → #63 (batches) → #69 → #64 → #65 → #66 → #67 → #70 → #68. IDs are stable, so #69/#70 appear by dependency rather than number. After #62, #63 and #69 are both unblocked and may run in parallel (population batches vs library UI); ordinary single-item dispatch prefers #63 first so catalog population is not blocked behind the library. #63 does not depend on #69; #64 onward do not wait for full #63 completion.
 
-### #59: Define the contract and comprehensive research queue
-
-- [p] **Record the requested workflow and population plan.** Depends: none.
-  > pushed: workflow contract, 1,114-entry research queue, and population plan prepared; checks: JSON/IDs/enums/links/dispatch, diff check, and independent review pass; commit: 7f1900a; PR: #179. Runtime implementation and population remain #60-#70.
-  - **Surfaces:** this backlog, routing, nutrition docs/catalog, concise tool-documentation links.
-  - **Accept:** expanded nutrient meanings, standard/custom fiber, source/quality model, versioned reuse, constrained quantities, missing-data choices, history, and AI boundary are explicit. Catalog covers broad food families, preparation variants, common components, and additives. All entries start queued without fabricated nutrition. Population has bounded repeatable jobs and an executable selection rule.
-  - **Checks:** docs/data-only checks and independent review. **Migration/deploy:** none. The installed chat skill is a separate instruction update, not site implementation.
-
 ### #60 Part B: Enable nutrient v2 food/day writes
 
 - [ ] **Complete the approval-gated nutrient storage rollout.** Depends: #60 Part A (merged `326a748`, PR #185).
@@ -70,20 +62,18 @@ Dependency order: #59 → #60 → #61 → #62 → #63 (batches) → #69 → #64 
   - **Checks:** the release runbook, tracker/root/rules suites and lint/build; record actual manual/deployment evidence.
   - **Migration/deploy:** **Requires James's explicit approval** for production inspection/census/backup, enabling v2 writes, and deployment. None is performed in #61 Part A. `NUTRIENT_V2_WRITES_ENABLED` remains false. #61 Part A is unblocked because its new collections have a separate disabled write gate.
 
-### #61: Add versioned ingredient storage and identity matching
+### #61 Part B: Deploy ingredient rules and enable writes
 
-- [p] **Implement ingredient identities, variants, sources, and revisions (Part A).** Depends: #60 Part A (merged); #60 Part B is separate.
-  > pushed: versioned identities/variants/revisions/conversions, matching, empty curated catalog, owner-scoped IndexedDB cache, dual-read recipe links, rules source (not deployed), census script (not run), docs; review fixes: best-effort auth cache deletion and same-owner reload persistence, stable recipe profile resolution and pinned-link metadata, indexed private search, concrete exact-match refs, conversion cache/read-through, typed/bounded rules (32 aliases, 64 search tokens). Checks: tracker 755, root 1982, rules 215, lint/build/ci:contract/ci:docs/diff pass. Branch: working/calorie-tracker-61-ingredient-identity; PR: #186 (draft, under review). No production access, census, or deploy; both write flags remain false; curated catalog remains empty. Merge and separately approved Part B remain.
-  - **Surfaces:** shared nutrition modules, tracker services, recipe links/types/database, local profile cache, canonical rules and emulator tests.
-  - **Accept:** stable IDs; raw/cooked/drained/fat/fortification/brand variants; per-100-g basis and sourced unit conversions (household measures, densities, piece weights) as records; field provenance; immutable revisions; private overrides over curated data. Exact confirmed IDs reuse without research; ambiguous aliases require review. Cross-user/public-catalog client writes fail at the boundary. Concurrent creates deduplicate; failed saves are recoverable. Both tools read and write through the same identity/profile/conversion services; Recipe Standardizer links resolve to these IDs rather than a parallel store.
-  - **Checks:** tracker/root/rules suites; identity, revision, collision, concurrency, ownership tests; cache staleness/eviction/sign-out tests; lint/build for UI.
-  - **Lookup contract:** indexed/paginated search and bounded caches; do not load the whole catalog on tool open. The current matcher strips raw/cooked/salt descriptors, so it remains suggestion-only; exact automatic reuse requires variant compatibility.
-  - **Offline cache:** IndexedDB `nutrition-profile-cache-v1` of used/approved profile revisions and conversions lets matching and calculation run offline. Entries are keyed by namespace/catalog + profile ID + revision, revalidated on reconnect, bounded, scoped to the signed-in owner, and cleared on sign-out. A stale or missing entry is reported, never treated as zero.
-  - **Migration/deploy:** legacy foods retain unknown basis/meaning where necessary. Preserve the current namespace contract/constants; any resolver is explicit work coordinated with F-141. Stage rules release; require dry-run report, backup, and rollback before live copies. **Requires James's explicit approval** for the Firestore rules deploy and any live data copy.
+- [ ] **Complete the approval-gated ingredient store rollout.** Depends: #61 Part A (merged `3843254`, PR #186).
+  - **Surfaces:** [ingredient release](../docs/nutrition/ingredient-store-release.md), rules deployment, fixture smoke test, write flag enablement.
+  - **Accept:** deploy the #61 rules source to production, verify with the rules test suite and production smoke test, and enable `INGREDIENT_STORE_WRITES_ENABLED` in a separate reviewed release. Curated catalog remains empty until #63.
+  - **Checks:** the release runbook, tracker/root/rules suites, lint/build; record actual deployment evidence.
+  - **Migration/deploy:** **Requires James's explicit approval** for Firestore rules deployment, production inspection, and enabling ingredient store writes. Both write flags remain false until approved.
 
 ### #62: Build source ingestion and resumable research jobs
 
-- [ ] **Implement deterministic imports and evidence review.** Depends: #60, #61.
+- [p] **Implement deterministic imports and evidence review (Part A).** Depends: #60, #61.
+  > in progress — implement Part A deterministic research pipeline (§A.1–A.6)
   - **Surfaces:** configured scripts/adapters, source cache, manifest reader, validator, review workflow, coverage reports, shared research-job service.
   - **Accept:** pinned FDC bulk/API plus official-brand/manual adapters; exact match table; normalized units/definitions and unit conversions; field gaps; license metadata; checkpoints/retries/idempotency; reviewed revision diffs. Follow the playbook. Models are unnecessary for scaling or copying structured data.
   - **One research workflow:** bulk population, Ingredient Library research (#69), and missing-ingredient research (#66) create the same research-job records and pass the same validator and review step. Single-item jobs use the same adapters with a one-ID batch. #67 later adds a model-assisted research adapter to this pipeline; it is not a separate flow.
@@ -91,9 +81,17 @@ Dependency order: #59 → #60 → #61 → #62 → #63 (batches) → #69 → #64 
   - **Checks:** source fixtures, malformed data, retry/idempotency, unknown/LOQ, concentrated additives, raw/cooked mismatches; applicable root/tracker/UI/rules checks.
   - **Migration/deploy:** stage curated data without private inputs; secrets remain server-side. Record concrete access dependencies. **Requires James's explicit approval** to provision or use live credentials (for example an FDC API key) and to write staged data to production.
 
+### #62 Part B: Pin real FDC release and provision live credentials
+
+- [ ] **Pin real bulk releases and enable live FDC ingestion.** Depends: #62 Part A.
+  - **Surfaces:** `scripts/nutrition/researchConfig.ts`, local bulk index, live api.data.gov key, production staging.
+  - **Accept:** pin a verified FDC bulk release with recorded sha256, verify FDC nutrient IDs against the pinned release, provision an operator-local `FDC_API_KEY` behind `--live`, and publish reviewed staged catalog batches to production.
+  - **Checks:** bulk verification, CLI live smoke test, rate limit compliance (<=1 req/s, <=1000/h), coverage report.
+  - **Migration/deploy:** **Requires James's explicit approval** to pin real FDC bulk releases, provision/use live API keys, and write staged data to production.
+
 ### #63: Populate every catalog ingredient and audit gaps
 
-- [ ] **Execute all population waves in bounded batches.** Depends: #62. Uses #69's review views once available; does not wait for them.
+- [ ] **Execute all population waves in bounded batches.** Depends: #62. Uses #62's `researchService`, validator, and review step; uses #69's review views once available; does not wait for them.
   - **Surfaces:** catalog, reviewed matches, versioned profiles, gap reports, progress records.
   - **Execution:** follow [the population playbook](../docs/nutrition/population-playbook.md) and its execution prompt. Derive at most 25-ID jobs by priority/category/ID. Waves A-E cover every manifest ID; newly discovered ingredients join the same queue. Batches are resumable and cost-optimized: bulk deterministic import first, cached source releases, then residual-field-only model assistance via the default cost-free assistant-packet path (or subscription CLI batches James already pays for)—not paid per-token API batches. Optional paid OpenAI batches stay off unless explicitly enabled. Before #67 provides the packet/import adapters, residual fields remain explicit gaps queued for a later residual pass; that pass uses a new pass/attempt ID under the same parent batch ID and creates no duplicate profiles.
   - **Accept per batch:** every field has a sourced value/derivation or explicit unknown; identity/basis verified; source IDs/dates retained; flags reviewed; imported revisions/coverage reported; reruns create no duplicates. No blank-to-zero completion. Missing branded labels remain actionable blocked work.
@@ -103,7 +101,7 @@ Dependency order: #59 → #60 → #61 → #62 → #63 (batches) → #69 → #64 
 
 ### #69: Add the Ingredient Library tab
 
-- [ ] **Give the tracker a dedicated tab for managing shared ingredient profiles.** Depends: #61, #62. The model-assisted research action (assistant-packet export/import by default) appears once #67 ships (capability-gated).
+- [ ] **Give the tracker a dedicated tab for managing shared ingredient profiles.** Depends: #61, #62. Uses #62's `researchService`, validator, and review step; adds in-app job storage under its own approval. The model-assisted research action (assistant-packet export/import by default) appears once #67 ships (capability-gated).
   - **Surfaces:** new tracker tab and mobile layout, shared profile/conversion/research-job services from #61/#62, local cache, Recipe Standardizer link editor entry point.
   - **Accept:** search (indexed, paginated, alias- and variant-aware); add and edit private profiles as new revisions with source and basis; review identity, variants, per-field status/provenance, missing nutrient fields, unit conversions, and revision history; import a label, manual facts, or a reviewed research result; research selected ingredients or selected missing fields through official sources via #62 jobs. Missing-field and missing-conversion lists are distinct and filterable. Edits never change curated/public records or other users' data and never rewrite saved diary snapshots. Research results stay staged until reviewed. Recipe Standardizer opens the same library views; it builds no second editor.
   - **Affected meals (deferred):** an "affected recipes/meals" view requires ingredient-graph references from #64. Ship #69 without that view; enable it as a capability-gated follow-on once #64 (and ideally #70) is available, rather than pulling meal-graph storage into this item.
@@ -130,7 +128,7 @@ Dependency order: #59 → #60 → #61 → #62 → #63 (batches) → #69 → #64 
 
 ### #66: Build missing-ingredient and nutrition review screens
 
-- [ ] **Make database reuse clear in both tools.** Depends: #62, #64, #69; #65 for inferred-quantity review.
+- [ ] **Make database reuse clear in both tools.** Depends: #62, #64, #69; #65 for inferred-quantity review. Uses #62's `researchService`, validator, and review step.
   - **Surfaces:** shared resolution and review components used by the tracker (#70) and Recipe Standardizer: missing-data dialog, ingredient/quantity review, nutrition panel, staging, mobile detail views. Ingredient-level editing and research open #69 views rather than reimplementing them.
   - **Accept:** batched missing/ambiguous ingredients and field gaps, with missing profiles distinct from missing fields. Per item, choose: existing profile (or recorded substitute), manual entry, official-source research of selected items (#62 job), model-assisted research via the #67 assistant-packet export/import (default) or the optional paid route if enabled (shown only after a recorded official-source attempt left the selected identity or fields unresolved—or an explicit user override of that gate), save incomplete draft, or cancel. Research follows the user's selected action and result review. After any resolution, the meal recalculates automatically through the shared module without re-running resolved research. Retry/cancel clear; no ingredient disappears. Review shows label-versus-calculated differences, estimated vs. measured quantities with ranges, non-unique/infeasible flags from #65, and source/quality per ingredient and per nutrient; quantities stay editable. Matched inputs calculate/save without models.
   - **Checks:** each choice, recalculation after resolve, offline/error/retry, repeat ingredients, accessibility/mobile and both-tool round trips; tracker/root suites, lint/build, relevant rules tests.

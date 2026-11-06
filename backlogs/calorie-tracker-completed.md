@@ -67,7 +67,18 @@ Compact merged history for `public/tools/CalorieTracker/`. Read only for reconci
 
 Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium METs, centered-window true-up, 10% trimmed mean, protein-basis priority, confidence thresholds, and fat floor were previously verified and should not regress without explicit product review.
 
+## #59: Define the contract and comprehensive research queue
+
+- [x] **Record the requested workflow and population plan.**
+  > Resolved: workflow contract, 1,114-entry research queue, and population plan prepared; checks: JSON/IDs/enums/links/dispatch, diff check, and independent review pass; merged: 49cabd2 (PR #179); residual risk: runtime implementation and population remain #60-#70.
+
 ## #60 Part A — nutrient contracts and lossless parsing
 
 - [x] **Implement the versioned registry and quality-aware imports/exports, readers first.**
   > Resolved: shared nutrient registry, anchored parser, quality/null handling, fingerprint compatibility, v1-identical writes with v2 overwrite protection, recipe readers/detail, `nutritrack-v3`, and a built/unrun census; checks: baseline acceptance reverified in #61 tracker (664/19) and root (1947/99) suites, registry/parsing/golden/fingerprint tests; prior PR acceptance records lint/build/contract/docs and rules passes; merged: 326a748 (PR #185); residual risk: v2 food/day writes remain disabled and production census/backup/enablement/deploy remain open as #60 Part B. No historical rewrite or production data action was required for Part A.
+
+## #61 Part A — versioned ingredient identities, revisions, and conversions
+
+- [x] **Implement ingredient identities, variants, sources, and revisions (Part A).**
+  > Resolved: versioned identities/variants/revisions/conversions, matching, empty curated catalog, owner-scoped IndexedDB cache, dual-read recipe links, rules source (not deployed), census script (not run), docs; review fixes: best-effort auth cache deletion and same-owner reload persistence, stable recipe profile resolution and pinned-link metadata, indexed private search, concrete exact-match refs, conversion cache/read-through, typed/bounded rules (32 aliases, 64 search tokens); checks: tracker 755, root 1982, rules 215, lint/build/ci:contract/ci:docs/diff pass; merged: 3843254 (PR #186); residual risk: writes remain off and rules remain undeployed pending Part B.
+

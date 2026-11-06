@@ -1,0 +1,8 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 110008,
+  "description": "Malformed: non-numeric amount",
+  "foodNutrients": [
+    { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": "invalid-string" }
+  ]
+}

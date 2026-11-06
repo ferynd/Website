@@ -1,0 +1,23 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 110001,
+  "description": "Apples, raw, with skin, synthetic API shape",
+  "dataType": "Foundation",
+  "publicationDate": "2020-10-30",
+  "foodNutrients": [
+    { "nutrientId": 1008, "nutrientNumber": "208", "nutrientName": "Energy", "unitName": "kcal", "value": 52 },
+    { "nutrientId": 1003, "nutrientNumber": "203", "nutrientName": "Protein", "unitName": "g", "value": 0.26 },
+    { "nutrientId": 1004, "nutrientNumber": "204", "nutrientName": "Total lipid (fat)", "unitName": "g", "value": 0.17 },
+    { "nutrientId": 1005, "nutrientNumber": "205", "nutrientName": "Carbohydrate, by difference", "unitName": "g", "value": 13.8 },
+    { "nutrientId": 1079, "nutrientNumber": "291", "nutrientName": "Fiber, total dietary", "unitName": "g", "value": 2.4 }
+  ],
+  "foodPortions": [
+    {
+      "id": 1001,
+      "gramWeight": 182,
+      "amount": 1,
+      "modifier": "medium (3\" dia)",
+      "measureUnit": { "id": 1000, "name": "medium" }
+    }
+  ]
+}

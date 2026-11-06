@@ -1,0 +1,15 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 110005,
+  "description": "Synthetic food with below-quantification-limit nutrients",
+  "dataType": "Foundation",
+  "publicationDate": "2020-10-30",
+  "foodNutrients": [
+    { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 20 },
+    { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 1.0 },
+    { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 0, "loq": 0.05 },
+    { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 4.0 },
+    { "nutrient": { "id": 1093, "number": "307", "name": "Sodium, Na", "unitName": "mg" }, "amount": 0, "limitOfQuantification": 0.2 }
+  ],
+  "foodPortions": []
+}
