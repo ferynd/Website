@@ -2,7 +2,7 @@
 
 Active feature backlog for the core nutrition integration. PR #153 is the current UI/workflow baseline: Recipe schema v2, named prep groups/results, structured timeline, workflow validation, and v1 compatibility are already merged.
 
-Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls. P6 requires explicit user approval. P7 nutrition enrichment is now consolidated into [CalorieTracker #67](calorie-tracker.md#67-add-photo-label-list-and-recipe-input-adapters), with shared ingredient storage, source review, and deterministic calculations as prerequisites.
+Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls. P6 requires explicit user approval. P7 nutrition enrichment is now consolidated into [CalorieTracker #62](calorie-tracker.md#62-build-the-shared-research-pipeline-deterministic-sources--research-packets) (research packets) and [#67](calorie-tracker.md#67-import-assistant-prepared-ingredient-lists) (ingredient-list import), with shared ingredient storage, source review, and deterministic calculations as prerequisites.
 
 ## Parameters
 
@@ -66,11 +66,11 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 - [ ] **Log a portion directly to a daily entry.** Depends: P4. Do not start without explicit approval.
   - This duplicates tracker-owned schema/write logic and carries whole-day concurrency risk; prefer a tracker-side import if practical.
 
-### P7: Nutrition enrichment routed to CalorieTracker #67
+### P7: Nutrition enrichment routed to CalorieTracker #62 and #67
 
-- This unimplemented scope is consolidated into [CalorieTracker #67](calorie-tracker.md#67-add-photo-label-list-and-recipe-input-adapters), following the ingredient-database request of 2026-11-05. Do not open a duplicate enrichment workstream here or treat P7 as completed.
-- Keep the existing manual P2 path. The successor uses shared versioned nutrient contracts, source lookup, missing-ingredient choices, and the reviewed save flow. Provider-backed AI remains optional: default is #67's cost-free assistant-packet path; the paid server-side OpenAI route stays off unless James enables it.
-- Recipe Standardizer consumes the same ingredient profiles, calculation/solver modules, research jobs, and resolution components as the tracker (CalorieTracker #61, #62, #64-#66). Ingredient editing and research open the shared [Ingredient Library](calorie-tracker.md#69-add-the-ingredient-library-tab) views; do not add a recipe-side copy of these data models or workflows.
+- This unimplemented scope is consolidated into [CalorieTracker #62](calorie-tracker.md#62-build-the-shared-research-pipeline-deterministic-sources--research-packets) and [#67](calorie-tracker.md#67-import-assistant-prepared-ingredient-lists), following the ingredient-database request of 2026-11-05 and the external-assistant architecture decision of 2026-11-06. Do not open a duplicate enrichment workstream here or treat P7 as completed.
+- Keep the existing manual P2 path working throughout. Its successor is the #62 research packet: [research request v1](../docs/nutrition/assistant-contracts.md#research-request-v1) replaces the 24-key `nutritionIntake` prompt. Recipes convert to ingredient-list v1 (#67) for the #70 Import workspace. Any direct AI provider route is the optional, deferred CalorieTracker #71, off unless James enables it.
+- Recipe Standardizer consumes the same ingredient profiles, calculation/solver modules, research pipeline, and resolution components as the tracker (CalorieTracker #61, #62, #64-#67). Ingredient editing and research open the shared [Ingredient Library](calorie-tracker.md#69-add-the-ingredient-library-tab) views; do not add a recipe-side copy of these data models or workflows.
 
 ### P8 — Persist ingredient checklist ticks (optional UX)
 
