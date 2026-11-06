@@ -297,7 +297,7 @@ function readNumber(text) {
 
 function readUnit(text, start) {
   const rest = String(text).slice(start).trim();
-  const match = rest.match(/^([a-zA-Zµμ]+)/);
+  const match = rest.match(/^[[(]?\s*([a-zA-Zµμ]+)\s*[\])]?/);
   if (!match || !knownUnitWord(match[1])) return '';
   return match[1];
 }
@@ -340,6 +340,8 @@ function leadingServingWithoutAmount(valuePart) {
   return !/\d/.test(serving.rest);
 }
 
+const SUBTYPE_WORDS = /\b(net|sat|saturated|saturates|mono|monounsaturated|poly|polyunsaturated|trans|soluble|insoluble|added|epa|dha|ala|of\s+which)\b/i;
+
 /**
  * A child word or "net" after the amount must not fill the parent.
  * A remainder that still contains a number is a second column, not a subtype note.
@@ -347,10 +349,23 @@ function leadingServingWithoutAmount(valuePart) {
 function trailingNoteRejectsParent(hit, valuePart, number) {
   const rest = remainderAfterAmount(valuePart, number);
   if (!rest || /\d/.test(rest)) return false;
-  const wrapped = rest.match(/^\(\s*([^()]*)\s*\)$/);
-  const note = (wrapped ? wrapped[1] : rest).trim();
-  if (!note || /\d/.test(note)) return false;
-  return !noteKeepsParent(hit.key, note);
+  
+  const cleanNote = rest
+    .replace(/[*†‡]/g, '')
+    .replace(/(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu, '')
+    .replace(/[()[\].,;:'"]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+    
+  if (!cleanNote) return false;
+  if (SUBTYPE_WORDS.test(cleanNote)) return true;
+  
+  const noteHit = lookupLabel(cleanNote);
+  if (noteHit) {
+    const def = getNutrient(noteHit.key);
+    if (def && def.parent === hit.key) return true;
+  }
+  return false;
 }
 
 /**
@@ -407,7 +422,7 @@ function isRange(text) {
   const trimmed = String(text).trim().replace(/^[<~≈]\s*/, '');
   // "20g - 25g" and "20 g - 25 g" are ranges. A later "(10-15% DV)" is not.
   return new RegExp(
-    `^${NUMBER_CORE}\\s*(?:${UNIT_PATTERN})?\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE}`,
+    `^${NUMBER_CORE}\\s*(?:${UNIT_PATTERN})?\\s*(?:-|–|—|−|\\bto\\b)\\s*${NUMBER_CORE}`,
     'i',
   ).test(trimmed);
 }
@@ -520,6 +535,23 @@ function isMultiBareLabelLine(line) {
   return count >= 2;
 }
 
+function isSingleBareMacroFactor(line) {
+  const split = splitLabelValue(line);
+  if (!split || !split.label) return false;
+  const hit = lookupLabel(split.label);
+  if (!hit) return false;
+  if (!['fat', 'carbs', 'protein', 'alcohol'].includes(hit.key)) return false;
+  
+  const number = readNumber(split.valuePart);
+  if (!number) return false;
+  if (readUnit(split.valuePart, number.end)) return false;
+  
+  const rest = remainderAfterAmount(split.valuePart, number);
+  if (rest && !/^\s*%/.test(rest)) return false;
+  
+  return true;
+}
+
 /** "Calories: 2,000 2,500" is the reference row that opens the footnote block. */
 function isCalorieReferenceRow(line) {
   const split = splitLabelValue(line);
@@ -604,7 +636,6 @@ export function parseNutritionText(text) {
   const unknownLabels = [];
   let fiberMeaning = null;
   let footerContext = false;
-  let skipBareFactorRow = false;
 
   const consumeLine = (line) => {
     const lessThan = lessThanLine(line);
@@ -735,20 +766,36 @@ export function parseNutritionText(text) {
     stageAmount(hit, split, number, observations, warnings);
   };
 
+  let skipBareFactorRow = false;
+  let bareFactorsSkipped = 0;
+
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = stripDecorations(rawLine);
-    if (skipBareFactorRow) {
-      skipBareFactorRow = false;
-      if (line && isMultiBareLabelLine(line)) continue;
-    }
     if (!line) continue;
+
     if (isCaloriesPerGramLine(line)) {
       skipBareFactorRow = true;
+      bareFactorsSkipped = 0;
       continue;
     }
+
+    if (skipBareFactorRow) {
+      if (isMultiBareLabelLine(line)) {
+        skipBareFactorRow = false;
+        continue;
+      }
+      if (isSingleBareMacroFactor(line) && bareFactorsSkipped < 3) {
+        bareFactorsSkipped += 1;
+        continue;
+      }
+      skipBareFactorRow = false;
+    }
+
     const opensFooter = FOOTER_NOTE_RE.test(line) || isCalorieReferenceRow(line);
     if (footerContext && isMultiBareLabelLine(line)) continue;
-    consumeLine(line);
+    if (!FOOTER_NOTE_RE.test(line)) {
+      consumeLine(line);
+    }
     if (opensFooter) footerContext = true;
   }
 

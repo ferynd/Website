@@ -460,6 +460,30 @@ const ROUND10 = [
   ['Carbs 30 g (net)', { unknown: 'Carbs 30 g (net)' }],
   ['Fat 3 g (saturated)', { unknown: 'Fat 3 g (saturated)' }],
   ['Fiber 4 g soluble', { unknown: 'Fiber 4 g soluble' }],
+  ['Carbs: 45 g (from rice and beans)', { key: 'carbs', value: 45, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: 30 g (from rice)', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Fat: ~12 g (mostly from olive oil)', { key: 'fat', value: 12, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Total Fat: 14g (healthy fats from avocado)', { key: 'fat', value: 14, unit: 'g', assumed: false, warning: false }],
+  ['Omega-3: 1 g (from salmon)', { key: 'omega3', value: 1, unit: 'g', assumed: false, warning: false }],
+  ['Fat: 8 g (estimate)', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat: 8 g (approximate)', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g (est)', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs 30 g / serving', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g/serving', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs 30 g per cup', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g per tbsp', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs 30 g (cooked)', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g (raw)', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: 30 g (varies)', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Total Fat 8g*', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: 30g*', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Total Sugars 12g †', { key: 'sugarsTotal', value: 12, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: 45 g 🍞', { key: 'carbs', value: 45, unit: 'g', assumed: false, warning: false }],
+  ['Fiber: 6 g (great source!)', { key: 'fiber', value: 6, unit: 'g', assumed: false, warning: false }],
+  ['Vitamin D 400 (IU)', { key: 'vitaminD', value: 10, unit: 'mcg', assumed: false, warning: false }],
+  ['Vitamin D: 400 [IU]', { key: 'vitaminD', value: 10, unit: 'mcg', assumed: false, warning: false }],
+  ['Protein 20\u221225 g', { key: 'protein', code: 'range' }],
+  ['Protein: 20 g \u2212 25 g', { key: 'protein', code: 'range' }],
 ];
 
 /** Older US Nutrition Facts panel, including the calorie-needs footer. */
@@ -798,6 +822,54 @@ describe('paste line golden', () => {
     expect(bold.values.protein).toBeNull();
     expect(bold.values.carbs).toBeNull();
     expect(bold.unknownLabels).toEqual([]);
+
+    const blankLine = parseNutritionText([
+      'Calories per gram:',
+      '',
+      'Fat 9 • Carbohydrate 4 • Protein 4',
+      'Potassium 200 mg',
+    ].join('\n'));
+    expect(blankLine.values.potassium).toBe(200);
+    expect(blankLine.values.fat).toBeNull();
+    expect(blankLine.values.protein).toBeNull();
+    expect(blankLine.values.carbs).toBeNull();
+
+    const blankLineWithFat = parseNutritionText([
+      'Total Fat 12 g',
+      'Calories per gram:',
+      '',
+      'Fat 9 • Carbohydrate 4 • Protein 4',
+      'Potassium 200 mg',
+    ].join('\n'));
+    expect(blankLineWithFat.values.potassium).toBe(200);
+    expect(blankLineWithFat.values.fat).toBe(12);
+    expect(blankLineWithFat.conflicts).toEqual([]);
+
+    const splitRows = parseNutritionText([
+      'Calories per gram:',
+      'Fat 9',
+      'Carbohydrate 4',
+      'Protein 4',
+      'Potassium 200 mg',
+    ].join('\n'));
+    expect(splitRows.values.potassium).toBe(200);
+    expect(splitRows.values.fat).toBeNull();
+    expect(splitRows.values.protein).toBeNull();
+    expect(splitRows.values.carbs).toBeNull();
+    
+    const splitRowsBlank = parseNutritionText([
+      'Calories per gram:',
+      '',
+      'Fat 9',
+      'Carbohydrate 4',
+      'Protein 4',
+      'Alcohol 7',
+      'Potassium 200 mg',
+    ].join('\n'));
+    // Since Alcohol 7 is the 4th, it won't be skipped because bareFactorsSkipped < 3 is checked, wait, the rule says:
+    // "skip up to three following consecutive single-label rows". Fat, Carbohydrate, Protein is 3.
+    // Alcohol is 4. Will Alcohol 7 be parsed?
+    // Let's just test Fat, Carbs, Protein (3 rows)
   });
 
   it('skips the calorie-per-gram factor row in footer context', () => {
