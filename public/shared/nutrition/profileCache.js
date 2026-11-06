@@ -1,6 +1,6 @@
 import { refCacheKey, sameRef } from './ingredientRefs.js';
 import { verifyRevisionHash } from './ingredientProfile.js';
-export const PROFILE_CACHE_LIMITS = Object.freeze({ revisions: 2000, conversions: 4000, bytes: 8 * 1024 * 1024, headTtlMs: 24 * 60 * 60 * 1000 });
+export const PROFILE_CACHE_LIMITS = Object.freeze({ revisions: 2000, conversions: 4000, bytes: 8 * 1024 * 1024, headTtlMs: 24 * 60 * 60 * 1000, headRefreshCount: 50, headRefreshConcurrency: 4 });
 const DB_NAME = 'nutrition-profile-cache-v1';
 const STORES = ['meta', 'revisions', 'heads', 'conversions', 'pendingSaves'];
 const connections = new Set();
@@ -120,19 +120,31 @@ export async function openProfileCache({ ownerUid, idb = globalThis.indexedDB, l
         await put('revisions', { ...row, lastUsedAt: Date.now() });
         return { status: 'fresh', revision: row.revision };
     }
-    async function revalidate(fetcher) {
-        for (const row of await all('heads')) {
-            try {
-                const head = await fetcher(row.ref);
-                if (head)
-                    await put('heads', { ...row, head, checkedAt: Date.now(), lastUsedAt: Date.now() });
-            }
-            catch { /* Remains stale. */ }
-        }
+    let refresh;
+    async function revalidate(fetcher, force = false) {
+        if (refresh) return refresh;
+        refresh = (async () => {
+            const rows = (await all('heads')).filter(row => force || Date.now() - row.checkedAt >= bounds.headTtlMs)
+                .sort((a, b) => a.checkedAt - b.checkedAt || a.key.localeCompare(b.key))
+                .slice(0, PROFILE_CACHE_LIMITS.headRefreshCount);
+            let next = 0;
+            await Promise.all(Array.from({ length: Math.min(rows.length, PROFILE_CACHE_LIMITS.headRefreshConcurrency) }, async () => {
+                while (next < rows.length && !closed && cacheEpoch === epoch) {
+                    const row = rows[next++];
+                    try {
+                        const head = await fetcher(row.ref);
+                        if (head)
+                            await put('heads', { ...row, head, checkedAt: Date.now(), lastUsedAt: Date.now() });
+                    }
+                    catch { /* Remains stale. */ }
+                }
+            }));
+        })();
+        try { await refresh; } finally { refresh = undefined; }
     }
     let onlineFetcher;
     const onOnline = () => { if (onlineFetcher)
-        void revalidate(onlineFetcher); };
+        void revalidate(onlineFetcher, true); };
     globalThis.addEventListener?.('online', onOnline);
     const close = () => { closed = true; db?.close(); connections.delete(db); closeCallbacks.delete(close); globalThis.removeEventListener?.('online', onOnline); };
     closeCallbacks.add(close);

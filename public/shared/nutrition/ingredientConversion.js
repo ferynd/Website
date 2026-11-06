@@ -1,4 +1,4 @@
-import { parseIngredientRef } from './ingredientRefs.js';
+import { parseIngredientRef, sameRef } from './ingredientRefs.js';
 import { conversionIdFor } from './ingredientIds.js';
 export function validateConversion(doc) {
     const errors = [];
@@ -32,10 +32,23 @@ export function toGrams(quantity, unit, qualifier, conversions, state) {
         return { error: 'missing_conversion' };
     if (unit === 'g')
         return { grams: quantity, conversionId: null };
-    const matches = conversions.filter(c => c.unit === unit && (c.unitQualifier ?? '') === (qualifier ?? '') && !validateConversion(c).length);
-    const c = matches.find(c => c.state === state);
-    if (!c)
+    const valid = conversions.filter(c => !validateConversion(c).length);
+    // Remove every referenced ancestor, including intermediate chain members.
+    // Only records pinned to the same profile may supersede one another.
+    const byId = new Map(valid.map(c => [c.conversionId, c]));
+    const superseded = new Set();
+    for (const next of valid) {
+        const previous = byId.get(next.supersedes);
+        if (previous && sameRef(next.variantRef, previous.variantRef)) superseded.add(previous.conversionId);
+    }
+    const active = valid.filter(c => !superseded.has(c.conversionId));
+    const matches = active.filter(c => c.unit === unit && (c.unitQualifier ?? '') === (qualifier ?? ''));
+    const candidates = [...new Map(matches.filter(c => c.state === state).map(c => [c.conversionId, c])).values()];
+    if (!candidates.length)
         return { error: matches.length ? 'state_mismatch' : 'missing_conversion' };
+    if (candidates.length > 1)
+        return { error: 'ambiguous_conversion' };
+    const [c] = candidates;
     const grams = c.kind === 'density' ? quantity * c.gramsPerMl : quantity * c.grams / c.amount;
     return Number.isFinite(grams) ? {grams,conversionId:c.conversionId} : {error:'missing_conversion'};
 }

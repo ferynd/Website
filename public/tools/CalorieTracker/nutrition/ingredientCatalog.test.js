@@ -16,3 +16,10 @@ it('evicts least recently used shards at the 32 shard cap', async () => {
     await c.getVariant(records[0].variant.variantId);
     expect(fetchJson).toHaveBeenCalledTimes(before + 1);
 });
+
+it('keeps a search shard entry for the last alias when the token cap is full', async () => {
+    const aliases = Array.from({length:32},(_,i)=>({text:i.toString(36).padStart(2,'0')+'longalias extra words',kind:'confirmed'}));
+    const built = await buildCatalogShards([{identity:{canonicalName:'Canonical food',aliases},variant:{variantId:'fixture'},revisions:[]}]);
+    const catalog = createCuratedCatalogSource({fetchJson:async url=>url.endsWith('manifest.json') ? built.manifest : built.files[url.split('/nutrition-curated/')[1]]});
+    expect((await catalog.search(aliases.at(-1).text)).items.map(item=>item.variantId)).toEqual(['fixture']);
+});

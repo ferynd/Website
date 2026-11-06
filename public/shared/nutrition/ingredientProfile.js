@@ -1,6 +1,6 @@
 import { contentHashOf, canonicalJson } from './contentHash.js';
 import { isValidFirestoreDocId } from './ingredientIds.js';
-import { NUTRIENT_STATUSES, V2_KEYS, toV2Fields, readNutrientFields, checkPer100g } from './nutrientRegistry.js';
+import { NUTRIENT_STATUSES, FIBER_MEANINGS, CARB_CONVENTIONS, V2_KEYS, toV2Fields, readNutrientFields, checkPer100g } from './nutrientRegistry.js';
 const HASH_KEYS = ['identityId', 'variantId', 'basis', 'nutrients', 'nutrientMeta', 'fieldProvenance', 'sources', 'basedOn'];
 const KEYS = [...HASH_KEYS, 'schemaVersion', 'ownerUid', 'revision', 'revisionId', 'contentHash', 'supersedes', 'idempotencyKey', 'createdAt'];
 const hashPayload = doc => Object.fromEntries(HASH_KEYS.map(k => [k, doc[k]]));
@@ -29,8 +29,15 @@ export function validateRevision(doc) {
         errors.push('Unknown nutrient key');
     if (doc.nutrientMeta?.registryVersion !== 2 || Object.keys(doc.nutrientMeta ?? {}).some(k => !['registryVersion', 'quality', 'fiberMeaning', 'carbConvention'].includes(k)))
         errors.push('Invalid nutrient metadata');
+    if ((doc.nutrientMeta?.fiberMeaning !== undefined && !FIBER_MEANINGS.includes(doc.nutrientMeta.fiberMeaning)) ||
+        (doc.nutrientMeta?.carbConvention !== undefined && !CARB_CONVENTIONS.includes(doc.nutrientMeta.carbConvention)))
+        errors.push('Invalid nutrient conventions');
+    const range = value => value == null || (map(value) && Object.keys(value).every(k => ['min', 'max'].includes(k)) &&
+        Number.isFinite(value.min) && Number.isFinite(value.max) && value.min >= 0 && value.max >= value.min);
     for (const quality of Object.values(doc.nutrientMeta?.quality ?? {})) {
-        if (!quality || !NUTRIENT_STATUSES.includes(quality.status) || Object.keys(quality).some(k => !['status', 'roundingInterval', 'upperBound', 'qualifier'].includes(k)))
+        if (!map(quality) || !NUTRIENT_STATUSES.includes(quality.status) || Object.keys(quality).some(k => !['status', 'roundingInterval', 'upperBound', 'qualifier'].includes(k)) ||
+            ['roundingInterval', 'upperBound'].some(k => quality[k] != null && (!Number.isFinite(quality[k]) || quality[k] < 0)) ||
+            (quality.qualifier != null && typeof quality.qualifier !== 'string'))
             errors.push('Invalid nutrient quality');
     }
     if (doc.revision != null && (!Number.isSafeInteger(doc.revision) || doc.revision < 1 || doc.revisionId !== doc.variantId + '~r' + doc.revision))
@@ -38,7 +45,9 @@ export function validateRevision(doc) {
     if (doc.supersedes != null && (!Number.isSafeInteger(doc.supersedes.revision) || doc.supersedes.revision < 1 || doc.supersedes.revisionId !== doc.variantId + '~r' + doc.supersedes.revision || !/^sha256:[a-f0-9]{64}$/.test(doc.supersedes.contentHash) || Object.keys(doc.supersedes).some(k => !['revision', 'revisionId', 'contentHash'].includes(k))))
         errors.push('Invalid supersedes');
     for (const provenance of Object.values(doc.fieldProvenance ?? {})) {
-        if (!provenance || Object.keys(provenance).some(k => !['sourceKey', 'sourceNutrientId', 'derivation', 'comparatorRef', 'confidence', 'range'].includes(k)))
+        if (!map(provenance) || Object.keys(provenance).some(k => !['sourceKey', 'sourceNutrientId', 'derivation', 'comparatorRef', 'confidence', 'range'].includes(k)) ||
+            typeof provenance.sourceKey !== 'string' || !provenance.sourceKey || provenance.sourceKey.length > 200 ||
+            ['sourceNutrientId', 'derivation', 'comparatorRef'].some(k => provenance[k] !== undefined && typeof provenance[k] !== 'string') || !range(provenance.range))
             errors.push('Invalid provenance');
         if (provenance?.confidence != null && (!Number.isFinite(provenance.confidence) || provenance.confidence < 0 || provenance.confidence > 1))
             errors.push('Invalid confidence');
@@ -58,7 +67,7 @@ export function validateRevision(doc) {
     if (!doc.nutrients || !doc.nutrientMeta || !doc.fieldProvenance || !doc.sources)
         errors.push('Missing nutrient maps');
     for (const source of Object.values(doc.sources ?? {})) {
-        if (!source || Object.keys(source).some(k => !['type', 'datasetId', 'recordId', 'title', 'url', 'version', 'publishedAt', 'accessedAt', 'originalBasis', 'permittedUse', 'checksum'].includes(k)) || !['fdc', 'label', 'manufacturer', 'manual', 'comparable', 'legacy_food', 'curated_catalog'].includes(source.type))
+        if (!map(source) || Object.keys(source).some(k => !['type', 'datasetId', 'recordId', 'title', 'url', 'version', 'publishedAt', 'accessedAt', 'originalBasis', 'permittedUse', 'checksum'].includes(k)) || !['fdc', 'label', 'manufacturer', 'manual', 'comparable', 'legacy_food', 'curated_catalog'].includes(source.type) || Object.entries(source).some(([k, value]) => k !== 'type' && typeof value !== 'string'))
             errors.push('Invalid source');
     }
     try {

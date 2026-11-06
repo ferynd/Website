@@ -139,7 +139,7 @@ service cloud.firestore {
       return value is string && value.size() > 0 && value.size() <= max;
     }
     function ingredientOptionalText(d, key, max) {
-      return !(key in d) || (d[key] is string && d[key].size() <= max);
+      return key in d ? (d[key] is string && d[key].size() <= max) : true;
     }
     // Rules have no loops: validate eight aliases per fixed block. Padding
     // makes partial blocks safe, while constant indexes keep evaluation bounded.
@@ -194,10 +194,10 @@ service cloud.firestore {
     function ingredientAliasEntries(items) {
       let safe = items.size() == 0 ? null : items[0];
       let padded = items.size() % 8 == 0 ? items : items.concat([safe,safe,safe,safe,safe,safe,safe,safe]);
-      return (items.size() <= 0 || ingredientAliasBlock0(padded))
-        && (items.size() <= 8 || ingredientAliasBlock8(padded))
-        && (items.size() <= 16 || ingredientAliasBlock16(padded))
-        && (items.size() <= 24 || ingredientAliasBlock24(padded))
+      return (items.size() <= 0 ? true : ingredientAliasBlock0(padded))
+        && (items.size() <= 8 ? true : ingredientAliasBlock8(padded))
+        && (items.size() <= 16 ? true : ingredientAliasBlock16(padded))
+        && (items.size() <= 24 ? true : ingredientAliasBlock24(padded))
 ;
     }
     function ingredientTokenEntries(items) {
@@ -208,13 +208,13 @@ service cloud.firestore {
         && joined.matches('([^|]{1,80}[|])*[^|]{1,80}'));
     }
     function ingredientBrand(brand) {
-      return brand == null || (brand is map
+      return brand == null ? true : (brand is map
         && brand.keys().hasOnly(['brand','product','gtin','market','labelDate','formulationNote'])
         && ingredientOptionalText(brand,'brand',200) && ingredientOptionalText(brand,'product',200)
         && ingredientOptionalText(brand,'gtin',80) && ingredientOptionalText(brand,'market',80)
         && ingredientOptionalText(brand,'labelDate',80) && ingredientOptionalText(brand,'formulationNote',500));
     }
-    function ingredientPercent(value) { return value == null || (value is number && value >= 0 && value <= 100); }
+    function ingredientPercent(value) { return value == null ? true : (value is number && value >= 0 && value <= 100); }
     function ingredientDims(d) {
       return d is map && d.keys().hasOnly(['state','preparation','drained','salt','fortification','fortificationDetail','sweetening','ediblePortion','fatPercent','leanPercent','brand'])
         && ingredientText(d.state,200)
@@ -237,8 +237,40 @@ service cloud.firestore {
         && ingredientOptionalText(d,'permittedUse',1000) && ingredientOptionalText(d,'checksum',200);
     }
     function ingredientConversionRange(d) {
-      return d == null || (d is map && d.keys().hasOnly(['min','max'])
+      return d == null ? true : (d is map && d.keys().hasOnly(['min','max'])
         && d.min is number && d.max is number && d.min >= 0 && d.max >= d.min && d.max <= 1000000);
+    }
+    // Revision boundary checks. Hash recomputation and per-nutrient
+    // scientific bounds remain read/client checks; rules cannot hash JSON.
+    // BEGIN GENERATED INGREDIENT REVISION VALIDATORS
+    // Run: node scripts/firebase/generateIngredientRevisionRules.mjs
+    function ingredientNutrientKeys() { return ['calories','protein','carbs','fat','fiber','potassium','magnesium','sodium','calcium','choline','vitaminB12','folate','vitaminC','vitaminB6','vitaminA','vitaminD','vitaminE','vitaminK','selenium','iodine','phosphorus','iron','zinc','omega3','fatSaturated','fatTrans','fatMonounsaturated','fatPolyunsaturated','omega3ALA','omega3EPA','omega3DHA','omega3DPA','omega6','sugarsTotal','sugarsAdded','starch','allulose','sugarAlcoholsTotal','erythritol','sorbitol','mannitol','isomalt','xylitol','glycerol','maltitol','fiberTotal','fiberSoluble','fiberInsoluble','resistantStarch','fiberWeightedLegacy','vitaminB1','vitaminB2','vitaminB3','vitaminB5','biotin','copper','manganese','chromium','molybdenum','chloride','cholesterol','alcohol','water','caffeine','lactose','fructans','gos','excessFructose']; }
+    function ingredientRevisionKeys(keys) {
+      let joined = keys.join('|');
+      // Round-trip blocks keys containing the separator; regexp membership
+      // avoids evaluating a 68-element literal on each write.
+      return keys.size() == 0 ? true : (keys == joined.split('[|]')
+        && joined.matches('(calories|protein|carbs|fat|fiber|potassium|magnesium|sodium|calcium|choline|vitaminB12|folate|vitaminC|vitaminB6|vitaminA|vitaminD|vitaminE|vitaminK|selenium|iodine|phosphorus|iron|zinc|omega3|fatSaturated|fatTrans|fatMonounsaturated|fatPolyunsaturated|omega3ALA|omega3EPA|omega3DHA|omega3DPA|omega6|sugarsTotal|sugarsAdded|starch|allulose|sugarAlcoholsTotal|erythritol|sorbitol|mannitol|isomalt|xylitol|glycerol|maltitol|fiberTotal|fiberSoluble|fiberInsoluble|resistantStarch|fiberWeightedLegacy|vitaminB1|vitaminB2|vitaminB3|vitaminB5|biotin|copper|manganese|chromium|molybdenum|chloride|cholesterol|alcohol|water|caffeine|lactose|fructans|gos|excessFructose)([|](calories|protein|carbs|fat|fiber|potassium|magnesium|sodium|calcium|choline|vitaminB12|folate|vitaminC|vitaminB6|vitaminA|vitaminD|vitaminE|vitaminK|selenium|iodine|phosphorus|iron|zinc|omega3|fatSaturated|fatTrans|fatMonounsaturated|fatPolyunsaturated|omega3ALA|omega3EPA|omega3DHA|omega3DPA|omega6|sugarsTotal|sugarsAdded|starch|allulose|sugarAlcoholsTotal|erythritol|sorbitol|mannitol|isomalt|xylitol|glycerol|maltitol|fiberTotal|fiberSoluble|fiberInsoluble|resistantStarch|fiberWeightedLegacy|vitaminB1|vitaminB2|vitaminB3|vitaminB5|biotin|copper|manganese|chromium|molybdenum|chloride|cholesterol|alcohol|water|caffeine|lactose|fructans|gos|excessFructose))*'));
+    }
+    // END GENERATED INGREDIENT REVISION VALIDATORS
+    function ingredientRevisionSourceKeys(keys) {
+      let joined = keys.join('|');
+      return keys.size() == 0 ? true : (keys == joined.split('[|]')
+        && joined.matches('([^|]{1,200}[|])*[^|]{1,200}'));
+    }
+    function ingredientRevisionContents(d) {
+      let n = d.nutrients;
+      let m = d.nutrientMeta;
+      let p = d.fieldProvenance;
+      let s = d.sources;
+      return n is map && ingredientRevisionKeys(n.keys())
+        && m is map && m.keys().hasOnly(['registryVersion','quality','fiberMeaning','carbConvention'])
+        && m.registryVersion == 2
+        && m.quality is map && ingredientRevisionKeys(m.quality.keys())
+        && m.get('fiberMeaning','unknown') in ['total','weighted_legacy','unknown']
+        && m.get('carbConvention','unknown') in ['includes_fiber','excludes_fiber','unknown']
+        && p is map && ingredientRevisionKeys(p.keys())
+        && s is map && s.size() <= 64 && ingredientRevisionSourceKeys(s.keys());
     }
     match /artifacts/default-app-id/users/{userId}/ingredientIdentities/{identityId} {
       function validIdentity(d) {
@@ -325,11 +357,9 @@ service cloud.firestore {
           && head.headRevision == d.revision && head.headContentHash == d.contentHash
           && ingredientHash(d.contentHash) && d.idempotencyKey is string && d.idempotencyKey.size() <= 100
           && d.basis is map && d.basis.keys().hasOnly(['kind','state'])
-          && d.basis.kind == 'per_100g_edible' && ingredientText(d.basis.state,200)
-          && d.nutrients is map && d.nutrients.size() <= 68
-          && d.nutrientMeta is map && d.nutrientMeta.registryVersion == 2
-          && d.fieldProvenance is map && d.fieldProvenance.size() <= 68
-          && d.sources is map && d.sources.size() <= 64
+          && d.basis.kind == 'per_100g_edible' && ingredientText(d.basis.state,120)
+          && (d.get('basedOn',null) == null || (d.basedOn is map && d.basedOn.keys().hasOnly(['kind','ref','note']) && d.basedOn.kind in ['curated_catalog','fdc','label','import']))
+          && ingredientRevisionContents(d)
           && d.createdAt == request.time && validSupersedes(d);
       }
       allow create: if validRevision(request.resource.data);

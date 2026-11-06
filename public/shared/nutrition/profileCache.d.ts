@@ -6,6 +6,8 @@ export const PROFILE_CACHE_LIMITS: Readonly<{
     conversions: 4000;
     bytes: number;
     headTtlMs: number;
+    headRefreshCount: 50;
+    headRefreshConcurrency: 4;
 }>;
 export function clearProfileCache(options?: {
     idb?: IDBFactory;

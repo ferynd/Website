@@ -31,21 +31,51 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
         // Single letters have no general prefix index. Wait for a second letter.
         if (!words.length || words[0].length < 2)
             return { items: [], cursor: null };
-        const token = words[0].slice(0, 8);
-        const rows = await port.queryCollection(prefix + C.identities, { arrayContains: ['searchTokens', token], orderById: true, limit: size + 1, startAfterId: cursor });
+        // Cursor pins the last identity/variant pair scanned. A null variant
+        // means that identity was exhausted. Accept the old identity-only cursor.
+        let afterIdentity = cursor, afterVariant = null;
+        if (cursor?.startsWith('v1:')) {
+            const position = JSON.parse(cursor.slice(3));
+            if (!Array.isArray(position) || position.length !== 2 ||
+                !isValidFirestoreDocId(position[0]) || (position[1] !== null && !isValidFirestoreDocId(position[1])))
+                throw new TypeError('Invalid search cursor');
+            [afterIdentity, afterVariant] = position;
+        }
+        const positionOf = (id, variantId = null) => 'v1:' + JSON.stringify([id, variantId]);
+        const budget = Math.min(size, 5); // At most five variant queries per page.
+        // A reserved alias word may have no prefix token. Query its full word
+        // too, merging both bounded queries in document-ID order.
+        const tokens = [...new Set([words[0].slice(0, 8), words[0]])];
+        const pages = await Promise.all(tokens.map(token => port.queryCollection(prefix + C.identities,
+            { arrayContains: ['searchTokens', token], orderById: true, limit: budget + 1, startAfterId: afterIdentity })));
+        let rows = [...new Map(pages.flat().map(row => [row.id, row])).values()].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+        if (afterVariant) {
+            const identity = await port.getDoc(path('identities', afterIdentity));
+            if (identity) rows.unshift({ ...identity, id: afterIdentity });
+        }
         const items = [];
-        for (const identity of rows.slice(0, size)) {
-            if (identity.retiredAt || !words.every(word => buildSearchTokens(identity.canonicalName, identity.aliases).some(t => t.startsWith(word))))
+        let next = null;
+        for (const identity of rows.slice(0, budget)) {
+            next = positionOf(identity.id);
+            const indexedWords = [identity.canonicalName, ...(identity.aliases ?? []).map(a => a.text)].flatMap(searchWords);
+            if (identity.retiredAt || !words.every(word => indexedWords.some(t => t.startsWith(word))))
                 continue;
-            const variants = await port.queryCollection(prefix + C.variants, { equals: ['identityId', identity.identityId], orderById: true, limit: 25 });
-            for (const variant of variants) {
+            const remaining = size - items.length;
+            const variants = await port.queryCollection(prefix + C.variants, { equals: ['identityId', identity.identityId], orderById: true,
+                limit: remaining + 1, startAfterId: identity.id === afterIdentity ? afterVariant ?? undefined : undefined });
+            for (const variant of variants.slice(0, remaining)) {
                 const ref = parseIngredientRef(refOf({ ...variant, revision: variant.headRevision, revisionId: variant.headRevisionId, contentHash: variant.headContentHash }));
                 if (ref && variant.dims && !variant.retiredAt)
                     items.push({ ...identity, ...variant, ref });
             }
+            if (variants.length > remaining)
+                return { items, cursor: positionOf(identity.id, variants[remaining - 1].id) };
+            if (items.length === size)
+                return { items, cursor: rows.at(-1).id !== identity.id ? next : null };
         }
-        return { items, cursor: rows.length > size ? rows[size - 1].id : null };
+        return { items, cursor: rows.length > budget ? next : null };
     }
+
     async function getConversions(raw) {
         const ref = parseIngredientRef(raw);
         if (!ref || (ref.scope === 'private' && ref.namespace !== namespace))
@@ -140,7 +170,15 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
                 const revision = await tx.get(path('revisions', existing.headRevisionId));
                 if (revision?.contentHash === revisionDraft.contentHash && await verifyRevisionHash(revision)) {
                     const committed = await Promise.all(conversions.map(c => tx.get(path('conversions', c.conversionId))));
-                    return { ref: refOf(revision), conversions: committed.filter(Boolean) };
+                    // All reads precede writes; competing creates retry and
+                    // atomically add only conversions the winning create lacked.
+                    if (conversions.some(c => !sameRef(c.variantRef, refOf(revision))))
+                        throw new RevisionConflictError('Conversion profile mismatch');
+                    const stamp = port.serverTimestamp();
+                    const savedConversions = conversions.map((c, i) => committed[i] ?? { ...c, schemaVersion: 1, ownerUid, createdAt: stamp });
+                    for (let i = 0; i < conversions.length; i++)
+                        if (!committed[i]) tx.set(path('conversions', conversions[i].conversionId), savedConversions[i]);
+                    return { ref: refOf(revision), conversions: savedConversions };
                 }
                 throw new RevisionConflictError('Ingredient already exists with another profile');
             }
@@ -172,14 +210,15 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
             if (!head || head.identityId !== revisionDraft.identityId || head.retiredAt)
                 throw new RevisionConflictError('Variant missing or retired');
             const old = await tx.get(path('revisions', head.headRevisionId));
-            if (!old || !await verifyRevisionHash(old) || old.contentHash !== head.headContentHash)
-                throw new RevisionConflictError('Head integrity check failed');
-            if (old?.contentHash === revisionDraft.contentHash && old.supersedes?.revision === baseRevision)
-                return refOf(old);
-            if (head.headRevision !== baseRevision)
+            if (head.headRevision !== baseRevision) {
+                if (old?.contentHash === revisionDraft.contentHash && old.supersedes?.revision === baseRevision)
+                    return refOf(old);
                 throw new RevisionConflictError('Revision changed; review saved draft');
+            }
+            const previousContentHash = old?.contentHash ?? head.headContentHash;
+            const previousRevisionId = old?.revisionId ?? head.headRevisionId;
             const n = baseRevision + 1;
-            const revision = { ...revisionDraft, ownerUid, revision: n, revisionId: revisionIdFor(variantId, n), supersedes: { revision: baseRevision, revisionId: old.revisionId, contentHash: old.contentHash }, idempotencyKey: idem, createdAt: port.serverTimestamp() };
+            const revision = { ...revisionDraft, ownerUid, revision: n, revisionId: revisionIdFor(variantId, n), supersedes: { revision: baseRevision, revisionId: previousRevisionId, contentHash: previousContentHash }, idempotencyKey: idem, createdAt: port.serverTimestamp() };
             tx.set(path('revisions', revision.revisionId), revision);
             tx.update(path('variants', variantId), { headRevision: n, headRevisionId: revision.revisionId, headContentHash: revision.contentHash, updatedAt: port.serverTimestamp() });
             return refOf(revision);

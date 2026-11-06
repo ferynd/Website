@@ -27,5 +27,5 @@ export function toGrams(quantity: number, unit: string, qualifier: string | null
     grams: number;
     conversionId: string | null;
 } | {
-    error: 'missing_conversion' | 'state_mismatch';
+    error: 'missing_conversion' | 'state_mismatch' | 'ambiguous_conversion';
 };

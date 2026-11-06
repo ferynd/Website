@@ -1,3 +1,4 @@
+import {clearProfileCache} from '../../shared/nutrition/profileCache.js';
 import {onIngredientAuthChange} from './services/ingredientSession.js';
 /**
  * @file main.js
@@ -526,6 +527,7 @@ export async function handleLogout() {
   debugLog('AUTH-HANDLER', 'Handling logout button click');
 
   try {
+    try { await clearProfileCache(); } catch { /* Cache cleanup must not block logout. */ }
     await authFunctions.logout();
 
     // Reset state

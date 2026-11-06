@@ -9,3 +9,14 @@ it('legacy adapter never asserts a gram basis or known fiber meaning', () => { c
 it('accepts real Firestore timestamp objects outside the hashed payload', async () => { const { revision } = await fixture(); class Timestamp {
     toMillis() { return 0; }
 } expect(await verifyRevisionHash({ ...revision, createdAt: new Timestamp() })).toBe(true); });
+
+it.each([
+ {nutrientMeta:{registryVersion:2,quality:{protein:{status:'measured',roundingInterval:'2'}}}},
+ {nutrientMeta:{registryVersion:2,quality:{protein:{status:'measured',qualifier:42}}}},
+ {nutrientMeta:{registryVersion:2,quality:{},fiberMeaning:42}},
+ {fieldProvenance:{protein:{sourceKey:'manual',sourceNutrientId:12}}},
+ {fieldProvenance:{protein:{sourceKey:'manual',range:{min:'0',max:1}}}},
+ {sources:{manual:{type:'manual',recordId:12}}},
+])('rejects malformed nested metadata in client drafts too: %j',async changes=>{
+ const {draft}=await fixture();expect(validateRevision({...draft,...changes}).length).toBeGreaterThan(0);
+});

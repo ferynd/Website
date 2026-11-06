@@ -16,8 +16,9 @@ it('refreshes known heads when the browser reconnects', async () => {
     await cache.putHead(ref, { headRevision: 1 });
     const fetcher = vi.fn(async () => ({ headRevision: 2 }));
     await cache.revalidate(fetcher);
+    expect(fetcher).not.toHaveBeenCalled();
     target.dispatchEvent(new Event('online'));
-    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
     cache.close();
     vi.unstubAllGlobals();
 });
@@ -62,4 +63,21 @@ it('disables cache rather than exposing another owner when deletion fails', asyn
     const second = await openProfileCache({ownerUid:'b',idb});
     expect(await second.listPendingSaves()).toEqual([]);
     second.close();
+});
+
+it('reopened cache refreshes only expired heads',async()=>{
+ vi.useFakeTimers();const idb=memoryIndexedDb(),first=await openProfileCache({ownerUid:'owner',idb,limits:{headTtlMs:100}}),{ref}=await fixture();
+ await first.putHead(ref,{headRevision:1});vi.setSystemTime(Date.now()+101);
+ await first.putHead({...ref,variantId:'another'},{headRevision:1});first.close();
+ const reopened=await openProfileCache({ownerUid:'owner',idb,limits:{headTtlMs:100}}),fetcher=vi.fn(async()=>({headRevision:2}));
+ await reopened.revalidate(fetcher);expect(fetcher.mock.calls).toEqual([[ref]]);await reopened.revalidate(fetcher);expect(fetcher).toHaveBeenCalledOnce();reopened.close();
+});
+it('bounds reconnect refresh to 50 heads and four concurrent requests and coalesces events',async()=>{
+ const target=new EventTarget();vi.stubGlobal('addEventListener',target.addEventListener.bind(target));vi.stubGlobal('removeEventListener',target.removeEventListener.bind(target));
+ const cache=await openProfileCache({ownerUid:'owner',idb:memoryIndexedDb()}),{ref}=await fixture();
+ for(let i=0;i<55;i++)await cache.putHead({...ref,variantId:'variant'+i},{headRevision:1});
+ let active=0,maxActive=0,release;const barrier=new Promise(resolve=>{release=resolve;});
+ const fetcher=vi.fn(async()=>{active++;maxActive=Math.max(maxActive,active);await barrier;active--;return{headRevision:2};});
+ await cache.revalidate(fetcher);target.dispatchEvent(new Event('online'));await vi.waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(4));
+ target.dispatchEvent(new Event('online'));release();await vi.waitFor(()=>expect(fetcher).toHaveBeenCalledTimes(50));expect(maxActive).toBe(4);cache.close();vi.unstubAllGlobals();
 });

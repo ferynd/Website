@@ -1,5 +1,7 @@
-import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { V2_KEYS } from '../../public/shared/nutrition/nutrientRegistry.js';
+import { generateIngredientRevisionRules } from '../../scripts/firebase/generateIngredientRevisionRules.mjs';
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { doc, setDoc, getDoc, updateDoc, deleteDoc, writeBatch, serverTimestamp, type Firestore } from 'firebase/firestore';
 let env: RulesTestEnvironment;
@@ -103,4 +105,108 @@ it('accepts a full-capacity identity in the atomic ingredient create batch', asy
     b.set(doc(db,path('ingredientVariants',pv)),variant());
     b.set(doc(db,path('ingredientRevisions',pv+'~r1')),revision());
     await assertSucceeds(b.commit());
+});
+
+describe('revision content boundary', () => {
+    async function advance(changes: Record<string, unknown>) {
+        const db = owner(); await create(db);
+        const b = writeBatch(db);
+        b.set(doc(db,path('ingredientRevisions',pv+'~r2')),{...revision(pv,2),...changes});
+        b.update(doc(db,path('ingredientVariants',pv)),{headRevision:2,headRevisionId:pv+'~r2',headContentHash:hash,updatedAt:stamp()});
+        return b.commit();
+    }
+    it('keeps the generated rules and allowed keys in parity with V2_KEYS', () => {
+        const rules = readFileSync('firestore.rules','utf8');
+        expect(rules).toContain(generateIngredientRevisionRules());
+        const list = rules.match(/function ingredientNutrientKeys\(\) \{ return \[(.*?)\]; \}/)![1];
+        expect([...list.matchAll(/'([^']+)'/g)].map(m=>m[1])).toEqual(V2_KEYS);
+    });
+    it.each([
+        { nutrients: { inventedNutrient: 1 } },
+        { nutrients: { 'protein|fat': 1 } },
+        { nutrientMeta: { registryVersion: 2, quality: { invented: { status: 'measured' } } } },
+        { nutrientMeta: { registryVersion: 2, quality: { 'protein|fat': { status: 'measured' } } } },
+        { nutrientMeta: { registryVersion: 2, quality: {}, extra: true } },
+        { nutrientMeta: { registryVersion: 2, quality: {}, fiberMeaning: 42 } },
+        { nutrientMeta: { registryVersion: 2, quality: {}, carbConvention: 'invented' } },
+        { nutrientMeta: { registryVersion: 3, quality: {} } },
+        { fieldProvenance: { invented: { sourceKey: 'manual' } } },
+        { fieldProvenance: { 'protein|fat': { sourceKey: 'manual' } } },
+        { sources: Object.fromEntries(Array.from({ length: 65 }, (_, i) => ['source' + i, { type: 'manual' }])) },
+        { sources: { ['a'.repeat(201)]: { type: 'manual' } } },
+    ])('rejects malformed immutable revision contents atomically: %j', async changes => {
+        await assertFails(advance(changes));
+        const head = await getDoc(doc(owner(),path('ingredientVariants',pv)));
+        expect(head.data()!.headRevision).toBe(1);
+        expect((await getDoc(doc(owner(),path('ingredientRevisions',pv+'~r2')))).exists()).toBe(false);
+    });
+    it('accepts mixed statuses, provenance and source records', async () => {
+        await assertSucceeds(advance({
+            nutrients:{protein:10,carbs:20},
+            nutrientMeta:{registryVersion:2,quality:{protein:{status:'measured'},carbs:{status:'label_reported'}}},
+            fieldProvenance:{protein:{sourceKey:'manual'},carbs:{sourceKey:'label'}},
+            sources:{manual:{type:'manual'},label:{type:'label',recordId:'fixture'}},
+        }));
+    });
+    it('accepts all 68 nutrient keys with sourced metadata and optional typed fields', async () => {
+        await assertSucceeds(advance({
+            nutrients:Object.fromEntries(V2_KEYS.map(k=>[k,1])),
+            nutrientMeta:{registryVersion:2,quality:Object.fromEntries(V2_KEYS.map(k=>[k,{status:'measured',roundingInterval:2,upperBound:2,qualifier:'test'}])),fiberMeaning:'total',carbConvention:'includes_fiber'},
+            fieldProvenance:Object.fromEntries(V2_KEYS.map(k=>[k,{sourceKey:'manual',sourceNutrientId:'test',derivation:'fixture',comparatorRef:'fixture',confidence:1,range:{min:0,max:2}}])),
+            sources:{manual:{type:'manual',datasetId:'set',recordId:'record',title:'Fixture',url:'https://example.com',version:'1',publishedAt:'2026-01-01',accessedAt:'2026-11-06',originalBasis:'100 g',permittedUse:'private',checksum:'test'}},
+        }));
+    });
+    it('accepts a 24-nutrient profile with different numeric values and shared metadata', async () => {
+        const keys = V2_KEYS.slice(0,24);
+        await assertSucceeds(advance({nutrients:Object.fromEntries(keys.map((k,i)=>[k,i+1])),nutrientMeta:{registryVersion:2,quality:Object.fromEntries(keys.map(k=>[k,{status:'measured'}]))},fieldProvenance:Object.fromEntries(keys.map(k=>[k,{sourceKey:'manual'}]))}));
+    });
+    it('accepts a revision with all 68 V2 keys each with a different numeric value, distinct quality, distinct provenance, and ~10 distinct sources', async () => {
+        const sources = Object.fromEntries(Array.from({ length: 10 }, (_, i) => [
+            'source_' + i,
+            {
+                type: 'manual',
+                datasetId: 'set_' + i,
+                recordId: 'rec_' + i,
+                title: 'Source ' + i,
+                url: 'https://example.com/' + i,
+                version: '1.0',
+                publishedAt: '2026-01-01',
+                accessedAt: '2026-11-06',
+                originalBasis: '100 g',
+                permittedUse: 'private',
+                checksum: 'chk_' + i,
+            },
+        ]));
+        await assertSucceeds(advance({
+            nutrients: Object.fromEntries(V2_KEYS.map((k, i) => [k, i + 1.25])),
+            nutrientMeta: {
+                registryVersion: 2,
+                fiberMeaning: 'total',
+                carbConvention: 'includes_fiber',
+                quality: Object.fromEntries(V2_KEYS.map((k, i) => [k, {
+                    status: 'measured',
+                    roundingInterval: 0.1 * (i + 1),
+                    upperBound: 100 + i,
+                    qualifier: 'qual_' + k,
+                }])),
+            },
+            fieldProvenance: Object.fromEntries(V2_KEYS.map((k, i) => [k, {
+                sourceKey: 'source_' + (i % 10),
+                sourceNutrientId: 'snid_' + k,
+                derivation: 'derivation_' + k,
+                comparatorRef: 'comp_' + k,
+                confidence: 0.95,
+                range: { min: i, max: i + 10 },
+            }])),
+            sources,
+        }));
+    });
+    it('accepts 68 nullable nutrients and 64 sources within the expression budget', async () => {
+        await assertSucceeds(advance({
+            nutrients: Object.fromEntries(V2_KEYS.map(k => [k, null])),
+            nutrientMeta: { registryVersion: 2, quality: {} },
+            fieldProvenance: {},
+            sources: Object.fromEntries(Array.from({ length: 64 }, (_, i) => ['source' + i, { type: 'manual' }])),
+        }));
+    });
 });

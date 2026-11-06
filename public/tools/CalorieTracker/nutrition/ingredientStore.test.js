@@ -14,6 +14,18 @@ it('retains stale drafts and retries after explicit rebase', async () => { const
 it('all writes fail with flag off', async () => { flags.enabled = false; await expect(store.createIngredient(await payload())).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.saveRevision({})).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.addConversion({})).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.retireVariant('pv-test')).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.updateIdentity('pi-test', {})).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.retryPendingSave('x')).rejects.toBeInstanceOf(IngredientWritesDisabledError); expect(port.docs.size).toBe(0); });
 it('detects an injected key collision and ambiguous aliases', async () => { await store.createIngredient(await payload()); const [key, doc] = [...port.docs].find(([p]) => p.includes('/ingredientIdentities/')); port.docs.set(key, { ...doc, identityKeyV1: 'collision' }); await expect(store.createIngredient(await payload())).rejects.toBeInstanceOf(IdentityKeyCollisionError); await expect(store.createIngredient({ ...await payload(), confirmNew: false })).rejects.toBeInstanceOf(NeedsReviewError); });
 it('resolves pinned refs without research, detects corrupt content', async () => { const ref = await store.createIngredient(await payload()); const research = vi.fn(); expect((await store.resolveRef(ref)).status).toBe('fresh'); expect(research).not.toHaveBeenCalled(); const key = [...port.docs.keys()].find(p => p.includes('/ingredientRevisions/')); port.docs.get(key).nutrients.protein = 999; expect((await store.resolveRef(ref)).status).toBe('corrupt'); });
+it('advances head past a corrupt revision to recover with a valid revision n+1', async () => {
+    const ref = await store.createIngredient(await payload());
+    const key = [...port.docs.keys()].find(p => p.includes('/ingredientRevisions/'));
+    port.docs.get(key).nutrients.protein = 999;
+    expect((await store.resolveRef(ref)).status).toBe('corrupt');
+    const validDraft = (await fixture(20)).draft;
+    const r2 = await store.saveRevision({ variantId: ref.variantId, baseRevision: 1, revisionDraft: validDraft });
+    expect(r2.revision).toBe(2);
+    const resolved = await store.resolveRef(r2);
+    expect(resolved.status).toBe('fresh');
+    expect(resolved.revision.nutrients.protein).toBe(20);
+});
 it('private override takes precedence without a private identity; pinned curated ref stays pinned', async () => { const f = await fixture(); const variantId = await overrideVariantId('nutrition-curated', 'chicken'); const draft = await buildRevisionDraft({ ...f.input, identityId: 'chicken', variantId }); const ref = await store.createIngredient({ identity, variant: { dims, overrides: { catalogId: 'nutrition-curated', variantId: 'chicken', revision: 1 } }, revisionDraft: draft, confirmNew: true }); expect([...port.docs.keys()].some(k => k.includes('/ingredientIdentities/'))).toBe(false); expect((await store.resolveEffectiveProfile({ ...f.ref, scope: 'curated', namespace: 'catalog:nutrition-curated', variantId: 'chicken' })).ref).toEqual(ref); });
 it('alias-only suggestions require review, exact compatible confirmed alias may reuse', async () => { const { ref } = await fixture(); const candidate = { canonicalName: 'Chicken', aliases: [{ text: 'chicken', kind: 'search' }], dims, ref }; const services = { privateSearch: async () => [candidate], curatedSearch: async () => [] }; expect((await matchIngredient({ name: 'chicken', dims }, services)).kind).toBe('candidates'); candidate.aliases[0].kind = 'confirmed'; expect((await matchIngredient({ name: 'chicken', dims }, services)).kind).toBe('exact'); expect((await matchIngredient({ name: 'chicken', dims: { state: 'cooked' } }, services)).kind).toBe('candidates'); });
 it('confirmed exact reference skips both searches and research', async () => {
@@ -51,7 +63,7 @@ it('keeps conversions immutable and validates the pinned source revision',async(
 it('private search caps pages and forwards an indexed token/cursor query',async()=>{
  const query=vi.spyOn(port,'queryCollection');
  await store.searchPrivate('Chicken',{pageSize:100,cursor:'previous'});
- expect(query).toHaveBeenCalledWith(expect.stringContaining('/ingredientIdentities'),{arrayContains:['searchTokens','chicken'],orderById:true,limit:26,startAfterId:'previous'});
+ expect(query).toHaveBeenCalledWith(expect.stringContaining('/ingredientIdentities'),{arrayContains:['searchTokens','chicken'],orderById:true,limit:6,startAfterId:'previous'});
 });
 
 it.each([
@@ -122,7 +134,7 @@ it.each(['create','add','read-through'])('conversions saved online remain usable
     expect(await offline.getConversions({...ref,revision:2,revisionId:ref.variantId+'~r2'})).toEqual([]);
     offline.close();
 });
-it('failed conversion commits and idempotent create with unsaved conversions do not populate cache', async () => {
+it('failed commits do not cache and idempotent create atomically adds missing conversions', async () => {
     const {buildConversion} = await import('../../../shared/nutrition/ingredientConversion.js');
     const putConversion = vi.fn();
     const cached = createIngredientStore({port,namespace:'default-app-id',ownerUid:'owner',cache:{putPendingSave:async()=>{},deletePendingSave:async()=>{},putConversion}});
@@ -131,9 +143,13 @@ it('failed conversion commits and idempotent create with unsaved conversions do 
     port.failCommit = true;
     await expect(cached.addConversion(conversion)).rejects.toThrow('Offline');
     expect(putConversion).not.toHaveBeenCalled();
-    port.failCommit = false;
-    await cached.createIngredient({...p,conversions:[conversion]});
+    await expect(cached.createIngredient({...p,conversions:[conversion]})).rejects.toThrow('Offline');
     expect(putConversion).not.toHaveBeenCalled();
+    expect([...port.docs.keys()].filter(k=>k.includes('/ingredientConversions/'))).toHaveLength(0);
+    port.failCommit = false;
+    expect(await cached.createIngredient({...p,conversions:[conversion]})).toEqual(ref);
+    expect(putConversion).toHaveBeenCalledWith(ref.namespace,expect.objectContaining(conversion));
+    expect(await store.getConversions(ref)).toEqual([expect.objectContaining(conversion)]);
 });
 
 it('reads curated conversions through the catalog and caches only the pinned revision for offline use', async () => {
@@ -156,4 +172,62 @@ it('reads curated conversions through the catalog and caches only the pinned rev
     const offline = createIngredientStore({port,namespace:'default-app-id',ownerUid:'owner',cache:reloaded,catalog:createCuratedCatalogSource({fetchJson:async()=>{throw new Error('Offline');}})});
     expect(toGrams(2,'piece',null,await offline.getConversions(ref),'raw')).toEqual({grams:160,conversionId:conversion.conversionId});
     offline.close();
+});
+
+it('concurrent creates retain both different conversion sets',async()=>{
+ const {buildConversion}=await import('../../../shared/nutrition/ingredientConversion.js'),p=await payload(),{ref}=await fixture();
+ const base={variantRef:ref,kind:'piece',unit:'piece',amount:1,grams:100,state:'raw',source:{type:'manual'},confidence:1};
+ const a=await buildConversion(base),b=await buildConversion({...base,unit:'cup',grams:120});
+ let arrivals=0,release;const barrier=new Promise(resolve=>{release=resolve;});port.beforeCommit=async()=>{if(++arrivals===2)release();await barrier;};
+ expect(await Promise.all([store.createIngredient({...p,conversions:[a]}),store.createIngredient({...p,conversions:[b]})])).toEqual([ref,ref]);
+ expect((await store.getConversions(ref)).map(c=>c.conversionId).sort()).toEqual([a.conversionId,b.conversionId].sort());
+});
+it('paginates identity/variant pairs without loss and bounds candidates and variant queries',async()=>{
+ const {ref}=await fixture(),prefix='artifacts/default-app-id/users/owner/';
+ for(let i=0;i<9;i++){
+  const identityId='pi-'+i.toString(16).padStart(20,'0');port.docs.set(prefix+'ingredientIdentities/'+identityId,{identityId,canonicalName:'Chicken',aliases:[],searchTokens:['chicken']});
+  for(let n=0;n<31;n++){const variantId='pv-'+(i*100+n).toString(16).padStart(20,'0');port.docs.set(prefix+'ingredientVariants/'+variantId,{identityId,variantId,dims,headRevision:1,headRevisionId:variantId+'~r1',headContentHash:ref.contentHash});}
+ }
+ const query=vi.spyOn(port,'queryCollection'),seen=[];let cursor;
+ do{
+  query.mockClear();const page=await store.searchPrivate('Chicken',{pageSize:25,cursor});expect(page.items.length).toBeLessThanOrEqual(25);
+  expect(query.mock.calls.filter(([p])=>p.endsWith('/ingredientVariants')).length).toBeLessThanOrEqual(5);
+  expect(query.mock.calls.every(([,q])=>q.limit<=26)).toBe(true);seen.push(...page.items.map(item=>item.variantId));expect(page.cursor).not.toBe(cursor);cursor=page.cursor;
+ }while(cursor);
+ expect(seen).toHaveLength(9*31);expect(new Set(seen).size).toBe(seen.length);expect(seen).toEqual([...seen].sort());
+});
+it('retrieves the last long alias when optional prefix capacity is exhausted',async()=>{
+ const p=await payload();p.identity={...identity,aliases:Array.from({length:32},(_,i)=>({text:'Distinctlongalias'+i,kind:'confirmed'}))};
+ const ref=await store.createIngredient(p);expect((await store.searchPrivate('Distinctlongalias31')).items.map(item=>item.ref)).toEqual([ref]);
+});
+
+it('online and reloaded offline conversions select the same superseding factor',async()=>{
+ const {openProfileCache}=await import('../../../shared/nutrition/profileCache.js'),{memoryIndexedDb}=await import('./memoryIndexedDb.js');
+ const {buildConversion,toGrams}=await import('../../../shared/nutrition/ingredientConversion.js');
+ const idb=memoryIndexedDb(),cache=await openProfileCache({ownerUid:'owner',idb}),online=createIngredientStore({port,namespace:'default-app-id',ownerUid:'owner',cache});
+ const ref=await online.createIngredient(await payload()),base={variantRef:ref,kind:'piece',unit:'piece',amount:1,grams:100,state:'raw',source:{type:'manual'},confidence:1};
+ const a=await buildConversion(base),b=await buildConversion({...base,grams:150,supersedes:a.conversionId});
+ await online.addConversion(a);await online.addConversion(b);
+ const result=toGrams(2,'piece',null,await online.getConversions(ref),'raw');expect(result).toEqual({grams:300,conversionId:b.conversionId});online.close();
+ const offline=createIngredientStore({port,namespace:'default-app-id',ownerUid:'owner',cache:await openProfileCache({ownerUid:'owner',idb})});
+ port.queryCollection=async()=>{throw new Error('offline');};expect(toGrams(2,'piece',null,await offline.getConversions(ref),'raw')).toEqual(result);offline.close();
+});
+
+it('stops after five variant queries even when many identities each have one variant', async () => {
+    const {ref} = await fixture(), prefix = 'artifacts/default-app-id/users/owner/';
+    for (let i=0;i<12;i++) {
+        const identityId = 'pi-'+i.toString(16).padStart(20,'0'), variantId = 'pv-'+i.toString(16).padStart(20,'0');
+        port.docs.set(prefix+'ingredientIdentities/'+identityId,{identityId,canonicalName:'Chicken',aliases:[],searchTokens:['chicken']});
+        port.docs.set(prefix+'ingredientVariants/'+variantId,{identityId,variantId,dims,headRevision:1,headRevisionId:variantId+'~r1',headContentHash:ref.contentHash});
+    }
+    const query = vi.spyOn(port,'queryCollection');
+    const first = await store.searchPrivate('Chicken');
+    expect(first.items).toHaveLength(5);
+    expect(query.mock.calls.filter(([p])=>p.endsWith('/ingredientVariants'))).toHaveLength(5);
+    const second = await store.searchPrivate('Chicken',{cursor:first.cursor});
+    expect(second.items).toHaveLength(5);
+    const third = await store.searchPrivate('Chicken',{cursor:second.cursor});
+    expect(third.items).toHaveLength(2);
+    expect(third.cursor).toBeNull();
+    expect(new Set([...first.items,...second.items,...third.items].map(item=>item.variantId)).size).toBe(12);
 });
