@@ -1,3 +1,4 @@
+import type {ProfilesState} from './ingredientLink';
 /* --- CONFIGURATION: recipe nutrition export values --- */
 /**
  * Exports check and bump the reviewed recipe revision atomically with the tracker food and reference.
@@ -209,11 +210,12 @@ export const roundExportValue = (value: number): number | null => {
 };
 
 /** Calculate nutrition for export at 1×, independent of the active working scale. */
-export const calculateExportNutrition = (recipe: Recipe, foods: FoodsState): RecipeNutritionResult =>
+export const calculateExportNutrition = (recipe: Recipe, foods: FoodsState, profiles?: ProfilesState): RecipeNutritionResult =>
   calculateRecipeNutrition({
     recipe,
     foods,
     scale: SCALE_ONE,
+    profiles,
   });
 
 const blocked = (reason: ExportBlockReason): ExportPayloadResult => ({
@@ -603,6 +605,8 @@ export const collectExportSourceTargets = (
   const byId = new Map(foods.map((food) => [food.id, food]));
   const targets = new Map<string, LinkTarget>();
   for (const ingredient of result.included) {
+    // Immutable profile refs are already pinned; only mutable food targets need guards.
+    if (ingredient.ingredientRef) continue;
     const food = byId.get(ingredient.foodId);
     if (food === undefined || targets.has(food.id)) continue;
     targets.set(food.id, {

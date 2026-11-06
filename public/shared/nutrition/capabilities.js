@@ -4,13 +4,17 @@
  */
 export const NUTRIENT_V2_WRITES_ENABLED = false;
 
-export const NUTRITRACK_CACHE_NAME = 'nutritrack-v3';
+export const INGREDIENT_STORE_WRITES_ENABLED = false;
+export const INGREDIENT_STORE_SCHEMA_VERSION = 1;
+
+export const NUTRITRACK_CACHE_NAME = 'nutritrack-v4';
 
 export function resolveNutrientWriteVersion() {
   return NUTRIENT_V2_WRITES_ENABLED ? 2 : 1;
 }
 
 export const NUTRITION_CAPABILITIES = {
+  ingredientStore: Object.freeze({schemaVersion: INGREDIENT_STORE_SCHEMA_VERSION, writes: INGREDIENT_STORE_WRITES_ENABLED}),
   registryVersion: 2,
   readVersions: [1, 2],
   get writeVersion() {

@@ -1,3 +1,6 @@
+import {parseIngredientRef} from '@/public/shared/nutrition/ingredientRefs.js';
+import type {ResolvedIngredientProfile} from '@/public/shared/nutrition/ingredientStore.js';
+import {assessIngredientLink,type ProfilesState} from './ingredientLink';
 import {
   MAX_GRAMS_PER_UNIT,
   UNLINKED_NUTRITION,
@@ -34,6 +37,14 @@ export const parseNutritionLink = (value: unknown, path: string, warnings: strin
   const raw = value as Record<string, unknown>;
   if (raw.status === 'no-match') return nonConfirmed('no-match', null, null, null);
   const id = nullableString(raw.foodItemId);
+  if (raw.ingredientRef != null) {
+    const ref = parseIngredientRef(raw.ingredientRef, path + '.ingredientRef', warnings);
+    if (!ref) return id ? nonConfirmed('candidate', id, nullableString(raw.matchedName), confidenceValue(raw.matchConfidence)) : {...UNLINKED_NUTRITION};
+    // Parse legacy fields through the same defensive reader, then layer on the
+    // pinned ref. A profile-only confirmation does not require a legacy basis.
+    const legacy = parseNutritionLink({ ...raw, ingredientRef: null }, path, []);
+    return {...legacy, ingredientRef:ref, status:raw.status === 'confirmed' ? 'confirmed':'candidate', needsUserReview:raw.status !== 'confirmed', foodItemId:id, matchedName:nullableString(raw.matchedName), confirmedAtMs:typeof raw.confirmedAtMs === 'number' && Number.isFinite(raw.confirmedAtMs) && raw.confirmedAtMs >= 0 ? raw.confirmedAtMs:null};
+  }
   if (!id) return { ...UNLINKED_NUTRITION };
   const name = nullableString(raw.matchedName);
   const confidence = confidenceValue(raw.matchConfidence);
@@ -87,18 +98,22 @@ export const confirmNutritionLink = (
 export const noMatchLink = (): NutritionLink => nonConfirmed('no-match', null, null, null);
 
 export const linkAfterRename = (link: NutritionLink): NutritionLink =>
-  link.status === 'confirmed'
+  link.status === 'confirmed' && link.ingredientRef
+    ? { ...link }
+    : link.status === 'confirmed'
     ? nonConfirmed('candidate', link.foodItemId, link.matchedName, link.matchConfidence)
     : { ...UNLINKED_NUTRITION };
 
 export type LinkReviewState =
   | 'unlinked' | 'no-match' | 'candidate' | 'candidate-missing'
   | 'confirmed' | 'confirmed-legacy' | 'confirmed-unverified'
+  | 'confirmed-profile' | 'profile-missing' | 'profile-unavailable' | 'profile-corrupt' | 'profile-newer-available'
   | 'stale-missing' | 'stale-renamed' | 'stale-revised';
 
-export interface LinkAssessment { state: LinkReviewState; food: TrackerFood | null; currentName: string | null; }
+export interface LinkAssessment { state: LinkReviewState; food: TrackerFood | null; currentName: string | null; profile?: ResolvedIngredientProfile; }
 
-export const assessNutritionLink = (link: NutritionLink, foodsById: Map<string, TrackerFood> | null): LinkAssessment => {
+export const assessNutritionLink = (link: NutritionLink, foodsById: Map<string, TrackerFood> | null, profiles?: ProfilesState): LinkAssessment => {
+  if (link.ingredientRef && link.status === 'confirmed') return assessIngredientLink(link.ingredientRef, profiles);
   if (link.status === 'unlinked') return { state: 'unlinked', food: null, currentName: null };
   if (link.status === 'no-match') return { state: 'no-match', food: null, currentName: null };
   if (link.status === 'candidate') {
@@ -119,7 +134,7 @@ export const assessNutritionLink = (link: NutritionLink, foodsById: Map<string, 
   return { state: 'confirmed', food, currentName: food.name };
 };
 
-export const isStale = (state: LinkReviewState): boolean => state.startsWith('stale-');
+export const isStale = (state: LinkReviewState): boolean => state.startsWith('stale-') || state === 'profile-missing' || state === 'profile-corrupt';
 
 export interface LinkReviewSummary { stale: number; candidates: number; unlinked: number; noMatch: number; confirmed: number; confirmedLegacy: number; unverified: number; }
 
@@ -130,11 +145,11 @@ export const summarizeLinkReview = (assessments: Iterable<LinkAssessment>): Link
     else if (state === 'candidate' || state === 'candidate-missing') summary.candidates += 1;
     else if (state === 'unlinked') summary.unlinked += 1;
     else if (state === 'no-match') summary.noMatch += 1;
-    else if (state === 'confirmed' || state === 'confirmed-legacy') {
+    else if (state === 'confirmed' || state === 'confirmed-legacy' || state === 'confirmed-profile' || state === 'profile-newer-available') {
       summary.confirmed += 1;
       if (state === 'confirmed-legacy') summary.confirmedLegacy += 1;
     }
-    else if (state === 'confirmed-unverified') summary.unverified += 1;
+    else if ((state === 'confirmed-unverified' || state === 'profile-unavailable')) summary.unverified += 1;
   }
   return summary;
 };

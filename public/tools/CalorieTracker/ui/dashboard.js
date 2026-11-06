@@ -1942,7 +1942,7 @@ export function populateSettingsForm() {
     debugLog('populate-settings', 'Starting settings form population');
     const capability = document.getElementById('nutrient-capability');
     if (capability) {
-      capability.textContent = `Nutrient registry v${NUTRITION_CAPABILITIES.registryVersion} · storage v${NUTRITION_CAPABILITIES.writeVersion} · build ${NUTRITION_CAPABILITIES.cacheName}`;
+      capability.textContent = `Nutrient registry v${NUTRITION_CAPABILITIES.registryVersion} · storage v${NUTRITION_CAPABILITIES.writeVersion} · ingredient store v${NUTRITION_CAPABILITIES.ingredientStore.schemaVersion} (writes ${NUTRITION_CAPABILITIES.ingredientStore.writes ? 'on' : 'off'}) · build ${NUTRITION_CAPABILITIES.cacheName}`;
     }
     
     // Handle banking/macro parameters with proper defaults

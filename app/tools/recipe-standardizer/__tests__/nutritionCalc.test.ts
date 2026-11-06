@@ -812,3 +812,41 @@ describe('calculator determinism and safety', () => {
     expect(finite(oversizedFactor)).toBe(true);
   });
 });
+
+import { ingredientFixture } from './ingredientFixtures';
+import { refCacheKey } from '@/public/shared/nutrition/ingredientRefs.js';
+it('computes pinned ingredient-only profiles, unknown nutrients remain gaps; newer head never changes totals', async () => {
+  const { ref, resolved } = await ingredientFixture();
+  const recipe = recipeOf([ingredient('profile', 50, { ...UNLINKED_NUTRITION, status: 'confirmed', ingredientRef: ref })]);
+  const input = { recipe, foods: ready([]), scale: NO_SCALE, profiles: new Map([[refCacheKey(ref), resolved]]) };
+  const result = calculateRecipeNutrition(input);
+  expect(result.bases.total.amounts?.protein.value).toBe(5);
+  expect(result.bases.total.amounts?.calories.value).toBeNull();
+  expect(result.coverage.nutrientGaps).toContain('calories');
+  expect(calculateRecipeNutrition({ ...input, profiles: new Map([[refCacheKey(ref), { ...resolved, newerAvailable: true }]]) }).bases).toEqual(result.bases);
+});
+it.each(['missing','stale','corrupt'] as const)('excludes %s profiles explicitly without zero-filling', async status => {
+  const { ref, resolved } = await ingredientFixture();
+  const result = calculateRecipeNutrition({ recipe: recipeOf([ingredient('profile',50,{ ...UNLINKED_NUTRITION,status:'confirmed',ingredientRef:ref })]), foods:ready([]), scale:NO_SCALE, profiles:new Map([[refCacheKey(ref),{ ...resolved,status }]]) });
+  expect(result.excluded[0].reasons).toContain('profile-unavailable');
+  expect(result.coverage.status).toBe('none');
+  expect(result.bases.total.amounts).toBeNull();
+});
+it('mixes legacy and ingredient links in one recipe', async () => {
+  const { ref, resolved } = await ingredientFixture();
+  const recipe = recipeOf([ingredient('legacy',50,confirmed(EGG,50)), ingredient('profile',50,{ ...UNLINKED_NUTRITION,status:'confirmed',ingredientRef:ref })]);
+  const result = calculateRecipeNutrition({ recipe,foods:ready([EGG]),scale:NO_SCALE,profiles:new Map([[refCacheKey(ref),resolved]]) });
+  expect(result.coverage.includedCount).toBe(2);
+  expect(result.bases.total.amounts?.protein.value).toBe(11);
+  expect(result.bases.total.amounts?.calories.isLowerBound).toBe(true);
+});
+
+import { calculateExportNutrition, collectExportSourceTargets } from '../lib/nutritionExport';
+it('exports profile contributions as flattened nutrients without treating a variant ID as a food ID', async () => {
+  const { ref, resolved } = await ingredientFixture();
+  const recipe = recipeOf([ingredient('profile',50,{ ...UNLINKED_NUTRITION,status:'confirmed',ingredientRef:ref })]);
+  const unrelatedFood=food(ref.variantId,'Unrelated mutable food');
+  const result=calculateExportNutrition(recipe,ready([unrelatedFood]),new Map([[refCacheKey(ref),resolved]]));
+  expect(result.bases.total.amounts?.protein.value).toBe(5);
+  expect(collectExportSourceTargets(result,[unrelatedFood])).toEqual([]);
+});

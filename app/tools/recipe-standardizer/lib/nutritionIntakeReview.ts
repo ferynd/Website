@@ -26,6 +26,9 @@ export const INTAKE_ELIGIBLE_STATES: ReadonlySet<LinkReviewState> = new Set([
   'stale-missing',
 ]);
 
+/** Profile states are deliberately excluded: legacy intake cannot replace a pinned profile. */
+export const PROFILE_INTAKE_STATES: ReadonlySet<LinkReviewState> = new Set(['confirmed-profile','profile-newer-available','profile-missing','profile-unavailable','profile-corrupt']);
+
 /** Action selected for one pasted nutrition item. */
 export type IntakeDecision = 'create' | 'link-existing' | 'skip';
 
@@ -160,7 +163,7 @@ export const findNoLongerEligible = (
     const ingredient = recipe.ingredients.find((item) => item.id === member.ingredientId);
     if (!ingredient) continue;
     const assessment = assessNutritionLink(ingredient.nutritionLink, foodsById);
-    if (!INTAKE_ELIGIBLE_STATES.has(assessment.state)) ineligible.add(ingredient.id);
+    if (ingredient.nutritionLink.ingredientRef || !INTAKE_ELIGIBLE_STATES.has(assessment.state)) ineligible.add(ingredient.id);
   }
 
   return [...ineligible];
@@ -187,7 +190,7 @@ export const selectIntakeGroups = (
 
   for (const ingredient of recipe.ingredients) {
     const assessment = assessments.get(ingredient.id);
-    if (!assessment || !INTAKE_ELIGIBLE_STATES.has(assessment.state)) continue;
+    if (ingredient.nutritionLink.ingredientRef || !assessment || !INTAKE_ELIGIBLE_STATES.has(assessment.state)) continue;
 
     const normalizedName = normalizeIngredientName(ingredient.displayName);
     if (!normalizedName) continue;
@@ -459,7 +462,8 @@ export const applyIntakeLinks = (
     const entry = byId.get(ingredient.id);
     if (!entry) return ingredient;
     if (
-      ingredient.nutritionLink.status !== entry.expected.status
+      !!ingredient.nutritionLink.ingredientRef
+      || ingredient.nutritionLink.status !== entry.expected.status
       || ingredient.nutritionLink.foodItemId !== entry.expected.foodItemId
     ) {
       skipped.push(ingredient.id);

@@ -1,3 +1,4 @@
+import {profileContribution,type ProfilesState} from './ingredientLink';
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: nutrition calculation bounds                    */
 /* ------------------------------------------------------------ */
@@ -46,7 +47,8 @@ export type LinkExclusionReason =
   | 'stale-revised'
   | 'unverifiable-target'
   | 'invalid-basis'
-  | 'foods-unavailable';
+  | 'foods-unavailable'
+  | 'profile-unavailable';
 
 /** Why an ingredient's gram quantity cannot be used. */
 export type QuantityExclusionReason = 'missing-quantity' | 'zero-quantity' | 'invalid-quantity';
@@ -66,6 +68,7 @@ export const NUTRITION_EXCLUSION_REASONS: readonly NutritionExclusionReason[] = 
   'unlinked',
   'no-match',
   'foods-unavailable',
+  'profile-unavailable',
   'missing-quantity',
   'zero-quantity',
   'invalid-quantity',
@@ -98,6 +101,7 @@ export interface IncludedIngredient {
   displayName: string;
   optional: boolean;
   scaledGrams: number;
+  ingredientRef?: import('@/public/shared/nutrition/ingredientRefs.js').IngredientProfileRef;
   foodId: string;
   foodName: string;
   gramsPerUnit: number;
@@ -189,6 +193,7 @@ export interface RecipeNutritionResult {
 /** Recipe, current tracker foods, and working scale used by the pure calculator. */
 export interface NutritionInput {
   recipe: Recipe;
+  profiles?: ProfilesState;
   foods: FoodsState;
   scale: Pick<ScaleResult, 'factor' | 'portionOverride'>;
 }
@@ -229,6 +234,13 @@ export const linkExclusionReason = (
     case 'stale-renamed':
     case 'stale-revised':
       return assessment.state;
+    case 'profile-missing':
+    case 'profile-unavailable':
+    case 'profile-corrupt':
+      return 'profile-unavailable';
+    case 'confirmed-profile':
+    case 'profile-newer-available':
+      return assessment.profile?.revision?.basis.kind === 'per_100g_edible' ? null : 'invalid-basis';
     case 'confirmed-unverified':
       return 'foods-unavailable';
     case 'confirmed':
@@ -341,7 +353,7 @@ const rowFor = (
 };
 
 /** Calculate recipe nutrition, coverage, exclusions, and available serving bases. */
-export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInput): RecipeNutritionResult => {
+export const calculateRecipeNutrition = ({ recipe, foods, scale, profiles }: NutritionInput): RecipeNutritionResult => {
   const factor = positiveFinite(scale.factor)
     && scale.factor >= MIN_SCALE_FACTOR
     && scale.factor <= MAX_SCALE_FACTOR
@@ -369,7 +381,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     } else {
       knownBase += grams;
     }
-    const assessment = assessNutritionLink(ingredient.nutritionLink, foodsById);
+    const assessment = assessNutritionLink(ingredient.nutritionLink, foodsById, profiles);
     if (seenIds.has(ingredient.id)) {
       excluded.push(rowFor(ingredient, index, grams === null ? null : finiteOrNull(grams * factor), ['duplicate-id'], assessment));
       return;
@@ -382,19 +394,18 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     if (quantityReason !== null) reasons.push(quantityReason);
     let contributions: Record<TrackerNutrientKey, number | null> | null = null;
     if (reasons.length === 0) {
-      contributions = computeBaseContributions(
-        grams,
-        assessment.food,
-        ingredient.nutritionLink.gramsPerUnit,
-      );
+      contributions = ingredient.nutritionLink.ingredientRef && grams !== null
+        ? Object.fromEntries(TRACKER_NUTRIENT_KEYS.map(key => [key,profileContribution(assessment.profile,grams,key)])) as Record<TrackerNutrientKey,number|null>
+        : computeBaseContributions(grams,assessment.food,ingredient.nutritionLink.gramsPerUnit);
       if (contributions === null) reasons.push('invalid-basis');
     }
     if (reasons.length > 0) {
       excluded.push(rowFor(ingredient, index, grams === null ? null : finiteOrNull(grams * factor), reasons, assessment));
       return;
     }
-    const gramsPerUnit = ingredient.nutritionLink.gramsPerUnit ?? Number.NaN;
-    if (contributions === null || assessment.food === null || grams === null) {
+    const isProfile = !!ingredient.nutritionLink.ingredientRef;
+    const gramsPerUnit = isProfile ? 100 : ingredient.nutritionLink.gramsPerUnit ?? Number.NaN;
+    if (contributions === null || (!isProfile && assessment.food === null) || grams === null) {
       excluded.push(rowFor(ingredient, index, grams === null ? null : finiteOrNull(grams * factor), ['invalid-basis'], assessment));
       return;
     }
@@ -404,19 +415,22 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       displayName: ingredient.displayName,
       optional: ingredient.optional,
       scaledGrams: finiteOrZero(grams * factor),
-      foodId: assessment.food.id,
-      foodName: assessment.food.name,
+      foodId: assessment.food?.id ?? ingredient.nutritionLink.ingredientRef!.variantId,
+      foodName: assessment.food?.name ?? ingredient.displayName,
       gramsPerUnit,
       baseContributions: contributions,
+      ...(ingredient.nutritionLink.ingredientRef ? {ingredientRef:ingredient.nutritionLink.ingredientRef} : {}),
     });
     const v2Confirmed = assessment.state === 'confirmed'
       && (ingredient.nutritionLink.targetFingerprint ?? '').startsWith('v2:');
-    if (!v2Confirmed) {
+    if (isProfile) {
+      detailRows.push(Object.fromEntries(V2_DETAIL_KEYS.map(key => [key,profileContribution(assessment.profile,grams,key)])) as Record<DetailKey,number|null>);
+    } else if (!v2Confirmed) {
       detailRows.push(null);
     } else {
       const row = {} as Record<DetailKey, number | null>;
       for (const key of V2_DETAIL_KEYS) {
-        const value = assessment.food.detail?.[key];
+        const value = assessment.food?.detail?.[key];
         if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
           row[key] = null;
           continue;

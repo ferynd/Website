@@ -169,3 +169,46 @@ describe('nutrition link lifecycle', () => {
     expect(assessNutritionLink(v1, new Map([['egg', { ...food(), fiberMeaning: 'total', carbConvention: 'excludes_fiber' }]])).state).toBe('confirmed');
   });
 });
+
+import { ingredientFixture } from './ingredientFixtures';
+import { refCacheKey } from '@/public/shared/nutrition/ingredientRefs.js';
+it('parses ingredient-only links with precedence and downgrades malformed refs', async () => {
+  const { ref, resolved } = await ingredientFixture();
+  const warnings: string[] = [];
+  const link = parseNutritionLink({ ...UNLINKED_NUTRITION, status: 'confirmed', ingredientRef: ref }, 'link', warnings);
+  expect(link.foodItemId).toBeNull();
+  expect(link.status).toBe('confirmed');
+  expect(parseNutritionLink(link,'link',[])).toEqual(link);
+  const assessment = assessNutritionLink({ ...link, foodItemId: 'missing-legacy' }, new Map(), new Map([[refCacheKey(ref), resolved]]));
+  expect(assessment.state).toBe('confirmed-profile');
+  expect(parseNutritionLink({ ...link, ingredientRef: { ...ref, revision: 0 } }, 'link', warnings).status).toBe('unlinked');
+  expect(warnings).toHaveLength(1);
+  const summary = summarizeLinkReview([
+    assessment, { state: 'profile-missing', food: null, currentName: null },
+    { state: 'profile-corrupt', food: null, currentName: null },
+    { state: 'profile-unavailable', food: null, currentName: null },
+    { state: 'profile-newer-available', food: null, currentName: null },
+  ]);
+  expect(summary).toMatchObject({ confirmed: 2, stale: 2, unverified: 1 });
+});
+
+it('display-name edits retain the confirmed pinned profile and its nutrition', async () => {
+  const {ingredientFixture} = await import('./ingredientFixtures');
+  const {ref, resolved} = await ingredientFixture();
+  const {refCacheKey} = await import('@/public/shared/nutrition/ingredientRefs.js');
+  const link = {...UNLINKED_NUTRITION, status:'confirmed' as const, needsUserReview:false, ingredientRef:ref};
+  const renamed = linkAfterRename(link);
+  expect(renamed).toEqual(link);
+  expect(assessNutritionLink(renamed, null, new Map([[refCacheKey(ref), resolved]])).state).toBe('confirmed-profile');
+});
+it('profile parsing layers the ref over defensively parsed legacy metadata', async () => {
+  const {ingredientFixture} = await import('./ingredientFixtures');
+  const {ref} = await ingredientFixture();
+  const legacy = confirmNutritionLink(food(), 50, 123, candidateLink(food(), 0.9));
+  expect(parseNutritionLink({...legacy,ingredientRef:ref}, 'link', [])).toEqual({...legacy,ingredientRef:ref});
+  const parsed = parseNutritionLink({...legacy,ingredientRef:ref,matchConfidence:2,targetRevision:5}, 'link', []);
+  expect(parsed.matchConfidence).toBe(1);
+  expect(parsed.targetRevision).toBeNull();
+  expect(parsed.gramsPerUnit).toBe(50);
+  expect(parseNutritionLink(JSON.parse(JSON.stringify(parsed)), 'link', [])).toEqual(parsed);
+});

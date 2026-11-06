@@ -87,3 +87,9 @@ export const rankFoodsForQuery = <T extends FoodItemRef>(query: string, foods: T
     .slice(0, limit)
     .map(({ food }) => food);
 };
+
+/** Shared profile lookup only suggests; confirmation remains an explicit later action. */
+export async function suggestIngredientProfiles(name:string,store:import('@/public/shared/nutrition/ingredientStore.js').IngredientStore) {
+ const result=await store.searchPrivate(name);
+ return result.items.map(item=>({...item,status:'candidate' as const,needsUserReview:true}));
+}

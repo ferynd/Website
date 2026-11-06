@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nutritrack-v3';
+const CACHE_NAME = 'nutritrack-v4';
 
 const APP_SHELL = [
   './',
@@ -23,6 +23,8 @@ const APP_SHELL = [
   './food/manager.js',
   './food/save.js',
   './food/stageSavedFood.js',
+  './services/ingredientStore.js',
+  './services/ingredientSession.js',
   './services/data.js',
   './services/firebase.js',
   './staging/parser.js',
@@ -46,6 +48,16 @@ const APP_SHELL = [
   '/shared/nutrition/nutrientRegistry.js',
   '/shared/nutrition/capabilities.js',
   '/shared/nutrition/nutrientText.js',
+  '/shared/nutrition/contentHash.js',
+  '/shared/nutrition/ingredientIds.js',
+  '/shared/nutrition/ingredientVariants.js',
+  '/shared/nutrition/ingredientRefs.js',
+  '/shared/nutrition/ingredientProfile.js',
+  '/shared/nutrition/ingredientConversion.js',
+  '/shared/nutrition/ingredientStore.js',
+  '/shared/nutrition/ingredientMatch.js',
+  '/shared/nutrition/ingredientCatalog.js',
+  '/shared/nutrition/profileCache.js',
 ];
 
 const EXTERNAL_RUNTIME = [
@@ -110,7 +122,20 @@ self.addEventListener('fetch', (event) => {
   }
 
   const path = url.pathname;
-  const appShell = event.request.mode === 'navigate'
+  // Content-addressed catalog shards never change under the same URL.
+  if (/^\/shared\/nutrition\/catalog\/[^/]+\/(?:search|variants)\/[^/]+\.[a-f0-9]{64}\.json$/.test(path)) {
+    event.respondWith(caches.open(CACHE_NAME).then(async cache => {
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      const response = await fetch(event.request);
+      if (response.ok) await cache.put(event.request, response.clone());
+      return response;
+    }));
+    return;
+  }
+
+  const appShell = /^\/shared\/nutrition\/catalog\/[^/]+\/manifest\.json$/.test(path)
+    || event.request.mode === 'navigate'
     || path.endsWith('/')
     || /\.(?:js|mjs|html)$/i.test(path);
   if (appShell) {
