@@ -376,6 +376,31 @@ function findSubtypeInText(baseKey, text) {
   return null;
 }
 
+function isAllowedSubtypeGapToken(token, baseKey) {
+  const pattern = BASE_SUBTYPE_WORDS[baseKey];
+  if (pattern && pattern.test(token)) return true;
+  const hit = lookupLabel(token);
+  if (hit) {
+    if (hit.key === baseKey) return true;
+    if (isChildNutrient(baseKey, hit.key)) return true;
+    if (isChildNutrient(hit.key, baseKey)) return true;
+  }
+  return false;
+}
+
+function isValidSubtypeGap(afterSubtype, baseKey) {
+  if (/^[=:]?\s*$/.test(afterSubtype)) return true;
+  if (!/^[\s+&/:=a-zA-Z0-9_-]+$/.test(afterSubtype)) return false;
+  const punctCount = (afterSubtype.match(/[:=]/g) || []).length;
+  if (punctCount > 1) return false;
+  const tokens = afterSubtype.match(/[a-zA-Z0-9_-]+/g);
+  if (!tokens || tokens.length === 0) return false;
+  for (const token of tokens) {
+    if (!isAllowedSubtypeGapToken(token, baseKey)) return false;
+  }
+  return true;
+}
+
 /**
  * A child word or "net" after the amount must not fill the parent.
  * Scoped only to bases that have children, using that base's own words and child labels.
@@ -404,14 +429,20 @@ function trailingNoteRejectsParent(hit, valuePart, number) {
   if (!subtypeMatch) return false;
 
   const afterSubtype = textBeforeDigit.slice(subtypeMatch.index + subtypeMatch.length);
-  if (!/^[=:]?\s*$/.test(afterSubtype)) {
+  if (!isValidSubtypeGap(afterSubtype, hit.key)) {
     return true;
   }
 
   const afterDigit = rest.slice(digitMatch.index);
   const num = readNumber(afterDigit);
-  if (num && isBarePercent(afterDigit, num)) {
-    return true;
+  if (num) {
+    if (isBarePercent(afterDigit, num)) {
+      return true;
+    }
+    const tailAfterSecond = remainderAfterAmount(afterDigit, num);
+    if (/\btotal\b/i.test(tailAfterSecond)) {
+      return true;
+    }
   }
 
   return false;
@@ -591,23 +622,23 @@ const MACRO_ENERGY_FACTORS = {
   alcohol: 7,
 };
 
-function isSingleBareMacroFactor(line) {
+function singleBareMacroFactorKey(line) {
   const split = splitLabelValue(line);
-  if (!split || !split.label) return false;
+  if (!split || !split.label) return null;
   const hit = lookupLabel(split.label);
-  if (!hit) return false;
+  if (!hit) return null;
   const expected = MACRO_ENERGY_FACTORS[hit.key];
-  if (expected == null) return false;
+  if (expected == null) return null;
 
   const number = readNumber(split.valuePart);
-  if (!number) return false;
-  if (number.value !== expected) return false;
-  if (readUnit(split.valuePart, number.end)) return false;
+  if (!number) return null;
+  if (number.value !== expected) return null;
+  if (readUnit(split.valuePart, number.end)) return null;
 
   const rest = remainderAfterAmount(split.valuePart, number);
-  if (rest && !/^\s*%/.test(rest)) return false;
+  if (rest && !/^\s*%/.test(rest)) return null;
 
-  return true;
+  return hit.key;
 }
 
 /** "Calories: 2,000 2,500" is the reference row that opens the footnote block. */
@@ -838,7 +869,7 @@ export function parseNutritionText(text) {
   };
 
   let skipBareFactorRow = false;
-  let bareFactorsSkipped = 0;
+  const skippedFactorMacros = new Set();
 
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = stripDecorations(rawLine);
@@ -846,7 +877,7 @@ export function parseNutritionText(text) {
 
     if (isCaloriesPerGramLine(line)) {
       skipBareFactorRow = true;
-      bareFactorsSkipped = 0;
+      skippedFactorMacros.clear();
       continue;
     }
 
@@ -855,8 +886,9 @@ export function parseNutritionText(text) {
         skipBareFactorRow = false;
         continue;
       }
-      if (isSingleBareMacroFactor(line) && bareFactorsSkipped < 4) {
-        bareFactorsSkipped += 1;
+      const macroKey = singleBareMacroFactorKey(line);
+      if (macroKey && !skippedFactorMacros.has(macroKey)) {
+        skippedFactorMacros.add(macroKey);
         continue;
       }
       skipBareFactorRow = false;

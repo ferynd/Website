@@ -499,6 +499,23 @@ const ROUND10 = [
   ['Calories: 250 (net)', { key: 'calories', value: 250, unit: 'kcal', assumed: true, warning: false }],
   ['Calories: 250 kcal (12% DV based on a 2,000 calorie diet)', { key: 'calories', value: 250, unit: 'kcal', assumed: false, warning: false }],
   ['Calories 250 (based on a 2,000 calorie diet)', { key: 'calories', value: 250, unit: 'kcal', assumed: true, warning: false }],
+  ['Total Carbohydrate 30g (Net Carbs 25g)', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: 30g (net carbs: 25g)', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Fat: 15g (sat fat 5g)', { key: 'fat', value: 15, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g (saturated fat 3 g)', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g, saturated fat 3 g', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat 9 g (trans fat 0 g)', { key: 'fat', value: 9, unit: 'g', assumed: false, warning: false }],
+  ['Sugars 12 g (added sugars 10 g)', { key: 'sugarsTotal', value: 12, unit: 'g', assumed: false, warning: false }],
+  ['Fiber 5 g (soluble fiber 2 g)', { key: 'fiber', value: 5, unit: 'g', assumed: false, warning: false }],
+  ['Omega-3 1.2 g (EPA + DHA 700 mg)', { key: 'omega3', value: 1.2, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g (sat 15% DV)', { unknown: 'Fat 8 g (sat 15% DV)' }],
+  ['Fat 3 g (saturated)', { unknown: 'Fat 3 g (saturated)' }],
+  ['Carbs: 30 g net', { unknown: 'Carbs: 30 g net' }],
+  ['Fiber 4 g soluble', { unknown: 'Fiber 4 g soluble' }],
+  ['Fat 8 g (mostly saturated)', { unknown: 'Fat 8 g (mostly saturated)' }],
+  ['Carbs 25g net 30g total', { unknown: 'Carbs 25g net 30g total' }],
+  ['Carbs 25 g net: 30 g total', { unknown: 'Carbs 25 g net' }],
+  ['Carbs 30 g net 25 g', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
 ];
 
 /** Older US Nutrition Facts panel, including the calorie-needs footer. */
@@ -897,6 +914,20 @@ describe('paste line golden', () => {
     expect(nonFactorRows.values.carbs).toBe(30);
     expect(nonFactorRows.values.protein).toBe(20);
     expect(nonFactorRows.unknownLabels).toEqual([]);
+  });
+
+  it('skips each macro factor row at most once, allowing a subsequent real bare macro', () => {
+    const macroSkipAtMostOnce = parseNutritionText([
+      'Calories per gram:',
+      'Fat 9',
+      'Carbs 4',
+      'Protein 4',
+      'Fat 9',
+    ].join('\n'));
+    expect(macroSkipAtMostOnce.values.fat).toBe(9);
+    expect(macroSkipAtMostOnce.values.carbs).toBeNull();
+    expect(macroSkipAtMostOnce.values.protein).toBeNull();
+    expect(macroSkipAtMostOnce.unknownLabels).toEqual([]);
   });
 
   it('does not turn on footer mode for nutrient lines mentioning a 2,000 calorie diet', () => {
