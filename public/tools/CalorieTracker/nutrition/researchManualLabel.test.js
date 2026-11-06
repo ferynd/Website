@@ -1,6 +1,8 @@
 import { it, expect, describe } from 'vitest';
 import { createManualAdapter, createLabelAdapter, getFdaRoundingInterval } from '../../../shared/nutrition/research/manualAdapters.js';
 import { normalizeSourceResult } from '../../../shared/nutrition/research/sourceResult.js';
+import { createResearchService } from '../../../shared/nutrition/research/researchService.js';
+import { createMemoryResearchStore, createMemorySourceCache } from '../../../shared/nutrition/research/memoryResearchStore.js';
 describe('Manual and Label Adapters', () => {
     describe('FDA rounding intervals', () => {
         it('calculates FDA rounding intervals for key nutrients', () => {
@@ -114,4 +116,44 @@ it('normalizes explicit manual observations and label zero into sourced values',
 it('rejects numeric text from manual/label inputs', async () => {
     await expect(createLabelAdapter().toSourceResult({ nutrients: { protein: { value: '2' } } })).rejects.toThrow('number');
     await expect(createManualAdapter().toSourceResult({ source: { type: 'manual' }, nutrients: { protein: { value: '2', status: 'measured' } } })).rejects.toThrow('observation');
+});
+it.each(['manual', 'label'])('%s inline cache keys follow canonical content across jobs and corrected passes', async type => {
+    const adapter = type === 'manual' ? createManualAdapter() : createLabelAdapter();
+    const record = value => type === 'manual'
+        ? { source: { type: 'manual' }, nutrients: { protein: { value, unit: 'g', status: 'measured' } } }
+        : { originalBasis: 'per_100g_edible', nutrients: { protein: value } };
+    const context = value => ({ [type + 'Record']: record(value) });
+    const first = await adapter.match({}, context(2));
+    const reordered = Object.fromEntries(Object.entries(record(2)).reverse());
+    expect((await adapter.match({}, { [type + 'Record']: reordered })).sourceId).toBe(first.sourceId);
+    expect((await adapter.match({}, context(3))).sourceId).not.toBe(first.sourceId);
+    expect((await adapter.toSourceResult(record(2))).recordId).toBe(first.sourceId);
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [adapter] });
+    const a = await service.enqueue({ fields: ['protein'], target: { manifestId: 'inline-a', dims: { state: 'raw' } } });
+    const b = await service.enqueue({ fields: ['protein'], target: { manifestId: 'inline-b', dims: { state: 'raw' } } });
+    await service.runJob(a.jobId, { adapterId: type, context: context(2) });
+    expect((await service.runJob(b.jobId, { adapterId: type, context: context(3) })).proposal.nutrients.protein).toBe(3);
+    await service.review(a.jobId, { decision: 'reject', reviewer: 'r' });
+    const corrected = await service.runJob(a.jobId, { adapterId: type, context: context(4) });
+    expect(corrected.proposal.nutrients.protein).toBe(4);
+    expect(corrected.match.sourceId).not.toBe(first.sourceId);
+});
+it.each([
+    {}, { servingSize: 0, servingSizeUnit: 'g' },
+    { servingSize: -1, servingSizeUnit: 'g' }, { servingSize: '50', servingSizeUnit: 'g' },
+])('rejects labels without a valid explicit basis: %j', async basis => {
+    await expect(createLabelAdapter().toSourceResult({ ...basis, nutrients: { protein: 2 } })).rejects.toThrow(/basis|positive/);
+});
+it('requires gram units and honors an explicit per-100g label basis', async () => {
+    const adapter = createLabelAdapter();
+    for (const servingSizeUnit of [undefined, 'cup']) {
+        const basis = servingSizeUnit ? { servingSizeUnit } : {};
+        const result = await adapter.toSourceResult({ servingSize: 50, ...basis, nutrients: { protein: 2 } });
+        expect(normalizeSourceResult(result).gaps.protein).toBe('unit_not_convertible');
+    }
+    const result = await adapter.toSourceResult({ originalBasis: 'per_100g_edible', servingSize: 50, servingSizeUnit: 'g', nutrients: { protein: 2 } });
+    expect(normalizeSourceResult(result).nutrients.protein).toBe(2);
+    const perServing = await adapter.toSourceResult({ servingSize: 50, servingSizeUnit: 'grams', nutrients: { protein: 2 } });
+    expect(normalizeSourceResult(perServing).nutrients.protein).toBe(4);
 });

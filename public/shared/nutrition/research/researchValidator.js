@@ -128,6 +128,8 @@ export async function validateProposal(job, { base = null } = {}) {
         if (!src.permittedUse || typeof src.permittedUse !== 'string') {
             errors.push(`Source ${sKey} missing permittedUse (license)`);
         }
+        if (job.scope === 'curated' && src.permittedUse === 'review_required')
+            errors.push(`Source ${sKey} has unresolved permittedUse (license)`);
         if (src.url && (() => {
             try {
                 return new URL(src.url).protocol !== 'https:';
@@ -141,6 +143,9 @@ export async function validateProposal(job, { base = null } = {}) {
     }
     // 10. Curated scope carrying private material
     if (job.scope === 'curated') {
+        for (const conv of job.proposal?.conversions || [])
+            if (conv.source?.permittedUse === 'review_required')
+                errors.push('Conversion source has unresolved permittedUse (license)');
         if (job.ownerUid || draft.ownerUid) {
             errors.push('Curated job cannot have ownerUid');
         }

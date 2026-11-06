@@ -5,7 +5,9 @@ import path from 'node:path';
 import { researchCli, packetForJobs } from './researchCli';
 import { createFileResearchStore } from './fileResearchStore';
 import { buildResearchPackets, canonicalRequestBody } from '../../public/shared/nutrition/research/researchPacket.js';
+import type { ResearchRequest } from '../../public/shared/nutrition/research/researchPacket.js';
 import { responseFor } from '../../public/tools/CalorieTracker/nutrition/researchPacketFixtures.js';
+import { transition, passIdFor } from '../../public/shared/nutrition/research/researchJob.js';
 const temp: string[] = [];
 const output = () => { };
 afterEach(async () => { await Promise.all(temp.splice(0).map(p => rm(p, { recursive: true, force: true }))); vi.unstubAllEnvs(); });
@@ -51,4 +53,36 @@ it('refuses fdc-api without --live and writes without --store; curated manifest 
     expect(fetch).not.toHaveBeenCalled();
     const manifest = JSON.parse(await readFile('public/shared/nutrition/catalog/nutrition-curated/manifest.json', 'utf8'));
     expect(manifest.profileCount).toBe(0);
+});
+it('retry requires a job, previews without persistence, and only --write requeues blocked jobs', async () => {
+    const root = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
+    await researchCli(['plan', '--max', '1', '--write', '--store', root], { output, fetch });
+    const store = await createFileResearchStore(root), job = (await store.list()).items[0];
+    const blocked = transition(job, 'blocked', { blocked: { code: 'match_not_found', needs: 'fix table' }, match: { sourceId: 'obsolete' } });
+    await store.save(blocked, { expectedVersion: job.version });
+    const file = path.join(root, 'jobs.json'), before = await readFile(file, 'utf8');
+    await expect(researchCli(['retry', '--store', root], { output, fetch })).rejects.toThrow('--job');
+    const preview = await researchCli(['retry', '--job', job.jobId, '--store', root], { output, fetch }) as { dryRun: boolean; job: typeof job };
+    expect(preview.dryRun).toBe(true);
+    expect(preview.job).toMatchObject({ state: 'queued', blocked: null, match: null });
+    expect(await readFile(file, 'utf8')).toBe(before);
+    await researchCli(['retry', '--job', job.jobId, '--store', root, '--write'], { output, fetch });
+    expect(await store.get(job.jobId)).toMatchObject({ state: 'queued', blocked: null, match: null, version: blocked.version + 1 });
+    await expect(researchCli(['retry', '--job', job.jobId, '--store', root, '--write'], { output, fetch })).rejects.toThrow('blocked job');
+    expect(fetch).not.toHaveBeenCalled();
+});
+it('packet without --batch partitions persisted jobs by parent and uses their own pass IDs', async () => {
+    const root = await dir();
+    await researchCli(['plan', '--max', '1', '--fields', 'protein', '--write', '--store', root], { output });
+    await researchCli(['plan', '--max', '1', '--fields', 'protein', '--write', '--store', root], { output });
+    const store = await createFileResearchStore(root), before = (await store.list()).items;
+    expect(new Set(before.map(j => j.parentBatchId)).size).toBe(2);
+    const packets = await researchCli(['packet', '--store', root, '--write'], { output }) as { request: ResearchRequest }[];
+    expect(packets).toHaveLength(2);
+    for (const { request } of packets) {
+        const jobs = await Promise.all(request.targets.map(t => store.get(t.targetId)));
+        expect(new Set(jobs.map(j => j!.parentBatchId)).size).toBe(1);
+        const passId = await passIdFor({ parentBatchId: jobs[0]!.parentBatchId!, adapter: 'assistant-packet', sourceRelease: request.requestId, purpose: request.purpose });
+        expect(jobs.every(j => j!.passId === passId)).toBe(true);
+    }
 });

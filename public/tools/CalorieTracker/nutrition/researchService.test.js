@@ -43,6 +43,30 @@ function createFakeFdcAdapter({ failTimes = 0, failPermanent = false, fetchCallL
     };
 }
 describe('Research Service', () => {
+    it.each(['match_not_found', 'retries_exhausted', 'review_blocked'])('requeues %s with fresh matching and retry state', async reason => {
+        const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+        const adapter = createFakeFdcAdapter();
+        const originalMatch = adapter.match;
+        if (reason === 'match_not_found') adapter.match = async () => null;
+        if (reason === 'retries_exhausted') adapter.fetch = async () => { throw new Error('temporary'); };
+        const service = createResearchService({ store, sourceCache, adapters: [adapter], retry: { maxAttempts: 1 } });
+        const j = await service.enqueue({ target: { manifestId: 'retry-fixture', dims: { state: 'raw' } } });
+        await expect(service.retryJob(j.jobId)).rejects.toThrow('blocked job');
+        let blocked = await service.runJob(j.jobId);
+        if (reason === 'review_blocked') blocked = await service.review(j.jobId, { decision: 'block', reviewer: 'r' });
+        expect(blocked.blocked.code).toBe(reason);
+        expect((await service.runJob(j.jobId)).state).toBe('blocked');
+        adapter.match = vi.fn(originalMatch);
+        adapter.fetch = vi.fn(async () => loadFixture('apple-bulk.json'));
+        const queued = await service.retryJob(j.jobId);
+        expect(queued).toMatchObject({ state: 'queued', version: blocked.version + 1, blocked: null, match: null, proposal: null, validation: null, review: null, attempts: [], checkpoint: null, nextAttemptAt: null, sourceEvidence: [], pendingRequest: null });
+        const recovered = await service.runJob(j.jobId);
+        expect(recovered.state).toBe('needs_review');
+        expect(adapter.match).toHaveBeenCalledOnce();
+        expect(recovered.attempts).toHaveLength(1);
+        await expect(service.retryJob(j.jobId)).rejects.toThrow('blocked job');
+        await expect(service.retryJob('missing')).rejects.toThrow('blocked job');
+    });
     it('deduplicates enqueue: same jobKey returns identical job; different fields/release creates new job', async () => {
         const store = createMemoryResearchStore();
         const sourceCache = createMemorySourceCache();

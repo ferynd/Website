@@ -78,6 +78,13 @@ export async function stageCatalog(jobs) {
             throw new TypeError('Staging requires valid reviewed content hash');
     }
     const records = jobs.map(toCatalogRecord);
+    const variants = new Set();
+    for (const record of records) {
+        const id = record.variant.variantId;
+        if (variants.has(id))
+            throw new TypeError(`Duplicate variant conflict: ${id}; select one reviewed pass before staging`);
+        variants.add(id);
+    }
     // Deterministic order: sort records by variantId
     records.sort((a, b) => a.variant.variantId.localeCompare(b.variant.variantId));
     const { manifest, files } = await buildCatalogShards(records);

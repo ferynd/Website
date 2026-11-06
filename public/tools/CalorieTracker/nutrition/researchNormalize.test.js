@@ -131,3 +131,14 @@ it('preserves FDC per-100g basis despite a listed serving, and scales source uni
     expect(proposal.nutrients.calories).toBeNull();
     expect(proposal.nutrientMeta.quality.calories.upperBound).toBe(1);
 });
+it.each([[2048, 'atwater_general_factors'], [2047, 'atwater_specific_factors']])('retains calculated energy provenance for FDC %i after unit/basis normalization', (nutrientId, derivation) => {
+    const result = { type: 'fdc', recordId: 'fixture', originalBasis: 'per_serving', servingSize: 50, servingSizeUnit: 'g',
+        nutrients: [{ nutrientId, amount: 100, unitName: 'kcal' }] };
+    const normalized = normalizeSourceResult(result);
+    expect(normalized.nutrients.calories).toBe(200);
+    expect(normalized.nutrientMeta.quality.calories.status).toBe('calculated');
+    expect(normalized.fieldProvenance.calories).toMatchObject({ sourceNutrientId: String(nutrientId), derivation });
+    result.nutrients.push({ nutrientId: 1008, amount: 90, unitName: 'kcal' });
+    expect(normalizeSourceResult(result).nutrientMeta.quality.calories.status).toBe('measured');
+    expect(normalizeSourceResult(result).nutrients.calories).toBe(180);
+});

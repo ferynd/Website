@@ -96,6 +96,14 @@ async function makeApprovedCuratedJob({ manifestId = 'apple-raw-with-skin', cano
     return job;
 }
 describe('Staged Catalog', () => {
+    it('rejects duplicate variants from identical or different approved passes', async () => {
+        const a = await makeApprovedCuratedJob();
+        const b = await makeApprovedCuratedJob({ protein: 0.3 });
+        b.jobId = 'rj-' + '1'.repeat(24);
+        for (const jobs of [[a, a], [a, b], [b, a]])
+            await expect(stageCatalog(jobs)).rejects.toThrow('Duplicate variant conflict');
+        expect((await stageCatalog([b])).manifest.profileCount).toBe(1);
+    });
     it('stages approved jobs and opens round-trip through createCuratedCatalogSource', async () => {
         const job1 = await makeApprovedCuratedJob({
             manifestId: 'apple-raw-with-skin',

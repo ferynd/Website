@@ -288,13 +288,17 @@ export async function validateResearchResponse(input, { request, jobs, now = Dat
                 fail(np, 'estimate requires comparator, transfer reason, derivation and range');
             if (['measured', 'label_reported'].includes(n.status) && !n.sourceIds.some(id => { const s = sources.get(id); return ['fdc', 'manufacturer', 'label'].includes(s.type) && (s.recordId || s.url); }))
                 fail(np, 'measured/label requires proper source');
-            const known = target.knownObservations[key];
-            if (known && (convertUnit(key, known.value, known.unit).value !== (n.value === null ? null : converted.value) || known.status !== n.status))
-                fail(np, 'changed known observation');
             normalized[key] = { ...n, value: n.value === null ? null : converted.value, unit: getNutrient(key).unit };
             for (const k of ['range', 'roundingInterval', 'upperBound'])
                 if (n[k] !== undefined)
                     normalized[key][k] = k === 'range' ? { min: convertUnit(key, n.range.min, n.unit).value, max: convertUnit(key, n.range.max, n.unit).value } : convertUnit(key, n[k], n.unit).value;
+            const known = target.knownObservations[key];
+            if (known) {
+                const observation = (value, normalize) => Object.fromEntries(['value', 'status', 'qualifier', 'roundingInterval', 'upperBound'].filter(k => value[k] !== undefined).map(k => [k,
+                    normalize && ['value', 'roundingInterval', 'upperBound'].includes(k) && value[k] !== null ? convertUnit(key, value[k], value.unit).value : value[k]]));
+                if (canonicalJson(observation(known, true)) !== canonicalJson(observation(normalized[key], false)))
+                    fail(np, 'changed known observation');
+            }
         }
         arr(result.conversions, p + '.conversions', 100);
         if (request.purpose !== 'conversion' && result.conversions.length)

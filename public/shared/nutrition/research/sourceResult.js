@@ -235,6 +235,10 @@ export function normalizeSourceResult(result, target = {}) {
         nutrients[key] = item.isBelowLoq ? null : converted.value;
         quality[key] = item.isBelowLoq ? { status: 'below_quantification_limit', upperBound: converted.value } : { status: result.dataType === 'Branded' ? 'label_reported' : 'measured' };
         fieldProvenance[key] = { sourceKey, sourceNutrientId: String(item.nutrientId) };
+        if (key === 'calories' && !item.isBelowLoq && [2047, 2048].includes(item.nutrientId)) {
+            quality[key].status = 'calculated';
+            fieldProvenance[key].derivation = item.nutrientId === 2048 ? 'atwater_general_factors' : 'atwater_specific_factors';
+        }
         delete gaps[key];
     }
     setFdc('calories', [n1008, n2048, n2047].find(n => n && (n.amount !== null || n.isBelowLoq)), 'kcal');

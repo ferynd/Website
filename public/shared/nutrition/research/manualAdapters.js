@@ -1,7 +1,11 @@
 import { extractStateWords } from './fdcFood.js';
 import { getNutrient, NUTRIENT_STATUSES } from '../nutrientRegistry.js';
 import { canonicalJson, sha256Hex } from '../contentHash.js';
-import { normalizeSourceResult } from './sourceResult.js';
+// Hash the canonical input before adding access dates or other runtime defaults.
+// Canonical JSON normalizes object-key order while retaining all supplied evidence.
+async function inlineRecordId(type, raw) {
+    return String(raw.recordId || `${type}-sha256:${await sha256Hex(canonicalJson(raw))}`);
+}
 export function getFdaRoundingInterval(key, value) {
     if (typeof value !== 'number' || !Number.isFinite(value))
         return undefined;
@@ -43,7 +47,7 @@ export function createManualAdapter() {
             if (context.manualRecord) {
                 return {
                     sourceAdapter: 'manual',
-                    sourceId: context.manualRecord.recordId || 'manual-entry',
+                    sourceId: await inlineRecordId('manual', context.manualRecord),
                     matchConfidence: 1.0,
                     matchType: 'exact',
                 };
@@ -102,7 +106,7 @@ export function createManualAdapter() {
                 ...raw.source,
                 type: raw.source.type || 'manual',
                 datasetId: raw.datasetId || 'manual-input',
-                recordId: String(raw.recordId || raw.source.recordId || 'manual-entry'),
+                recordId: await inlineRecordId('manual', raw),
                 title: raw.title || raw.source.title || 'Manual Entry',
                 version: raw.version || raw.source?.version || '1',
                 publishedAt: raw.publishedAt,
@@ -139,7 +143,7 @@ export function createLabelAdapter() {
             if (context.labelRecord) {
                 return {
                     sourceAdapter: 'label',
-                    sourceId: context.labelRecord.recordId || 'label-entry',
+                    sourceId: await inlineRecordId('label', context.labelRecord),
                     matchConfidence: 1.0,
                     matchType: 'exact',
                 };
@@ -176,18 +180,22 @@ export function createLabelAdapter() {
                     roundingInterval: interval,
                 });
             }
+            const per100g = raw.originalBasis === 'per_100g_edible';
+            if (!per100g && raw.servingSize == null)
+                throw new TypeError('Label requires an explicit serving basis: positive gram servingSize and servingSizeUnit, or originalBasis per_100g_edible');
+            if (!per100g && (!Number.isFinite(raw.servingSize) || raw.servingSize <= 0))
+                throw new TypeError('Label servingSize must be a positive number');
+            const originalBasis = per100g ? 'per_100g_edible' : `per_serving_${raw.servingSize}${raw.servingSizeUnit || ''}`;
             const checksum = 'sha256:' + (await sha256Hex(canonicalJson(raw)));
             const sourceRecord = {
                 type: 'label',
                 datasetId: raw.brand || 'Nutrition Facts Label',
-                recordId: String(raw.recordId || 'label-1'),
+                recordId: await inlineRecordId('label', raw),
                 title: raw.title || raw.productName || 'Nutrition Facts Label',
                 version: raw.version || raw.source?.version || '1',
                 publishedAt: raw.publishedAt,
                 accessedAt: raw.accessedAt || raw.source?.accessedAt || new Date().toISOString().slice(0, 10),
-                originalBasis: raw.servingSize
-                    ? `per_serving_${raw.servingSize}${raw.servingSizeUnit || 'g'}`
-                    : 'per_100g_edible',
+                originalBasis,
                 permittedUse: raw.permittedUse || 'Fair use / factual nutrition data',
                 checksum,
             };
@@ -196,6 +204,7 @@ export function createLabelAdapter() {
                     delete sourceRecord[k];
             return {
                 type: 'label',
+                originalBasis,
                 recordId: sourceRecord.recordId,
                 sourceRecord,
                 nutrients,

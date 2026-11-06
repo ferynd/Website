@@ -125,6 +125,8 @@ export function applyReviewDecision(job, decision) {
     }
     if (action === 'reject') {
         return transition(job, 'queued', {
+            match: null, proposal: null, validation: null, checkpoint: null,
+            sourceEvidence: [], nextAttemptAt: null, attempts: [], blocked: null,
             review: {
                 decision: 'reject',
                 reviewer: String(reviewer || 'anonymous'),

@@ -15,6 +15,7 @@ export interface ResearchServiceOptions {
     };
 }
 export interface ResearchService {
+    retryJob(jobId: string): Promise<ResearchJob>;
     prepareRequest(jobIds: string[], options?: any): Promise<any[]>;
     acceptResponse(input: any, options?: any): Promise<ResearchJob[]>;
     cancelRequest(requestId: string, options?: {

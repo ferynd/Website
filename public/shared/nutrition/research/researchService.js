@@ -3,7 +3,7 @@ import { PACKET_LIMITS } from './researchPacket.js';
 import { packetProposal } from './packetProposal.js';
 import { canonicalJson } from '../contentHash.js';
 import { emptyStagedRecord } from '../nutrientRegistry.js';
-import { buildRevisionDraft } from '../ingredientProfile.js';
+import { buildRevisionDraft, revisionToStagedRecord } from '../ingredientProfile.js';
 import { buildConversion } from '../ingredientConversion.js';
 import { CURATED_CATALOG_ID } from '../ingredientIds.js';
 import { PermanentSourceError } from './fdcFood.js';
@@ -45,6 +45,18 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             throw error;
         }
         return job;
+    }
+    async function retryJob(jobId) {
+        const job = await store.get(jobId);
+        if (job?.state !== 'blocked')
+            throw new TypeError('Retry requires a blocked job');
+        const updated = transition(job, 'queued', {
+            blocked: null, match: null, proposal: null, validation: null, review: null,
+            checkpoint: null, nextAttemptAt: null, attempts: [], sourceEvidence: [],
+            pendingRequest: null, staged: null,
+        });
+        await store.save(updated, { expectedVersion: job.version });
+        return updated;
     }
     async function runJob(jobId, { signal, passId, context = {}, adapterId: chosenAdapter } = {}) {
         if (signal?.aborted) {
@@ -356,11 +368,22 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         const jobs = await Promise.all(jobIds.map(id => store.get(id)));
         if (jobs.some(j => !j))
             throw new Error('Unknown job');
+        if (new Set(jobIds).size !== jobIds.length)
+            throw new TypeError('Duplicate target');
         const adapter = adapterMap.get('assistant-packet') || createAssistantPacketAdapter();
-        const requests = await adapter.prepareRequest(jobs, { ...options, now });
+        const batches = new Map();
+        for (const job of jobs) {
+            const batch = job.parentBatchId || 'single';
+            if (!batches.has(batch)) batches.set(batch, []);
+            batches.get(batch).push(job);
+        }
+        const requests = [];
+        for (const batch of [...batches.keys()].sort())
+            requests.push(...await adapter.prepareRequest(batches.get(batch), { ...options, now }));
         const updated = [];
         for (const request of requests) {
-            const passId = await passIdFor({ parentBatchId: jobs[0].parentBatchId || 'single', adapter: adapter.id, sourceRelease: request.requestId, purpose: request.purpose });
+            const parentBatchId = jobs.find(j => j.jobId === request.targets[0].targetId).parentBatchId || 'single';
+            const passId = await passIdFor({ parentBatchId, adapter: adapter.id, sourceRelease: request.requestId, purpose: request.purpose });
             for (const target of request.targets) {
                 const job = jobs.find(j => j.jobId === target.targetId);
                 const pendingRequest = { requestId: request.requestId, requestDigest: request.requestDigest, passId, status: 'pending', expiresAt: new Date(now() + (options.limits?.ttlMs || PACKET_LIMITS.ttlMs)).toISOString(), baseRef: job.target.baseRef || null, request };
@@ -429,15 +452,46 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         const job = await store.get(jobId), source = job?.proposal?.revisionDraft?.sources?.[job.proposal.assistantSourceKeys?.[sourceId] || sourceId], adapter = adapterMap.get(adapterId);
         if (job?.state !== 'needs_review' || source?.type !== 'fdc' || !source.recordId || !adapter || !['fdc_bulk', 'fdc_api'].includes(adapter.id))
             throw new TypeError('Deterministic FDC verification required');
+        async function mismatch(message) {
+            const proposal = structuredClone(job.proposal);
+            proposal.sourceVerification[sourceId] = { status: 'unverified', reason: message };
+            await store.save({ ...job, proposal, version: job.version + 1 }, { expectedVersion: job.version });
+            throw new TypeError(message);
+        }
         const raw = await adapter.fetch(source.recordId, context), result = await adapter.toSourceResult(raw, context), normalized = normalizeSourceResult(result, job.target);
         if (String(result.recordId) !== source.recordId)
-            throw new TypeError('Source record changed');
+            await mismatch('Source record changed');
         for (const [key, n] of Object.entries(job.proposal.assistantResult.nutrients))
             if (n.sourceIds.includes(sourceId) && canonicalJson(normalized.nutrients[key]) !== canonicalJson(n.value))
-                throw new TypeError('Source value mismatch: ' + key);
+                await mismatch('Source value mismatch: ' + key);
+        // Packet weights describe one unit. FDC portions may describe several;
+        // compare grams per unit, and refuse unexpressed portion qualifiers.
+        for (const c of job.proposal.assistantResult.conversions) {
+            if (!c.sourceIds.includes(sourceId)) continue;
+            const portions = normalized.conversions.filter(p => p.unit === c.unit && p.state === c.state && !p.unitQualifier);
+            if (!portions.length || portions.some(p => !Number.isFinite(p.grams / p.amount) || Math.abs(p.grams / p.amount - c.grams) > 1e-6))
+                await mismatch('Source conversion mismatch: ' + c.unit);
+        }
         const proposal = structuredClone(job.proposal);
+        const sourceKey = proposal.assistantSourceKeys[sourceId];
+        proposal.revisionDraft.sources[sourceKey] = normalized.sourceRecord;
+        const draft = proposal.revisionDraft;
+        proposal.revisionDraft = { ...draft, ...await buildRevisionDraft({
+            identityId: draft.identityId, variantId: draft.variantId,
+            stagedRecord: revisionToStagedRecord(draft), sources: draft.sources,
+            fieldProvenance: draft.fieldProvenance, basis: draft.basis,
+            basedOn: draft.basedOn, base: job.target.baseRevision || null,
+        }) };
+        proposal.conversions = await Promise.all(proposal.conversions.map((c, i) => {
+            const { conversionId, ...input } = c;
+            return buildConversion({ ...input,
+                variantRef: { ...c.variantRef, contentHash: proposal.revisionDraft.contentHash },
+                source: proposal.assistantResult.conversions[i].sourceIds[0] === sourceId ? normalized.sourceRecord : c.source,
+            });
+        }));
+        proposal.diff = buildRevisionDiff(job.target.baseRevision || null, proposal.revisionDraft);
         proposal.sourceVerification[sourceId] = { status: 'verified', method: 'deterministic_refetch', verifiedAt: new Date(now()).toISOString() };
-        const updated = { ...job, proposal, version: job.version + 1 };
+        const updated = { ...job, proposal, validation: await validateProposal({ ...job, proposal }), version: job.version + 1 };
         await store.save(updated, { expectedVersion: job.version });
         return updated;
     }
@@ -472,6 +526,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
     }
     return {
         enqueue,
+        retryJob,
         prepareRequest, acceptResponse, cancelRequest, attestSource, verifySource,
         runJob,
         runBatch,

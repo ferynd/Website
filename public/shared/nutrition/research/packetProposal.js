@@ -31,7 +31,7 @@ export async function packetProposal(job, result) {
         stagedRecord.quality[key] = { status: n.status, ...(n.qualifier ? { qualifier: n.qualifier } : {}), ...(n.roundingInterval !== undefined ? { roundingInterval: n.roundingInterval } : {}), ...(n.upperBound !== undefined ? { upperBound: n.upperBound } : {}) };
         if (n.value === null) {
             gaps[key] = result.unresolved.find(u => u.field === key)?.reason || n.status;
-            stagedRecord.quality[key].qualifier = 'gap:' + gaps[key];
+            stagedRecord.quality[key].qualifier = n.qualifier || 'gap:' + gaps[key];
         }
         if (n.sourceIds.length)
             fieldProvenance[key] = { sourceKey: assistantSourceKeys[n.sourceIds[0]], ...(n.derivation ? { derivation: n.derivation } : {}), ...(n.comparator ? { comparatorRef: JSON.stringify(n.comparator) } : {}), ...(n.range ? { range: n.range } : {}), ...(n.confidence !== undefined ? { confidence: n.confidence } : {}) };

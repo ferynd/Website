@@ -37,8 +37,8 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
 } = {}) {
     const argv = args[0] === '--' ? args.slice(1) : args;
     const command = argv[0];
-    if (!['plan', 'index', 'run', 'validate', 'review', 'stage', 'coverage', 'suggest', 'packet', 'import-packet'].includes(command))
-        throw new Error('Expected plan/index/run/validate/review/stage/coverage/suggest/packet/import-packet');
+    if (!['plan', 'index', 'run', 'retry', 'validate', 'review', 'stage', 'coverage', 'suggest', 'packet', 'import-packet'].includes(command))
+        throw new Error('Expected plan/index/run/retry/validate/review/stage/coverage/suggest/packet/import-packet');
     const flags: Record<string, string | boolean> = {};
     const booleanFlags = ['write', 'live', 'attest', 'include-label-evidence'];
     const valueFlags = ['store', 'out', 'wave', 'max', 'batch', 'job', 'source', 'input', 'file', 'dataset', 'manifest-id', 'reviewer', 'hash', 'ack', 'decide', 'release', 'fields', 'verify-source'];
@@ -117,6 +117,12 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
                 throw new Error('--source required');
             const input = str('input') ? JSON.parse(await readFile(str('input')!, 'utf8')) : null;
             result = await Promise.all(selected.map(j => service.runJob(j.jobId, { adapterId: source!.replace('-', '_'), context: { manualRecord: input, labelRecord: input } })));
+            break;
+        }
+        case 'retry': {
+            if (!str('job')) throw new Error('retry requires --job');
+            requireSelected();
+            result = { dryRun: !flags.write, job: await service.retryJob(str('job')!) };
             break;
         }
         case 'packet': {
