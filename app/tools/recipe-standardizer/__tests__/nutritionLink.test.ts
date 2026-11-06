@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { resolveNutrientWriteVersion } from '@/public/shared/nutrition/capabilities.js';
 import { matchIngredientName } from '../lib/nutritionMatch';
 import {
   assessNutritionLink, candidateLink, confirmNutritionLink, linkAfterRename, noMatchLink,
   parseNutritionLink, summarizeLinkReview,
 } from '../lib/nutritionLink';
 import { parseRecipeJson } from '../lib/schema';
-import { TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
+import { fingerprintTrackerFood, TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
 import { UNLINKED_NUTRITION } from '../lib/types';
 import { validRecipeJson } from './fixtures';
 
@@ -68,7 +69,7 @@ describe('nutrition link lifecycle', () => {
     expect(summarizeLinkReview([
       assessNutritionLink(confirmed, new Map()), assessNutritionLink(candidateLink(food(), 1), null),
       assessNutritionLink(noMatchLink(), null), assessNutritionLink(UNLINKED_NUTRITION, null),
-    ])).toEqual({ stale: 1, candidates: 1, unlinked: 1, noMatch: 1, confirmed: 0, unverified: 0 });
+    ])).toEqual({ stale: 1, candidates: 1, unlinked: 1, noMatch: 1, confirmed: 0, confirmedLegacy: 0, unverified: 0 });
   });
 
   it('keeps exact matches unconfirmed and preserves different gram bases through recipe JSON', () => {
@@ -81,5 +82,24 @@ describe('nutrition link lifecycle', () => {
     base.ingredients[0].nutritionLink = confirmNutritionLink(food(), 100, 2, suggested) as never;
     const hundred = parseRecipeJson(JSON.stringify(base));
     expect(hundred.ok && hundred.recipe.ingredients[0].nutritionLink.gramsPerUnit).toBe(100);
+  });
+
+  it('confirmed-legacy state for v1 links on expanded foods', () => {
+    const linked = confirmNutritionLink(food(), 100, 1, UNLINKED_NUTRITION);
+    const expanded = { ...food(), detail: { fatSaturated: 3 } };
+    expect(assessNutritionLink(linked, new Map([['egg', expanded]])).state).toBe('confirmed-legacy');
+    expect(assessNutritionLink(linked, new Map([['egg', food()]])).state).toBe('confirmed');
+    expect(assessNutritionLink(linked, new Map([['egg', { ...food(), nutrients: { ...food().nutrients, calories: 1 } }]])).state).toBe('stale-revised');
+    const summary = summarizeLinkReview([assessNutritionLink(linked, new Map([['egg', expanded]]))]);
+    expect(summary.confirmed).toBe(1);
+    expect(summary.confirmedLegacy).toBe(1);
+    expect(summary.stale).toBe(0);
+  });
+
+  it('confirm stores a v1 fingerprint while writes are off', () => {
+    expect(resolveNutrientWriteVersion()).toBe(1);
+    const link = confirmNutritionLink(food(), 50, 1, UNLINKED_NUTRITION);
+    expect(link.targetFingerprint).toBe(fingerprintTrackerFood(food()));
+    expect(link.targetFingerprint).not.toMatch(/^v2:/);
   });
 });

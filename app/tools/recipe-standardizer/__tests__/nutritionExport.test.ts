@@ -51,6 +51,7 @@ import {
 import {
   buildTrackerFoodDoc,
   fingerprintTrackerFood,
+  fingerprintTrackerFoodV2,
   parseTrackerFood,
   TRACKER_NUTRIENT_KEYS,
   trackerFoodId,
@@ -1066,6 +1067,106 @@ describe('nutritionExport', () => {
   });
 
   it('request doc has the exact tracker shape and no recipe metadata', () => {
+    const recipe = butterCookiesRecipe();
+    const payload = payloadFor(recipe);
+    const request = buildExportCommitRequest({
+      recipeRevision: 0,
+      recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion',
+      status: statusFor(recipe, 'perPortion', payload),
+      payload,
+      sourceTargets: [],
+      chosenName: 'Butter cookies (per portion)',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      partialConfirmed: false,
+      nowIso: 'now',
+      nowMs: 1,
+    });
+    expect(Object.keys(request.doc)).toEqual(['name', 'quantity', ...allNutrients, 'lastUpdated']);
+  });
+
+  it('flag off: export doc shape and key order unchanged', () => {
+    const recipe = butterCookiesRecipe();
+    const payload = payloadFor(recipe);
+    const request = buildExportCommitRequest({
+      recipeRevision: 0,
+      recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion',
+      status: statusFor(recipe, 'perPortion', payload),
+      payload,
+      sourceTargets: [],
+      chosenName: 'Butter cookies (per portion)',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      partialConfirmed: false,
+      nowIso: 'now',
+      nowMs: 1,
+    });
+    expect(request.writeVersion).toBeUndefined();
+    expect(Object.keys(request.doc)).toEqual(['name', 'quantity', ...allNutrients, 'lastUpdated']);
+    expect(request.doc).not.toHaveProperty('nutrientSchemaVersion');
+    expect(request.doc).not.toHaveProperty('nutrientMeta');
+    expect(payload.fingerprint).not.toMatch(/^v2:/);
+  });
+
+  it('injected writeVersion 2 writes nulls, meta and a v2 fingerprint', () => {
+    const recipe = butterCookiesRecipe();
+    const result = calculateExportNutrition(recipe, sourceFoodsReady());
+    const built = buildExportPayload(recipe, result, 'perPortion', { writeVersion: 2 });
+    if (!built.ok) throw new Error('Expected a v2 export payload.');
+    const request = buildExportCommitRequest({
+      recipeRevision: 0,
+      recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion',
+      status: statusFor(recipe, 'perPortion', built.payload),
+      payload: built.payload,
+      sourceTargets: [],
+      chosenName: 'Butter cookies (per portion)',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      partialConfirmed: true,
+      nowIso: '2026-01-01T00:00:00.000Z',
+      nowMs: 1,
+      writeVersion: 2,
+    });
+    expect(request.writeVersion).toBe(2);
+    const doc = request.doc as Record<string, unknown>;
+    expect(doc.nutrientSchemaVersion).toBe(2);
+    expect(doc.nutrientMeta).toMatchObject({ registryVersion: 2 });
+    expect(doc.fatSaturated).toBeNull();
+    expect(String(request.nextRef.nutritionFingerprint)).toMatch(/^v2:/);
+    expect(fingerprintTrackerFoodV2(parseTrackerFood('id', request.doc)!)).toBe(built.payload.fingerprint);
+  });
+
+  it('stored v1 export ref stays unchanged when live 24-key payload matches, with and without detail, at writeVersion 2', () => {
+    const recipe = butterCookiesRecipe();
+    const foods = sourceFoodsReady();
+    const result = calculateExportNutrition(recipe, foods);
+    const v1 = buildExportPayload(recipe, result, 'perPortion');
+    const v2 = buildExportPayload(recipe, result, 'perPortion', { writeVersion: 2 });
+    if (!v1.ok || !v2.ok) throw new Error('Expected export payloads.');
+    const ref = makeRef({ nutritionFingerprint: v1.payload.fingerprint, foodId: 'butter_cookies__per_portion_' });
+    const plain = deriveExportStatus({ basis: 'perPortion', ref, recipeId: 'recipe-1', payload: v2, foods });
+    expect(plain.recipe).toBe('current');
+    const expandedPayload = {
+      ...v2.payload,
+      detail: { fatSaturated: 4 },
+    };
+    const expanded = deriveExportStatus({
+      basis: 'perPortion',
+      ref,
+      recipeId: 'recipe-1',
+      payload: { ok: true, payload: expandedPayload },
+      foods,
+    });
+    expect(expanded.recipe).toBe('current');
+  });
+
+  it('request doc keeps the legacy key order when writes are off', () => {
     const recipe = butterCookiesRecipe();
     const payload = payloadFor(recipe);
     const request = buildExportCommitRequest({

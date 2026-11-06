@@ -16,6 +16,9 @@ const BLOCK_REASONS = [
  */
 
 import { describe, expect, it } from 'vitest';
+import { LEGACY_V1_KEYS, getNutrient } from '@/public/shared/nutrition/nutrientRegistry.js';
+import { nutrientLabel } from '../lib/nutritionFormat';
+import { TRACKER_NUTRIENT_KEYS } from '../lib/trackerFoods';
 import {
   butterCookiesRecipe,
   exportedRef,
@@ -142,6 +145,15 @@ describe('nutritionExportFormat', () => {
     expect(partialExportWarning(payload)).toContain('2 of 3');
     expect(partialExportWarning(payload)).toContain('79%');
     expect(partialExportWarning(payload)).toContain('Not counted: sugar');
+  });
+
+  it('labels and order come from the registry', () => {
+    expect([...TRACKER_NUTRIENT_KEYS]).toEqual([...LEGACY_V1_KEYS]);
+    const payload = completePayload();
+    const note = zeroFilledNote({ ...payload, zeroFilledKeys: ['zinc', 'calories', 'fiber'] });
+    const labels = TRACKER_NUTRIENT_KEYS.filter((key) => ['calories', 'fiber', 'zinc'].includes(key)).map((key) => getNutrient(key)!.label);
+    expect(note).toBe(`Saved as 0 because no counted ingredient has data: ${labels.join(', ')}.`);
+    expect(nutrientLabel('omega3')).toBe(getNutrient('omega3')!.label);
   });
 
   it('zeroFilledNote is empty without zero-filled keys and lists labels in canonical order otherwise', () => {

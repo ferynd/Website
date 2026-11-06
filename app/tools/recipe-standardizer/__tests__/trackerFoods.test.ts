@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allNutrients, NUTRIENT_MAX_BOUNDS } from '../../../../public/tools/CalorieTracker/constants.js';
-import { buildTrackerFoodDoc, fingerprintTrackerFood, isValidFirestoreDocId, parseTrackerFood, TRACKER_NUTRIENT_KEYS, trackerFoodId, validateTrackerFoodName } from '../lib/trackerFoods';
+import { buildTrackerFoodDoc, fingerprintTrackerFood, fingerprintTrackerFoodV1, fingerprintTrackerFoodV2, isValidFirestoreDocId, parseTrackerFood, TRACKER_NUTRIENT_KEYS, trackerFoodId, validateTrackerFoodName, verifyTrackerFoodFingerprint, type TrackerFood } from '../lib/trackerFoods';
 import { NUTRIENT_INTAKE_SPEC } from '../lib/nutritionIntake';
 import { TRACKER_NUTRIENT_MAX_BOUNDS } from '../lib/trackerFoods';
 
@@ -45,15 +45,67 @@ describe('trackerFoods', () => {
   });
 
   it('v1 fingerprint matches pinned golden hashes', () => {
-    const zeros = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0]));
-    const nulls = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, null]));
+    const zeros = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0])) as TrackerFood['nutrients'];
+    const nulls = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, null])) as TrackerFood['nutrients'];
     const salt = { ...zeros, sodium: 39340 };
-    const ones = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 1]));
+    const ones = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 1])) as TrackerFood['nutrients'];
     expect(fingerprintTrackerFood({ quantity: 1, nutrients: zeros })).toBe('2d7ade36');
     expect(fingerprintTrackerFood({ quantity: null, nutrients: nulls })).toBe('6dcb2209');
     expect(fingerprintTrackerFood({ quantity: 1, nutrients: salt })).toBe('8194e8a5');
     expect(fingerprintTrackerFood({ quantity: 1, nutrients: ones })).toBe('68da78c4');
     expect(fingerprintTrackerFood(parseTrackerFood('egg', fullFood())!)).toBe('9418d4fb');
+  });
+
+  it('registry expansion does not change v1 fingerprints', () => {
+    const food = parseTrackerFood('egg', fullFood())!;
+    const expanded = { ...food, detail: { fatSaturated: 9, omega3EPA: 1 } };
+    expect(fingerprintTrackerFood(expanded)).toBe(fingerprintTrackerFood(food));
+    expect(fingerprintTrackerFoodV1(expanded)).toBe('9418d4fb');
+  });
+
+  it('v2 fingerprint is v2-prefixed and changes with a detail value or status', () => {
+    const food = parseTrackerFood('egg', fullFood())!;
+    const digest = fingerprintTrackerFoodV2(food);
+    expect(digest.startsWith('v2:')).toBe(true);
+    expect(fingerprintTrackerFoodV2({ ...food, detail: { fatSaturated: 1 } })).not.toBe(digest);
+    expect(fingerprintTrackerFoodV2({ ...food, quality: { calories: { status: 'measured' } } })).not.toBe(digest);
+  });
+
+  it('verify: unchanged v1 values and no detail → match; with detail → match-v1-expanded; changed legacy value → mismatch', () => {
+    const food = parseTrackerFood('egg', fullFood())!;
+    const stored = fingerprintTrackerFoodV1(food);
+    expect(verifyTrackerFoodFingerprint(food, stored)).toBe('match');
+    expect(verifyTrackerFoodFingerprint({ ...food, detail: { fatSaturated: 2 } }, stored)).toBe('match-v1-expanded');
+    expect(verifyTrackerFoodFingerprint({ ...food, nutrients: { ...food.nutrients, calories: 99 } }, stored)).toBe('mismatch');
+    expect(verifyTrackerFoodFingerprint(food, null)).toBe('mismatch');
+  });
+
+  it('parseTrackerFood reads v2 detail, nulls and quality, and counts unknown fields', () => {
+    const parsed = parseTrackerFood('salt', {
+      name: 'Salt',
+      quantity: 1,
+      nutrientSchemaVersion: 2,
+      ...Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, key === 'sodium' ? 39340 : 0])),
+      sodium: null,
+      fatSaturated: 1.5,
+      omega3EPA: null,
+      nutrientMeta: {
+        registryVersion: 2,
+        fiberMeaning: 'total',
+        carbConvention: 'includes_fiber',
+        quality: { sodium: { status: 'measured' }, fatSaturated: { status: 'label_reported', roundingInterval: 0.1 } },
+      },
+      mysteryField: 'secret',
+      lastUpdated: '2026-01-01T00:00:00.000Z',
+    })!;
+    expect(parsed.schema).toBe(2);
+    expect(parsed.nutrients.sodium).toBeNull();
+    expect(parsed.nutrients.calories).toBe(0);
+    expect(parsed.detail).toMatchObject({ fatSaturated: 1.5, omega3EPA: null });
+    expect(parsed.quality?.sodium).toEqual({ status: 'measured' });
+    expect(parsed.fiberMeaning).toBe('total');
+    expect(parsed.carbConvention).toBe('includes_fiber');
+    expect(parsed.unknownFields).toEqual(['mysteryField']);
   });
 
   it('TRACKER_NUTRIENT_MAX_BOUNDS mirrors CalorieTracker NUTRIENT_MAX_BOUNDS', () => {

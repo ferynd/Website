@@ -23,6 +23,7 @@ import {
   type PortionOverride,
   type ScaleResult,
 } from './scaling';
+import { V2_DETAIL_KEYS, type DetailKey } from '@/public/shared/nutrition/nutrientRegistry.js';
 import {
   TRACKER_NUTRIENT_KEYS,
   type FoodsState,
@@ -165,6 +166,14 @@ export interface NutritionBasis {
   amounts: NutrientAmounts | null;
 }
 
+/** Detail-nutrient totals. Children are never folded into their parents. */
+export interface RecipeNutritionDetail {
+  /** Baseline sums before basis scaling. Null means no v2-confirmed contribution. */
+  amounts: Record<DetailKey, NutrientAmount>;
+  /** Detail keys missing from at least one counted ingredient, including confirmed-legacy gaps. */
+  gaps: DetailKey[];
+}
+
 /** Full derived nutrition result for a recipe at the selected scale. */
 export interface RecipeNutritionResult {
   foodsStatus: FoodsState['status'];
@@ -173,6 +182,8 @@ export interface RecipeNutritionResult {
   bases: Record<NutritionBasisKey, NutritionBasis>;
   included: IncludedIngredient[];
   excluded: ExcludedIngredient[];
+  /** Always set by the calculator. Omitted on hand-built fixtures. */
+  detail?: RecipeNutritionDetail;
 }
 
 /** Recipe, current tracker foods, and working scale used by the pure calculator. */
@@ -221,6 +232,7 @@ export const linkExclusionReason = (
     case 'confirmed-unverified':
       return 'foods-unavailable';
     case 'confirmed':
+    case 'confirmed-legacy':
       if (link.targetFingerprint === null) return 'unverifiable-target';
       if (!isValidGramsPerUnit(link.gramsPerUnit)) return 'invalid-basis';
       if (assessment.food === null) return 'stale-missing';
@@ -339,6 +351,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     ? new Map(foods.items.map((food) => [food.id, food]))
     : null;
   const included: IncludedIngredient[] = [];
+  const detailRows: Array<Record<DetailKey, number | null> | null> = [];
   const excluded: ExcludedIngredient[] = [];
   const seenIds = new Set<string>();
   let knownBase = 0;
@@ -396,6 +409,23 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
       gramsPerUnit,
       baseContributions: contributions,
     });
+    const v2Confirmed = assessment.state === 'confirmed'
+      && (ingredient.nutritionLink.targetFingerprint ?? '').startsWith('v2:');
+    if (!v2Confirmed) {
+      detailRows.push(null);
+    } else {
+      const row = {} as Record<DetailKey, number | null>;
+      for (const key of V2_DETAIL_KEYS) {
+        const value = assessment.food.detail?.[key];
+        if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+          row[key] = null;
+          continue;
+        }
+        const contribution = (grams * value) / gramsPerUnit;
+        row[key] = Number.isFinite(contribution) ? contribution : null;
+      }
+      detailRows.push(row);
+    }
     coveredBase += grams;
     if (ingredient.optional) optionalIncludedCount += 1;
   });
@@ -440,6 +470,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     optionalIncludedCount,
     nutrientGaps,
   };
+  const detail = summarizeDetail(included, detailRows);
   const noCoverageBases = (): Record<NutritionBasisKey, NutritionBasis> => ({
     total: emptyBasis('total', 'no-coverage'),
     perServing: emptyBasis('perServing', 'no-coverage'),
@@ -447,7 +478,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     per100gCooked: emptyBasis('per100gCooked', 'no-coverage'),
   });
   if (status === 'none') {
-    return { foodsStatus: foods.status, factor, coverage, bases: noCoverageBases(), included, excluded };
+    return { foodsStatus: foods.status, factor, coverage, bases: noCoverageBases(), included, excluded, detail };
   }
 
   const servings = recipe.servings.baselineServings;
@@ -515,5 +546,36 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale }: NutritionInpu
     bases.perPortion = emptyBasis('perPortion', 'no-final-weight');
   }
 
-  return { foodsStatus: foods.status, factor, coverage, bases, included, excluded };
+  return { foodsStatus: foods.status, factor, coverage, bases, included, excluded, detail };
+};
+
+/** Sum detail keys. A null row is a gap for every key and is never added into a parent. */
+const summarizeDetail = (
+  included: IncludedIngredient[],
+  detailRows: Array<Record<DetailKey, number | null> | null>,
+): RecipeNutritionDetail => {
+  const amounts = {} as Record<DetailKey, NutrientAmount>;
+  const gaps: DetailKey[] = [];
+  for (const key of V2_DETAIL_KEYS) {
+    let sum = 0;
+    let hasValue = false;
+    const missingFromIngredientIds: string[] = [];
+    included.forEach((row, index) => {
+      const contributions = detailRows[index];
+      const contribution = contributions === null || contributions === undefined ? null : contributions[key];
+      if (contribution === null) missingFromIngredientIds.push(row.ingredientId);
+      else {
+        sum += contribution;
+        hasValue = true;
+      }
+    });
+    const sumOverflowed = !Number.isFinite(sum);
+    if (missingFromIngredientIds.length > 0 || sumOverflowed || included.length === 0) gaps.push(key);
+    amounts[key] = {
+      value: hasValue && !sumOverflowed ? sum : null,
+      isLowerBound: included.length === 0 || missingFromIngredientIds.length > 0 || sumOverflowed,
+      missingFromIngredientIds,
+    };
+  }
+  return { amounts, gaps };
 };

@@ -27,13 +27,24 @@ const REQUEST_ERROR_COPY = {
   fingerprint: 'The built tracker food did not match the reviewed nutrition snapshot.',
 } as const;
 
+import { resolveNutrientWriteVersion } from '@/public/shared/nutrition/capabilities.js';
+import {
+  V2_DETAIL_KEYS,
+  checkPer100g,
+  type DetailKey,
+  type NutrientKey,
+  type NutrientQuality,
+} from '@/public/shared/nutrition/nutrientRegistry.js';
 import { isValidRecipeRevision } from './recipeRevision';
 import { formatCoveragePercent } from './nutritionFormat';
 import { calculateRecipeNutrition, type RecipeNutritionResult } from './nutritionCalc';
 import { normalizeIngredientName } from './shoppingList';
 import {
   buildTrackerFoodDoc,
+  buildTrackerFoodDocV2,
+  currentFingerprint,
   fingerprintTrackerFood,
+  fingerprintTrackerFoodV2,
   isValidFirestoreDocId,
   linkTargetChanged,
   parseTrackerFood,
@@ -42,6 +53,7 @@ import {
   TRACKER_NUTRIENT_KEYS,
   TRACKER_NUTRIENT_MAX_BOUNDS,
   validateTrackerFoodName,
+  verifyTrackerFoodFingerprint,
   type FoodsState,
   type LinkTarget,
   type TrackerFood,
@@ -81,6 +93,10 @@ export interface ExportPayload {
   portionCount: number | null;
   portionSizeG: number | null;
   finalWeightG: number | null;
+  /** Set only for an injected or enabled writeVersion of 2. Null means unknown. */
+  sparseNutrients?: Record<TrackerNutrientKey, number | null>;
+  detail?: Partial<Record<DetailKey, number | null>>;
+  quality?: Partial<Record<NutrientKey, NutrientQuality>>;
 }
 
 /** Result of trying to build a payload. */
@@ -130,7 +146,9 @@ export interface ExportCommitRequest {
   basis: NutritionExportBasisKey;
   mode: 'create' | 'update';
   foodId: string;
-  doc: TrackerFoodDoc;
+  doc: TrackerFoodDoc | (Record<string, unknown> & { name: string; quantity: number; lastUpdated: string });
+  /** Present only when the caller injected a write version. Production omits it. */
+  writeVersion?: 1 | 2;
   /** Update only: the tracker doc must still match this identity at commit. */
   expectedTarget: LinkTarget | null;
   /** Concurrency baseline for recipe.nutritionExports[basis]. */
@@ -201,12 +219,44 @@ const blocked = (reason: ExportBlockReason): ExportPayloadResult => ({
   overCapKeys: [],
 });
 
+/** Scale baseline detail totals the same way the selected basis scales the legacy totals. */
+const exportDetail = (
+  result: RecipeNutritionResult,
+  basis: NutritionExportBasisKey,
+): Partial<Record<DetailKey, number | null>> => {
+  const detail = result.detail;
+  if (!detail) return {};
+  const total = result.bases.total.amounts;
+  const selected = result.bases[basis].amounts;
+  let ratio = 1;
+  if (total && selected) {
+    for (const key of TRACKER_NUTRIENT_KEYS) {
+      const from = total[key].value;
+      const to = selected[key].value;
+      if (typeof from === 'number' && from !== 0 && typeof to === 'number') {
+        ratio = to / from;
+        break;
+      }
+    }
+  }
+  const output: Partial<Record<DetailKey, number | null>> = {};
+  for (const key of V2_DETAIL_KEYS) {
+    const amount = detail.amounts[key];
+    if (!amount || amount.value === null) continue;
+    const scaled = roundExportValue(amount.value * ratio);
+    if (scaled !== null) output[key] = scaled;
+  }
+  return output;
+};
+
 /** Build one export payload while enforcing measured-weight, coverage, and tracker bounds. */
 export const buildExportPayload = (
   _recipe: Recipe,
   result: RecipeNutritionResult,
   basis: NutritionExportBasisKey,
+  options?: { writeVersion?: 1 | 2 },
 ): ExportPayloadResult => {
+  const writeVersion = options?.writeVersion ?? resolveNutrientWriteVersion();
   if (result.foodsStatus !== 'ready') return blocked('foods-unavailable');
   if (result.coverage.status === 'none') return blocked('no-coverage');
   const selected = result.bases[basis];
@@ -226,6 +276,7 @@ export const buildExportPayload = (
   }
 
   const nutrients = {} as Record<TrackerNutrientKey, number>;
+  const sparse = {} as Record<TrackerNutrientKey, number | null>;
   const lowerBoundKeys: TrackerNutrientKey[] = [];
   const zeroFilledKeys: TrackerNutrientKey[] = [];
   const overCapKeys: TrackerNutrientKey[] = [];
@@ -233,21 +284,29 @@ export const buildExportPayload = (
     const amount = selected.amounts[key];
     if (amount.value === null) {
       nutrients[key] = 0;
+      if (writeVersion === 2) sparse[key] = null;
       zeroFilledKeys.push(key);
       continue;
     }
     const rounded = roundExportValue(amount.value);
     if (rounded === null || rounded < 0) return blocked('non-finite');
     nutrients[key] = rounded;
+    if (writeVersion === 2) sparse[key] = rounded;
     if (amount.isLowerBound) lowerBoundKeys.push(key);
-    if (rounded > TRACKER_NUTRIENT_MAX_BOUNDS[key]) overCapKeys.push(key);
+    const overCap = writeVersion === 2
+      ? checkPer100g(key, rounded) === 'reject'
+      : rounded > TRACKER_NUTRIENT_MAX_BOUNDS[key];
+    if (overCap) overCapKeys.push(key);
   }
   if (overCapKeys.length > 0) return {
     ok: false,
     reason: 'over-tracker-cap',
     overCapKeys,
   };
-  const fingerprint = fingerprintTrackerFood({ quantity: TRACKER_EXPORT_QUANTITY, nutrients });
+  const detail = writeVersion === 2 ? exportDetail(result, basis) : undefined;
+  const fingerprint = writeVersion === 2
+    ? fingerprintTrackerFoodV2({ quantity: TRACKER_EXPORT_QUANTITY, nutrients: sparse, detail })
+    : fingerprintTrackerFood({ quantity: TRACKER_EXPORT_QUANTITY, nutrients });
   // Ingredient-row coverage can be complete while a linked food omits a nutrient.
   // Those values are lower bounds or zero-filled, so the export still needs confirmation.
   const coverage =
@@ -271,6 +330,7 @@ export const buildExportPayload = (
       portionCount: selected.portionCount,
       portionSizeG: selected.weightSource === 'actual' ? selected.portionSizeG : null,
       finalWeightG: selected.weightSource === 'actual' ? selected.finalWeightG : null,
+      ...(writeVersion === 2 ? { sparseNutrients: sparse, detail } : {}),
     },
   };
 };
@@ -381,7 +441,15 @@ export const deriveExportStatus = (input: {
   let recipeStatus: ExportStatus['recipe'] = 'current';
   if (!payload.ok) recipeStatus = 'unavailable';
   else if (
-    payload.payload.fingerprint !== ref.nutritionFingerprint ||
+    verifyTrackerFoodFingerprint(
+      {
+        quantity: TRACKER_EXPORT_QUANTITY,
+        nutrients: payload.payload.sparseNutrients ?? payload.payload.nutrients,
+        detail: payload.payload.detail,
+        quality: payload.payload.quality,
+      },
+      ref.nutritionFingerprint,
+    ) === 'mismatch' ||
     payload.payload.coverage !== ref.coverage ||
     payload.payload.includedCount !== ref.includedCount ||
     payload.payload.totalCount !== ref.totalCount
@@ -476,7 +544,7 @@ export const collectExportSourceTargets = (
     if (food === undefined || targets.has(food.id)) continue;
     targets.set(food.id, {
       id: food.id,
-      fingerprint: fingerprintTrackerFood(food),
+      fingerprint: currentFingerprint(food),
       normalizedName: normalizeIngredientName(food.name),
       lastUpdated: food.lastUpdated,
     });
@@ -487,7 +555,7 @@ export const collectExportSourceTargets = (
 /** Capture the revision identity of the tracker food shown in the review. */
 export const trackerFoodLinkTarget = (food: TrackerFood): LinkTarget => ({
   id: food.id,
-  fingerprint: fingerprintTrackerFood(food),
+  fingerprint: currentFingerprint(food),
   normalizedName: normalizeIngredientName(food.name),
   lastUpdated: food.lastUpdated,
 });
@@ -517,6 +585,7 @@ export const buildExportCommitRequest = (input: {
   partialConfirmed: boolean;
   nowIso: string;
   nowMs: number;
+  writeVersion?: 1 | 2;
 }): ExportCommitRequest => {
   if (!isValidRecipeRevision(input.recipeRevision)) {
     throw new ExportRequestError(REQUEST_ERROR_COPY.revision);
@@ -560,9 +629,16 @@ export const buildExportCommitRequest = (input: {
   if (sourceTargets.some((target) => target.id === foodId)) {
     throw new ExportRequestError(REQUEST_ERROR_COPY.selfReference);
   }
-  const doc = buildTrackerFoodDoc(name, payload.nutrients, input.nowIso);
+  const version = input.writeVersion ?? resolveNutrientWriteVersion();
+  const doc = version === 2
+    ? buildTrackerFoodDocV2(name, {
+      nutrients: payload.sparseNutrients ?? payload.nutrients,
+      detail: payload.detail,
+      quality: payload.quality,
+    }, input.nowIso)
+    : buildTrackerFoodDoc(name, payload.nutrients, input.nowIso);
   const parsed = parseTrackerFood(foodId, doc);
-  if (parsed === null || fingerprintTrackerFood(parsed) !== payload.fingerprint) {
+  if (parsed === null || verifyTrackerFoodFingerprint(parsed, payload.fingerprint) === 'mismatch') {
     throw new ExportRequestError(REQUEST_ERROR_COPY.fingerprint);
   }
   const previousRef = recipe.nutritionExports[basis] ?? null;
@@ -570,8 +646,8 @@ export const buildExportCommitRequest = (input: {
     basis,
     recipeId,
     foodId,
-    foodName: doc.name,
-    foodLastUpdated: doc.lastUpdated,
+    foodName: String(doc.name),
+    foodLastUpdated: String(doc.lastUpdated),
     nutritionFingerprint: payload.fingerprint,
     exportedAtMs: input.nowMs,
     coverage: payload.coverage,
@@ -592,5 +668,6 @@ export const buildExportCommitRequest = (input: {
     previousRef,
     nextRef,
     sourceTargets,
+    ...(input.writeVersion !== undefined ? { writeVersion: input.writeVersion } : {}),
   };
 };

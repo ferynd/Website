@@ -27,7 +27,10 @@ export interface RecipeNutritionExport {
   foodName: string;
   /** ISO `lastUpdated` written to the food (revision baseline). */
   foodLastUpdated: string;
-  /** Fingerprint of the written doc and recipe nutrition snapshot. */
+  /**
+   * Fingerprint of the written doc and recipe nutrition snapshot.
+   * May be a bare v1 hex digest or a `v2:`-prefixed digest.
+   */
   nutritionFingerprint: string;
   /** Epoch ms of the export commit. */
   exportedAtMs: number;
@@ -113,7 +116,10 @@ export interface NutritionLink {
   confirmedAtMs: number | null;
   /** Target food lastUpdated at confirmation (provenance). Confirmed only. */
   targetRevision: string | null;
-  /** Food nutrient fingerprint at confirmation (revision check). */
+  /**
+   * Food nutrient fingerprint at confirmation (revision check).
+   * May be a bare v1 hex digest or a `v2:`-prefixed digest.
+   */
   targetFingerprint: string | null;
 }
 
