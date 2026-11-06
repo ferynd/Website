@@ -72,12 +72,12 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Record the requested workflow and population plan.**
   > Resolved: workflow contract, 1,114-entry research queue (all queued, no nutrition values), and population playbook; checks: JSON/IDs/enums/links/dispatch, diff check, independent review; merged: 49cabd2 (PR #179; the recorded branch commit 7f1900a was squash-merged), amended by 1a0f8bd (PR #181, cost-free assistant packets); residual risk: the AI/input plan was superseded on 2026-11-06 by the external-assistant ingredient-import architecture (see the active backlog's decisions and [assistant contracts](../docs/nutrition/assistant-contracts.md)); runtime work remains #60 onward.
 
-## #61 Part A — ingredient identities, revisions, and conversions
-
-- [x] **Implement ingredient identities, variants, sources, and revisions (Part A).**
-  > Resolved: versioned identities/variants/revisions/conversions, variant-aware matching, empty curated catalog, owner-scoped IndexedDB profile cache, recipe dual-read links, rules source (not deployed), census script (not run), docs; both write flags remain false; checks: PR record tracker 755, root 1982, rules 215, lint/build/ci:contract/ci:docs/diff pass; tracker 755 and root 1982 re-run on `main` 3843254 during reconciliation (rules not re-run); merged: 3843254 (PR #186); residual risk: rules deploy, live smoke, and enabling `INGREDIENT_STORE_WRITES_ENABLED` remain open as #61 Part B (approval-gated); production index behavior unverified; state/preparation dimensions are free text until #62's shared vocabulary.
-
 ## #60 Part A — nutrient contracts and lossless parsing
 
 - [x] **Implement the versioned registry and quality-aware imports/exports, readers first.**
   > Resolved: shared nutrient registry, anchored parser, quality/null handling, fingerprint compatibility, v1-identical writes with v2 overwrite protection, recipe readers/detail, `nutritrack-v3`, and a built/unrun census; checks: baseline acceptance reverified in #61 tracker (664/19) and root (1947/99) suites, registry/parsing/golden/fingerprint tests; prior PR acceptance records lint/build/contract/docs and rules passes; merged: 326a748 (PR #185); residual risk: v2 food/day writes remain disabled and production census/backup/enablement/deploy remain open as #60 Part B. No historical rewrite or production data action was required for Part A.
+
+## #61 Part A — ingredient identities, revisions, and conversions
+
+- [x] **Implement ingredient identities, variants, sources, and revisions (Part A).**
+  > Resolved: versioned identities/variants/revisions/conversions, variant-aware matching, empty curated catalog, owner-scoped IndexedDB profile cache, recipe dual-read links, rules source (not deployed), census script (not run), docs; both write flags remain false; checks: tracker 755, root 1982, rules 215, lint/build/ci:contract/ci:docs/diff pass, as recorded in PR #186; merged: 3843254 (PR #186); residual risk: rules deploy, live smoke, and enabling `INGREDIENT_STORE_WRITES_ENABLED` remain open as #61 Part B (approval-gated); production index behavior unverified; state/preparation dimensions are free text until #62's shared vocabulary.

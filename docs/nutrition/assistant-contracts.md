@@ -55,8 +55,8 @@ Versioning rules for every contract:
 | `line.order` | Optional `{group, position, tail?: boolean}` (label order and the ≤2 % tail). |
 | `line.confidence` | `{identity, quantity}`, each `low\|medium\|high`. |
 | `line.notes`, `line.assumptionIds[]` | Optional. |
-| `knownFacts[]` | ≤10. `{factId, provenance: official_label\|restaurant_published\|manufacturer_site\|user_measured\|user_stated, source?: {title, url (https), capturedAt, market}, appliesTo: {scope: meal\|serving\|line, lineId?}, basis: {servings?, servingWeight?: Q, description?}, nutrients: {<registry key or label>: {value, unit, rounding?: fda_label\|exact\|unknown, qualifier?: less_than}}, ingredientStatement? ≤2000}` |
-| `constraints[]` | ≤50. `fixed{lineIds}`, `ratio{num, den, min, max}`, `order{lineIds (descending), group}`, `tail_max_percent{lineIds, maxPercent}`, `sum{lineIds, gMin, gMax}`. |
+| `knownFacts[]` | ≤10. `{factId, provenance: official_label\|restaurant_published\|manufacturer_site\|user_measured\|user_stated, source: {title, url (https), capturedAt, market}, appliesTo: {scope: meal\|serving\|line, lineId?}, basis: {servings?, servingWeight?: Q, description?}, nutrients: {<registry key or label>: {value, unit, rounding?: fda_label\|exact\|unknown, qualifier?: less_than}}, ingredientStatement? ≤2000}` |
+| `constraints[]` | ≤50. Each is `{type, …}` with `type` one of `fixed{lineIds}`, `ratio{num, den, min, max}`, `order{lineIds (descending), group}`, `tail_max_percent{lineIds, maxPercent}`, `sum{lineIds, gMin, gMax}` (for example `{"type": "fixed", "lineIds": ["salsa"]}`). |
 | `assumptions[]` | ≤30. `{id, text, appliesTo: [lineId \| factId \| "meal"]}` |
 | `overallConfidence` | `{level: low\|medium\|high, note?}` |
 
@@ -65,30 +65,38 @@ Quantity rules:
 - Grams describe the **variant as stated**: raw grams for the raw variant, cooked grams for the cooked variant.
 - `g: null` requires `original`; conversion to grams happens only through #61 conversion records. There is no implicit mL-to-g conversion.
 - `0 ≤ gMin ≤ g ≤ gMax ≤ 1,000,000`.
-- `measured` and `label` quantities are fixed. Only `estimated` (and, if the user allows it, `recipe_stated`) quantities are free variables for #65 fitting, bounded by `[gMin, gMax]`.
+- `measured`, `label`, and `recipe_stated` quantities are fixed, as is any line named in a `fixed` constraint. Only `estimated` quantities are free variables for #65 fitting, bounded by `[gMin, gMax]`. To let the fit adjust a `recipe_stated` line, the user changes its basis to `estimated` in the correction layer; the import itself is unchanged.
+- On a fixed line, `gMin`/`gMax` are allowed and record measurement or label tolerance. They feed #64 uncertainty intervals only and never make the line a free variable.
 
 Ingredient-list rules:
 
-- **Facts need real provenance.** A fact without one of the listed provenances is rejected. Totals the assistant computed or inferred are not facts and have no accepted provenance, so official and inferred values never mix.
+- **Facts need real provenance.** A fact without one of the listed provenances is rejected. `source` is required for `official_label`, `restaurant_published`, and `manufacturer_site` facts and optional for `user_measured` and `user_stated`. Totals the assistant computed or inferred are not facts and have no accepted provenance, so official and inferred values never mix.
 - **Facts need an applicable basis.** A serving-level fact with no serving weight or serving count is stored as "unapplied" and is never a fit target.
 - **Line-level facts are evidence, not targets.** A fact scoped to one line (for example, a packaged ingredient's label) becomes label evidence for that ingredient's #62 research job.
 - **No per-ingredient nutrient values.** Profiles come only from the library or the #62 pipeline.
-- **Constraints are checked.** Every reference must exist; contradictions are rejected (a fixed line that is also bounded, an order constraint that fixed grams already violate); infeasibility detected before fitting is a warning naming the lines.
+- **Constraints are checked.** Every reference must exist; contradictions are rejected (an `order`, `ratio`, `sum`, or `tail_max_percent` constraint that fixed lines' grams already violate); infeasibility detected before fitting is a warning naming the lines.
 - **Imports are never mutated.** Parsing produces an `ImportDraft`; user corrections are a separate layer on top of it.
 - **Assistants may wrap the JSON** in prose; the site accepts exactly one fenced JSON block and rejects anything else ambiguous.
 
 ## Human paste format v1
 
-A lossless view of a common subset of the JSON. Anything outside the subset is JSON-only. The parser is deterministic, reports errors by line and column, and shows the resulting canonical JSON for review.
+A human-readable view of a subset of the JSON. The parser is deterministic, reports errors by line and column, and shows the resulting canonical JSON for review.
+
+Round trips run **paste → JSON → paste**: parsing paste text and rendering the result again reproduces the same canonical paste text (normalized spacing and numbering). JSON that uses any field outside the subset cannot be shown as paste; the site says the list is JSON-only rather than dropping fields. JSON → paste is offered only for lists entirely inside the subset.
+
+- **Subset:** the meta lines below; per line `lineId`, `name`, `state`/`preparation`/`drained` form words, other variant dimensions as `key=val`, quantity (`g`, range, basis, `original`), and nesting; facts with provenance, basis (`<n> serving(s)`, `meal`, or `line <N>`), `factId`, `source`, and nutrient value/unit; `fixed`, `order`, `ratio`, and `tail_max_percent` constraints; assumptions with their `appliesTo`.
+- **JSON-only:** `producer`, `inputs`, `meal.yield`, `line.role`, `line.confidence`, `line.order`, `line.notes`, `line.assumptionIds`, fact `rounding`/`qualifier`/`ingredientStatement`/`basis.servingWeight`/`basis.description`, `sum` constraints, `overallConfidence.note`, and `extensions`.
+- **Line IDs:** paste line `N` maps to `lineId` `l<N>` and child `N.M` to `l<N>-<M>`, unless the line carries `id=<lineId>`. Constraints and assumptions refer to paste line numbers, which the parser resolves to those `lineId`s. Rendering emits `id=` only when the `lineId` differs from its default. Facts get `factId` `f<K>` in order unless the fact line carries `(id=<factId>)`; assumptions get `a<K>`.
+- **Registry version:** when any fact is present, the parser sets `registryVersion` to the site's current `NUTRIENT_REGISTRY_VERSION` and resolves nutrient labels through `lookupLabel` at that version; the review preview shows the version. JSON with a different `registryVersion` is JSON-only.
 
 | Element | Syntax |
 | --- | --- |
 | Start / end | `NUTRITION-INGREDIENTS v1` … `END` |
-| Meta lines | `Key: value` for `Title`, `Kind`, `Servings`, `Serving weight`, `Final weight`, `Confidence` |
+| Meta lines | `Key: value` for `Title`, `Kind`, `Servings` (`<count>[, consumed <n>]`), `Serving weight`, `Final weight` (amount syntax plus basis), `Confidence` |
 | Ingredient lines | `N. name \| form \| amount \| basis \| key=val; …`. `form` is comma-separated vocabulary words; `amount` accepts `120 g`, `120 g (100-140)`, or `2 tbsp ≈ 28 g`. Children are numbered `N.M`. |
-| Facts | `Fact <provenance> per <basis>: Calories 650 kcal; Protein 42 g; …` |
+| Facts | `Fact <provenance> per <basis> [(id=<factId>)]: Calories 650 kcal; Protein 42 g; …`, optionally followed by `Source: <title> \| <https url> \| <capturedAt> \| <market>` (required for `official_label`, `restaurant_published`, and `manufacturer_site`) |
 | Constraints | `Constraints: fixed 4; order 1>2>3; ratio 2/1 0.5-2; tail2% 5,6` |
-| Assumptions | `Assumptions:` followed by `- text [1,3]` lines |
+| Assumptions | `Assumptions:` followed by `- text [1,3]` lines (paste line numbers, or `meal`) |
 
 ## Research request v1
 
@@ -96,13 +104,17 @@ A lossless view of a common subset of the JSON. Anything outside the subset is J
 
 | Field | Content |
 | --- | --- |
-| Header | `requestId` (`rq-` + 24 hex), `requestDigest` (`sha256:` + hex of the canonical body), `createdAt`, `registryVersion`, `responseSchemaVersion: 1` |
+| Header | `requestId` (`rq-` + 24 lowercase hex from 96 random bits, generated once when the request is issued), `requestDigest` (`sha256:` + lowercase hex of the canonical body), `createdAt` (ISO 8601 UTC), `registryVersion`, `responseSchemaVersion: 1` |
 | `purpose` | `profile` (full profile), `fields` (only missing fields), or `conversion` (household weight or density). There is no image or extraction purpose. |
-| `targets[]` | Chunked by configurable packet limits: up to 8 targets requesting all fields, or up to 25 targets with ≤10 fields each. Each target: `{targetId (= #62 jobId), identity: {name, category, kind, aliases}, variant, requestedFields: [keys] \| "*", basis: "per_100g_edible", expectedUnits, knownObservations (context only; must not change), triedSources: [{adapter, release, outcome}], labelEvidence?}` |
+| `targets[]` | Chunked by configurable packet limits (defaults below). Each target: `{targetId (= #62 jobId), identity: {name, category, kind, aliases}, variant, requestedFields: [keys] \| "*", basis: "per_100g_edible", expectedUnits, knownObservations (context only; must not change), triedSources: [{adapter, release, outcome}], labelEvidence?}`. `"*"` means every stored registry field; derived metrics (`fiberWeightedLegacy`, which #64 computes) are never requested, and naming one in `requestedFields` is rejected. |
 | `rules[]` | Fixed text: cite sources; never invent IDs or URLs; return null plus a reason when unknown; keep raw/cooked/fortified distinct; estimates need a comparator, rationale, and range; do not change known observations; no meal totals. |
 | `responseTemplate` | Skeleton of the expected response. |
 
-The copy button copies the instructions and the JSON as one block. A request never contains meal composition; the user's own label evidence is included only when the user selects it, and the UI shows exactly what will be copied. One request can batch many jobs; it records one pass ID.
+**Canonical body and digest.** The canonical body is the request with `requestId`, `requestDigest`, and `createdAt` removed, `targets` sorted by `targetId`, serialized as UTF-8 JSON with object keys sorted at every level, arrays otherwise in order, and no insignificant whitespace. `requestDigest` is its SHA-256. The app and the CLI produce the same canonical body and digest for the same jobs; `requestId` and `createdAt` differ per issue.
+
+**Packet limits.** A target is *all-field* when `requestedFields` is `"*"` or lists more than 10 keys, and *field-limited* otherwise. A packet holds either up to 8 all-field targets or up to 25 field-limited targets, never both. A mixed job set is chunked deterministically: all-field targets first, then field-limited ones, each in `targetId` order. The limits are configurable; these are the defaults.
+
+The copy button copies the instructions and the JSON as one block. A request never contains meal composition; the user's own label evidence is included only when the user selects it, and the UI shows exactly what will be copied. One request can batch many jobs. The pass ID is not part of the request: the #62 job store records the issued `requestId`, its digest, and one pass ID together.
 
 ## Research response v1
 
@@ -111,15 +123,15 @@ The copy button copies the instructions and the JSON as one block. A request nev
 | Field | Content |
 | --- | --- |
 | Echo | `requestId`, `requestDigest` |
-| `responder` | `{assistant, label?, webAccess: boolean}` |
+| `responder` | `{assistant: chatgpt\|claude\|grok\|codex\|gemini\|other, label?, webAccess: boolean}` (the same values as `producer.assistant`) |
 | `results[]` | One entry per requested target. |
 
 Each result: `targetId`; `identityMatch {description, state, conflict, notes}`; `sources [{sourceId, type: fdc\|manufacturer\|label\|composition_db\|literature\|other, title, url (https), recordId?, version?, publishedAt?, accessedAt}]`; `nutrients {key: {value \| null, unit, status, sourceIds[], range?, confidence?, derivation?, comparator?: {name, sourceId, transferReason}, qualifier?, roundingInterval?, upperBound?}}`; `conversions [{unit, grams, state, sourceIds, range?, confidence}]`; `assumptions[]`; `unresolved [{field, reason}]`. `status` is any `NUTRIENT_STATUSES` value except `legacy_unclassified`.
 
 A response is rejected before staging when:
 
-- the echoed `requestId`/`requestDigest` does not match a pending job, or the response is stale or belongs to another draft;
-- it contains unrequested targets or fields, or changes a known observation;
+- the echoed `requestId`/`requestDigest` does not match a request whose jobs are still `awaiting_response`, or the response is stale: the request expired or was cancelled (its jobs returned to `queued`), was already answered, or a target's profile revision or the `registryVersion` changed after the request was issued;
+- it contains unrequested targets or fields (including a derived metric such as `fiberWeightedLegacy`), or changes a known observation;
 - a requested field has no status, or a non-null value has no `sourceIds`;
 - an estimate lacks a comparator or derivation, or a range;
 - a value is `0` without evidence;
@@ -185,18 +197,21 @@ Ingredient list (restaurant item with published facts; one measured line):
 }
 ```
 
-The same list in the paste format (subset):
+A paste rendering of a subset of that list. `producer`, `inputs`, `role`, `confidence`, and `rounding` are JSON-only, so this text parses to the JSON above without those fields (with `registryVersion` filled from the site's current registry):
 
 ```text
 NUTRITION-INGREDIENTS v1
 Title: Chicken burrito bowl
 Kind: restaurant_item
-Servings: 1
-1. white rice | cooked | 180 g (140-220) | estimated
-2. grilled chicken thigh | cooked, grilled | 120 g (100-150) | estimated
-3. black beans | canned, drained | 110 g (80-140) | estimated
-4. tomato salsa | | 60 g | measured
-Fact restaurant_published per 1 serving: Calories 690 kcal; Protein 45 g
+Servings: 1, consumed 1
+Final weight: 510 g (470-560) | estimated
+Confidence: medium
+1. white rice | cooked | 180 g (140-220) | estimated | id=rice
+2. grilled chicken thigh | cooked, grilled | 120 g (100-150) | estimated | id=chicken
+3. black beans | canned, drained | 110 g (80-140) | estimated | id=beans
+4. tomato salsa | | 60 g | measured | id=salsa
+Fact restaurant_published per 1 serving (id=menu): Calories 690 kcal; Protein 45 g
+Source: Restaurant nutrition calculator | https://example.com/nutrition | 2026-11-06 | US
 Constraints: fixed 4
 Assumptions:
 - Rice volume estimated from bowl diameter. [1]

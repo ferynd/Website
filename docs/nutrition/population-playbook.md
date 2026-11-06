@@ -71,7 +71,7 @@ Preserve quantification limits, rounding intervals, and source quality. Never re
 
 ### 4. Fill gaps transparently
 
-Attempt every registry field, including micronutrients, through the defined source hierarchy. Each completed profile must include a status for every registry field. Estimates are allowed only as `estimated_from_comparable` (or an explicit ingredient `calculated` derivation) with a named comparator/source revision, a reason the comparison transfers, and a range. No source found is a valid documented unknown; an unsupported exact-looking value is not.
+Attempt every registry field, including micronutrients, through the defined source hierarchy. Each completed profile must include a status for every stored registry field. Derived metrics are not stored profile fields: `fiberWeightedLegacy` is computed by #64 and is excluded from this requirement and from research requests. Estimates are allowed only as `estimated_from_comparable` (or an explicit ingredient `calculated` derivation) with a named comparator/source revision, a reason the comparison transfers, and a range. No source found is a valid documented unknown; an unsupported exact-looking value is not.
 
 Keep measured, label-reported, and estimated values distinct. Do not fill branded micronutrients by indiscriminately scaling a generic profile to label calories. Do not copy an estimated meal's residual into a canonical ingredient profile.
 
@@ -93,7 +93,7 @@ Use an executable validator built in #62. At minimum check:
 - Full field-status coverage; unknown stays null; values finite/nonnegative; no invented source IDs or URLs.
 - Correct per-100-g edible basis and units. Profile bounds must be composition-aware, not copied from daily limits. Pure salt must not be rejected because the current tracker caps sodium at 23,000 mg per unit.
 - No impossible unit-scale errors. Use source-aware mass/energy diagnostics rather than rigid equations across overlapping fields. Fatty-acid sums need not equal total lipid.
-- Standard fiber, weighted custom fiber, soluble/insoluble fiber, and resistant starch remain distinct and are not double-counted.
+- Standard fiber, soluble/insoluble fiber, and resistant starch remain distinct and are not double-counted. Profiles store no weighted custom fiber; #64 derives it from these fields.
 - Raw/cooked, hydrated/dry, drained/undrained, and fortified/plain identities remain distinct. Apply retention factors once.
 - Added sugars are not inferred solely from total sugar. Review label rounding/definition discrepancies before rejection.
 - Known meal facts stay observations; inferred recipe quantities do not become measured facts.

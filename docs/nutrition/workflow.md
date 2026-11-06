@@ -42,8 +42,8 @@ Accept ingredient-list v1 JSON or paste, a saved meal or recipe, a Recipe Standa
 2. Match identities and forms to the local ingredient index, approved user profiles, and curated source profiles. Reuse profiles before any external research. Search aliases, but distinguish raw/cooked, dry/hydrated, drained/undrained, fat percentage, fortification, salt, and brand formulation.
 3. Show missing profiles and ambiguous matches together. A profile can exist while particular nutrients remain unknown. Missing-profile and missing-nutrient lists must be distinct.
 4. Resolve missing items through the user's selected action. External research is limited to the selected missing identities or fields. Cache approved results.
-5. Apply known quantities, ingredient order, eligible meal facts, yield, and plausible recipe ratios as constraints. Fit only estimated quantities and explicitly permitted preparation assumptions, never canonical ingredient nutrient values.
-6. Calculate totals, retain source-reported meal facts, and show estimated ingredients, coverage, assumptions, and unresolved discrepancies.
+5. Calculate totals, retain source-reported meal facts, and show estimated ingredients, coverage, assumptions, and unresolved discrepancies.
+6. When eligible known facts exist, apply known quantities, ingredient order, those facts, yield, and plausible recipe ratios as constraints. Fit only estimated quantities and explicitly permitted preparation assumptions, never canonical ingredient nutrient values, then recalculate.
 7. On Save, persist the meal's ingredient list, exact profile revisions, quantities, constraints, known facts, and nutrition snapshot. Create missing approved ingredient profiles once. Reuse existing IDs across meals.
 
 Interpretation happens in the external assistant; the site validates what it receives. A saved recipe with resolved ingredients, a portion change, or an approved structured import must use zero model calls for matching confirmed IDs, scaling, aggregation, and saving. After any missing record is resolved, recalculate the meal from step 5 onward.
@@ -198,7 +198,7 @@ Known quantities constrain weights. Known nutrients constrain the aggregate on t
 
 ### Fit specification
 
-**Target eligibility.** Only known facts with real provenance and an applicable basis (see [assistant contracts](assistant-contracts.md#ingredient-list-import-v1)) are fit targets. A photo-only meal without such facts is not fitted, and no target is invented. **Free variables** are lines with basis `estimated`, bounded by `[gMin, gMax]`. **Fixed** lines have basis `measured` or `label`, or a `fixed` constraint. The assistant's estimate is the starting point.
+**Target eligibility.** Only known facts with real provenance and an applicable basis (see [assistant contracts](assistant-contracts.md#ingredient-list-import-v1)) are fit targets. A photo-only meal without such facts is not fitted, and no target is invented. **Free variables** are lines with basis `estimated`, bounded by `[gMin, gMax]`. **Fixed** lines have basis `measured`, `label`, or `recipe_stated`, or a `fixed` constraint; their `gMin`/`gMax` record tolerance for uncertainty only. A user who wants a `recipe_stated` line fitted changes its basis to `estimated` in the correction layer. The assistant's estimate is the starting point.
 
 Implement a deterministic constrained optimizer over nonnegative gram quantities. Typical constraints are label calories, macros, sodium, fiber, serving weight, ingredient order, preparation states, and plausible recipe ratios. Start with bounded, evidence-backed priors. Pin exact weights only when the evidence warrants it; use intervals for rounded labels and uncertain portions. Minimize weighted residuals against known meal facts and deviation from reasonable recipe ratios, with explicit slack for conflicting evidence. Store algorithm/version, all bounds/weights, and deterministic tie-breaking.
 
@@ -228,7 +228,7 @@ Use source energy as its own observation. A 4/4/9 macro estimate is a diagnostic
 
 ### Derived project metrics
 
-Weighted fiber (`fiberWeightedLegacy`) is computed at calculation time from `fiberTotal`, fiber subtypes, and the category weights under [Fiber transition](#fiber-transition). It is versioned and is not stored as a field in curated profiles. Adjusted carbs and FODMAP equivalents come from the same shared #64 calculation module. Saved meals record the convention versions used.
+Weighted fiber (`fiberWeightedLegacy`) is computed at calculation time from `fiberTotal`, fiber subtypes, and the category weights under [Fiber transition](#fiber-transition). It is versioned and is not stored as a field in curated or private profiles, so it is excluded from profile field-status coverage and from research requests (including `"*"`). Adjusted carbs and FODMAP equivalents come from the same shared #64 calculation module. Saved meals record the convention versions used.
 
 ### Project carb calculation
 
@@ -258,7 +258,7 @@ A dedicated tracker tab (#69) manages the shared ingredient profiles:
 
 - **Search:** indexed, paginated, alias- and variant-aware; works offline over cached profiles.
 - **Add and edit:** private profiles and overrides, saved as new revisions with source and basis. Curated records are never edited in place.
-- **Review:** identity, variants, per-field status and provenance, missing nutrient fields, unit conversions, and revision history. Missing fields and missing conversions are separately filterable. An affected recipes/meals view is capability-gated until #64 exposes ingredient-graph references; do not require it in the #69 ship.
+- **Review:** identity, variants, per-field status and provenance, missing nutrient fields, unit conversions, and revision history. Missing fields and missing conversions are separately filterable. An affected recipes/meals view is capability-gated until #64 Part B exposes ingredient-graph references; do not require it in the #69 ship.
 - **Import:** label facts, manual measurements, or a reviewed research result.
 - **Research:** selected ingredients or selected missing fields through official sources (#62 jobs) first; then a research packet, or the optional API, via #62, only after a recorded official-source attempt leaves gaps, or via an explicit override. The default is the copy/paste research packet; the optional #71 route stays off. Results stay staged until reviewed, and model citations require evidence verification before approval.
 
@@ -298,7 +298,7 @@ Display only relevant comparison targets. Do not create minimum targets for tran
 The website performs every calculation without AI. Models never compute totals, scale portions, match confirmed IDs, or alter known facts.
 
 1. **The external assistant is the interpreter.** Photos, recipes, labels, and descriptions are interpreted outside the site and arrive as a validated ingredient list ([contracts](assistant-contracts.md)). The site has no required OCR or vision step. Its only AI touchpoints are the research packet (default) and the optional direct route.
-2. **Research packets (default, cost-free).** For identities or fields left unresolved by official sources, #62 builds a text-only research request with a unique request ID and digest. James sends it to assistants on subscriptions he already pays for, or to ChatGPT project instructions, and pastes the response back. The response must echo the ID and digest; stale or cross-draft responses are rejected. Packets are size-bounded, batched, and chunked. No metered site API call is required.
+2. **Research packets (default, cost-free).** For identities or fields left unresolved by official sources, #62 builds a text-only research request with a unique request ID and digest. James sends it to assistants on subscriptions he already pays for, or to ChatGPT project instructions, and pastes the response back. The response must echo the ID and digest. Stale responses are rejected: the request expired or was cancelled, was already answered, or a target's profile revision or the registry version changed after it was issued. Packets are size-bounded, batched, and chunked. No metered site API call is required.
 3. **Optional direct provider route (#71, deferred).** Provider-agnostic, off by default, feature-flagged, $0 budget cap until James explicitly raises it, same request/response schemas, a durable server-side budget reservation before every call, and signed-in non-anonymous users only (reject `signInAnonymously` guests). Keys stay in server configuration. It is never a prerequisite for the primary flow.
 4. **Strict schemas and citation verification.** Requests ask for strict JSON-schema output; invalid or freeform nutrition text is rejected rather than parsed. Assistant-sourced values start unverified; curated revisions require verified sources, private revisions may be approved on reviewer attestation and stay labeled. Results enter the same review as any other research before a profile revision is saved. See [research response v1](assistant-contracts.md#research-response-v1).
 
