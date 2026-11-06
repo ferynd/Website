@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "file": "tests/rules/storage.rules.test.ts",
+      "pattern": "email",
+      "match": "arkkahdarkkahd@gmail.com",
+      "reason": "already public as ADMIN_EMAIL",
+      "owner": "@ferynd",
+      "reviewBy": "2027-02-01"
+    },
+    {
+      "file": "tests/rules/firestore.rules.test.ts",
+      "pattern": "email",
+      "match": "arkkahdarkkahd@gmail.com",
+      "reason": "already public as ADMIN_EMAIL",
+      "owner": "@ferynd",
+      "reviewBy": "2027-02-01"
+    },
+    {
+      "file": "tests/rules/conflict-client-compat.rules.test.ts",
+      "pattern": "email",
+      "match": "arkkahdarkkahd@gmail.com",
+      "reason": "already public as ADMIN_EMAIL",
+      "owner": "@ferynd",
+      "reviewBy": "2027-02-01"
+    },
+    {
+      "file": "tests/rules/conflict-tracker.rules.test.ts",
+      "pattern": "email",
+      "match": "arkkahdarkkahd@gmail.com",
+      "reason": "already public as ADMIN_EMAIL",
+      "owner": "@ferynd",
+      "reviewBy": "2027-02-01"
+    },
+    {
+      "file": "tests/rules/fixtures/firestore.live-7c3d1850.rules",
+      "pattern": "email",
+      "match": "arkkahdarkkahd@gmail.com",
+      "reason": "already public as ADMIN_EMAIL",
+      "owner": "@ferynd",
+      "reviewBy": "2027-02-01"
+    },
+    {
+      "file": "app/tools/transcriber/__tests__/sanitizeUpstreamError.test.ts",
+      "pattern": "openai-key",
+      "match": "sk-abcdefghijklmnopqrstuvwxyz",
+      "reason": "Synthetic OpenAI-shaped string used only to assert sanitizeUpstreamError redaction; not a live key.",
+      "owner": "@ferynd",
+      "reviewBy": "2027-02-01"
+    }
+  ]
+}

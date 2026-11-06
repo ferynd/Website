@@ -530,7 +530,9 @@ The project deploys to **Cloudflare Workers** via the [OpenNext Cloudflare adapt
 
 **Rollback:** Cloudflare Workers keeps prior deployments; roll back with `npx wrangler rollback [deployment-id]` (omit the ID to roll back to the immediately preceding deployment), or re-run `npm run cf:deploy` from a known-good commit.
 
-**Post-deploy smoke check:** load `/` and `/trips` (confirm the Japan itinerary is absent — see `SECURITY.md` Known Limitations), then confirm `/api/transcriber/status` returns `401`/`403` for an unauthenticated request and the Firebase-backed tools (Trip Cost, Conflict Tracker, etc.) can sign in.
+**Post-deploy smoke check:** load `/` and `/trips` (confirm the Japan itinerary is absent — see `SECURITY.md` Known Limitations), then confirm unauthenticated `/api/transcriber/status` returns `200` with `signedIn:false` (key flags `null`) and unauthenticated `POST /api/transcriber/transcribe` returns `401`/`403`. Firebase-backed tools (Trip Cost, Conflict Tracker, etc.) should still be able to sign in. Automated coverage: `docs/ci.md` and the `deploy-smoke` workflow (`gh workflow run deploy-smoke.yml -f target=production`).
+
+**CI:** Pull requests and pushes to `main` run the staged checks in `.github/workflows/ci.yml` (see [`docs/ci.md`](docs/ci.md)). James still needs to require the listed check names under branch protection; the workflow alone does not block merges.
 
 Firebase remains entirely client-side; no server-side Firebase config is needed. Ensure Firestore/Storage rules allow the deployed Worker's domain if rules are ever locked to specific referrers.
 

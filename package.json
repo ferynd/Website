@@ -16,7 +16,11 @@
     "cf:build": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
     "cf:preview": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare preview",
     "cf:deploy": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare deploy",
-    "transcriber:eval": "vite-node scripts/transcriberEval.ts --"
+    "transcriber:eval": "vite-node scripts/transcriberEval.ts --",
+    "test:api": "vitest run --config vitest.api.config.ts",
+    "ci:contract": "node scripts/ci/check-contract.mjs",
+    "ci:docs": "node scripts/ci/check-docs-manifest.mjs",
+    "ci:smoke": "node scripts/ci/http-smoke.mjs"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
