@@ -8,13 +8,13 @@ import { state, parseQty } from '../state/store.js';
 import { showMessage, handleError, formatNutrientName, escapeHtml, flashSaveConfirmation } from '../utils/ui.js';
 import { showConfirmationModal, closeDuplicateDialog } from '../ui/modals.js';
 import { db } from '../services/firebase.js';
-import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+import { doc, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { appId } from '../config.js';
 import { getStagedRecord } from '../staging/parser.js';
 import { selectFoodItem } from './manager.js';
 import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import { LEGACY_V1_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
-import { NewerSchemaError, NutrientBoundsError, assessFoodSave, buildFoodWrite, readFoodNutrients, targetsFromStagedRecord, v1StorageNotice } from '../nutrition/nutrientRecord.js';
+import { NewerSchemaError, NutrientBoundsError, assessFoodSave, commitSavedFoodWrite, readFoodNutrients, targetsFromStagedRecord, v1StorageNotice } from '../nutrition/nutrientRecord.js';
 
 const SAVE_CONFIG = {
   SUCCESS_MESSAGE_DURATION: 3000,
@@ -70,17 +70,17 @@ async function processSaveFoodItem(foodName, record) {
   try {
     const foodId = foodName.toLowerCase().replace(/[^a-z0-9]/g, '_');
     const quantity = parseQty(document.getElementById('actual-quantity')?.value);
-    const existingFood = state.savedFoodItems.get(foodId);
-    const built = buildFoodWrite(record, {
+    const lastUpdated = new Date().toISOString();
+    const ref = doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId);
+    // The in-memory list can be stale or miss a colliding slug. Read that id
+    // inside the transaction and refuse a v1 overwrite of a v2 document.
+    const built = await runTransaction(db, (transaction) => commitSavedFoodWrite(transaction, ref, record, {
       writeVersion: resolveNutrientWriteVersion(),
-      existingDoc: existingFood,
       name: foodName,
       quantity,
-      lastUpdated: new Date().toISOString(),
-    });
+      lastUpdated,
+    }));
     const foodData = built.doc;
-
-    await setDoc(doc(db, `artifacts/${appId}/users/${state.userId}/foodItems`, foodId), foodData);
     state.savedFoodItems.set(foodId, foodData);
 
     if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {

@@ -130,6 +130,38 @@ export function buildFoodWrite(record, options = {}) {
   return { doc, fields, zeroFilled: projected.zeroFilled, droppedDetail: projected.droppedDetail };
 }
 
+/**
+ * Read the food at `ref` inside the caller's transaction, then write only when
+ * that snapshot is safe for this write version. A cached document is ignored.
+ * Flag-off writes stay the v1 object from buildFoodWrite.
+ */
+export async function commitSavedFoodWrite(transaction, ref, record, options = {}) {
+  const snap = await transaction.get(ref);
+  const existingDoc = typeof snap?.exists === 'function' && snap.exists() ? snap.data() : null;
+  const built = buildFoodWrite(record, { ...options, existingDoc });
+  transaction.set(ref, built.doc);
+  return built;
+}
+
+/**
+ * Day-log food item. Version 1 is id, name, quantity, timestamp, and the 24
+ * numbers. Version 2 also keeps nutrientSchemaVersion and nutrientMeta.
+ */
+export function diaryFoodItem(built, identity, writeVersion = resolveNutrientWriteVersion()) {
+  const item = {
+    id: identity?.id,
+    name: identity?.name,
+    quantity: identity?.quantity,
+    timestamp: identity?.timestamp,
+    ...(built?.fields || {}),
+  };
+  if (writeVersion === 2) {
+    item.nutrientSchemaVersion = 2;
+    if (built?.doc?.nutrientMeta) item.nutrientMeta = built.doc.nutrientMeta;
+  }
+  return item;
+}
+
 export function v1StorageNotice(built) {
   const parts = [];
   if (built?.zeroFilled?.length) parts.push(`Zero-filled: ${built.zeroFilled.join(', ')}.`);

@@ -7,7 +7,9 @@ import {
   applyLegacyInputOverlay,
   assessFoodSave,
   buildFoodWrite,
+  commitSavedFoodWrite,
   deriveDayDetailTotals,
+  diaryFoodItem,
   legacyPartialNote,
   readFoodNutrients,
   sumLegacyDayTotals,
@@ -81,6 +83,84 @@ describe('nutrient records', () => {
     const record = recordWith({ calories: 1 });
     const existing = { nutrientSchemaVersion: 2, calories: 1 };
     expect(() => buildFoodWrite(record, { writeVersion: 1, existingDoc: existing, name: 'A', quantity: 1, lastUpdated: 't' })).toThrow(NewerSchemaError);
+  });
+
+  it('reads the target food by id inside the transaction and keeps the v1 object', async () => {
+    const record = parseNutritionText('Protein: <1 g\nFat: ~3 g\nSaturated Fat: 1 g');
+    const sets = [];
+    const blocking = {
+      async get(ref) {
+        expect(ref).toEqual({ id: 'chicken_breast' });
+        return {
+          exists: () => true,
+          data: () => ({ nutrientSchemaVersion: 2, name: 'Chicken Breast', protein: 20 }),
+        };
+      },
+      set() { sets.push('blocked'); },
+    };
+    await expect(commitSavedFoodWrite(blocking, { id: 'chicken_breast' }, record, {
+      writeVersion: 1,
+      existingDoc: null,
+      name: 'Chicken-Breast',
+      quantity: 1,
+      lastUpdated: 't',
+    })).rejects.toBeInstanceOf(NewerSchemaError);
+    expect(sets).toEqual([]);
+
+    const staleV2Cache = {
+      async get() {
+        return { exists: () => false, data: () => undefined };
+      },
+      set(_ref, data) { sets.push(data); },
+    };
+    const written = await commitSavedFoodWrite(staleV2Cache, { id: 'egg' }, record, {
+      writeVersion: 1,
+      existingDoc: { nutrientSchemaVersion: 2, name: 'Egg' },
+      name: 'Egg',
+      quantity: 2,
+      lastUpdated: 't',
+    });
+    expect(written.doc).toBe(sets[0]);
+    expect(Object.keys(written.doc)).toEqual(['name', 'quantity', ...LEGACY_V1_KEYS, 'lastUpdated']);
+    expect(written.doc).not.toHaveProperty('nutrientSchemaVersion');
+    expect(written.doc).not.toHaveProperty('nutrientMeta');
+    expect(written.doc).not.toHaveProperty('fatSaturated');
+    expect(written.doc.protein).toBe(0);
+    expect(written.doc.fat).toBe(3);
+    expect(written.doc.name).toBe('Egg');
+    expect(written.doc.quantity).toBe(2);
+    expect(written.doc.lastUpdated).toBe('t');
+  });
+
+  it('v2 diary items keep nutrientMeta and v1 items stay the legacy shape', () => {
+    const record = parseNutritionText('Protein: <1 g\nFat: ~3 g\nFiber (total dietary): 4 g');
+    const built = buildFoodWrite(record, { writeVersion: 2, name: 'Yogurt', quantity: 1, lastUpdated: 't' });
+    const identity = { id: 'item-1', name: 'Yogurt', quantity: 1, timestamp: 't' };
+    const item = diaryFoodItem(built, identity, 2);
+    expect(item.nutrientSchemaVersion).toBe(2);
+    expect(item.protein).toBeNull();
+    expect(item.nutrientMeta.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 1 });
+    expect(item.nutrientMeta.quality.fat).toMatchObject({ status: 'estimated_from_comparable' });
+    expect(item.nutrientMeta.fiberMeaning).toBe('total');
+    const read = readFoodNutrients(item);
+    expect(read.values.protein).toBeNull();
+    expect(read.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 1 });
+    expect(read.quality.fat.status).toBe('estimated_from_comparable');
+    expect(read.fiberMeaning).toBe('total');
+
+    const negative = Object.fromEntries(Object.entries(built.fields).map(([key, value]) => (
+      [key, typeof value === 'number' ? -value : value]
+    )));
+    const subtracted = diaryFoodItem({ fields: negative, doc: built.doc }, { ...identity, name: 'Yogurt (subtracted)' }, 2);
+    expect(subtracted.fat).toBe(-3);
+    expect(subtracted.nutrientMeta.quality.protein.upperBound).toBe(1);
+
+    const v1Built = buildFoodWrite(record, { writeVersion: 1, name: 'Yogurt', quantity: 1, lastUpdated: 't' });
+    const v1Item = diaryFoodItem(v1Built, identity, 1);
+    expect(Object.keys(v1Item)).toEqual(['id', 'name', 'quantity', 'timestamp', ...LEGACY_V1_KEYS]);
+    expect(v1Item).not.toHaveProperty('nutrientSchemaVersion');
+    expect(v1Item).not.toHaveProperty('nutrientMeta');
+    expect(v1Item.protein).toBe(0);
   });
 
   it('identical 24-key match still refuses overwriting a v2 doc', () => {

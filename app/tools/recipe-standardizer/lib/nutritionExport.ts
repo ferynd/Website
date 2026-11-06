@@ -342,14 +342,20 @@ export const buildExportPayload = (
   };
   const exportedDetail = writeVersion === 2 ? exportDetail(result, basis) : null;
   const detail = exportedDetail?.values;
-  const detailQuality = exportedDetail?.quality;
   const detailLowerBoundKeys = exportedDetail?.lowerBoundKeys ?? [];
+  let exportQuality: Partial<Record<NutrientKey, NutrientQuality>> | undefined;
+  if (writeVersion === 2) {
+    exportQuality = { ...(exportedDetail?.quality ?? {}) };
+    for (const key of lowerBoundKeys) {
+      exportQuality[key] = { status: 'calculated', qualifier: 'lower_bound' };
+    }
+  }
   const fingerprint = writeVersion === 2
     ? fingerprintTrackerFoodV2({
       quantity: TRACKER_EXPORT_QUANTITY,
       nutrients: sparse,
       detail,
-      quality: detailQuality,
+      quality: exportQuality,
     })
     : fingerprintTrackerFood({ quantity: TRACKER_EXPORT_QUANTITY, nutrients });
   // Ingredient-row coverage can be complete while a linked food omits a nutrient.
@@ -382,7 +388,7 @@ export const buildExportPayload = (
       ...(writeVersion === 2 ? {
         sparseNutrients: sparse,
         detail,
-        ...(detailQuality ? { quality: detailQuality } : {}),
+        ...(exportQuality && Object.keys(exportQuality).length > 0 ? { quality: exportQuality } : {}),
         ...(detailLowerBoundKeys.length > 0 ? { detailLowerBoundKeys } : {}),
       } : {}),
     },

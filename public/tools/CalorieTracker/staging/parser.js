@@ -18,6 +18,7 @@ import {
   NutrientBoundsError,
   applyLegacyInputOverlay,
   buildFoodWrite,
+  diaryFoodItem,
   targetsFromStagedRecord,
   v1StorageNotice,
 } from '../nutrition/nutrientRecord.js';
@@ -200,18 +201,13 @@ function foodFields(record, foodName, qty) {
   }
 }
 
-function dayItemFromFields(fields, foodName, qty) {
-  const item = {
+function dayItemFromWrite(built, fields, foodName, qty) {
+  return diaryFoodItem({ fields, doc: built.doc }, {
     id: crypto.randomUUID(),
     name: foodName,
     quantity: qty,
     timestamp: new Date().toISOString(),
-    ...fields,
-  };
-  if (writeVersion() === 2) {
-    item.nutrientSchemaVersion = 2;
-  }
-  return item;
+  }, writeVersion());
 }
 
 async function commitStagedToLog(record, qty, foodName) {
@@ -223,7 +219,7 @@ async function commitStagedToLog(record, qty, foodName) {
   if (!built) return;
   applyLegacyDelta(todayEntry, built.fields, qty, 1);
 
-  state.dailyFoodItems.push(dayItemFromFields(built.fields, foodName, qty));
+  state.dailyFoodItems.push(dayItemFromWrite(built, built.fields, foodName, qty));
 
   await saveDailyEntry(dateStr, todayEntry);
   const notice = writeVersion() === 1 ? v1StorageNotice(built) : '';
@@ -274,7 +270,7 @@ export async function subtractStagedNutrientsFromDailyLog() {
     negative[key] = typeof value === 'number' ? -value : value;
   }
   const foodName = document.getElementById('food-item-input')?.value.trim() || '(Staged Subtraction)';
-  state.dailyFoodItems.push(dayItemFromFields(negative, `${foodName} (subtracted)`, qty));
+  state.dailyFoodItems.push(dayItemFromWrite(built, negative, `${foodName} (subtracted)`, qty));
 
   await saveDailyEntry(dateStr, todayEntry);
   showMessage("Staged nutrients subtracted from today's log!");
@@ -325,7 +321,7 @@ export function handleStagingAction(mode) {
       }
 
       const foodName = document.getElementById('food-item-input')?.value.trim() || '(Replaced Day)';
-      state.dailyFoodItems = [dayItemFromFields(built.fields, foodName, qty)];
+      state.dailyFoodItems = [dayItemFromWrite(built, built.fields, foodName, qty)];
 
       await saveDailyEntry(dateStr, newEntry);
       const notice = writeVersion() === 1 ? v1StorageNotice(built) : '';

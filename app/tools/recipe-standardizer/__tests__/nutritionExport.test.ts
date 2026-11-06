@@ -1257,6 +1257,7 @@ describe('nutritionExport', () => {
   function syntheticExport(options: {
     basis: 'perPortion' | 'per100gCooked';
     amounts?: Partial<Record<typeof TRACKER_NUTRIENT_KEYS[number], number | null>>;
+    lowerBoundKeys?: readonly (typeof TRACKER_NUTRIENT_KEYS[number])[];
     detail?: Record<string, { value: number | null; isLowerBound?: boolean }>;
     portionCount?: number | null;
     portionMode?: 'count' | 'size' | 'override';
@@ -1264,11 +1265,12 @@ describe('nutritionExport', () => {
     finalWeightG?: number | null;
     weightSource?: 'actual' | 'estimated' | null;
   }): RecipeNutritionResult {
+    const lowerBound = new Set(options.lowerBoundKeys ?? []);
     const amounts = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => {
       const value = options.amounts && Object.prototype.hasOwnProperty.call(options.amounts, key)
         ? options.amounts[key]
         : 0;
-      return [key, { value, isLowerBound: false, missingFromIngredientIds: [] }];
+      return [key, { value, isLowerBound: lowerBound.has(key), missingFromIngredientIds: [] }];
     }));
     return {
       foodsStatus: 'ready',
@@ -1365,6 +1367,49 @@ describe('nutritionExport', () => {
       quality: bounded.payload.quality,
     }, 't');
     expect(fingerprintTrackerFoodV2(parseTrackerFood('water', doc)!)).toBe(bounded.payload.fingerprint);
+  });
+
+  it('stores calculated lower_bound quality for core lower bounds and fingerprints it', () => {
+    const partial = syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { fiber: 4, protein: 10 },
+      lowerBoundKeys: ['fiber'],
+      detail: { water: { value: 80, isLowerBound: true } },
+    });
+    const bounded = buildExportPayload({} as Recipe, partial, 'perPortion', { writeVersion: 2 });
+    if (!bounded.ok) throw new Error(bounded.reason);
+    expect(bounded.payload.lowerBoundKeys).toContain('fiber');
+    expect(bounded.payload.quality?.fiber).toEqual({ status: 'calculated', qualifier: 'lower_bound' });
+    expect(bounded.payload.quality?.water).toEqual({ status: 'calculated', qualifier: 'lower_bound' });
+    expect(bounded.payload.quality?.protein).toBeUndefined();
+    const exact = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { fiber: 4, protein: 10 },
+      detail: { water: { value: 80, isLowerBound: true } },
+    }), 'perPortion', { writeVersion: 2 });
+    if (!exact.ok) throw new Error(exact.reason);
+    expect(exact.payload.fingerprint).not.toBe(bounded.payload.fingerprint);
+    const doc = buildTrackerFoodDocV2('Fiber', {
+      nutrients: bounded.payload.sparseNutrients!,
+      detail: bounded.payload.detail,
+      quality: bounded.payload.quality,
+    }, 't');
+    const meta = doc.nutrientMeta as { quality: Record<string, { status: string; qualifier?: string }> };
+    expect(meta.quality.fiber).toEqual({ status: 'calculated', qualifier: 'lower_bound' });
+    expect(fingerprintTrackerFoodV2(parseTrackerFood('fiber', doc)!)).toBe(bounded.payload.fingerprint);
+    const ordinary = buildTrackerFoodDocV2('Fiber', {
+      nutrients: bounded.payload.sparseNutrients!,
+      detail: bounded.payload.detail,
+      quality: { water: bounded.payload.quality!.water! },
+    }, 't');
+    expect(verifyTrackerFoodFingerprint(parseTrackerFood('fiber', ordinary)!, bounded.payload.fingerprint)).toBe('mismatch');
+    const flaggedOff = buildExportPayload({} as Recipe, partial, 'perPortion');
+    if (!flaggedOff.ok) throw new Error(flaggedOff.reason);
+    expect(flaggedOff.payload.quality).toBeUndefined();
+    expect(flaggedOff.payload.lowerBoundKeys).toContain('fiber');
+    expect(flaggedOff.payload.fingerprint).not.toMatch(/^v2:/);
   });
 
   it('verifies a v2 review against sparse nutrients, not the zero-filled view', () => {

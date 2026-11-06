@@ -156,6 +156,27 @@ describe('parseNutritionText', () => {
     expect(record.warnings.some((warning) => warning.code === 'negative' && warning.level === 'review')).toBe(true);
   });
 
+  it('parses leading decimals and does not turn a signed leading decimal positive', () => {
+    const record = parseNutritionText('Protein: .5 g\nFat: -.5 g\nSodium: .25 mg\nVitamin B12: .5 mcg');
+    expect(record.values.protein).toBe(0.5);
+    expect(record.values.protein).not.toBe(5);
+    expect(record.values.sodium).toBe(0.25);
+    expect(record.values.vitaminB12).toBe(0.5);
+    expect(record.values.fat).toBeNull();
+    expect(record.warnings.some((warning) => warning.code === 'negative' && warning.key === 'fat')).toBe(true);
+    const colonless = parseNutritionText('Protein .5 g');
+    expect(colonless.values.protein).toBe(0.5);
+    const bounded = parseNutritionText('Protein: <.5 g');
+    expect(bounded.values.protein).toBeNull();
+    expect(bounded.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 0.5 });
+    const range = parseNutritionText('Carbs: .5-.8 g\nFiber: .5 to 1 g');
+    expect(range.values.carbs).toBeNull();
+    expect(range.values.fiber).toBeNull();
+    expect(range.warnings.filter((warning) => warning.code === 'range')).toHaveLength(2);
+    expect(parseNutritionText('Protein: 5 g').values.protein).toBe(5);
+    expect(parseNutritionText('Protein: 1,234.5 g').values.protein).toBe(1234.5);
+  });
+
   it('colonless labels keep the whole nutrient name, including B12, B6 and omega-3', () => {
     const record = parseNutritionText([
       'Vitamin B12 2.4 mcg',

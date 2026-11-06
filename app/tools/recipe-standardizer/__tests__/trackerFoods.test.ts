@@ -54,6 +54,12 @@ describe('trackerFoods', () => {
     expect(fingerprintTrackerFood({ quantity: 1, nutrients: salt })).toBe('8194e8a5');
     expect(fingerprintTrackerFood({ quantity: 1, nutrients: ones })).toBe('68da78c4');
     expect(fingerprintTrackerFood(parseTrackerFood('egg', fullFood())!)).toBe('9418d4fb');
+    const withConventions = parseTrackerFood('egg', fullFood())!;
+    expect(fingerprintTrackerFood({
+      ...withConventions,
+      fiberMeaning: 'total',
+      carbConvention: 'excludes_fiber',
+    })).toBe('9418d4fb');
   });
 
   it('registry expansion does not change v1 fingerprints', () => {
@@ -69,6 +75,21 @@ describe('trackerFoods', () => {
     expect(digest.startsWith('v2:')).toBe(true);
     expect(fingerprintTrackerFoodV2({ ...food, detail: { fatSaturated: 1 } })).not.toBe(digest);
     expect(fingerprintTrackerFoodV2({ ...food, quality: { calories: { status: 'measured' } } })).not.toBe(digest);
+  });
+
+  it('v2 fingerprint changes when only fiberMeaning or carbConvention changes', () => {
+    const food = parseTrackerFood('egg', fullFood())!;
+    const weighted = { ...food, fiberMeaning: 'weighted_legacy' as const, carbConvention: 'includes_fiber' as const };
+    const total = { ...food, fiberMeaning: 'total' as const, carbConvention: 'includes_fiber' as const };
+    const excludes = { ...food, fiberMeaning: 'total' as const, carbConvention: 'excludes_fiber' as const };
+    expect(fingerprintTrackerFoodV1(weighted)).toBe('9418d4fb');
+    expect(fingerprintTrackerFoodV1(total)).toBe(fingerprintTrackerFoodV1(weighted));
+    const weightedDigest = fingerprintTrackerFoodV2(weighted);
+    expect(fingerprintTrackerFoodV2(total)).not.toBe(weightedDigest);
+    expect(fingerprintTrackerFoodV2(excludes)).not.toBe(fingerprintTrackerFoodV2(total));
+    expect(fingerprintTrackerFoodV2({ ...weighted, fiberMeaning: 'unknown', carbConvention: 'unknown' })).toBe(fingerprintTrackerFoodV2(food));
+    expect(verifyTrackerFoodFingerprint(total, weightedDigest)).toBe('mismatch');
+    expect(verifyTrackerFoodFingerprint(weighted, weightedDigest)).toBe('match');
   });
 
   it('verify: unchanged v1 values and no detail → match; with detail → match-v1-expanded; changed legacy value → mismatch', () => {

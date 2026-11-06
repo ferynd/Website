@@ -267,11 +267,16 @@ const detailValue = (food: Pick<TrackerFood, 'detail'>, key: DetailKey): number 
   return typeof value === 'number' && Number.isFinite(value) ? value : value === null ? null : null;
 };
 
-/** v2 fingerprint includes every registry key plus its quality status. */
+/** Omitted and unknown conventions hash the same, so a doc that stores neither still matches. */
+const conventionToken = (value: string | undefined): string => (
+  value && value !== 'unknown' ? value : ''
+);
+
+/** v2 fingerprint includes every registry key, its quality status, and fiber/carb conventions. */
 export const fingerprintTrackerFoodV2 = (
-  food: Pick<TrackerFood, 'quantity' | 'nutrients' | 'detail' | 'quality'>,
+  food: Pick<TrackerFood, 'quantity' | 'nutrients' | 'detail' | 'quality' | 'fiberMeaning' | 'carbConvention'>,
 ): string => {
-  const canonical = `r=2|q=${food.quantity ?? ''}${V2_KEYS.map((key) => {
+  const canonical = `r=2|q=${food.quantity ?? ''}|fiber=${conventionToken(food.fiberMeaning)}|carb=${conventionToken(food.carbConvention)}${V2_KEYS.map((key) => {
     const value = (LEGACY_V1_KEYS as readonly string[]).includes(key)
       ? food.nutrients[key as TrackerNutrientKey]
       : detailValue(food, key as DetailKey);
@@ -285,7 +290,7 @@ export type FingerprintVerdict = 'match' | 'match-v1-expanded' | 'mismatch';
 
 /** Compare a stored fingerprint. match and match-v1-expanded are unchanged for the legacy 24 keys. */
 export const verifyTrackerFoodFingerprint = (
-  food: Pick<TrackerFood, 'quantity' | 'nutrients' | 'detail' | 'quality'>,
+  food: Pick<TrackerFood, 'quantity' | 'nutrients' | 'detail' | 'quality' | 'fiberMeaning' | 'carbConvention'>,
   stored: string | null,
 ): FingerprintVerdict => {
   if (stored == null || stored === '') return 'mismatch';
@@ -300,7 +305,7 @@ export const verifyTrackerFoodFingerprint = (
 
 /** Fingerprint stored on new links and exports. v1 while production writes are off. */
 export const currentFingerprint = (
-  food: Pick<TrackerFood, 'quantity' | 'nutrients' | 'detail' | 'quality'>,
+  food: Pick<TrackerFood, 'quantity' | 'nutrients' | 'detail' | 'quality' | 'fiberMeaning' | 'carbConvention'>,
 ): string => (resolveNutrientWriteVersion() === 2 ? fingerprintTrackerFoodV2(food) : fingerprintTrackerFoodV1(food));
 
 /** Return the stable FNV-1a 32-bit hash used by tracker food fingerprints. */

@@ -6,7 +6,7 @@ import {
   parseNutritionLink, summarizeLinkReview,
 } from '../lib/nutritionLink';
 import { parseRecipeJson } from '../lib/schema';
-import { fingerprintTrackerFood, TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
+import { fingerprintTrackerFood, fingerprintTrackerFoodV2, TRACKER_NUTRIENT_KEYS, type TrackerFood } from '../lib/trackerFoods';
 import { UNLINKED_NUTRITION } from '../lib/types';
 import { validRecipeJson } from './fixtures';
 
@@ -101,5 +101,20 @@ describe('nutrition link lifecycle', () => {
     const link = confirmNutritionLink(food(), 50, 1, UNLINKED_NUTRITION);
     expect(link.targetFingerprint).toBe(fingerprintTrackerFood(food()));
     expect(link.targetFingerprint).not.toMatch(/^v2:/);
+  });
+
+  it('a v2 confirmation goes stale when only fiber or carbohydrate convention changes', () => {
+    const base = { ...food(), schema: 2 as const, fiberMeaning: 'weighted_legacy' as const, carbConvention: 'includes_fiber' as const };
+    const link = {
+      ...confirmNutritionLink(base, 50, 1, UNLINKED_NUTRITION),
+      targetFingerprint: fingerprintTrackerFoodV2(base),
+    };
+    expect(assessNutritionLink(link, new Map([['egg', base]])).state).toBe('confirmed');
+    expect(assessNutritionLink(link, new Map([['egg', { ...base, fiberMeaning: 'total' }]])).state).toBe('stale-revised');
+    expect(assessNutritionLink(link, new Map([['egg', { ...base, carbConvention: 'excludes_fiber' }]])).state).toBe('stale-revised');
+    const v1 = confirmNutritionLink(food(), 50, 1, UNLINKED_NUTRITION);
+    expect(v1.targetFingerprint).toBe(fingerprintTrackerFood(food()));
+    expect(v1.targetFingerprint).not.toMatch(/^v2:/);
+    expect(assessNutritionLink(v1, new Map([['egg', { ...food(), fiberMeaning: 'total', carbConvention: 'excludes_fiber' }]])).state).toBe('confirmed');
   });
 });

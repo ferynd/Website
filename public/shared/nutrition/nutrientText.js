@@ -81,12 +81,19 @@ function matchRegisteredLabel(line) {
   return null;
 }
 
+/** Integer, thousands separators, or a leading decimal. The sign is separate. */
+const NUMBER_CORE = '(?:\\d[\\d,]*(?:\\.\\d+)?|\\.\\d+)';
+const SPACED_VALUE = new RegExp(`\\s+([<~≈]?(?:${NUMBER_CORE}))`);
+const READ_NUMBER = new RegExp(`(${NUMBER_CORE})`);
+const RANGE_NUMBER = new RegExp(`${NUMBER_CORE}\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE}`);
+const NEGATIVE_NUMBER = new RegExp(`(?:^|[^\\d.])-(?:${NUMBER_CORE})`);
+
 function splitAtValueToken(line) {
-  const spaced = line.match(/\s+([<~≈]?\d)/);
+  const spaced = line.match(SPACED_VALUE);
   if (spaced && spaced.index != null) {
     return { label: line.slice(0, spaced.index).trim(), valuePart: line.slice(spaced.index).trim() };
   }
-  const re = /[<~≈\d]/g;
+  const re = new RegExp(`[<~≈]|\\.(?=\\d)|\\d`, 'g');
   let match = re.exec(line);
   while (match) {
     if (match.index !== 0) {
@@ -119,7 +126,7 @@ function decimalCount(token) {
 }
 
 function readNumber(text) {
-  const match = String(text).match(/(\d[\d,]*(?:\.\d+)?)/);
+  const match = String(text).match(READ_NUMBER);
   if (!match) return null;
   const token = match[1];
   const value = Number(token.replace(/,/g, ''));
@@ -138,11 +145,11 @@ function readUnit(text, start) {
 }
 
 function isRange(text) {
-  return /\d[\d,]*(?:\.\d+)?\s*(?:-|–|—|\bto\b)\s*\d/.test(text);
+  return RANGE_NUMBER.test(String(text));
 }
 
 function isNegative(text) {
-  return /(?:^|[^.\d])-\d/.test(text);
+  return NEGATIVE_NUMBER.test(String(text));
 }
 
 function pushWarning(warnings, warning) {
