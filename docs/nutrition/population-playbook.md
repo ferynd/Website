@@ -9,7 +9,8 @@ Status: instructions for future CalorieTracker #62-#63 execution. [ingredient-ca
 3. [Per-ingredient procedure](#per-ingredient-procedure)
 4. [Validation and review](#validation-and-review)
 5. [Batch completion and retry](#batch-completion-and-retry)
-6. [Execution prompt](#execution-prompt)
+6. [Cost-optimized research](#cost-optimized-research)
+7. [Execution prompt](#execution-prompt)
 
 ## Scope and job selection
 
@@ -117,13 +118,25 @@ For each batch, report:
 
 Reconcile progress against the manifest, not an informal checklist. Do not declare population complete while some IDs were never attempted. Keep unresolvable fields explicit. Do not count duplicate source profiles as independent evidence.
 
-Ship bounded category batches with reviewable diffs and license metadata. Production private-data imports use the project's release procedure, backups, and verification. Catalog preparation does not authorize rewriting historical meals.
+Ship bounded category batches with reviewable diffs and license metadata. Production private-data imports use the project's release procedure, backups, and verification. Catalog preparation does not authorize rewriting historical meals. Each live import requires James's explicit approval, recorded in the batch PR (a standing approval may cover a named wave).
+
+## Cost-optimized research
+
+Bulk population, Ingredient Library research (#69), and missing-ingredient research (#66) use the same #62 research jobs, so cost controls apply to all of them.
+
+1. **Deterministic first.** Import pinned FDC bulk releases and official labels by match table. Never spend model calls transcribing, scaling, or copying structured data.
+2. **Cache and deduplicate.** Key source downloads by release/checksum. Deduplicate jobs by target key + requested fields + source release: catalog population uses the manifest ID; Ingredient Library and missing-meal research on owner-private or newly entered ingredients use namespace/owner plus stable ingredient/variant identity (never insert private input into the public manifest solely to obtain a key). A rerun reuses cached responses and approved revisions.
+3. **Residual fields only.** Model-assisted research (#67's server-side route) is limited to identities or fields still unresolved after deterministic sources. Group residual fields from many IDs into bounded batch requests where the provider supports it, and prefer asynchronous batch processing when latency does not matter.
+4. **Structured output.** Requests use a strict JSON schema with per-field value or `null`, unit, basis, status, and cited source. Reject invalid or uncited output; never import freeform nutrition text. Results enter normal review.
+5. **Bounded and resumable.** Configure per-batch request, token, and spend limits at the top of the script. Checkpoint after each request group; a stopped batch resumes without repeating finished work. Record attempts, model, and cost per batch.
+6. **Pass IDs.** Each population unit has a source-independent parent batch ID (from priority/category/manifest set). Each deterministic or model-assisted attempt gets a distinct pass/attempt ID that includes the source or model release, so a residual AI pass never collides with a completed deterministic checkpoint and retries stay unambiguous. Progress records link pass IDs back to the parent batch.
+7. **Approval.** Provisioning credentials and running a paid batch require James's explicit approval. Until the route exists, residual fields stay explicit gaps for a later residual pass under a new pass ID on the same parent batch.
 
 ## Execution prompt
 
 Use this after #60-#62 provide the schema, repository, and importer:
 
-> Read root AGENTS.md, CalorieTracker backlog item #63, docs/nutrition/workflow.md, this playbook, and the current ingredient catalog. Reconcile completed batches. Select the next at most 25 unblocked IDs in priority/category/ID order. Reuse exact existing profiles. Retrieve applicable USDA or official manufacturer data, normalize to per 100 g edible weight, and populate every supported nutrient with a sourced value/derivation or explicit unknown status. Fill gaps only through the documented source hierarchy. Preserve fat/fiber definitions, state, label rounding, and provenance. Validate, review uncertain matches, create versioned records idempotently, and record exact IDs, coverage, gaps, source versions, and checks. Do not infer proprietary ingredient doses, change historical entries, replace user overrides silently, or claim unperformed imports. Record an actionable blocked reason when access or product identity is missing, then continue other unblocked IDs. Follow the backlog's PR and deployment gates.
+> Read root AGENTS.md, CalorieTracker backlog item #63, docs/nutrition/workflow.md, this playbook, and the current ingredient catalog. Reconcile completed batches. Select the next at most 25 unblocked IDs in priority/category/ID order. Reuse exact existing profiles. Retrieve applicable USDA or official manufacturer data, normalize to per 100 g edible weight, and populate every supported nutrient with a sourced value/derivation or explicit unknown status. Fill gaps only through the documented source hierarchy; use model-assisted research only for residual fields, with structured output and review, within the playbook's cost limits and approvals. Preserve fat/fiber definitions, state, label rounding, and provenance. Validate, review uncertain matches, create versioned records idempotently, and record exact IDs, coverage, gaps, source versions, and checks. Do not infer proprietary ingredient doses, change historical entries, replace user overrides silently, or claim unperformed imports. Record an actionable blocked reason when access or product identity is missing, then continue other unblocked IDs. Follow the backlog's PR and deployment gates.
 
 ## Source references
 
