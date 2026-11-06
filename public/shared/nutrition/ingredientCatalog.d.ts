@@ -15,6 +15,7 @@ export function createCuratedCatalogSource(options?: {
         cursor: string | null;
     }>;
     getVariant(id: string): Promise<any | null>;
+    getConversions(id: string): Promise<import('./ingredientConversion').IngredientConversion[]>;
     getRevision(id: string, n: number): Promise<any | null>;
     stats(): {
         shards: number;

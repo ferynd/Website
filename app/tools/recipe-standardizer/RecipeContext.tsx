@@ -91,8 +91,10 @@ export function RecipeProvider({ children }: {
     let active = true;
     let transitions = Promise.resolve();
     const unsub = onAuthStateChanged(auth, (nextUser) => {
-      transitions = transitions.then(async () => {
-        if (!nextUser || previousUid !== nextUser.uid) await clearProfileCache();
+      transitions = transitions.catch(() => { /* Recover the auth queue. */ }).then(async () => {
+        if (previousUid && previousUid !== nextUser?.uid) {
+          try { await clearProfileCache(); } catch { /* Cache cleanup is best effort. */ }
+        }
         previousUid = nextUser?.uid ?? null;
         if (active) { setUser(nextUser); setAuthLoading(false); }
       });
@@ -127,7 +129,7 @@ export function RecipeProvider({ children }: {
     savedRecipes,
     listError,
     listLoaded,
-    signOut: useCallback(async () => { await clearProfileCache(); await firebaseSignOut(auth); }, []),
+    signOut: useCallback(async () => { try { await clearProfileCache(); } catch { /* Always complete Firebase sign-out. */ } await firebaseSignOut(auth); }, []),
     loadSavedRecipe: useCallback((recipeId: string) => loadRecipe(requireUid(), recipeId), [requireUid]),
     saveNew: useCallback((recipe: Recipe) => saveNewRecipe(requireUid(), recipe), [requireUid]),
     update: useCallback(

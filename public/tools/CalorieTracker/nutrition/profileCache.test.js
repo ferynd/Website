@@ -30,3 +30,36 @@ it('enforces total estimated JSON size without evicting pending drafts', async (
     expect(await cache.listPendingSaves()).toHaveLength(1);
     cache.close();
 });
+it.each(['throw', 'error', 'blocked', 'silent'])('cache deletion is bounded and non-throwing: %s', async mode => {
+    vi.useFakeTimers();
+    const idb = { deleteDatabase() {
+        if (mode === 'throw') throw new Error('Storage denied');
+        const req = {};
+        queueMicrotask(() => { if (mode === 'error') req.onerror(); if (mode === 'blocked') req.onblocked(); });
+        return req;
+    } };
+    const result = clearProfileCache({idb});
+    await vi.runAllTimersAsync();
+    expect(await result).toBe(false);
+});
+it('same-owner reload preserves revisions, conversions and pending drafts', async () => {
+    const idb = memoryIndexedDb(), first = await openProfileCache({ownerUid:'owner',idb});
+    const {ref, revision} = await fixture();
+    await first.putRevision(ref, revision);
+    await first.putConversion(ref.namespace, {conversionId:'saved'});
+    await first.putPendingSave({idempotencyKey:'draft'});
+    first.close();
+    const reloaded = await openProfileCache({ownerUid:'owner',idb});
+    expect((await reloaded.getRevision(ref)).status).toBe('fresh');
+    expect(await reloaded.getConversions(ref.namespace)).toHaveLength(1);
+    expect(await reloaded.listPendingSaves()).toHaveLength(1);
+    reloaded.close();
+});
+it('disables cache rather than exposing another owner when deletion fails', async () => {
+    const idb = memoryIndexedDb(), first = await openProfileCache({ownerUid:'a',idb});
+    await first.putPendingSave({idempotencyKey:'private'});
+    idb.deleteDatabase = () => { throw new Error('Denied'); };
+    const second = await openProfileCache({ownerUid:'b',idb});
+    expect(await second.listPendingSaves()).toEqual([]);
+    second.close();
+});

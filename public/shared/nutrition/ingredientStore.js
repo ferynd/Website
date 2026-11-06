@@ -1,5 +1,5 @@
 import { INGREDIENT_STORE_WRITES_ENABLED } from './capabilities.js';
-import { INGREDIENT_COLLECTIONS as C, identityKeyV1, privateIdentityId, privateVariantId, overrideVariantId, variantKeyV1, revisionIdFor, buildSearchTokens, normalizeIdentityName, isValidFirestoreDocId } from './ingredientIds.js';
+import { INGREDIENT_COLLECTIONS as C, identityKeyV1, privateIdentityId, privateVariantId, overrideVariantId, variantKeyV1, revisionIdFor, buildSearchTokens, searchWords, isValidFirestoreDocId } from './ingredientIds.js';
 import { normalizeVariantDims } from './ingredientVariants.js';
 import { parseIngredientRef, sameRef } from './ingredientRefs.js';
 import { validateRevision, verifyRevisionHash } from './ingredientProfile.js';
@@ -27,12 +27,49 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
     const refOf = (r, scope = 'private') => ({ refVersion: 1, scope, namespace: scope === 'private' ? namespace : 'catalog:nutrition-curated', identityId: r.identityId, variantId: r.variantId, revision: r.revision, revisionId: r.revisionId, contentHash: r.contentHash });
     async function searchPrivate(q, { pageSize = 25, cursor } = {}) {
         const size = Math.max(1, Math.min(25, Math.floor(pageSize) || 25));
-        const token = normalizeIdentityName(q).split(/\s+/)[0];
-        if (!token)
+        const words = searchWords(q);
+        // Single letters have no general prefix index. Wait for a second letter.
+        if (!words.length || words[0].length < 2)
             return { items: [], cursor: null };
+        const token = words[0].slice(0, 8);
         const rows = await port.queryCollection(prefix + C.identities, { arrayContains: ['searchTokens', token], orderById: true, limit: size + 1, startAfterId: cursor });
-        return { items: rows.slice(0, size), cursor: rows.length > size ? rows[size - 1].id : null };
+        const items = [];
+        for (const identity of rows.slice(0, size)) {
+            if (identity.retiredAt || !words.every(word => buildSearchTokens(identity.canonicalName, identity.aliases).some(t => t.startsWith(word))))
+                continue;
+            const variants = await port.queryCollection(prefix + C.variants, { equals: ['identityId', identity.identityId], orderById: true, limit: 25 });
+            for (const variant of variants) {
+                const ref = parseIngredientRef(refOf({ ...variant, revision: variant.headRevision, revisionId: variant.headRevisionId, contentHash: variant.headContentHash }));
+                if (ref && variant.dims && !variant.retiredAt)
+                    items.push({ ...identity, ...variant, ref });
+            }
+        }
+        return { items, cursor: rows.length > size ? rows[size - 1].id : null };
     }
+    async function getConversions(raw) {
+        const ref = parseIngredientRef(raw);
+        if (!ref || (ref.scope === 'private' && ref.namespace !== namespace))
+            return [];
+        const cached = (await cache?.getConversions(ref.namespace) ?? []).filter(c => sameRef(c.variantRef, ref) && !validateConversion(c).length);
+        try {
+            let conversions = [];
+            if (ref.scope === 'curated') {
+                conversions = await catalog?.getConversions(ref.variantId) ?? [];
+            } else {
+                let cursor;
+                do {
+                    const rows = await port.queryCollection(prefix + C.conversions, { equals: ['variantRef.variantId', ref.variantId], orderById: true, limit: 25, startAfterId: cursor });
+                    conversions.push(...rows.map(row => { const { id, ...conversion } = row; return conversion; }));
+                    cursor = rows.length === 25 ? rows.at(-1).id : undefined;
+                } while (cursor);
+            }
+            conversions = conversions.filter(c => sameRef(c.variantRef, ref) && !validateConversion(c).length && (ref.scope !== 'private' || c.ownerUid === ownerUid));
+            for (const c of conversions)
+                await cache?.putConversion(ref.namespace, c);
+            return conversions;
+        } catch { return cached; }
+    }
+
     async function resolveRef(raw) {
         const ref = parseIngredientRef(raw);
         if (!ref || (ref.scope === 'private' && ref.namespace !== namespace))
@@ -92,7 +129,7 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
         if (conversions.some(c => validateConversion(c).length || !sameRef(c.variantRef,refOf({...revisionDraft,revision:1,revisionId:revisionIdFor(variantId,1)}))))
             throw new TypeError('Invalid conversion');
         const idem = await sha256Hex(ownerUid + '|' + variantId + '|0|' + revisionDraft.contentHash);
-        return runSave('createIngredient', payload, idem, async (tx) => {
+        const saved = await runSave('createIngredient', payload, idem, async (tx) => {
             const existingIdentity = overrides ? null : await tx.get(path('identities', identityId));
             const existing = await tx.get(path('variants', variantId));
             if (existingIdentity && existingIdentity.identityKeyV1 !== key)
@@ -101,8 +138,10 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
                 if (existing.variantKeyV1 !== variantKeyV1(variant.dims ?? variant) || existing.identityId !== actualIdentityId)
                     throw new IdentityKeyCollisionError('Variant key collision');
                 const revision = await tx.get(path('revisions', existing.headRevisionId));
-                if (revision?.contentHash === revisionDraft.contentHash && await verifyRevisionHash(revision))
-                    return refOf(revision);
+                if (revision?.contentHash === revisionDraft.contentHash && await verifyRevisionHash(revision)) {
+                    const committed = await Promise.all(conversions.map(c => tx.get(path('conversions', c.conversionId))));
+                    return { ref: refOf(revision), conversions: committed.filter(Boolean) };
+                }
                 throw new RevisionConflictError('Ingredient already exists with another profile');
             }
             const oldConversions = await Promise.all(conversions.map(c => tx.get(path('conversions', c.conversionId))));
@@ -116,8 +155,11 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
             tx.set(path('revisions', revision.revisionId), revision);
             for (const c of conversions)
                 tx.set(path('conversions', c.conversionId), { ...c, schemaVersion: 1, ownerUid, createdAt: stamp });
-            return refOf(revision);
+            return { ref: refOf(revision), conversions: conversions.map(c => ({ ...c, schemaVersion: 1, ownerUid, createdAt: stamp })) };
         });
+        for (const c of saved.conversions)
+            await cache?.putConversion(namespace, c);
+        return saved.ref;
     }
     async function saveRevision(payload) {
         assertWrites();
@@ -147,7 +189,7 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
         assertWrites();
         if (validateConversion(conversion).length || conversion.variantRef.scope !== 'private' || conversion.variantRef.namespace !== namespace)
             throw new TypeError('Invalid conversion');
-        return port.runTransaction(async (tx) => {
+        const saved = await port.runTransaction(async (tx) => {
             const variant = await tx.get(path('variants', conversion.variantRef.variantId));
             const revision = await tx.get(path('revisions', conversion.variantRef.revisionId));
             const old = await tx.get(path('conversions', conversion.conversionId));
@@ -156,8 +198,10 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
                 throw new TypeError('Variant missing');
             if (!old)
                 tx.set(path('conversions', conversion.conversionId), { ...conversion, schemaVersion: 1, ownerUid, createdAt: port.serverTimestamp() });
-            return old ?? conversion;
+            return old ?? { ...conversion, schemaVersion: 1, ownerUid };
         });
+        await cache?.putConversion(namespace, saved);
+        return saved;
     }
     async function updateMetadata(kind, id, patch) {
         assertWrites();
@@ -167,7 +211,7 @@ export function createIngredientStore({ port, namespace, ownerUid, cache, catalo
         return port.runTransaction(async (tx) => { const old = await tx.get(path(kind, id)); if (!old)
             throw new TypeError('Missing record'); tx.update(path(kind, id), { ...patch, updatedAt: port.serverTimestamp() }); });
     }
-    return { close: () => cache?.close(), searchPrivate, getIdentity: id => port.getDoc(path('identities', id)), listVariants: identityId => port.queryCollection(prefix + C.variants, { equals: ['identityId', identityId], orderById: true, limit: 25 }), resolveRef, resolveEffectiveProfile, createIngredient, saveRevision, addConversion,
+    return { close: () => cache?.close(), searchPrivate, getIdentity: id => port.getDoc(path('identities', id)), listVariants: identityId => port.queryCollection(prefix + C.variants, { equals: ['identityId', identityId], orderById: true, limit: 25 }), resolveRef, resolveEffectiveProfile, getConversions, createIngredient, saveRevision, addConversion,
         updateIdentity: (id, patch) => updateMetadata('identities', id, patch), retireVariant: id => updateMetadata('variants', id, { retiredAt: port.serverTimestamp() }),
         listPendingSaves: async () => await cache?.listPendingSaves() ?? [],
         retirePendingSave: async (key) => { assertWrites(); await cache?.deletePendingSave(key); },

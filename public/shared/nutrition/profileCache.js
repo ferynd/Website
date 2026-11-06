@@ -9,15 +9,28 @@ let epoch = 0;
 const requestResult = req => new Promise((resolve, reject) => { req.onsuccess = () => resolve(req.result); req.onerror = () => reject(req.error); });
 export async function clearProfileCache({ idb = globalThis.indexedDB } = {}) {
     epoch++;
-    for (const close of closeCallbacks)
-        close();
+    for (const close of closeCallbacks) {
+        try { close(); } catch { /* Closing optional storage must not block auth. */ }
+    }
     closeCallbacks.clear();
-    for (const connection of connections)
-        connection.close();
+    for (const connection of connections) {
+        try { connection.close(); } catch { /* Best effort. */ }
+    }
     connections.clear();
     if (!idb)
-        return;
-    await requestResult(idb.deleteDatabase(DB_NAME));
+        return false;
+    return new Promise(resolve => {
+        // Other tabs can keep deletion blocked indefinitely. Bound all outcomes,
+        // including browsers that never dispatch a terminal request event.
+        const timeout = setTimeout(() => finish(false), 1000);
+        const finish = success => { clearTimeout(timeout); resolve(success); };
+        try {
+            const req = idb.deleteDatabase(DB_NAME);
+            req.onsuccess = () => finish(true);
+            req.onerror = () => finish(false);
+            req.onblocked = () => { /* The timeout also bounds blocked deletion. */ };
+        } catch { finish(false); }
+    });
 }
 export async function openProfileCache({ ownerUid, idb = globalThis.indexedDB, limits = {} }) {
     const bounds = { ...PROFILE_CACHE_LIMITS, ...limits };
@@ -50,7 +63,8 @@ export async function openProfileCache({ ownerUid, idb = globalThis.indexedDB, l
         await open();
         const owner = await io('meta', 'readonly', s => s.get('owner'));
         if (owner && owner.value !== ownerUid) {
-            await clearProfileCache({ idb });
+            if (!await clearProfileCache({ idb }))
+                throw new Error('Owner cache could not be cleared');
             cacheEpoch = epoch;
             await open();
         }

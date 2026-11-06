@@ -39,3 +39,68 @@ describe('ingredient store boundary (source only)', () => {
     it.each(['foodItems/chicken', 'dailyEntries/2026-11-06', 'targets/baseline', 'goals/settings', 'profile/main', 'weightEntries/one', 'foodItems/chicken/deep/doc'])('preserves legacy owner access and cross-user denial: %s', async (suffix) => { const p = prefix + '/' + suffix; await assertSucceeds(setDoc(doc(owner(), p), { legacy: true })); const other = env.authenticatedContext('other').firestore(); await assertFails(getDoc(doc(other, p))); await assertFails(setDoc(doc(other, p), { legacy: false })); });
     it('preserves recipe namespace ownership', async () => { const p = `artifacts/recipe-standardizer/users/${uid}/recipes/one`; await assertSucceeds(setDoc(doc(owner(), p), { recipe: {} })); await assertFails(setDoc(doc(env.authenticatedContext('other').firestore(), p), {})); });
 });
+
+describe('ingredient field bounds and types', () => {
+    it.each([
+        {category:'x'.repeat(81)}, {kind:'x'.repeat(81)}, {category:42}, {kind:[]},
+        {aliases:[{text:'x'.repeat(201),kind:'confirmed'}]}, {aliases:[{text:42,kind:'search'}]},
+        {aliases:[{text:'valid',kind:'invented'}]}, {aliases:[{text:'valid',kind:'search',extra:true}]},
+        {aliases:['not a map']}, {aliases:Array(33).fill({text:'ok',kind:'search'})},
+        {searchTokens:['x'.repeat(81)]}, {searchTokens:[42]}, {searchTokens:[null]}, {searchTokens:[false]}, {searchTokens:[{}]}, {searchTokens:['a|b']}, {searchTokens:Array(65).fill('ok')},
+        {aliases:[...Array(31).fill({text:'ok',kind:'search'}),{text:'x'.repeat(201),kind:'confirmed'}]},
+        {searchTokens:[...Array(63).fill('ok'),42]},
+    ])('rejects malformed/oversize identity fields: %j', async changes => {
+        await assertFails(setDoc(doc(owner(),path('ingredientIdentities',pi)),{...identity(),...changes}));
+    });
+    it('accepts 32 bounded aliases and 64 tokens, including the last entry', async () => {
+        await assertSucceeds(setDoc(doc(owner(),path('ingredientIdentities',pi)),{
+            ...identity(),aliases:Array.from({length:32},(_,i)=>({text:'alias '+i,kind:'search'})),searchTokens:Array.from({length:64},(_,i)=>'word'+i),
+        }));
+    });
+    it('validates later alias/token entries on metadata updates too', async () => {
+        const db = owner(); await create(db);
+        await assertFails(updateDoc(doc(db,path('ingredientIdentities',pi)),{aliases:[{text:'ok',kind:'search'},{text:'x'.repeat(201),kind:'confirmed'}],updatedAt:stamp()}));
+        await assertFails(updateDoc(doc(db,path('ingredientIdentities',pi)),{searchTokens:['ok',false],updatedAt:stamp()}));
+    });
+    it.each([
+        {state:'x'.repeat(201)}, {state:4}, {preparation:'x'.repeat(201)}, {preparation:[]},
+        {drained:4}, {salt:'invalid'}, {fortification:false}, {fatPercent:101}, {leanPercent:'50'},
+        {fortificationDetail:'x'.repeat(201)}, {sweetening:{}}, {ediblePortion:'x'.repeat(201)},
+        {brand:'invalid'}, {brand:{brand:'x'.repeat(201)}}, {brand:{gtin:123}}, {brand:{formulationNote:'x'.repeat(501)}},
+    ])('rejects malformed/oversize dimension values: %j', async changes => {
+        await assertFails(create(owner(),pv,null,{dims:{state:'raw',...changes}}));
+    });
+    it.each(['x'.repeat(201),42,'bad/identity'])('rejects invalid curated override identityId: %j', async identityId => {
+        await assertFails(create(owner(),'ov-'+'e'.repeat(20),{catalogId:'nutrition-curated',variantId:'chicken',revision:1},{identityId}));
+    });
+    const conversion = () => ({schemaVersion:1,ownerUid:uid,conversionId:'pc-'+'d'.repeat(20),variantRef:{refVersion:1,scope:'private',namespace:'default-app-id',identityId:pi,variantId:pv,revision:1,revisionId:pv+'~r1',contentHash:hash},kind:'piece',unit:'piece',amount:1,grams:100,state:'raw',source:{type:'manual'},confidence:1,createdAt:stamp()});
+    it.each([
+        {unitQualifier:'x'.repeat(201)}, {unitQualifier:42}, {state:'x'.repeat(201)},
+        {range:'invalid'}, {range:{min:0,max:1000001}}, {range:{min:'0',max:1}}, {range:{min:2,max:1}}, {range:{min:0,max:1,extra:true}},
+        {supersedes:'x'.repeat(200)}, {supersedes:42}, {source:{type:'manual',title:'x'.repeat(501)}},
+        {source:{type:'manual',url:'x'.repeat(2049)}}, {source:{type:'manual',recordId:123}},
+        {source:{type:'manual',permittedUse:'x'.repeat(1001)}}, {source:{type:'manual',extra:'no'}},
+    ])('rejects malformed/oversize conversion fields: %j', async changes => {
+        const db = owner(); await create(db);
+        await assertFails(setDoc(doc(db,path('ingredientConversions','pc-'+'d'.repeat(20))),{...conversion(),...changes}));
+    });
+    it('accepts bounded dimensions and conversion metadata', async () => {
+        const db = owner();
+        await assertSucceeds(create(db,pv,null,{dims:{state:'raw',preparation:'chopped',drained:'not_applicable',salt:'unsalted',fortification:'unfortified',fortificationDetail:'unspecified',sweetening:'unsweetened',ediblePortion:'all',fatPercent:2,leanPercent:null,brand:{brand:'Brand',product:'Food',gtin:'123',market:'US',labelDate:'2026-11-06',formulationNote:'Current'}}}));
+        await assertSucceeds(setDoc(doc(db,path('ingredientConversions','pc-'+'d'.repeat(20))),{...conversion(),unitQualifier:'whole',range:{min:90,max:110},supersedes:'pc-'+'e'.repeat(20),source:{type:'manual',datasetId:'set',recordId:'record',title:'Fixture',url:'https://example.com',version:'1',publishedAt:'2026-01-01',accessedAt:'2026-11-06',originalBasis:'one piece',permittedUse:'private',checksum:'test'}}));
+    });
+});
+
+describe('identity capacity', () => {
+    it.each([0,1,7,8,9,15,16,17,24,25,31,32].map(count => [count,64]))('accepts %i aliases and %i tokens', async (aliases,tokens) => {
+        await assertSucceeds(setDoc(doc(owner(),path('ingredientIdentities',pi)),{...identity(),aliases:Array.from({length:aliases},(_,i)=>({text:'alias '+i,kind:'search'})),searchTokens:Array.from({length:tokens},(_,i)=>'word'+i)}));
+    });
+});
+
+it('accepts a full-capacity identity in the atomic ingredient create batch', async () => {
+    const db = owner(), b = writeBatch(db);
+    b.set(doc(db,path('ingredientIdentities',pi)),{...identity(),aliases:Array.from({length:32},(_,i)=>({text:'alias '+i,kind:'confirmed'})),searchTokens:Array.from({length:64},(_,i)=>'word'+i)});
+    b.set(doc(db,path('ingredientVariants',pv)),variant());
+    b.set(doc(db,path('ingredientRevisions',pv+'~r1')),revision());
+    await assertSucceeds(b.commit());
+});

@@ -1,5 +1,6 @@
+import { parseIngredientRef } from './ingredientRefs.js';
 import { contentHashOf } from './contentHash.js';
-import { CURATED_CATALOG_ID, normalizeIdentityName, buildSearchTokens } from './ingredientIds.js';
+import { CURATED_CATALOG_ID, normalizeIdentityName, buildSearchTokens, searchWords } from './ingredientIds.js';
 const ROOT = '/shared/nutrition/catalog/' + CURATED_CATALOG_ID + '/';
 const bucket = s => normalizeIdentityName(s).slice(0, 2).padEnd(2, '_').replace(/[^a-z0-9_-]/g, '_');
 export async function buildCatalogShards(records) {
@@ -8,7 +9,7 @@ export async function buildCatalogShards(records) {
         const b = bucket(record.variant.variantId);
         (variants[b] ??= []).push(record);
         for (const token of buildSearchTokens(record.identity.canonicalName, record.identity.aliases))
-            (search[bucket(token)] ??= new Map()).set(record.variant.variantId, { ...record.identity, ...record.variant, searchTokens: buildSearchTokens(record.identity.canonicalName, record.identity.aliases) });
+            (search[bucket(token)] ??= new Map()).set(record.variant.variantId, { ...record.identity, ...record.variant, ref: parseIngredientRef({ refVersion: 1, scope: 'curated', namespace: 'catalog:' + CURATED_CATALOG_ID, identityId: record.variant.identityId, variantId: record.variant.variantId, revision: record.variant.headRevision, revisionId: record.variant.headRevisionId, contentHash: record.variant.headContentHash }), searchTokens: buildSearchTokens(record.identity.canonicalName, record.identity.aliases) });
     }
     const manifest = { schemaVersion: 1, catalogId: CURATED_CATALOG_ID, profileCount: records.length, searchShards: {}, variantShards: {} };
     for (const [kind, groups] of [['search', search], ['variants', variants]]) {
@@ -59,7 +60,7 @@ export function createCuratedCatalogSource({ fetchJson = async (url) => { const 
             const m = await open(), normalized = normalizeIdentityName(q);
             if (!normalized)
                 return { items: [], cursor: null };
-            const tokens = normalized.split(/\s+/), buckets = [...new Set(tokens.map(bucket))].slice(0, 2);
+            const tokens = searchWords(normalized), buckets = [...new Set(tokens.map(bucket))].slice(0, 2);
             const rows = new Map();
             for (const b of buckets)
                 for (const r of await shard(m.searchShards[b]))
@@ -70,6 +71,7 @@ export function createCuratedCatalogSource({ fetchJson = async (url) => { const 
             return { items: ordered.slice(0, n), cursor: ordered.length > n ? ordered[n - 1].variantId : null };
         },
         getVariant: async (id) => (await getVariantRecord(id))?.variant ?? null,
+        getConversions: async (id) => (await getVariantRecord(id))?.conversions ?? [],
         getRevision: async (id, n) => (await getVariantRecord(id))?.revisions.find(r => r.revision === n) ?? null,
         stats: () => ({ shards: lru.size, profileCount: manifest?.profileCount ?? 0 }),
     };

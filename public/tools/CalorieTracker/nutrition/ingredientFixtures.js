@@ -18,7 +18,7 @@ export async function fixture(value = 10) {
 export function fakePort() {
     const docs = new Map();
     const port = { docs, docRef: p => p, getDoc: async (p) => structuredClone(docs.get(p) ?? null), serverTimestamp: () => 0,
-        queryCollection: async (path, q) => [...docs].filter(([p, d]) => p.startsWith(path + '/') && p.slice(path.length + 1).indexOf('/') < 0 && (!q.arrayContains || d[q.arrayContains[0]]?.includes(q.arrayContains[1])) && (!q.equals || d[q.equals[0]] === q.equals[1])).map(([p, d]) => ({ ...d, id: p.split('/').at(-1) })).sort((a, b) => a.id.localeCompare(b.id)).filter(d => !q.startAfterId || d.id > q.startAfterId).slice(0, q.limit),
+        queryCollection: async (path, q) => [...docs].filter(([p, d]) => p.startsWith(path + '/') && p.slice(path.length + 1).indexOf('/') < 0 && (!q.arrayContains || d[q.arrayContains[0]]?.includes(q.arrayContains[1])) && (!q.equals || q.equals[0].split('.').reduce((value, key) => value?.[key], d) === q.equals[1])).map(([p, d]) => ({ ...d, id: p.split('/').at(-1) })).sort((a, b) => a.id.localeCompare(b.id)).filter(d => !q.startAfterId || d.id > q.startAfterId).slice(0, q.limit),
         async runTransaction(fn) {
             for (let attempt = 0; attempt < 10; attempt++) {
                 port.attempts = (port.attempts ?? 0) + 1;

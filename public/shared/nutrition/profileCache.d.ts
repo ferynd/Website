@@ -9,7 +9,7 @@ export const PROFILE_CACHE_LIMITS: Readonly<{
 }>;
 export function clearProfileCache(options?: {
     idb?: IDBFactory;
-}): Promise<void>;
+}): Promise<boolean>;
 export function openProfileCache(options: {
     ownerUid: string;
     idb?: IDBFactory;

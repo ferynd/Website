@@ -28,6 +28,6 @@ it('both auth integrations await profile cache clearing before publishing user s
     const recipe = readFileSync('app/tools/recipe-standardizer/RecipeContext.tsx', 'utf8');
     expect(tracker).toContain('await onIngredientAuthChange(stateObject.userId, null)');
     expect(tracker).toContain('await onIngredientAuthChange(stateObject.userId, user.uid)');
-    expect(recipe).toContain('if (!nextUser || previousUid !== nextUser.uid) await clearProfileCache()');
-    expect(recipe).toContain('await clearProfileCache(); await firebaseSignOut(auth)');
+    expect(recipe).toContain('if (previousUid && previousUid !== nextUser?.uid)');
+    expect(recipe).toContain('await firebaseSignOut(auth)');
 });

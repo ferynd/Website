@@ -170,10 +170,7 @@ import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
-import {createRecipeIngredientStore} from '../lib/ingredientStore';
-import type {IngredientStore} from '@/public/shared/nutrition/ingredientStore.js';
-import type {ProfilesState} from '../lib/ingredientLink';
-import {refCacheKey} from '@/public/shared/nutrition/ingredientRefs.js';
+import {useIngredientProfiles} from '../lib/useIngredientProfiles';
 import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
 import {
   applyIntakeLinks,
@@ -325,23 +322,7 @@ export default function RecipeWorkspace() {
     items: [],
     error: '',
   });
-  const [profiles, setProfiles] = useState<ProfilesState>(new Map());
-  const profileRefs = useMemo(() => (draft?.ingredients ?? []).flatMap(i => i.nutritionLink.ingredientRef ? [i.nutritionLink.ingredientRef] : []), [draft]);
-  useEffect(() => {
-    let cancelled = false;
-    let ingredientStore: IngredientStore | undefined;
-    setProfiles(new Map());
-    if (!user || !profileRefs.length) return;
-    const resolve = async () => {
-      const store = await createRecipeIngredientStore(user.uid);
-      ingredientStore = store;
-      if (cancelled) { store.close(); return; }
-      const entries = await Promise.all(profileRefs.map(async ref => [refCacheKey(ref),await store.resolveRef(ref)] as const));
-      if (!cancelled) setProfiles(new Map(entries));
-    };
-    void resolve().catch(() => { if (!cancelled) setProfiles(new Map(profileRefs.map(ref => [refCacheKey(ref),{status:'missing',ref}]))); });
-    return () => { cancelled = true; ingredientStore?.close(); };
-  }, [user, profileRefs]);
+  const profiles = useIngredientProfiles(user?.uid ?? null, draft);
   // Only Overview (and its timeline) starts open — the working panels are a
   // tap away via the sticky nav, keeping the default view phone-concise.
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({

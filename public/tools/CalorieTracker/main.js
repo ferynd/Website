@@ -232,7 +232,8 @@ function setupAuthListener() {
 
 // ===== STEP 5: USER STATE HANDLERS =====
 async function handleUserLoggedIn(user) {
-    await onIngredientAuthChange(stateObject.userId, user.uid);
+  try { await onIngredientAuthChange(stateObject.userId, user.uid); }
+  catch { /* Continue login even if optional cache cleanup fails. */ }
   debugLog('AUTH-LOGIN', 'Handling logged in user', user.uid);
 
   try {
@@ -253,7 +254,8 @@ async function handleUserLoggedIn(user) {
 }
 
 async function handleUserLoggedOut() {
-    await onIngredientAuthChange(stateObject.userId, null);
+  try { await onIngredientAuthChange(stateObject.userId, null); }
+  catch { /* Continue logout even if optional cache cleanup fails. */ }
   debugLog('AUTH-LOGOUT', 'Handling logged out user');
 
   try {

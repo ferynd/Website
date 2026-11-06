@@ -135,6 +135,111 @@ service cloud.firestore {
     function ingredientRevision(userId, revisionId) {
       return /databases/$(database)/documents/artifacts/default-app-id/users/$(userId)/ingredientRevisions/$(revisionId);
     }
+    function ingredientText(value, max) {
+      return value is string && value.size() > 0 && value.size() <= max;
+    }
+    function ingredientOptionalText(d, key, max) {
+      return !(key in d) || (d[key] is string && d[key].size() <= max);
+    }
+    // Rules have no loops: validate eight aliases per fixed block. Padding
+    // makes partial blocks safe, while constant indexes keep evaluation bounded.
+    function ingredientAliasBlock0(items) {
+      let kinds = [items[0].kind,items[1].kind,items[2].kind,items[3].kind,items[4].kind,items[5].kind,items[6].kind,items[7].kind];
+      return kinds.hasOnly(['confirmed','search'])
+        && items[0].size() == 2 && items[0].text.matches('(?s).{1,200}')
+        && items[1].size() == 2 && items[1].text.matches('(?s).{1,200}')
+        && items[2].size() == 2 && items[2].text.matches('(?s).{1,200}')
+        && items[3].size() == 2 && items[3].text.matches('(?s).{1,200}')
+        && items[4].size() == 2 && items[4].text.matches('(?s).{1,200}')
+        && items[5].size() == 2 && items[5].text.matches('(?s).{1,200}')
+        && items[6].size() == 2 && items[6].text.matches('(?s).{1,200}')
+        && items[7].size() == 2 && items[7].text.matches('(?s).{1,200}');
+    }
+    function ingredientAliasBlock8(items) {
+      let kinds = [items[8].kind,items[9].kind,items[10].kind,items[11].kind,items[12].kind,items[13].kind,items[14].kind,items[15].kind];
+      return kinds.hasOnly(['confirmed','search'])
+        && items[8].size() == 2 && items[8].text.matches('(?s).{1,200}')
+        && items[9].size() == 2 && items[9].text.matches('(?s).{1,200}')
+        && items[10].size() == 2 && items[10].text.matches('(?s).{1,200}')
+        && items[11].size() == 2 && items[11].text.matches('(?s).{1,200}')
+        && items[12].size() == 2 && items[12].text.matches('(?s).{1,200}')
+        && items[13].size() == 2 && items[13].text.matches('(?s).{1,200}')
+        && items[14].size() == 2 && items[14].text.matches('(?s).{1,200}')
+        && items[15].size() == 2 && items[15].text.matches('(?s).{1,200}');
+    }
+    function ingredientAliasBlock16(items) {
+      let kinds = [items[16].kind,items[17].kind,items[18].kind,items[19].kind,items[20].kind,items[21].kind,items[22].kind,items[23].kind];
+      return kinds.hasOnly(['confirmed','search'])
+        && items[16].size() == 2 && items[16].text.matches('(?s).{1,200}')
+        && items[17].size() == 2 && items[17].text.matches('(?s).{1,200}')
+        && items[18].size() == 2 && items[18].text.matches('(?s).{1,200}')
+        && items[19].size() == 2 && items[19].text.matches('(?s).{1,200}')
+        && items[20].size() == 2 && items[20].text.matches('(?s).{1,200}')
+        && items[21].size() == 2 && items[21].text.matches('(?s).{1,200}')
+        && items[22].size() == 2 && items[22].text.matches('(?s).{1,200}')
+        && items[23].size() == 2 && items[23].text.matches('(?s).{1,200}');
+    }
+    function ingredientAliasBlock24(items) {
+      let kinds = [items[24].kind,items[25].kind,items[26].kind,items[27].kind,items[28].kind,items[29].kind,items[30].kind,items[31].kind];
+      return kinds.hasOnly(['confirmed','search'])
+        && items[24].size() == 2 && items[24].text.matches('(?s).{1,200}')
+        && items[25].size() == 2 && items[25].text.matches('(?s).{1,200}')
+        && items[26].size() == 2 && items[26].text.matches('(?s).{1,200}')
+        && items[27].size() == 2 && items[27].text.matches('(?s).{1,200}')
+        && items[28].size() == 2 && items[28].text.matches('(?s).{1,200}')
+        && items[29].size() == 2 && items[29].text.matches('(?s).{1,200}')
+        && items[30].size() == 2 && items[30].text.matches('(?s).{1,200}')
+        && items[31].size() == 2 && items[31].text.matches('(?s).{1,200}');
+    }
+    function ingredientAliasEntries(items) {
+      let safe = items.size() == 0 ? null : items[0];
+      let padded = items.size() % 8 == 0 ? items : items.concat([safe,safe,safe,safe,safe,safe,safe,safe]);
+      return (items.size() <= 0 || ingredientAliasBlock0(padded))
+        && (items.size() <= 8 || ingredientAliasBlock8(padded))
+        && (items.size() <= 16 || ingredientAliasBlock16(padded))
+        && (items.size() <= 24 || ingredientAliasBlock24(padded))
+;
+    }
+    function ingredientTokenEntries(items) {
+      let joined = items.join('|');
+      // Equality with the split list checks every element is a string and that
+      // none contains the separator. The regexp bounds each individual token.
+      return items.size() == 0 || (items == joined.split('[|]')
+        && joined.matches('([^|]{1,80}[|])*[^|]{1,80}'));
+    }
+    function ingredientBrand(brand) {
+      return brand == null || (brand is map
+        && brand.keys().hasOnly(['brand','product','gtin','market','labelDate','formulationNote'])
+        && ingredientOptionalText(brand,'brand',200) && ingredientOptionalText(brand,'product',200)
+        && ingredientOptionalText(brand,'gtin',80) && ingredientOptionalText(brand,'market',80)
+        && ingredientOptionalText(brand,'labelDate',80) && ingredientOptionalText(brand,'formulationNote',500));
+    }
+    function ingredientPercent(value) { return value == null || (value is number && value >= 0 && value <= 100); }
+    function ingredientDims(d) {
+      return d is map && d.keys().hasOnly(['state','preparation','drained','salt','fortification','fortificationDetail','sweetening','ediblePortion','fatPercent','leanPercent','brand'])
+        && ingredientText(d.state,200)
+        && ingredientOptionalText(d,'preparation',200) && ingredientOptionalText(d,'fortificationDetail',200)
+        && ingredientOptionalText(d,'sweetening',200) && ingredientOptionalText(d,'ediblePortion',200)
+        && d.get('drained','unspecified') in ['drained','undrained','drained_rinsed','not_applicable','unspecified']
+        && d.get('salt','unspecified') in ['salted','unsalted','low_sodium','not_applicable','unspecified']
+        && d.get('fortification','unspecified') in ['fortified','unfortified','not_applicable','unspecified']
+        && ingredientPercent(d.get('fatPercent',null)) && ingredientPercent(d.get('leanPercent',null))
+        && ingredientBrand(d.get('brand',null));
+    }
+    function ingredientConversionSource(d) {
+      return d is map
+        && d.keys().hasOnly(['type','datasetId','recordId','title','url','version','publishedAt','accessedAt','originalBasis','permittedUse','checksum'])
+        && d.type in ['fdc','label','manufacturer','manual','comparable','legacy_food','curated_catalog']
+        && ingredientOptionalText(d,'datasetId',200) && ingredientOptionalText(d,'recordId',200)
+        && ingredientOptionalText(d,'title',500) && ingredientOptionalText(d,'url',2048)
+        && ingredientOptionalText(d,'version',200) && ingredientOptionalText(d,'publishedAt',80)
+        && ingredientOptionalText(d,'accessedAt',80) && ingredientOptionalText(d,'originalBasis',500)
+        && ingredientOptionalText(d,'permittedUse',1000) && ingredientOptionalText(d,'checksum',200);
+    }
+    function ingredientConversionRange(d) {
+      return d == null || (d is map && d.keys().hasOnly(['min','max'])
+        && d.min is number && d.max is number && d.min >= 0 && d.max >= d.min && d.max <= 1000000);
+    }
     match /artifacts/default-app-id/users/{userId}/ingredientIdentities/{identityId} {
       function validIdentity(d) {
         return ingredientBase(d, userId) && d.identityId == identityId
@@ -142,16 +247,16 @@ service cloud.firestore {
           && d.keys().hasOnly(['schemaVersion','ownerUid','identityId','identityKeyV1','canonicalName','category','kind','aliases','searchTokens','createdAt','updatedAt','retiredAt'])
           && d.identityKeyV1 is string && d.identityKeyV1.size() <= 1000
           && d.canonicalName is string && d.canonicalName.size() > 0 && d.canonicalName.size() <= 200
-          && d.category is string && d.kind is string
-          && d.aliases is list && d.aliases.size() <= 64
-          && d.searchTokens is list && d.searchTokens.size() <= 64;
+          && ingredientText(d.category,80) && ingredientText(d.kind,80)
+          && d.aliases is list && d.aliases.size() <= 32 && ingredientAliasEntries(d.aliases)
+          && d.searchTokens is list && d.searchTokens.size() <= 64 && ingredientTokenEntries(d.searchTokens);
       }
-      allow create: if validIdentity(request.resource.data)
-        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+      allow create: if request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && validIdentity(request.resource.data)
         && request.resource.data.retiredAt == null;
-      allow update: if validIdentity(request.resource.data)
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['canonicalName','aliases','searchTokens','updatedAt','retiredAt'])
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['canonicalName','aliases','searchTokens','updatedAt','retiredAt'])
         && request.resource.data.updatedAt == request.time
+        && validIdentity(request.resource.data)
         && (request.resource.data.retiredAt == null || request.resource.data.retiredAt is timestamp);
       allow delete: if false;
     }
@@ -159,8 +264,8 @@ service cloud.firestore {
       function validVariant(d) {
         return ingredientBase(d,userId) && d.variantId == variantId
           && d.keys().hasOnly(['schemaVersion','ownerUid','identityId','variantId','variantKeyV1','dims','overrides','headRevision','headRevisionId','headContentHash','createdAt','updatedAt','retiredAt'])
-          && d.identityId is string && d.variantKeyV1 is string && d.variantKeyV1.size() <= 4000
-          && d.dims is map && d.dims.size() <= 12
+          && ingredientText(d.identityId,200) && d.variantKeyV1 is string && d.variantKeyV1.size() <= 4000
+          && ingredientDims(d.dims)
           && d.headRevision is int && d.headRevision >= 1
           && d.headRevisionId == variantId + '~r' + string(d.headRevision)
           && ingredientHash(d.headContentHash);
@@ -170,7 +275,8 @@ service cloud.firestore {
           ? (variantId.matches('ov-[a-f0-9]{20}') && d.overrides is map
             && d.overrides.keys().hasOnly(['catalogId','variantId','revision'])
             && d.overrides.catalogId == 'nutrition-curated'
-            && d.overrides.variantId is string && d.overrides.variantId.matches('[a-z0-9]+(-[a-z0-9]+)*')
+            && d.identityId.matches('[a-z0-9]+(-[a-z0-9]+)*')
+            && ingredientText(d.overrides.variantId,200) && d.overrides.variantId.matches('[a-z0-9]+(-[a-z0-9]+)*')
             && d.overrides.revision is int && d.overrides.revision >= 1)
           : (variantId.matches('pv-[a-f0-9]{20}') && d.identityId.matches('pi-[a-f0-9]{20}')
             && existsAfter(/databases/$(database)/documents/artifacts/default-app-id/users/$(userId)/ingredientIdentities/$(d.identityId)));
@@ -219,7 +325,7 @@ service cloud.firestore {
           && head.headRevision == d.revision && head.headContentHash == d.contentHash
           && ingredientHash(d.contentHash) && d.idempotencyKey is string && d.idempotencyKey.size() <= 100
           && d.basis is map && d.basis.keys().hasOnly(['kind','state'])
-          && d.basis.kind == 'per_100g_edible' && d.basis.state is string
+          && d.basis.kind == 'per_100g_edible' && ingredientText(d.basis.state,200)
           && d.nutrients is map && d.nutrients.size() <= 68
           && d.nutrientMeta is map && d.nutrientMeta.registryVersion == 2
           && d.fieldProvenance is map && d.fieldProvenance.size() <= 68
@@ -242,12 +348,14 @@ service cloud.firestore {
           && getAfter(ingredientRevision(userId,d.variantRef.revisionId)).data.identityId == d.variantRef.identityId
           && existsAfter(ingredientVariant(userId,d.variantRef.variantId))
           && getAfter(ingredientRevision(userId,d.variantRef.revisionId)).data.contentHash == d.variantRef.contentHash
-          && d.kind in ['household','density','piece','package'] && d.unit is string && d.unit.size() <= 80
+          && d.kind in ['household','density','piece','package'] && ingredientText(d.unit,80)
+          && ingredientOptionalText(d,'unitQualifier',200)
           && d.amount is number && d.amount > 0 && d.amount <= 1000000
           && (d.kind == 'density' ? (d.unit == 'mL' && d.gramsPerMl is number && d.gramsPerMl > 0 && d.gramsPerMl <= 100)
              : (d.grams is number && d.grams > 0 && d.grams <= 1000000))
-          && d.state is string && d.source is map && d.source.size() <= 20
-          && d.source.type in ['fdc','label','manufacturer','manual','comparable','legacy_food','curated_catalog']
+          && ingredientText(d.state,200) && ingredientConversionSource(d.source)
+          && ingredientConversionRange(d.get('range',null))
+          && (d.get('supersedes',null) == null || (d.supersedes is string && d.supersedes.matches('pc-[a-f0-9]{20}')))
           && d.confidence is number && d.confidence >= 0 && d.confidence <= 1
           && d.createdAt == request.time;
       }

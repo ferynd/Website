@@ -62,6 +62,7 @@ export function createIngredientStore(options: {
     resolveEffectiveProfile(ref: IngredientProfileRef): Promise<ResolvedIngredientProfile>;
     createIngredient(payload: CreateIngredientInput): Promise<IngredientProfileRef>;
     saveRevision(payload: SaveRevisionInput): Promise<IngredientProfileRef>;
+    getConversions(ref: IngredientProfileRef): Promise<IngredientConversion[]>;
     addConversion(conversion: IngredientConversion): Promise<IngredientConversion>;
     updateIdentity(id: string, patch: Record<string, unknown>): Promise<void>;
     retireVariant(id: string): Promise<void>;

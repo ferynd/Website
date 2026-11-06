@@ -27,3 +27,5 @@ export function isValidFirestoreDocId(id: unknown): id is string;
 export function buildSearchTokens(name: string, aliases?: Array<string | {
     text: string;
 }>): string[];
+
+export function searchWords(text: string): string[];

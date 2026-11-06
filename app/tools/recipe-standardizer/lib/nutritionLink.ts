@@ -40,7 +40,10 @@ export const parseNutritionLink = (value: unknown, path: string, warnings: strin
   if (raw.ingredientRef != null) {
     const ref = parseIngredientRef(raw.ingredientRef, path + '.ingredientRef', warnings);
     if (!ref) return id ? nonConfirmed('candidate', id, nullableString(raw.matchedName), confidenceValue(raw.matchConfidence)) : {...UNLINKED_NUTRITION};
-    return {...UNLINKED_NUTRITION, ingredientRef:ref, status:raw.status === 'confirmed' ? 'confirmed':'candidate', needsUserReview:raw.status !== 'confirmed', foodItemId:id, matchedName:nullableString(raw.matchedName), confirmedAtMs:typeof raw.confirmedAtMs === 'number' && Number.isFinite(raw.confirmedAtMs) && raw.confirmedAtMs >= 0 ? raw.confirmedAtMs:null};
+    // Parse legacy fields through the same defensive reader, then layer on the
+    // pinned ref. A profile-only confirmation does not require a legacy basis.
+    const legacy = parseNutritionLink({ ...raw, ingredientRef: null }, path, []);
+    return {...legacy, ingredientRef:ref, status:raw.status === 'confirmed' ? 'confirmed':'candidate', needsUserReview:raw.status !== 'confirmed', foodItemId:id, matchedName:nullableString(raw.matchedName), confirmedAtMs:typeof raw.confirmedAtMs === 'number' && Number.isFinite(raw.confirmedAtMs) && raw.confirmedAtMs >= 0 ? raw.confirmedAtMs:null};
   }
   if (!id) return { ...UNLINKED_NUTRITION };
   const name = nullableString(raw.matchedName);
@@ -95,7 +98,9 @@ export const confirmNutritionLink = (
 export const noMatchLink = (): NutritionLink => nonConfirmed('no-match', null, null, null);
 
 export const linkAfterRename = (link: NutritionLink): NutritionLink =>
-  link.status === 'confirmed'
+  link.status === 'confirmed' && link.ingredientRef
+    ? { ...link }
+    : link.status === 'confirmed'
     ? nonConfirmed('candidate', link.foodItemId, link.matchedName, link.matchConfidence)
     : { ...UNLINKED_NUTRITION };
 

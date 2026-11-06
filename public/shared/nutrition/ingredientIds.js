@@ -16,9 +16,10 @@ export function revisionIdFor(variantId, n) {
 }
 export const conversionIdFor = content => shortId('pc-', canonicalJson(content));
 export const isValidFirestoreDocId = id => typeof id === 'string' && id.length > 0 && new TextEncoder().encode(id).length <= 1500 && !id.includes('/') && id !== '.' && id !== '..' && !/^__.*__$/.test(id);
+export const searchWords = text => normalizeIdentityName(text).split(/[^\p{L}\p{N}]+/u).filter(Boolean).map(word => word.slice(0, 80));
 export function buildSearchTokens(name, aliases = []) {
     const tokens = new Set();
-    for (const word of [name, ...aliases.map(a => typeof a === 'string' ? a : a.text)].flatMap(s => normalizeIdentityName(s).split(/[^\p{L}\p{N}]+/u)).filter(Boolean)) {
+    for (const word of [name, ...aliases.map(a => typeof a === 'string' ? a : a.text)].flatMap(searchWords)) {
         tokens.add(word.slice(0, 80));
         for (let n = 2; n <= Math.min(8, word.length); n++)
             tokens.add(word.slice(0, n));
