@@ -14,6 +14,8 @@ import {
   normalizeUnit,
   noteKeepsParent,
   resolveAmount,
+  stripLeadingApproximation,
+  stripLeadingServingBasis,
   emptyStagedRecord,
 } from './nutrientRegistry.js';
 
@@ -98,7 +100,7 @@ function leadingUnitToken(inner) {
 }
 
 function isApproxNote(inner) {
-  return /^(?:approximately|approx|about)\b/i.test(String(inner).trim());
+  return stripLeadingApproximation(String(inner).trim()).approximate;
 }
 
 function takeParen(rest) {
@@ -120,8 +122,8 @@ function takeParen(rest) {
  * A dash glued to a digit is a sign. Return that split so isNegative can see it.
  */
 function takeSeparator(rest) {
-  const word = rest.match(/^(?:approximately|approx|about)\.?(?![A-Za-z])/i);
-  if (word) return { length: word[0].length, approximate: true };
+  const word = stripLeadingApproximation(rest);
+  if (word.approximate && word.length > 0) return { length: word.length, approximate: true };
   if (/^[−–—-](?:\d|\.\d)/.test(rest)) return { length: 0, valueSplit: true };
   if (/^[=:~≈]/.test(rest)) {
     const symbol = rest[0];
@@ -307,8 +309,27 @@ function remainderAfterAmount(valuePart, number) {
 }
 
 function trailingApproximate(valuePart, number) {
-  const rest = remainderAfterAmount(valuePart, number);
-  return /^(?:\(\s*)?(?:approximately|approx|about)\b/i.test(rest);
+  const rest = remainderAfterAmount(valuePart, number).replace(/^\(\s*/, '');
+  return stripLeadingApproximation(rest).approximate;
+}
+
+/**
+ * Drop a leading estimate word (and mark the amount approximate) and a leading
+ * serving basis before the colon-path note check. "per 100 g" contains a digit,
+ * so it has to come off before wordsBeforeNumber treats 100 as the amount.
+ * A serving phrase is removed only when another number remains after it.
+ */
+function peelEstimateAndServing(split) {
+  const applyApprox = () => {
+    const peeled = stripLeadingApproximation(split.valuePart);
+    if (!peeled.approximate) return;
+    split.approximate = true;
+    split.valuePart = peeled.rest;
+  };
+  applyApprox();
+  const serving = stripLeadingServingBasis(split.valuePart);
+  if (serving.matched && /\d/.test(serving.rest)) split.valuePart = serving.rest;
+  applyApprox();
 }
 
 /** A % glued to the amount is % DV, not a quantity in the canonical unit. */
@@ -414,6 +435,48 @@ function wordsBeforeNumber(valuePart) {
   return text.slice(0, match.index).trim();
 }
 
+/** "Calories per gram:" is the energy-factor footer, not a calorie amount. */
+function isCaloriesPerGramLine(line) {
+  return /\bcalories\s+per\s+gram\b/i.test(line);
+}
+
+/**
+ * "Fat 9 • Carbohydrate 4 • Protein 4" is the calorie-per-gram factor row.
+ * Several registered labels, each with a bare number and no unit.
+ */
+function isMultiBareLabelLine(line) {
+  const collapsed = collapseWithMap(String(line).replace(/[•·∙●]/g, ' ')).collapsed;
+  let index = 0;
+  let count = 0;
+  const skipSpace = () => {
+    while (collapsed[index] === ' ') index += 1;
+  };
+  skipSpace();
+  while (index < collapsed.length) {
+    let label = '';
+    for (const candidate of LABEL_PREFIXES) {
+      if (!collapsed.startsWith(candidate, index)) continue;
+      const next = collapsed[index + candidate.length];
+      if (!isWordBoundary(next)) continue;
+      label = candidate;
+      break;
+    }
+    if (!label) return false;
+    index += label.length;
+    skipSpace();
+    const num = collapsed.slice(index).match(new RegExp(`^(${NUMBER_CORE})`));
+    if (!num) return false;
+    index += num[1].length;
+    const tail = collapsed.slice(index);
+    const unit = tail.match(/^\s*([a-zA-Zµμ]+)/);
+    if (unit && knownUnitWord(unit[1])) return false;
+    if (/^\s*%/.test(tail)) return false;
+    count += 1;
+    skipSpace();
+  }
+  return count >= 2;
+}
+
 /** "Calories: 2,000 2,500" is the reference row that opens the footnote block. */
 function isCalorieReferenceRow(line) {
   const split = splitLabelValue(line);
@@ -498,6 +561,7 @@ export function parseNutritionText(text) {
   const unknownLabels = [];
   let fiberMeaning = null;
   let footerContext = false;
+  let afterCaloriesPerGram = false;
 
   const consumeLine = (line) => {
     const lessThan = lessThanLine(line);
@@ -530,6 +594,8 @@ export function parseNutritionText(text) {
 
     // "Fat: saturated 3g" puts the child word in the value, not the label.
     // That must not fill the parent. A registered "Fat (saturated)" note still maps.
+    // A leading "approx" / "about" / "est." is an estimate, not a subtype.
+    peelEstimateAndServing(split);
     const prefix = wordsBeforeNumber(split.valuePart);
     if (prefix && !noteKeepsParent(hit.key, prefix)) {
       unknownLabels.push(source);
@@ -606,7 +672,13 @@ export function parseNutritionText(text) {
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = stripDecorations(rawLine);
     if (!line) continue;
+    if (afterCaloriesPerGram) continue;
+    if (isCaloriesPerGramLine(line)) {
+      afterCaloriesPerGram = true;
+      continue;
+    }
     const opensFooter = FOOTER_NOTE_RE.test(line) || isCalorieReferenceRow(line);
+    if (footerContext && isMultiBareLabelLine(line)) continue;
     consumeLine(line);
     if (opensFooter) footerContext = true;
   }

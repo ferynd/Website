@@ -133,9 +133,11 @@ describe('parseNutritionText', () => {
   });
 
   it('Fiber/Dietary fiber stage legacy fiber with meaning unknown; explicit total/weighted labels classify', () => {
-    const legacy = parseNutritionText('Fiber: 4 g\nDietary fiber: 4 g');
+    const legacy = parseNutritionText('Fiber: 4 g\nDietary fiber: 4 g\nDietary Fibre: 4 g');
     expect(legacy.values.fiber).toBe(4);
+    expect(legacy.values.fiberTotal).toBeNull();
     expect(legacy.fiberMeaning).toBe('unknown');
+    expect(legacy.unknownLabels).toEqual([]);
     const total = parseNutritionText('Fiber (total dietary): 8 g');
     expect(total.values.fiberTotal).toBe(8);
     expect(total.values.fiber).toBeNull();
@@ -146,6 +148,16 @@ describe('parseNutritionText', () => {
     const both = parseNutritionText('Fiber (total dietary): 8 g\nFiber: 4 g');
     expect(both.fiberMeaning).toBe('total');
     expect(both.values.fiber).toBe(4);
+  });
+
+  it('leaves USDA Folate, total unknown instead of folate DFE', () => {
+    const alone = parseNutritionText('Folate, total 120 mcg');
+    expect(alone.values.folate).toBeNull();
+    expect(alone.unknownLabels).toEqual(['Folate, total']);
+    const paired = parseNutritionText('Folate, total 120 mcg\nFolate, DFE 200 mcg');
+    expect(paired.values.folate).toBe(200);
+    expect(paired.conflicts).toEqual([]);
+    expect(paired.unknownLabels).toEqual(['Folate, total']);
   });
 
   it('ranges and negative values are flagged for review', () => {

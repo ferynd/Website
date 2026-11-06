@@ -62,8 +62,15 @@ export async function commitKeepBothRename(newName, currentName, save) {
   const current = String(currentName ?? '').trim();
   if (!next || next.toLowerCase() === current.toLowerCase()) return { status: 'name' };
   applyKeepBothRename(next);
-  const saved = await save();
-  return { status: saved === true ? 'saved' : 'failed' };
+  try {
+    const saved = await save();
+    if (saved === true) return { status: 'saved' };
+  } catch (error) {
+    applyKeepBothRename(current);
+    throw error;
+  }
+  applyKeepBothRename(current);
+  return { status: 'failed' };
 }
 
 /** Drop a stale parse-conflict warning and re-enable the staging actions. */

@@ -128,7 +128,7 @@ const DEFINITIONS = [
   }),
   v1({
     key: 'fiber', label: 'Fiber', unit: 'g', group: 'dailyFloors', targetRole: 'floor', perUnitMax: 500,
-    labels: ['Fiber', 'Fibre', 'Dietary fiber', 'Total Fiber'],
+    labels: ['Fiber', 'Fibre', 'Dietary fiber', 'Dietary Fibre', 'Total Fiber'],
     legacyAliases: ['fiber', 'fibre', 'dietary fiber'],
   }),
   v1({
@@ -336,7 +336,11 @@ export function normalizeLabel(raw) {
   text = text.replace(TRAILING_UNIT_STRIP_RE, '').trim();
   // USDA comma tails that still mean the same nutrient. Do not strip other
   // comma tails here: "Fat, saturated" must not collapse to the fat parent.
-  text = text.replace(/,\s*(?:total dietary|by difference|total)\s*$/i, '').trim();
+  // "Folate, total" is micrograms of folate, not DFE, so it stays intact and
+  // is rejected as unknown instead of filling the folate key.
+  if (!/^folate,\s*total$/.test(text)) {
+    text = text.replace(/,\s*(?:total dietary|by difference|total)\s*$/i, '').trim();
+  }
   text = text.replace(TRAILING_UNIT_STRIP_RE, '').trim();
   return text;
 }
@@ -425,6 +429,7 @@ function qualifierNamesNutrient(rawQual) {
 const KNOWN_UNKNOWN_PHRASES = new Set([
   'net carb', 'net carbs', 'net carbohydrate', 'net carbohydrates',
   'unsaturated fat', 'unsaturated fats',
+  'folate total',
 ]);
 
 const UNIT_NOTES = new Set(['g', 'mg', 'mcg', 'kcal', 'cal', 'kj', 'iu']);
@@ -538,28 +543,72 @@ function asNoteNamesOther(rest, baseKey) {
 }
 
 /**
- * Notes that may stay on a parent: total, dietary, by difference, a unit,
- * an "as …" form that does not name a child or another nutrient, and FORM_QUALIFIERS.
+ * A leading estimate word is not a subtype. Callers drop it, mark the amount
+ * approximate, then apply the parent-note allow-list to whatever remains.
+ * "approx." and "est." include the period. "~" and "≈" may sit against the number.
+ */
+const APPROX_LEADING_RE = /^(?:~|≈|approximately|estimated|approx\.?|around|roughly|about|est\.)\.?(?=[\s).,;:]|$|\d)\s*/i;
+
+export function stripLeadingApproximation(note) {
+  const text = String(note ?? '');
+  const match = text.match(APPROX_LEADING_RE);
+  if (!match) return { approximate: false, rest: text.trim(), length: 0 };
+  return {
+    approximate: true,
+    rest: text.slice(match[0].length).trim(),
+    length: match[0].length,
+  };
+}
+
+const SERVING_BASIS_RE = /^\s*(per serving|per portion|per 100\s*g)\b\s*/i;
+
+export function stripLeadingServingBasis(text) {
+  const raw = String(text ?? '');
+  const match = raw.match(SERVING_BASIS_RE);
+  if (!match) return { matched: false, rest: raw.trim() };
+  return { matched: true, rest: raw.slice(match[0].length).trim() };
+}
+
+function isServingBasisNote(qualNorm) {
+  const text = String(qualNorm ?? '').replace(/\s+/g, ' ').trim();
+  return text === 'per serving' || text === 'per portion' || /^per 100\s*g$/.test(text);
+}
+
+/**
+ * Notes that may stay on a parent: total, dietary, by difference, a serving
+ * basis, a unit, an "as …" form that does not name a child or another nutrient,
+ * and FORM_QUALIFIERS. Approximation words are removed before this check.
  */
 function parentNoteAllowListed(qualNorm, baseKey) {
   if (!qualNorm) return false;
   if (qualNorm === 'total' || qualNorm === 'dietary' || qualNorm === 'by difference') return true;
+  if (isServingBasisNote(qualNorm)) return true;
   if (FORM_QUALIFIERS.has(qualNorm)) return true;
   if (isUnitNote(qualNorm)) return true;
   if (/^as\s+\S/.test(qualNorm)) return !asNoteNamesOther(qualNorm.replace(/^as\s+/, '').trim(), baseKey);
   return false;
 }
 
+/** Drop a leading estimate word, then apply the parent-note allow-list. */
+function qualifierKeepsBase(baseKey, qualNorm) {
+  const peeled = stripLeadingApproximation(qualNorm);
+  const note = normalizeLabel(peeled.rest);
+  if (peeled.approximate && !note) return true;
+  if (!note) return false;
+  return parentNoteAllowListed(note, baseKey);
+}
+
 /**
  * True when a leading note may keep this base. Bases with children accept only
- * the allow-list above. Bases without children are not restricted here, so a
- * form word such as "natural" still names vitamin E.
+ * the allow-list above, after a leading approximation word is removed. Bases
+ * without children are not restricted here, so a form word such as "natural"
+ * still names vitamin E.
  */
 export function noteKeepsParent(baseKey, note) {
   if (!baseKey || !baseHasChildren(baseKey)) return true;
   const qualNorm = normalizeLabel(note);
   if (!qualNorm) return true;
-  return parentNoteAllowListed(qualNorm, baseKey);
+  return qualifierKeepsBase(baseKey, qualNorm);
 }
 
 function resolveLabelNorm(norm) {
@@ -589,7 +638,7 @@ function resolveLabelNorm(norm) {
   if (joined) return joined;
   if (baseHasChildren(baseHit.key)) {
     if (asForm && !asNoteNamesOther(qualNorm, baseHit.key)) return baseHit;
-    if (parentNoteAllowListed(qualNorm, baseHit.key)) return baseHit;
+    if (qualifierKeepsBase(baseHit.key, qualNorm)) return baseHit;
     return null;
   }
   // No children: a form note is allowed. Subtype words do not reject it.

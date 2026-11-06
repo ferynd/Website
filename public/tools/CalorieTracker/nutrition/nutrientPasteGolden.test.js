@@ -264,9 +264,11 @@ const LINES = [
 
 /**
  * Round 8 adversarial table. A parent with children keeps a note only from the
- * allow-list (total, dietary, by difference, a unit, a safe "as …" form, or a
- * form qualifier). Anything else is unknown, unless the note is itself the
- * subtype. A colon value that starts with a child word stays unknown.
+ * allow-list (total, dietary, by difference, a serving basis, a unit, a safe
+ * "as …" form, or a form qualifier). A leading approximation word is removed
+ * first and the amount is marked approximate. Anything else is unknown, unless
+ * the note is itself the subtype. A colon value that starts with a child word
+ * stays unknown.
  * Folic acid is not stored unless the value says DFE.
  */
 const ADVERSARIAL = [
@@ -306,7 +308,7 @@ const ADVERSARIAL = [
   ['Fat (of which saturates) 3 g', { unknown: 'Fat (of which saturates)' }],
   ['Saturated Fat (fat) 3 g', { unknown: 'Saturated Fat (fat)' }],
   ['Allulose (sugars) 1 g', { unknown: 'Allulose (sugars)' }],
-  ['Fat: approx 3 g', { unknown: 'Fat: approx 3 g' }],
+  ['Fat: approx 3 g', { key: 'fat', value: 3, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
   ['Calories from Fat 110', { unknown: 'Calories from Fat' }],
   ['Net Carbs 20 g', { unknown: 'Net Carbs' }],
   ['EPA + DHA 500 mg', { unknown: 'EPA + DHA' }],
@@ -380,6 +382,44 @@ const ADVERSARIAL = [
   ['Fat approx 3 g', { key: 'fat', value: 3, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: false }],
   ['Fat: ~3 g', { key: 'fat', value: 3, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: false }],
   ['Protein 20 g 25 g', { key: 'protein', value: 20, unit: 'g', warning: 'multiple_values' }],
+
+  // Round 9. Approximation and serving-basis notes stay on the parent.
+  // Subtype notes above stay unknown. An estimate is status estimated_from_comparable.
+  ['Fat: approx 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat (approx) 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat (approx.) 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Total Fat: about 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Total Fat: approximately 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat (estimated) 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat (est.) 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat: est. 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat: around 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat: roughly 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat (~) 3 g', { key: 'fat', value: 3, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Carbs: approx 30 g', { key: 'carbs', value: 30, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Carbs (approx) 30 g', { key: 'carbs', value: 30, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fiber: approx 4 g', { key: 'fiber', value: 4, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fiber (approx) 4 g', { key: 'fiber', value: 4, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fiber (approx.) 4 g', { key: 'fiber', value: 4, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Sugars: approx 12 g', { key: 'sugarsTotal', value: 12, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Sugars (approx) 12 g', { key: 'sugarsTotal', value: 12, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Omega-3: approx 2 g', { key: 'omega3', value: 2, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Omega 3 (approx) 2 g', { key: 'omega3', value: 2, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat (per serving) 8 g', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat (per portion) 8 g', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs (per serving) 30 g', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Total Carbohydrate (per 100g) 30 g', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Total Carbohydrate (per 100 g) 30 g', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Protein: approximately 20 g', { key: 'protein', value: 20, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Protein: about 20 g', { key: 'protein', value: 20, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Calories: approx 250', { key: 'calories', value: 250, unit: 'kcal', status: 'estimated_from_comparable', assumed: true, warning: 'approximate' }],
+  ['Dietary Fibre 4g', { key: 'fiber', value: 4, unit: 'g', assumed: false, warning: false }],
+  ['Dietary fibre: 3 g', { key: 'fiber', value: 3, unit: 'g', assumed: false, warning: false }],
+  ['Folate, total 120 mcg', { unknown: 'Folate, total' }],
+  ['Folate, total: 120 mcg', { unknown: 'Folate, total' }],
+  ['Calories per gram: Fat 9 • Carbohydrate 4 • Protein 4', 'ignored'],
+  ['Calories per gram:\nFat 9 • Carbohydrate 4 • Protein 4', 'ignored'],
+  ['Fat 9 • Carbohydrate 4 • Protein 4', { key: 'fat', value: 9, unit: 'g', assumed: true, warning: false }],
 ];
 
 /** Older US Nutrition Facts panel, including the calorie-needs footer. */
@@ -411,6 +451,8 @@ const OLD_US_LABEL = [
   'Sodium Less than 2,400mg 2,400mg',
   'Total Carbohydrate 300g 375g',
   'Dietary Fiber 25g 30g',
+  'Calories per gram:',
+  'Fat 9 • Carbohydrate 4 • Protein 4',
 ].join('\n');
 
 function observedKeys(record) {
@@ -608,5 +650,19 @@ describe('paste line golden', () => {
     expect(record.warnings.some((warning) => warning.code === 'percent_daily_value' && warning.key === 'calcium')).toBe(true);
     expect(record.unknownLabels.some((label) => /calories from fat/i.test(label))).toBe(false);
     expect(record.warnings.some((warning) => warning.code === 'multiple_values')).toBe(false);
+    expect(record.conflicts.some((conflict) => conflict.key === 'fat')).toBe(false);
+    expect(record.conflicts.some((conflict) => conflict.key === 'carbs')).toBe(false);
+    expect(record.conflicts.some((conflict) => conflict.key === 'protein')).toBe(false);
+  });
+
+  it('skips the calorie-per-gram factor row in footer context', () => {
+    const footer = parseNutritionText([
+      '* Percent Daily Values are based on a 2,000 calorie diet.',
+      'Fat 9 • Carbohydrate 4 • Protein 4',
+    ].join('\n'));
+    expect(footer.values.fat).toBeNull();
+    expect(footer.values.carbs).toBeNull();
+    expect(footer.values.protein).toBeNull();
+    expect(footer.conflicts).toEqual([]);
   });
 });
