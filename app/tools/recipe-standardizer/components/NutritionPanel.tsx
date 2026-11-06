@@ -25,6 +25,7 @@ import {
   TriangleAlert,
 } from 'lucide-react';
 import Button from '@/components/Button';
+import { NUTRITION_CAPABILITIES } from '@/public/shared/nutrition/capabilities.js';
 import {
   NUTRITION_BASIS_KEYS,
   type NutritionBasis,
@@ -506,6 +507,7 @@ export default function NutritionPanel({
           onClose={() => setExportOpen(null)}
         />
       ) : null}
+      <p className="text-xs text-text-3">Nutrient registry v{NUTRITION_CAPABILITIES.registryVersion} · storage v{NUTRITION_CAPABILITIES.writeVersion}</p>
     </div>
   );
 }

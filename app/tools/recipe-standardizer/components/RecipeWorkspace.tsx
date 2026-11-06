@@ -177,12 +177,14 @@ import {
   collectLinkTargets,
   findNoLongerEligible,
   findPlanCollisions,
+  intakeCreateDocument,
   refreshPlanLinkTargets,
   type IntakeCommitOutcome,
   type IntakeCommitPlan,
 } from '../lib/nutritionIntakeReview';
 import {
-  buildTrackerFoodDoc,
+  verifyTrackerFoodFingerprint,
+  type TrackerFoodDoc,
   FoodIdCollisionError,
   FoodLinkTargetChangedError,
   FoodTargetReappearedError,
@@ -204,6 +206,7 @@ import {
   calculateExportNutrition,
   collectExportSourceTargets,
   deriveExportStatuses,
+  exportFingerprintInput,
   exportAction,
   exportTargetChangedSinceReview,
   findExportCollision,
@@ -834,7 +837,7 @@ export default function RecipeWorkspace() {
     const nowIso = new Date().toISOString();
     const docs = currentPlan.creates.map((create) => ({
       id: create.foodId,
-      data: buildTrackerFoodDoc(create.name, create.nutrients, nowIso),
+      data: intakeCreateDocument(create, nowIso) as TrackerFoodDoc,
     }));
     try {
       await createFoodItems(docs, guardIds, linkTargets);
@@ -957,7 +960,10 @@ export default function RecipeWorkspace() {
     setFoods(readyFoods);
     const freshResult = calculateExportNutrition(latestRecipe, readyFoods);
     const payloadResult = buildExportPayload(latestRecipe, freshResult, input.basis);
-    if (!payloadResult.ok || payloadResult.payload.fingerprint !== input.reviewedFingerprint) {
+    if (!payloadResult.ok || verifyTrackerFoodFingerprint(
+      exportFingerprintInput(payloadResult.payload),
+      input.reviewedFingerprint,
+    ) === 'mismatch') {
       return { status: 'review-changed', message: EXPORT_WORKSPACE_COPY.nutritionChanged };
     }
     const freshStatuses = deriveExportStatuses(latestRecipe, currentId, freshResult, readyFoods);

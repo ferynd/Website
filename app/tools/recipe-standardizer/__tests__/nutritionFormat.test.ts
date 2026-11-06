@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { allNutrients, nutrients } from '../../../../public/tools/CalorieTracker/constants.js';
+import { LEGACY_V1_KEYS, getNutrient } from '@/public/shared/nutrition/nutrientRegistry.js';
 import {
   type NutritionCoverage,
   type NutritionBasis,
@@ -21,6 +22,7 @@ import {
   formatNutrientAmount,
   formatNutrientNumber,
   formatWholeGrams,
+  DETAIL_DISPLAY_GROUPS,
   HEADLINE_NUTRIENT_KEYS,
   LOWER_BOUND_PREFIX,
   NUTRIENT_DISPLAY_GROUPS,
@@ -89,6 +91,14 @@ describe('nutrient display metadata', () => {
     expect(flattened).toEqual(allNutrients);
     expect(flattened).toEqual(TRACKER_NUTRIENT_KEYS);
     expect(flattened).toHaveLength(24);
+  });
+
+  it('labels and order come from the registry', () => {
+    expect([...TRACKER_NUTRIENT_KEYS]).toEqual([...LEGACY_V1_KEYS]);
+    for (const key of TRACKER_NUTRIENT_KEYS) expect(nutrientLabel(key)).toBe(getNutrient(key)!.label);
+    expect(NUTRIENT_DISPLAY_GROUPS.map((group) => group.key)).toEqual(['macros', 'dailyFloors', 'dailyVitamins', 'avgVitamins', 'avgMinerals', 'optional']);
+    expect(DETAIL_DISPLAY_GROUPS.every((group) => group.collapsed)).toBe(true);
+    expect(DETAIL_DISPLAY_GROUPS.flatMap((group) => group.nutrients).length).toBeGreaterThan(0);
   });
 
   it('provides a label and supported unit for every nutrient', () => {

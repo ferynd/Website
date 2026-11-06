@@ -4,7 +4,7 @@ Foods named “(per portion)” or “(per 100 g cooked)” come from Recipe Sta
 
 A Firebase-backed, client-side nutrition tracker built with plain JavaScript ES modules and Chart.js. Runs as a standalone static app under `/public/tools/CalorieTracker/` and is linked from the main site's Tools page.
 
-**Planned ingredient-based workflow:** [the nutrition design](../../../docs/nutrition/README.md) and backlog #59-#70 cover expanded fat/fiber fields, a comprehensive ingredient research catalog, versioned reusable profiles, constrained recipe estimates, an Ingredient Library tab, staged meal analysis as the tracker's primary interface, and missing-ingredient review. These are planned changes. Current parsing still supports the existing 24 fields; do not paste unsupported fat/fiber subtype lines until the new contract ships.
+**Nutrient registry:** [the nutrition design](../../../docs/nutrition/README.md) and backlog #59-#70 cover the ingredient catalog, versioned profiles, and later screens. #60 puts the shared registry in `public/shared/nutrition/`. Paste still accepts the 24-field block, and anchored detail labels (saturated fat, EPA, DHA, and the other registry labels) stage without overwriting parent totals. Saves, diary items, and saved-food CSV rows stay the 24-number v1 shape while `NUTRIENT_V2_WRITES_ENABLED` is false. Food save and saved-food CSV import use a Firestore transaction so a newer nutrient document cannot be overwritten; that transaction is not queued, so an offline save or import fails with "Offline — not saved" instead of waiting. Settings shows `Nutrient registry v2 · storage v1 · build nutritrack-v3`.
 
 > **Active work:** See [`backlogs/calorie-tracker.md`](../../../backlogs/calorie-tracker.md) at the repo root — the single source of truth for ongoing CalorieTracker work (parameters, invariants, and the prioritized item list; the shared session protocol lives in [`backlogs/protocol.md`](../../../backlogs/protocol.md)). To pick up where a prior session left off, start a new session with any of _"start working on the backlog"_, _"continue working on the CalorieTracker backlog"_, or a close paraphrase — the protocol (reconcile merged items, then work the top-priority items) runs automatically.
 
@@ -29,7 +29,7 @@ A Firebase-backed, client-side nutrition tracker built with plain JavaScript ES 
 | **Nutrients** | Status summary grid, filter chip bar, per-nutrient progress rows (daily floors shown every day; fat-soluble vitamins and stored minerals shown as 7-day rolling averages), UL warning badges, source badges, and a multi-series Chart.js chart with chip-based nutrient selection |
 | **Energy** | Weight CSV upload area, TDEE/BMR KPI cards, confidence level, imputation table, plateau status, missing-day population tool, vacation range fill tool, underreporting true-up tool, and estimate management (lock / remove individual estimates) |
 | **Profile & Goals** | Manual weight override, body metrics (sex, birth date or age, height, body fat %), baseline activity level, goal type (fat loss / maintenance / recomp / muscle gain / performance / custom), target weight and date, Auto-Calculate button, target preview with warnings, per-nutrient manual override checkboxes, and Apply / Save Profile buttons |
-| **Settings** | Manual baseline target fields for every nutrient, export buttons (targets JSON, saved foods CSV, daily log CSV), Save Targets button |
+| **Settings** | Manual baseline target fields for every nutrient, export buttons (targets JSON, saved foods CSV, daily log CSV), Save Targets button, and a read-only nutrient capability line (registry version, storage version, service-worker cache name) |
 
 ---
 
@@ -42,7 +42,8 @@ CalorieTracker/
 ├── styles.css              # Tracker-specific utility CSS (loaded after shared-styles.css)
 ├── firebaseConfig.js       # Firebase project keys (excluded from version control)
 ├── config.js               # App-level config: appId, chart colors, debug flag
-├── constants.js            # Nutrient lists, DAY_ACTIVITY_LEVELS, BANKING_CONFIG, DEFAULT_TARGETS, nutrientMap
+├── constants.js            # Derives allNutrients, NUTRIENT_MAX_BOUNDS, and nutrientMap from the shared registry
+├── sw.js                   # App-shell cache nutritrack-v3; network-first for JS/HTML; Firebase stays network-only
 │
 ├── state/
 │   ├── store.js            # Global state object and DOM cache (state.{userId, dailyEntries, ...})
@@ -58,8 +59,10 @@ CalorieTracker/
 ├── ui/
 │   ├── dashboard.js        # Today tab dashboard + Nutrients tab rendering + tab controller
 │   ├── chart.js            # Chart.js multi-series nutrient chart (chip selection, timeframe)
+│   ├── dateRange.js        # Shared date-range control used by the dashboard, chart, and analysis UI
 │   ├── modals.js           # Confirmation modal and duplicate food dialog helpers
-│   └── nutrientHelpers.js  # resolveWeightKg, computeTrendDirection, classifyTargetSource
+│   ├── nutrientDetail.js   # Collapsed fat, carb/fiber, vitamin, and other detail panels
+│   └── nutrientHelpers.js  # resolveWeightKg, computeTrendDirection, classifyTargetSource, formatNutrientWithStatus
 │
 ├── analysis/
 │   ├── engine.js           # TDEE/BMR estimation, EWMA smoothing, water-weight correction, imputation, plateau
@@ -78,17 +81,23 @@ CalorieTracker/
 │   └── save.js             # Save food item to Firestore (duplicate detection, blank-name flow)
 │
 ├── staging/
-│   └── parser.js           # Paste-and-parse: extracts nutrient values from free-form text
+│   └── parser.js           # Anchored paste parser over the shared staged record
+│
+├── nutrition/
+│   └── nutrientRecord.js   # Staged record, v1 food writes, newer-schema guard, day detail totals
 │
 ├── exports/
-│   └── exporters.js        # CSV and JSON export helpers
+│   ├── exporters.js        # CSV and JSON export helpers
+│   └── csvFormat.js        # Saved-foods CSV; v1 columns stay first and v2 columns append only when writes are on
 │
 └── utils/
     ├── ui.js               # showMessage, handleError, debugLog, formatNutrientName
     └── time.js             # getTodayInTimezone, getPastDate, formatDate
 ```
 
-Test files (`*.test.js`) live alongside their subjects and run via Vitest.
+The registry itself lives in `public/shared/nutrition/` (`nutrientRegistry.js`, `capabilities.js`, `nutrientText.js`), outside this folder. Test files (`*.test.js`) live alongside their subjects and run via Vitest.
+
+**Service worker:** `sw.js` precaches the app shell, including the shared nutrition modules. Cache name `nutritrack-v3` matches `NUTRITRACK_CACHE_NAME`. Same-origin JavaScript, HTML, and navigations are network-first with cache fallback. CSS and images stay cache-first. Firestore, Auth, and the other Firebase hosts are not cached. A controlling worker does not reload JavaScript that is already running.
 
 ---
 
@@ -299,7 +308,7 @@ The analysis engine (`analysis/engine.js`) is designed for gradual fat-loss trac
 Run from `public/tools/CalorieTracker/`:
 
 ```bash
-npm test          # run Vitest test suite (568 tests across 9 files)
+npm test          # run Vitest test suite (639 tests across 17 files)
 npm run dev       # start Vite dev server at localhost:5173
 npm run build     # Vite production build (optional — the app runs directly as static files)
 npm run preview   # preview the Vite build
@@ -340,7 +349,7 @@ Vitest is installed at the repo root (`node_modules/.bin/vitest`). Run `npm inst
 
 ## Known limitations
 
-- No offline support. The app requires a live Firebase connection; data does not cache to IndexedDB or localStorage beyond what the Firebase SDK handles internally.
+- The service worker can serve the app shell offline. Firestore reads still need the network. Food saves and saved-food CSV imports use a transaction, so they fail offline with "Offline — not saved" and are not queued the way an earlier `setDoc` write was. The staging area and any CSV rows that were not attempted stay in place. The app does not enable IndexedDB persistence, and data is not cached in localStorage beyond what the Firebase SDK handles internally.
 - The duplicate-food dialog uses a plain HTML table with hardcoded color classes that render as unstyled on some themes — cosmetic only, functionality is unaffected.
 - The weight analysis engine requires at least 14 days of paired weight + calorie data for any estimate; results below 28 days should be treated as rough guides.
 - Guest (anonymous) users' data is tied to the browser session. Signing out as a guest permanently loses all data unless the account is upgraded to email/password before sign-out (not currently implemented).

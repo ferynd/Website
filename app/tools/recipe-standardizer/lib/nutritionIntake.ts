@@ -1,5 +1,17 @@
 /* Nutrition Tracker intake prompt and pasted JSON parsing. */
 
+import { resolveNutrientWriteVersion } from '@/public/shared/nutrition/capabilities.js';
+import {
+  NUTRIENT_STATUSES,
+  V2_KEYS,
+  checkPer100g,
+  checkPerUnit,
+  convertUnit,
+  getNutrient,
+  type DetailKey,
+  type NutrientKey,
+  type NutrientQuality,
+} from '@/public/shared/nutrition/nutrientRegistry.js';
 import { TRACKER_NUTRIENT_KEYS, type TrackerNutrientKey } from './trackerFoods';
 
 /* CONFIGURATION: nutrition intake contract */
@@ -29,39 +41,41 @@ export interface NutrientIntakeSpec {
 }
 
 const spec = (
-  label: string,
-  unit: NutrientUnit,
+  key: TrackerNutrientKey,
   max: number,
   promptNote = '',
   trackerCap = false,
-): NutrientIntakeSpec => ({ label, unit, max, promptNote, trackerCap });
+): NutrientIntakeSpec => {
+  const def = getNutrient(key)!;
+  return { label: def.label, unit: def.unit, max, promptNote, trackerCap };
+};
 
 /** Validation settings for all Nutrition Tracker nutrient keys. */
 export const NUTRIENT_INTAKE_SPEC: Record<TrackerNutrientKey, NutrientIntakeSpec> = {
-  calories: spec('Calories', 'kcal', 900),
-  protein: spec('Protein', 'g', 100),
-  carbs: spec('Carbs', 'g', 100, 'total carbohydrate'),
-  fat: spec('Fat', 'g', 100),
-  fiber: spec('Fiber', 'g', 100),
-  potassium: spec('Potassium', 'mg', 20000),
-  magnesium: spec('Magnesium', 'mg', 2000),
-  sodium: spec('Sodium', 'mg', 23000, '', true),
-  calcium: spec('Calcium', 'mg', 5000),
-  choline: spec('Choline', 'mg', 5000),
-  vitaminB12: spec('Vitamin B12', 'mcg', 1000),
-  folate: spec('Folate', 'mcg', 5000, 'DFE'),
-  vitaminC: spec('Vitamin C', 'mg', 3000),
-  vitaminB6: spec('Vitamin B6', 'mg', 50),
-  vitaminA: spec('Vitamin A', 'mcg', 30000, 'RAE, not IU', true),
-  vitaminD: spec('Vitamin D', 'mcg', 300, 'not IU'),
-  vitaminE: spec('Vitamin E', 'mg', 200, 'alpha-tocopherol'),
-  vitaminK: spec('Vitamin K', 'mcg', 2000),
-  selenium: spec('Selenium', 'mcg', 3000),
-  iodine: spec('Iodine', 'mcg', 11000, '', true),
-  phosphorus: spec('Phosphorus', 'mg', 10000),
-  iron: spec('Iron', 'mg', 200),
-  zinc: spec('Zinc', 'mg', 200),
-  omega3: spec('Omega-3', 'g', 100, 'total ALA+EPA+DHA', true),
+  calories: spec('calories', 900),
+  protein: spec('protein', 100),
+  carbs: spec('carbs', 100, 'total carbohydrate'),
+  fat: spec('fat', 100),
+  fiber: spec('fiber', 100),
+  potassium: spec('potassium', 20000),
+  magnesium: spec('magnesium', 2000),
+  sodium: spec('sodium', 23000, '', true),
+  calcium: spec('calcium', 5000),
+  choline: spec('choline', 5000),
+  vitaminB12: spec('vitaminB12', 1000),
+  folate: spec('folate', 5000, 'DFE'),
+  vitaminC: spec('vitaminC', 3000),
+  vitaminB6: spec('vitaminB6', 50),
+  vitaminA: spec('vitaminA', 30000, 'RAE, not IU', true),
+  vitaminD: spec('vitaminD', 300, 'not IU'),
+  vitaminE: spec('vitaminE', 200, 'alpha-tocopherol'),
+  vitaminK: spec('vitaminK', 2000),
+  selenium: spec('selenium', 3000),
+  iodine: spec('iodine', 11000, '', true),
+  phosphorus: spec('phosphorus', 10000),
+  iron: spec('iron', 200),
+  zinc: spec('zinc', 200),
+  omega3: spec('omega3', 100, 'total ALA+EPA+DHA', true),
 };
 
 /** One deduplicated recipe ingredient included in a nutrition prompt. */
@@ -131,6 +145,12 @@ export interface ParsedNutritionItem {
   nutrients: Record<TrackerNutrientKey, number | null>;
   errors: string[];
   warnings: string[];
+  /** Present for schemaVersion 2. Detail is not written while v2 storage is off. */
+  detail?: Partial<Record<DetailKey, number | null>>;
+  quality?: Partial<Record<NutrientKey, NutrientQuality>>;
+  conflicts?: { key: string; values: Array<number | null> }[];
+  /** Review-only reasons that block creating a tracker food. */
+  commitBlockers?: string[];
 }
 
 /** Result of parsing pasted nutrition JSON. */
@@ -143,8 +163,214 @@ const object = (value: unknown): value is Record<string, unknown> =>
 
 const hint = 'Do not include markdown fences, commentary, or trailing text.';
 
+const V2_KEY_SET = new Set<string>(V2_KEYS);
+const LEGACY_KEY_SET = new Set<string>(TRACKER_NUTRIENT_KEYS);
+
+const blankNutrients = (): Record<TrackerNutrientKey, number | null> => (
+  Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, null])) as Record<TrackerNutrientKey, number | null>
+);
+
+const readRowIdentity = (
+  rawItem: Record<string, unknown>,
+  path: string,
+  errors: string[],
+  rowWarnings: string[],
+): { id: string | null; name: string; assumptions: string } => {
+  const id = typeof rawItem.ingredientId === 'string' && rawItem.ingredientId.trim()
+    ? rawItem.ingredientId.trim()
+    : null;
+  if (!id) rowWarnings.push(`${path}.ingredientId is missing — assign the ingredient manually.`);
+  let name = '';
+  if (typeof rawItem.name === 'string') name = rawItem.name.trim();
+  else if (rawItem.name !== undefined) errors.push(`${path}.name must be a string.`);
+  let assumptions = '';
+  if (typeof rawItem.assumptions === 'string') {
+    assumptions = rawItem.assumptions.trim();
+    if (assumptions.length > MAX_ASSUMPTIONS_LENGTH) {
+      assumptions = assumptions.slice(0, MAX_ASSUMPTIONS_LENGTH);
+      rowWarnings.push(`${path}.assumptions was shortened to 300 characters.`);
+    }
+  } else if (rawItem.assumptions !== undefined) {
+    errors.push(`${path}.assumptions must be a string.`);
+  }
+  return { id, name, assumptions };
+};
+
+/**
+ * Same per-100 g intake cap schema v1 uses. Tracker-cap keys (sodium and the
+ * other storage ceilings) are omitted by the caller when a per-100 g amount is
+ * still physically allowed, so pure salt stays a v1 commit blocker.
+ */
+const intakeLimitMessage = (
+  nutrientPath: string,
+  key: TrackerNutrientKey,
+  value: number,
+): string | null => {
+  const nutrientSpec = NUTRIENT_INTAKE_SPEC[key];
+  if (!(value > nutrientSpec.max)) return null;
+  return nutrientSpec.trackerCap
+    ? `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g the Nutrition Tracker can store. Skip this row and link the ingredient to a smaller-unit food (for example per 1 g) from its nutrition badge.`
+    : `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the plausible maximum of ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g — check the unit (mg vs mcg, IU vs mcg) and that the value is per 100 g.`;
+};
+
+/** Shared macro, omega-3, and calorie checks for schema 1 rows and assembled schema 2 rows. */
+const applyCrossFieldChecks = (
+  nutrients: Record<TrackerNutrientKey, number | null>,
+  path: string,
+  errors: string[],
+  rowWarnings: string[],
+) => {
+  const protein = nutrients.protein;
+  const carbs = nutrients.carbs;
+  const fat = nutrients.fat;
+  const omega3 = nutrients.omega3;
+  const calories = nutrients.calories;
+  if (protein !== null && carbs !== null && fat !== null) {
+    const sum = protein + carbs + fat;
+    if (sum > MACRO_MASS_TOLERANCE_G) {
+      errors.push(`${path}.nutrients: protein + carbs + fat = ${sum.toFixed(1)} g exceeds 100 g per 100 g — the values look per serving, not per 100 g.`);
+    }
+  }
+  if (omega3 !== null && fat !== null && omega3 > fat + 0.5) {
+    errors.push(`${path}.nutrients.omega3 (${omega3} g) cannot exceed fat (${fat} g).`);
+  }
+  if (protein !== null && carbs !== null && fat !== null && calories !== null) {
+    const estimate = 4 * protein + 4 * carbs + 9 * fat;
+    if (Math.abs(calories - estimate) > Math.max(50, 0.3 * calories)) {
+      rowWarnings.push(`${path}.nutrients.calories (${calories} kcal) differs from protein/carbs/fat (≈${Math.round(estimate)} kcal) — double-check.`);
+    }
+  }
+};
+
+/** Parse schemaVersion 2 observation rows. Parents are never filled from components. */
+const parseSchemaV2Items = (
+  rawItems: unknown[],
+  warnings: string[],
+  writeVersion: 1 | 2,
+): NutritionParseResult => {
+  const items = rawItems.map((rawItem, index): ParsedNutritionItem => {
+    const path = `items[${index}]`;
+    const errors: string[] = [];
+    const rowWarnings: string[] = [];
+    const nutrients = blankNutrients();
+    const detail: Partial<Record<DetailKey, number | null>> = {};
+    const quality: Partial<Record<NutrientKey, NutrientQuality>> = {};
+    const conflicts: { key: string; values: Array<number | null> }[] = [];
+    const commitBlockers: string[] = [];
+    if (!object(rawItem)) {
+      errors.push(`${path} must be an object.`);
+      return { index, path, ingredientId: null, name: '', assumptions: '', nutrients, errors, warnings: rowWarnings, detail, quality, conflicts, commitBlockers };
+    }
+    const identity = readRowIdentity(rawItem, path, errors, rowWarnings);
+    Object.keys(rawItem)
+      .filter((key) => !['ingredientId', 'name', 'assumptions', 'observations'].includes(key))
+      .forEach((key) => rowWarnings.push(`${path}: ignored unknown field "${key}".`));
+    if (!Array.isArray(rawItem.observations)) {
+      errors.push(`${path}.observations is required for schemaVersion 2.`);
+      return { index, path, ingredientId: identity.id, name: identity.name, assumptions: identity.assumptions, nutrients, errors, warnings: rowWarnings, detail, quality, conflicts, commitBlockers };
+    }
+    const seen = new Map<string, number | null>();
+    const conflictKeys = new Set<string>();
+    rawItem.observations.forEach((rawObs, obsIndex) => {
+      const obsPath = `${path}.observations[${obsIndex}]`;
+      if (!object(rawObs)) {
+        errors.push(`${obsPath} must be an object.`);
+        return;
+      }
+      const key = rawObs.key;
+      if (typeof key !== 'string' || !V2_KEY_SET.has(key)) {
+        rowWarnings.push(`${obsPath}: unknown nutrient key "${String(key)}" was ignored.`);
+        return;
+      }
+      const def = getNutrient(key)!;
+      let value: number | null;
+      if (rawObs.value === null) value = null;
+      else if (typeof rawObs.value !== 'number' || !Number.isFinite(rawObs.value)) {
+        errors.push(`${obsPath}.value must be a number or null.`);
+        return;
+      } else if (rawObs.value < 0) {
+        errors.push(`${obsPath}.value must be 0 or more.`);
+        return;
+      } else {
+        const unit = typeof rawObs.unit === 'string' && rawObs.unit.trim() ? rawObs.unit : def.unit;
+        const converted = convertUnit(key, rawObs.value, unit);
+        if ('error' in converted) {
+          errors.push(`${obsPath}: cannot convert "${unit}" for ${key}.`);
+          return;
+        }
+        value = Object.is(converted.value, -0) ? 0 : converted.value;
+        const bound = checkPer100g(key, value);
+        if (bound === 'reject') {
+          errors.push(`${obsPath}: ${value} ${def.unit} is above the per-100 g limit for ${key}.`);
+          return;
+        }
+        if (bound === 'review') rowWarnings.push(`${obsPath}: ${key} is high for a per-100 g food and needs review.`);
+        if (LEGACY_KEY_SET.has(key) && !NUTRIENT_INTAKE_SPEC[key as TrackerNutrientKey].trackerCap) {
+          const limitMessage = intakeLimitMessage(obsPath, key as TrackerNutrientKey, value);
+          if (limitMessage) {
+            errors.push(limitMessage);
+            return;
+          }
+        }
+      }
+      const previous = seen.get(key);
+      if (previous !== undefined) {
+        if (previous !== value) {
+          conflictKeys.add(key);
+          const existing = conflicts.find((conflict) => conflict.key === key);
+          if (existing) existing.values.push(value);
+          else conflicts.push({ key, values: [previous, value] });
+        }
+        return;
+      }
+      seen.set(key, value);
+      if (typeof rawObs.status === 'string' && (NUTRIENT_STATUSES as readonly string[]).includes(rawObs.status)) {
+        quality[key as NutrientKey] = {
+          status: rawObs.status as NutrientQuality['status'],
+          ...(typeof rawObs.qualifier === 'string' ? { qualifier: rawObs.qualifier } : {}),
+        };
+      }
+    });
+    for (const [key, value] of seen) {
+      if (conflictKeys.has(key)) continue;
+      if (LEGACY_KEY_SET.has(key)) nutrients[key as TrackerNutrientKey] = value;
+      else detail[key as DetailKey] = value;
+    }
+    for (const key of conflictKeys) commitBlockers.push(`${path}: conflicting values for ${key} need review.`);
+    applyCrossFieldChecks(nutrients, path, errors, rowWarnings);
+    if (writeVersion === 1) {
+      for (const key of TRACKER_NUTRIENT_KEYS) {
+        const value = nutrients[key];
+        if (value === null) {
+          commitBlockers.push(`${path}: ${key} is unknown and is review-only while storage is v1.`);
+        } else if (checkPerUnit(key, value) === 'reject') {
+          commitBlockers.push(`${path}: ${key} is ${value} ${getNutrient(key)!.unit}, above what storage v1 can save per unit.`);
+        }
+      }
+      if (Object.keys(detail).length > 0) {
+        rowWarnings.push(`${path}: detail nutrients are not stored while storage is v1.`);
+      }
+    }
+    return {
+      index,
+      path,
+      ingredientId: identity.id,
+      name: identity.name,
+      assumptions: identity.assumptions,
+      nutrients,
+      errors,
+      warnings: rowWarnings,
+      detail,
+      quality,
+      conflicts,
+      commitBlockers,
+    };
+  });
+  return { ok: true, items, warnings };
+};
+
 /** Parse and validate pasted nutrition JSON without throwing. */
-export const parseNutritionJson = (raw: string): NutritionParseResult => {
+export const parseNutritionJson = (raw: string, options?: { writeVersion?: 1 | 2 }): NutritionParseResult => {
   const fatal: string[] = [];
   let parsed: unknown;
 
@@ -170,10 +396,10 @@ export const parseNutritionJson = (raw: string): NutritionParseResult => {
       fatal.push('This looks like recipe JSON — paste it into Import recipe instead.');
     }
   }
-  if (typeof top.schemaVersion === 'number' && top.schemaVersion > 1) {
-    fatal.push(`schemaVersion ${top.schemaVersion} is newer than this tool supports (1).`);
-  } else if (top.schemaVersion !== 1) {
-    fatal.push('schemaVersion must be 1.');
+  if (typeof top.schemaVersion === 'number' && top.schemaVersion > 2) {
+    fatal.push(`schemaVersion ${top.schemaVersion} is newer than this tool supports (2).`);
+  } else if (top.schemaVersion !== 1 && top.schemaVersion !== 2) {
+    fatal.push('schemaVersion must be 1 or 2.');
   }
   if (top.basis !== NUTRITION_INTAKE_BASIS) {
     fatal.push('basis must be "per-100g" — values must be per 100 g.');
@@ -190,6 +416,9 @@ export const parseNutritionJson = (raw: string): NutritionParseResult => {
   const warnings = Object.keys(top)
     .filter((key) => !['kind', 'schemaVersion', 'basis', 'items'].includes(key))
     .map((key) => `Ignored unknown field "${key}".`);
+  if (top.schemaVersion === 2) {
+    return parseSchemaV2Items(top.items as unknown[], warnings, options?.writeVersion ?? resolveNutrientWriteVersion());
+  }
   const items = (top.items as unknown[]).map((rawItem, index): ParsedNutritionItem => {
     const path = `items[${index}]`;
     const errors: string[] = [];
@@ -260,10 +489,9 @@ export const parseNutritionJson = (raw: string): NutritionParseResult => {
           errors.push(`${nutrientPath} must be 0 or more.`);
           continue;
         }
-        if (value > nutrientSpec.max) {
-          errors.push(nutrientSpec.trackerCap
-            ? `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g the Nutrition Tracker can store. Skip this row and link the ingredient to a smaller-unit food (for example per 1 g) from its nutrition badge.`
-            : `${nutrientPath} is ${value} ${nutrientSpec.unit}, above the plausible maximum of ${nutrientSpec.max} ${nutrientSpec.unit} per 100 g — check the unit (mg vs mcg, IU vs mcg) and that the value is per 100 g.`);
+        const limitMessage = intakeLimitMessage(nutrientPath, key, value);
+        if (limitMessage) {
+          errors.push(limitMessage);
           continue;
         }
         nutrients[key] = Object.is(value, -0) ? 0 : value;
@@ -273,28 +501,7 @@ export const parseNutritionJson = (raw: string): NutritionParseResult => {
         .filter((key) => !TRACKER_NUTRIENT_KEYS.includes(key as TrackerNutrientKey))
         .forEach((key) => rowWarnings.push(`${path}.nutrients.${key} is not a tracked nutrient and was ignored.`));
 
-      const valid = (key: TrackerNutrientKey): number | null => nutrients[key];
-      const protein = valid('protein');
-      const carbs = valid('carbs');
-      const fat = valid('fat');
-      const omega3 = valid('omega3');
-      const calories = valid('calories');
-
-      if (protein !== null && carbs !== null && fat !== null) {
-        const sum = protein + carbs + fat;
-        if (sum > MACRO_MASS_TOLERANCE_G) {
-          errors.push(`${path}.nutrients: protein + carbs + fat = ${sum.toFixed(1)} g exceeds 100 g per 100 g — the values look per serving, not per 100 g.`);
-        }
-      }
-      if (omega3 !== null && fat !== null && omega3 > fat + 0.5) {
-        errors.push(`${path}.nutrients.omega3 (${omega3} g) cannot exceed fat (${fat} g).`);
-      }
-      if (protein !== null && carbs !== null && fat !== null && calories !== null) {
-        const estimate = 4 * protein + 4 * carbs + 9 * fat;
-        if (Math.abs(calories - estimate) > Math.max(50, 0.3 * calories)) {
-          rowWarnings.push(`${path}.nutrients.calories (${calories} kcal) differs from protein/carbs/fat (≈${Math.round(estimate)} kcal) — double-check.`);
-        }
-      }
+      applyCrossFieldChecks(nutrients, path, errors, rowWarnings);
     }
 
     return { index, path, ingredientId: id, name, assumptions, nutrients, errors, warnings: rowWarnings };

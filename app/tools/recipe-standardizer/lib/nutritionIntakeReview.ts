@@ -5,7 +5,8 @@ import { normalizeIngredientName } from './shoppingList';
 import { MAX_INTAKE_ITEMS, type IntakeGroup, type ParsedNutritionItem } from './nutritionIntake';
 import {
   TRACKER_NUTRIENT_KEYS,
-  fingerprintTrackerFood,
+  currentFingerprint,
+  intakeFoodDoc,
   isValidFirestoreDocId,
   trackerFoodId,
   validateTrackerFoodName,
@@ -67,6 +68,8 @@ export interface IntakeCommitPlan {
     name: string;
     nutrients: Record<TrackerNutrientKey, number>;
     ingredients: IntakeExpectedLink[];
+    detail?: ParsedNutritionItem['detail'];
+    quality?: ParsedNutritionItem['quality'];
   }[];
   links: {
     food: TrackerFood;
@@ -100,7 +103,7 @@ export const collectLinkTargets = (plan: IntakeCommitPlan): LinkTarget[] => {
     if (targets.has(link.food.id)) continue;
     targets.set(link.food.id, {
       id: link.food.id,
-      fingerprint: fingerprintTrackerFood(link.food),
+      fingerprint: currentFingerprint(link.food),
       normalizedName: normalizeIngredientName(link.food.name),
       lastUpdated: link.food.lastUpdated,
     });
@@ -262,6 +265,7 @@ export const evaluateIntakeRows = (
     const blockers: string[] = [];
     const createBlockers: string[] = [];
     if (row.item.errors.length) createBlockers.push('Fix this row in ChatGPT and paste again, or skip it.');
+    for (const blocker of row.item.commitBlockers ?? []) createBlockers.push(blocker);
     if (!group) blockers.push('Choose the ingredient this row belongs to.');
 
     const duplicate = row.targetKey === null
@@ -408,6 +412,8 @@ export const buildIntakeCommitPlan = (
           TRACKER_NUTRIENT_KEYS.map((key) => [key, row.item.nutrients[key]!]),
         ) as Record<TrackerNutrientKey, number>,
         ingredients,
+        ...(row.item.detail ? { detail: row.item.detail } : {}),
+        ...(row.item.quality ? { quality: row.item.quality } : {}),
       });
     } else {
       const food = evals[index].collision!.food!;
@@ -417,6 +423,17 @@ export const buildIntakeCommitPlan = (
 
   return plan;
 };
+
+/** Food document for one planned create. Production uses the write flag; tests inject writeVersion. */
+export const intakeCreateDocument = (
+  create: IntakeCommitPlan['creates'][number],
+  nowIso: string,
+  options?: { writeVersion?: 1 | 2 },
+) => intakeFoodDoc(create.name, create.nutrients, nowIso, {
+  writeVersion: options?.writeVersion,
+  detail: create.detail,
+  quality: create.quality,
+});
 
 /** Find new-food IDs that collide with the currently loaded tracker foods. */
 export const findPlanCollisions = (plan: IntakeCommitPlan, foods: TrackerFood[]): string[] => {

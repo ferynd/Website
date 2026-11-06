@@ -47,6 +47,12 @@ export const handleError = (ctx, err, userMsg = 'An error occurred') => {
   return null;
 };
 
+/** Firestore has no offline write queue. `unavailable` means the save did not happen. */
+export function transactionFailureMessage(error, fallback) {
+  if (error?.code === 'unavailable') return 'Offline — not saved';
+  return fallback;
+}
+
 /**
  * Formats a camelCase nutrient key into a human-readable string.
  * e.g., 'vitaminB12' becomes 'Vitamin B12'.

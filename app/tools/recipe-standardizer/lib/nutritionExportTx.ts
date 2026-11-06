@@ -15,6 +15,7 @@ const MESSAGE_COPY = {
 const RECIPE_FIELD_PREFIX = 'recipe.nutritionExports.';
 const UPDATED_AT_FIELD = 'updatedAt';
 
+import { resolveNutrientWriteVersion } from '@/public/shared/nutrition/capabilities.js';
 import { checkRecipeRevision, RECIPE_REVISION_FIELD } from './recipeRevision';
 import { parseNutritionExport, sameNutritionExport } from './nutritionExportRef';
 import type { ExportCommitRequest } from './nutritionExport';
@@ -89,6 +90,14 @@ export class ExportTargetMissingError extends Error {
   }
 }
 
+/** Error raised when a v1 writer would replace a nutrient schema 2 document. */
+export class ExportTargetNewerSchemaError extends Error {
+  constructor() {
+    super('This food was saved by a newer version — reload.');
+    this.name = 'ExportTargetNewerSchemaError';
+  }
+}
+
 /** Error raised when the update target changed after review. */
 export class ExportTargetChangedError extends Error {
   readonly foodId: string;
@@ -160,6 +169,10 @@ export const runExportTransaction = async <R>(
     if (request.expectedTarget === null) throw new ExportTargetChangedError(request.foodId);
     const target = parseTrackerFood(request.foodId, foodSnapshot.data());
     if (linkTargetChanged(target, request.expectedTarget)) throw new ExportTargetChangedError(request.foodId);
+    const writeVersion = request.writeVersion ?? resolveNutrientWriteVersion();
+    const raw = foodSnapshot.data();
+    const schema = isRecord(raw) ? Number(raw.nutrientSchemaVersion) : Number.NaN;
+    if (writeVersion !== 2 && schema >= 2) throw new ExportTargetNewerSchemaError();
   }
 
   tx.set(refs.food, request.doc);

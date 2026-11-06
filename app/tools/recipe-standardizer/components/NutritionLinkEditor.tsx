@@ -49,6 +49,7 @@ export default function NutritionLinkEditor({ ingredient, assessment, foods, onA
     candidate: `Suggested match “${matchName}”${confidence} — not confirmed.`,
     'candidate-missing': `The suggested food “${matchName}” no longer exists in the Nutrition Tracker.`,
     confirmed: `Confirmed: “${matchName}”, 1 unit = ${link.gramsPerUnit} g.`,
+    'confirmed-legacy': `Confirmed: “${matchName}”, 1 unit = ${link.gramsPerUnit} g.`,
     'confirmed-unverified': `Confirmed: “${matchName}”, 1 unit = ${link.gramsPerUnit} g — not yet checked against current Nutrition Tracker foods.`,
     'stale-missing': `Needs review: the confirmed food “${matchName}” was deleted from the Nutrition Tracker.`,
     'stale-renamed': `Needs review: the confirmed food was renamed from “${matchName}” to “${assessment.currentName ?? 'unknown'}”.`,

@@ -1,0 +1,166 @@
+import { afterEach, describe, expect, it } from 'vitest';
+import { emptyStagedRecord } from '../../../shared/nutrition/nutrientRegistry.js';
+import { foodNameLeavesStagedDetail, withoutStagedDetail } from '../nutrition/nutrientRecord.js';
+import { state } from '../state/store.js';
+import { applyKeepBothRename, commitKeepBothRename, settleEmptyPaste } from '../ui/nutrientDetail.js';
+
+const BUTTONS = ['add-day-btn', 'save-food-item-btn', 'replace-day-btn', 'subtract-day-btn'];
+
+function makeEl() {
+  return {
+    value: '',
+    disabled: false,
+    textContent: '',
+    children: [],
+    classList: {
+      names: new Set(),
+      add(name) { this.names.add(name); },
+      remove(name) { this.names.delete(name); },
+      contains(name) { return this.names.has(name); },
+    },
+    appendChild(child) {
+      this.children.push(child);
+      return child;
+    },
+    replaceChildren() {
+      this.children = [];
+    },
+  };
+}
+
+function installDocument() {
+  const elements = new Map();
+  const documentStub = {
+    getElementById(id) {
+      if (!elements.has(id)) elements.set(id, makeEl());
+      return elements.get(id);
+    },
+    createElement() {
+      return makeEl();
+    },
+  };
+  globalThis.document = documentStub;
+  return documentStub;
+}
+
+describe('round 5 staging holes', () => {
+  afterEach(() => {
+    state.stagedRecord = null;
+    state.stagedDetailFoodName = null;
+    delete globalThis.document;
+  });
+
+  it('an empty paste keeps a conflict explanation and the disabled actions', () => {
+    const documentStub = installDocument();
+    for (const id of BUTTONS) documentStub.getElementById(id).disabled = true;
+    const warning = documentStub.getElementById('parse-missing-warning');
+    warning.classList.remove('hidden');
+    const note = makeEl();
+    note.textContent = 'Conflicting values need a choice before Add, Save, or Replace.';
+    warning.appendChild(note);
+
+    const result = settleEmptyPaste({ conflicts: [{ key: 'protein', values: [10, 11] }] });
+
+    expect(result).toBe('kept');
+    expect(warning.children).toContain(note);
+    expect(warning.classList.contains('hidden')).toBe(false);
+    expect(note.textContent).toContain('Conflicting values');
+    for (const id of BUTTONS) expect(documentStub.getElementById(id).disabled).toBe(true);
+  });
+
+  it('an empty paste with no conflict clears the warning and enables the actions', () => {
+    const documentStub = installDocument();
+    for (const id of BUTTONS) documentStub.getElementById(id).disabled = true;
+    const warning = documentStub.getElementById('parse-missing-warning');
+    warning.classList.remove('hidden');
+    warning.appendChild(makeEl());
+
+    expect(settleEmptyPaste({ conflicts: [] })).toBe('cleared');
+    expect(settleEmptyPaste(null)).toBe('cleared');
+    expect(warning.children).toEqual([]);
+    expect(warning.classList.contains('hidden')).toBe(true);
+    for (const id of BUTTONS) expect(documentStub.getElementById(id).disabled).toBe(false);
+  });
+
+  it('Keep Both (Rename) moves the remembered food name so loaded detail stays', () => {
+    const documentStub = installDocument();
+    const input = documentStub.getElementById('food-item-input');
+    input.value = 'Yogurt';
+    state.stagedDetailFoodName = 'Yogurt';
+    const record = emptyStagedRecord();
+    record.values.protein = 6;
+    record.values.fatSaturated = 3;
+    record.quality.protein = { status: 'label_reported' };
+    record.quality.fatSaturated = { status: 'label_reported' };
+
+    const dropped = foodNameLeavesStagedDetail('Yogurt', 'Yogurt (v2)')
+      ? withoutStagedDetail(record)
+      : record;
+    expect(dropped.values.protein).toBe(6);
+    expect(dropped.values.fatSaturated).toBeNull();
+
+    expect(applyKeepBothRename('Yogurt (v2)')).toBe('Yogurt (v2)');
+    expect(input.value).toBe('Yogurt (v2)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v2)');
+    const kept = foodNameLeavesStagedDetail(state.stagedDetailFoodName, input.value)
+      ? withoutStagedDetail(record)
+      : record;
+    expect(kept.values.protein).toBe(6);
+    expect(kept.values.fatSaturated).toBe(3);
+    expect(foodNameLeavesStagedDetail(state.stagedDetailFoodName, input.value)).toBe(false);
+  });
+
+  it('Keep Both closes only after the save commits', async () => {
+    const documentStub = installDocument();
+    const input = documentStub.getElementById('food-item-input');
+    input.value = 'Yogurt';
+    state.stagedDetailFoodName = 'Yogurt';
+
+    expect(await commitKeepBothRename('Yogurt', 'Yogurt', async () => true)).toEqual({ status: 'name' });
+    expect(await commitKeepBothRename('  ', 'Yogurt', async () => true)).toEqual({ status: 'name' });
+    expect(input.value).toBe('Yogurt');
+    expect(state.stagedDetailFoodName).toBe('Yogurt');
+
+    let ran = false;
+    const saved = await commitKeepBothRename('Yogurt (v2)', 'Yogurt', async () => {
+      ran = true;
+      expect(input.value).toBe('Yogurt (v2)');
+      return true;
+    });
+    expect(ran).toBe(true);
+    expect(saved).toEqual({ status: 'saved' });
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v2)');
+
+    const failed = await commitKeepBothRename('Yogurt (v3)', 'Yogurt (v2)', async () => false);
+    expect(failed).toEqual({ status: 'failed' });
+    expect(input.value).toBe('Yogurt (v2)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v2)');
+
+    await expect(commitKeepBothRename('Yogurt (v4)', 'Yogurt (v2)', async () => {
+      throw new Error('offline');
+    })).rejects.toThrow('offline');
+    expect(input.value).toBe('Yogurt (v2)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v2)');
+
+    const duplicated = await commitKeepBothRename('Yogurt (v5)', 'Yogurt (v2)', async () => 'duplicate');
+    expect(duplicated).toEqual({ status: 'duplicate' });
+    expect(input.value).toBe('Yogurt (v5)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v5)');
+
+    const failedAfter = await commitKeepBothRename('Yogurt (v6)', 'Yogurt (v5)', async () => false);
+    expect(failedAfter).toEqual({ status: 'failed' });
+    expect(input.value).toBe('Yogurt (v5)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v5)');
+  });
+
+  it('a rename with no remembered food does not invent an anchor', () => {
+    const documentStub = installDocument();
+    const input = documentStub.getElementById('food-item-input');
+    input.value = 'Yogurt';
+    state.stagedDetailFoodName = null;
+    applyKeepBothRename('Yogurt (v2)');
+    expect(input.value).toBe('Yogurt (v2)');
+    expect(state.stagedDetailFoodName).toBeNull();
+    expect(foodNameLeavesStagedDetail(state.stagedDetailFoodName, input.value)).toBe(false);
+  });
+});

@@ -23,6 +23,9 @@ import {
   getEntryExerciseKcal,
 } from '../exercise/met.js';
 import { computeTrendDirection, classifyTargetSource, resolveWeightKg } from './nutrientHelpers.js';
+import { renderDayNutrientDetail } from './nutrientDetail.js';
+import { legacyPartialNote, sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
+import { NUTRITION_CAPABILITIES } from '../../../shared/nutrition/capabilities.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';
@@ -1130,6 +1133,8 @@ function renderTodayCompact(bankingData) {
   if (bankIncomplete) {
     warnings.push(`${bankMode === 'autoGoalSchedule' ? 'Schedule' : 'Bank'} incomplete — missing: ${unknownDays.join(', ')}.`);
   }
+  const partialNote = legacyPartialNote(sumLegacyDayTotals(state.dailyFoodItems, { missingQuantity: 0 }).partialKeys);
+  if (partialNote) warnings.push(partialNote);
 
   const warningHtml = warnings.length > 0
     ? `<div class="today-warnings">${warnings.map(w => `<div class="today-warning-line">⚠ ${w}</div>`).join('')}</div>`
@@ -1457,6 +1462,10 @@ export function updateDashboard() {
       ${renderExerciseSummaryCard(dateStr, bankingData.exerciseAddMode)}
       ${renderTodayCompact(bankingData)}
     `;
+    const dayDetail = document.createElement('div');
+    dayDetail.id = 'nutrient-detail-day';
+    dashboard.appendChild(dayDetail);
+    renderDayNutrientDetail(dayDetail, state.dailyFoodItems);
 
     renderTodayMacroHeader(bankingData);
     renderVacationQuickPanel();
@@ -1931,6 +1940,10 @@ function renderMicronutrientSections(metrics, filter = 'all') {
 export function populateSettingsForm() {
   try {
     debugLog('populate-settings', 'Starting settings form population');
+    const capability = document.getElementById('nutrient-capability');
+    if (capability) {
+      capability.textContent = `Nutrient registry v${NUTRITION_CAPABILITIES.registryVersion} · storage v${NUTRITION_CAPABILITIES.writeVersion} · build ${NUTRITION_CAPABILITIES.cacheName}`;
+    }
     
     // Handle banking/macro parameters with proper defaults
     const macroFields = [

@@ -18,6 +18,8 @@ import {
 import { updateDashboard, populateSettingsForm } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
 import { allNutrients, SCHEMA_VERSIONS } from '../constants.js';
+import { writeLegacyDayTotals } from '../nutrition/nutrientRecord.js';
+import { clearNutrientDetailMounts } from '../ui/nutrientDetail.js';
 import {
   normalizeEntry,
   normalizeUserProfile,
@@ -429,6 +431,9 @@ export function clearStagingArea() {
     warningEl.removeAttribute('title');
     warningEl.classList.add('hidden');
   }
+  state.stagedRecord = null;
+  state.stagedDetailFoodName = null;
+  clearNutrientDetailMounts();
 
   debugLog('data-ui', 'Staging area cleared', { fieldsCleared: clearedCount });
 }
@@ -684,13 +689,7 @@ window.updateItemQuantity = (id, value) => {
   const dateStr = state.dom.dateInput?.value || getTodayInTimezone();
   const entry = getCurrentDailyEntry(); // always returns a v2-shaped entry
   entry.foodItems = state.dailyFoodItems;
-  allNutrients.forEach(n => {
-    entry[n] = state.dailyFoodItems.reduce((sum, fi) => {
-      const qty = parseQty(fi.quantity);
-      const val = parseFloat(fi[n]) || 0;
-      return sum + qty * val;
-    }, 0);
-  });
+  writeLegacyDayTotals(entry, state.dailyFoodItems, { missingQuantity: 0 });
   state.dailyEntries.set(dateStr, entry);
 
   updateFoodItemsList();

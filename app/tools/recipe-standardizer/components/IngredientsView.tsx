@@ -44,6 +44,7 @@ const VIEW_COPY = {
 
 const BADGE_STYLES: Record<LinkAssessment['state'], string> = {
   confirmed: 'bg-success/10 text-success',
+  'confirmed-legacy': 'bg-success/10 text-success',
   'confirmed-unverified': 'bg-surface-1 border border-border text-text-2',
   candidate: 'bg-warning/10 text-warning',
   'candidate-missing': 'bg-warning/10 text-warning',
@@ -126,7 +127,7 @@ interface IngredientsViewProps {
 }
 
 function nutritionBadgeLabel(state: LinkAssessment['state'], matchedName: string | null): string {
-  if (state === 'confirmed' || state === 'confirmed-unverified') return matchedName ?? VIEW_COPY.confirmed;
+  if (state === 'confirmed' || state === 'confirmed-legacy' || state === 'confirmed-unverified') return matchedName ?? VIEW_COPY.confirmed;
   if (state === 'candidate') return VIEW_COPY.confirmCandidate(matchedName ?? VIEW_COPY.suggestion);
   return BADGE_LABELS[state];
 }
@@ -134,6 +135,7 @@ function nutritionBadgeLabel(state: LinkAssessment['state'], matchedName: string
 function NutritionBadgeIcon({ state }: { state: LinkAssessment['state']; }) {
   switch (state) {
     case 'confirmed':
+    case 'confirmed-legacy':
     case 'confirmed-unverified':
       return <BadgeCheck size={11} />;
     case 'stale-missing':

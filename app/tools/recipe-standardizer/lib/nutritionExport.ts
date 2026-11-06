@@ -27,13 +27,25 @@ const REQUEST_ERROR_COPY = {
   fingerprint: 'The built tracker food did not match the reviewed nutrition snapshot.',
 } as const;
 
+import { resolveNutrientWriteVersion } from '@/public/shared/nutrition/capabilities.js';
+import {
+  V2_DETAIL_KEYS,
+  checkPer100g,
+  checkPerUnit,
+  type DetailKey,
+  type NutrientKey,
+  type NutrientQuality,
+} from '@/public/shared/nutrition/nutrientRegistry.js';
 import { isValidRecipeRevision } from './recipeRevision';
 import { formatCoveragePercent } from './nutritionFormat';
 import { calculateRecipeNutrition, type RecipeNutritionResult } from './nutritionCalc';
 import { normalizeIngredientName } from './shoppingList';
 import {
   buildTrackerFoodDoc,
+  buildTrackerFoodDocV2,
+  currentFingerprint,
   fingerprintTrackerFood,
+  fingerprintTrackerFoodV2,
   isValidFirestoreDocId,
   linkTargetChanged,
   parseTrackerFood,
@@ -42,6 +54,7 @@ import {
   TRACKER_NUTRIENT_KEYS,
   TRACKER_NUTRIENT_MAX_BOUNDS,
   validateTrackerFoodName,
+  verifyTrackerFoodFingerprint,
   type FoodsState,
   type LinkTarget,
   type TrackerFood,
@@ -81,6 +94,12 @@ export interface ExportPayload {
   portionCount: number | null;
   portionSizeG: number | null;
   finalWeightG: number | null;
+  /** Set only for an injected or enabled writeVersion of 2. Null means unknown. */
+  sparseNutrients?: Record<TrackerNutrientKey, number | null>;
+  detail?: Partial<Record<DetailKey, number | null>>;
+  quality?: Partial<Record<NutrientKey, NutrientQuality>>;
+  /** Detail keys whose exported number is a lower bound. Absent on v1 payloads. */
+  detailLowerBoundKeys?: DetailKey[];
 }
 
 /** Result of trying to build a payload. */
@@ -130,7 +149,9 @@ export interface ExportCommitRequest {
   basis: NutritionExportBasisKey;
   mode: 'create' | 'update';
   foodId: string;
-  doc: TrackerFoodDoc;
+  doc: TrackerFoodDoc | (Record<string, unknown> & { name: string; quantity: number; lastUpdated: string });
+  /** Present only when the caller injected a write version. Production omits it. */
+  writeVersion?: 1 | 2;
   /** Update only: the tracker doc must still match this identity at commit. */
   expectedTarget: LinkTarget | null;
   /** Concurrency baseline for recipe.nutritionExports[basis]. */
@@ -201,12 +222,75 @@ const blocked = (reason: ExportBlockReason): ExportPayloadResult => ({
   overCapKeys: [],
 });
 
+/**
+ * Portion metadata scales detail even when every legacy total is zero.
+ * Detail amounts are baseline sums, before the selected basis is applied.
+ */
+const exportBasisRatio = (result: RecipeNutritionResult, basis: NutritionExportBasisKey): number => {
+  const selected = result.bases[basis];
+  if (!selected) return 1;
+  if (basis === 'per100gCooked') {
+    const weight = selected.finalWeightG;
+    if (typeof weight === 'number' && Number.isFinite(weight) && weight > 0) return 100 / weight;
+    return 1;
+  }
+  if (basis === 'perPortion') {
+    if (selected.portionMode === 'size') {
+      const portion = selected.portionSizeG;
+      const weight = selected.finalWeightG;
+      if (
+        typeof portion === 'number' && portion > 0
+        && typeof weight === 'number' && weight > 0
+      ) return portion / weight;
+      return 1;
+    }
+    const count = selected.portionCount;
+    if (typeof count === 'number' && Number.isFinite(count) && count > 0) return 1 / count;
+  }
+  return 1;
+};
+
+/** Scale baseline detail totals. A numeric lower bound is recorded; a null gap is not. */
+const exportDetail = (
+  result: RecipeNutritionResult,
+  basis: NutritionExportBasisKey,
+): {
+  values: Partial<Record<DetailKey, number | null>>;
+  quality?: Partial<Record<NutrientKey, NutrientQuality>>;
+  lowerBoundKeys: DetailKey[];
+} => {
+  const detail = result.detail;
+  if (!detail) return { values: {}, lowerBoundKeys: [] };
+  const ratio = exportBasisRatio(result, basis);
+  const values: Partial<Record<DetailKey, number | null>> = {};
+  const quality: Partial<Record<NutrientKey, NutrientQuality>> = {};
+  const lowerBoundKeys: DetailKey[] = [];
+  for (const key of V2_DETAIL_KEYS) {
+    const amount = detail.amounts[key];
+    if (!amount || typeof amount.value !== 'number' || !Number.isFinite(amount.value)) continue;
+    const scaled = roundExportValue(amount.value * ratio);
+    if (scaled === null) continue;
+    values[key] = scaled;
+    if (amount.isLowerBound) {
+      lowerBoundKeys.push(key);
+      quality[key] = { status: 'calculated', qualifier: 'lower_bound' };
+    }
+  }
+  return {
+    values,
+    lowerBoundKeys,
+    ...(lowerBoundKeys.length > 0 ? { quality } : {}),
+  };
+};
+
 /** Build one export payload while enforcing measured-weight, coverage, and tracker bounds. */
 export const buildExportPayload = (
   _recipe: Recipe,
   result: RecipeNutritionResult,
   basis: NutritionExportBasisKey,
+  options?: { writeVersion?: 1 | 2 },
 ): ExportPayloadResult => {
+  const writeVersion = options?.writeVersion ?? resolveNutrientWriteVersion();
   if (result.foodsStatus !== 'ready') return blocked('foods-unavailable');
   if (result.coverage.status === 'none') return blocked('no-coverage');
   const selected = result.bases[basis];
@@ -226,6 +310,7 @@ export const buildExportPayload = (
   }
 
   const nutrients = {} as Record<TrackerNutrientKey, number>;
+  const sparse = {} as Record<TrackerNutrientKey, number | null>;
   const lowerBoundKeys: TrackerNutrientKey[] = [];
   const zeroFilledKeys: TrackerNutrientKey[] = [];
   const overCapKeys: TrackerNutrientKey[] = [];
@@ -233,25 +318,54 @@ export const buildExportPayload = (
     const amount = selected.amounts[key];
     if (amount.value === null) {
       nutrients[key] = 0;
+      if (writeVersion === 2) sparse[key] = null;
       zeroFilledKeys.push(key);
       continue;
     }
     const rounded = roundExportValue(amount.value);
     if (rounded === null || rounded < 0) return blocked('non-finite');
     nutrients[key] = rounded;
+    if (writeVersion === 2) sparse[key] = rounded;
     if (amount.isLowerBound) lowerBoundKeys.push(key);
-    if (rounded > TRACKER_NUTRIENT_MAX_BOUNDS[key]) overCapKeys.push(key);
+    const per100Reject = checkPer100g(key, rounded) === 'reject';
+    const overCap = writeVersion === 2
+      ? (basis === 'per100gCooked'
+        ? per100Reject
+        : checkPerUnit(key, rounded) === 'reject' && per100Reject)
+      : rounded > TRACKER_NUTRIENT_MAX_BOUNDS[key];
+    if (overCap) overCapKeys.push(key);
   }
   if (overCapKeys.length > 0) return {
     ok: false,
     reason: 'over-tracker-cap',
     overCapKeys,
   };
-  const fingerprint = fingerprintTrackerFood({ quantity: TRACKER_EXPORT_QUANTITY, nutrients });
+  const exportedDetail = writeVersion === 2 ? exportDetail(result, basis) : null;
+  const detail = exportedDetail?.values;
+  const detailLowerBoundKeys = exportedDetail?.lowerBoundKeys ?? [];
+  let exportQuality: Partial<Record<NutrientKey, NutrientQuality>> | undefined;
+  if (writeVersion === 2) {
+    exportQuality = { ...(exportedDetail?.quality ?? {}) };
+    for (const key of lowerBoundKeys) {
+      exportQuality[key] = { status: 'calculated', qualifier: 'lower_bound' };
+    }
+  }
+  const fingerprint = writeVersion === 2
+    ? fingerprintTrackerFoodV2({
+      quantity: TRACKER_EXPORT_QUANTITY,
+      nutrients: sparse,
+      detail,
+      quality: exportQuality,
+    })
+    : fingerprintTrackerFood({ quantity: TRACKER_EXPORT_QUANTITY, nutrients });
   // Ingredient-row coverage can be complete while a linked food omits a nutrient.
   // Those values are lower bounds or zero-filled, so the export still needs confirmation.
+  // A null detail gap is not a number and does not make the export partial by itself.
   const coverage =
-    result.coverage.status !== 'complete' || lowerBoundKeys.length > 0 || zeroFilledKeys.length > 0
+    result.coverage.status !== 'complete'
+    || lowerBoundKeys.length > 0
+    || zeroFilledKeys.length > 0
+    || detailLowerBoundKeys.length > 0
       ? 'partial'
       : 'complete';
   return {
@@ -271,6 +385,12 @@ export const buildExportPayload = (
       portionCount: selected.portionCount,
       portionSizeG: selected.weightSource === 'actual' ? selected.portionSizeG : null,
       finalWeightG: selected.weightSource === 'actual' ? selected.finalWeightG : null,
+      ...(writeVersion === 2 ? {
+        sparseNutrients: sparse,
+        detail,
+        ...(exportQuality && Object.keys(exportQuality).length > 0 ? { quality: exportQuality } : {}),
+        ...(detailLowerBoundKeys.length > 0 ? { detailLowerBoundKeys } : {}),
+      } : {}),
     },
   };
 };
@@ -330,6 +450,14 @@ export const defaultExportFoodName = (recipeName: string, basis: NutritionExport
   return `${base}${suffix}`;
 };
 
+/** Nutrients a review fingerprint was built from, including sparse nulls and detail quality. */
+export const exportFingerprintInput = (payload: ExportPayload) => ({
+  quantity: TRACKER_EXPORT_QUANTITY,
+  nutrients: payload.sparseNutrients ?? payload.nutrients,
+  detail: payload.detail,
+  quality: payload.quality,
+});
+
 /** Derive recipe and tracker target status for one stored reference. */
 export const deriveExportStatus = (input: {
   basis: NutritionExportBasisKey;
@@ -381,7 +509,10 @@ export const deriveExportStatus = (input: {
   let recipeStatus: ExportStatus['recipe'] = 'current';
   if (!payload.ok) recipeStatus = 'unavailable';
   else if (
-    payload.payload.fingerprint !== ref.nutritionFingerprint ||
+    verifyTrackerFoodFingerprint(
+      exportFingerprintInput(payload.payload),
+      ref.nutritionFingerprint,
+    ) === 'mismatch' ||
     payload.payload.coverage !== ref.coverage ||
     payload.payload.includedCount !== ref.includedCount ||
     payload.payload.totalCount !== ref.totalCount
@@ -476,7 +607,7 @@ export const collectExportSourceTargets = (
     if (food === undefined || targets.has(food.id)) continue;
     targets.set(food.id, {
       id: food.id,
-      fingerprint: fingerprintTrackerFood(food),
+      fingerprint: currentFingerprint(food),
       normalizedName: normalizeIngredientName(food.name),
       lastUpdated: food.lastUpdated,
     });
@@ -487,7 +618,7 @@ export const collectExportSourceTargets = (
 /** Capture the revision identity of the tracker food shown in the review. */
 export const trackerFoodLinkTarget = (food: TrackerFood): LinkTarget => ({
   id: food.id,
-  fingerprint: fingerprintTrackerFood(food),
+  fingerprint: currentFingerprint(food),
   normalizedName: normalizeIngredientName(food.name),
   lastUpdated: food.lastUpdated,
 });
@@ -517,6 +648,7 @@ export const buildExportCommitRequest = (input: {
   partialConfirmed: boolean;
   nowIso: string;
   nowMs: number;
+  writeVersion?: 1 | 2;
 }): ExportCommitRequest => {
   if (!isValidRecipeRevision(input.recipeRevision)) {
     throw new ExportRequestError(REQUEST_ERROR_COPY.revision);
@@ -560,9 +692,16 @@ export const buildExportCommitRequest = (input: {
   if (sourceTargets.some((target) => target.id === foodId)) {
     throw new ExportRequestError(REQUEST_ERROR_COPY.selfReference);
   }
-  const doc = buildTrackerFoodDoc(name, payload.nutrients, input.nowIso);
+  const version = input.writeVersion ?? resolveNutrientWriteVersion();
+  const doc = version === 2
+    ? buildTrackerFoodDocV2(name, {
+      nutrients: payload.sparseNutrients ?? payload.nutrients,
+      detail: payload.detail,
+      quality: payload.quality,
+    }, input.nowIso)
+    : buildTrackerFoodDoc(name, payload.nutrients, input.nowIso);
   const parsed = parseTrackerFood(foodId, doc);
-  if (parsed === null || fingerprintTrackerFood(parsed) !== payload.fingerprint) {
+  if (parsed === null || verifyTrackerFoodFingerprint(parsed, payload.fingerprint) === 'mismatch') {
     throw new ExportRequestError(REQUEST_ERROR_COPY.fingerprint);
   }
   const previousRef = recipe.nutritionExports[basis] ?? null;
@@ -570,8 +709,8 @@ export const buildExportCommitRequest = (input: {
     basis,
     recipeId,
     foodId,
-    foodName: doc.name,
-    foodLastUpdated: doc.lastUpdated,
+    foodName: String(doc.name),
+    foodLastUpdated: String(doc.lastUpdated),
     nutritionFingerprint: payload.fingerprint,
     exportedAtMs: input.nowMs,
     coverage: payload.coverage,
@@ -592,5 +731,6 @@ export const buildExportCommitRequest = (input: {
     previousRef,
     nextRef,
     sourceTargets,
+    ...(input.writeVersion !== undefined ? { writeVersion: input.writeVersion } : {}),
   };
 };

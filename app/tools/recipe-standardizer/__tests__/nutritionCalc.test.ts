@@ -11,7 +11,7 @@ import {
 } from '../lib/nutritionCalc';
 import { confirmNutritionLink, candidateLink, noMatchLink } from '../lib/nutritionLink';
 import { parseRecipeJson } from '../lib/schema';
-import { TRACKER_NUTRIENT_KEYS, type FoodsState, type TrackerFood } from '../lib/trackerFoods';
+import { fingerprintTrackerFoodV2, TRACKER_NUTRIENT_KEYS, type FoodsState, type TrackerFood } from '../lib/trackerFoods';
 import { UNLINKED_NUTRITION, type Recipe, type RecipeIngredient } from '../lib/types';
 import { validRecipeJson, validV2RecipeJson } from './fixtures';
 
@@ -750,6 +750,36 @@ describe('nutrition bases', () => {
 describe('calculator determinism and safety', () => {
   it('returns deeply equal results for repeated calls', () => {
     expect(calculate(baseRecipe())).toEqual(calculate(baseRecipe()));
+  });
+
+  it('detail totals only from v2-confirmed links; confirmed-legacy detail is a gap', () => {
+    const detailed = { ...FLOUR, detail: { fatSaturated: 10 } };
+    const v2Link = { ...confirmed(detailed, 100), targetFingerprint: fingerprintTrackerFoodV2(detailed) };
+    const legacyLink = confirmed(detailed, 100);
+    const result = calculate(recipeOf([
+      ingredient('v2-row', 100, v2Link),
+      ingredient('legacy-row', 100, legacyLink),
+    ]), ready([detailed]));
+    expect(result.detail?.amounts.fatSaturated.value).toBe(10);
+    expect(result.detail?.amounts.fatSaturated.isLowerBound).toBe(true);
+    expect(result.detail?.amounts.fatSaturated.missingFromIngredientIds).toEqual(['legacy-row']);
+    expect(result.detail?.gaps).toContain('fatSaturated');
+    expect(result.bases.total.amounts?.calories.value).toBe(364 * 2);
+  });
+
+  it('subtypes never added to parents', () => {
+    const detailed: TrackerFood = {
+      ...FLOUR,
+      nutrients: { ...FLOUR.nutrients, fat: 1, omega3: 0.2 },
+      detail: { fatSaturated: 4, omega3EPA: 0.5 },
+    };
+    const v2Link = { ...confirmed(detailed, 100), targetFingerprint: fingerprintTrackerFoodV2(detailed) };
+    const result = calculate(recipeOf([ingredient('row', 200, v2Link)]), ready([detailed]));
+    expect(result.bases.total.amounts?.fat.value).toBe(2);
+    expect(result.bases.total.amounts?.omega3.value).toBe(0.4);
+    expect(result.detail?.amounts.fatSaturated.value).toBe(8);
+    expect(result.detail?.amounts.omega3EPA.value).toBe(1);
+    expect(result.detail?.amounts.fatSaturated.value).not.toBe(result.bases.total.amounts?.fat.value);
   });
 
   it('does not mutate recipe or foods', () => {

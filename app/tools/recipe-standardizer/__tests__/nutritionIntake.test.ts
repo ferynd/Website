@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { getNutrient, V2_DETAIL_KEYS } from '@/public/shared/nutrition/nutrientRegistry.js';
 import { buildNutritionPrompt, MAX_INTAKE_ITEMS, NUTRIENT_INTAKE_SPEC, parseNutritionJson } from '../lib/nutritionIntake';
 import { TRACKER_NUTRIENT_KEYS } from '../lib/trackerFoods';
 import { validRecipeJson } from './fixtures';
@@ -83,9 +84,9 @@ describe('nutrition JSON parser fatal cases', () => {
   });
 
   it('rejects a newer schema version', () => {
-    const result = parseNutritionJson(JSON.stringify(document([item()], { schemaVersion: 2 })));
+    const result = parseNutritionJson(JSON.stringify(document([item()], { schemaVersion: 3 })));
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.errors).toContain('schemaVersion 2 is newer than this tool supports (1).');
+    if (!result.ok) expect(result.errors).toContain('schemaVersion 3 is newer than this tool supports (2).');
   });
 
   it('rejects a non per-100g basis', () => {
@@ -116,7 +117,7 @@ describe('nutrition JSON parser fatal cases', () => {
     const result = parseNutritionJson(JSON.stringify({ kind: 'wrong', schemaVersion: 0, basis: 'cup', items: {} }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.errors).toEqual([
-      'kind must be "recipe-nutrition".', 'schemaVersion must be 1.',
+      'kind must be "recipe-nutrition".', 'schemaVersion must be 1 or 2.',
       'basis must be "per-100g" — values must be per 100 g.', 'items must be an array.',
     ]);
   });
@@ -206,5 +207,166 @@ describe('nutrition JSON parser item cases', () => {
     const result = parseNutritionJson(JSON.stringify(document([item()], { futureField: true })));
     expect(result.ok && result.warnings).toContain('Ignored unknown field "futureField".');
     expect(NUTRIENT_INTAKE_SPEC).toHaveProperty('omega3');
+  });
+});
+
+const observation = (key: string, value: number | null, extra: Record<string, unknown> = {}) => ({
+  key,
+  value,
+  unit: getNutrient(key)?.unit ?? 'g',
+  status: 'measured',
+  ...extra,
+});
+
+const v2Document = (observations: unknown[], extra: Record<string, unknown> = {}) => ({
+  kind: 'recipe-nutrition',
+  schemaVersion: 2,
+  basis: 'per-100g',
+  items: [{ ingredientId: 'salt-id', name: 'Salt', assumptions: '', observations }],
+  ...extra,
+});
+
+describe('schemaVersion 2 observations', () => {
+  const legacyObservations = () => TRACKER_NUTRIENT_KEYS.map((key) => observation(key, key === 'calories' ? 100 : 0));
+
+  it('schemaVersion 2 observations parse', () => {
+    const result = parseNutritionJson(JSON.stringify(v2Document([
+      ...legacyObservations(),
+      observation('fatSaturated', 2),
+    ])));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0].errors).toEqual([]);
+    expect(result.items[0].nutrients.calories).toBe(100);
+    expect(result.items[0].detail?.fatSaturated).toBe(2);
+    expect(result.items[0].nutrients.fat).toBe(0);
+  });
+
+  it('duplicate observation keys conflict', () => {
+    const result = parseNutritionJson(JSON.stringify(v2Document([
+      ...legacyObservations().filter((entry) => entry.key !== 'sodium'),
+      observation('sodium', 10),
+      observation('sodium', 12),
+    ])));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0].conflicts).toEqual([{ key: 'sodium', values: [10, 12] }]);
+    expect(result.items[0].commitBlockers?.join(' ')).toContain('conflicting values for sodium');
+    expect(result.items[0].nutrients.sodium).toBeNull();
+  });
+
+  it('unknown keys warn', () => {
+    const result = parseNutritionJson(JSON.stringify(v2Document([
+      ...legacyObservations(),
+      { key: 'notANutrient', value: 1, unit: 'g', status: 'measured' },
+    ])));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0].errors).toEqual([]);
+    expect(result.items[0].warnings.join(' ')).toContain('unknown nutrient key "notANutrient"');
+  });
+
+  it('EPA cannot set omega3', () => {
+    const result = parseNutritionJson(JSON.stringify(v2Document([
+      ...legacyObservations(),
+      observation('omega3EPA', 0.4),
+      { key: 'EPA', value: 1, unit: 'g', status: 'measured' },
+    ])));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0].nutrients.omega3).toBe(0);
+    expect(result.items[0].detail?.omega3EPA).toBe(0.4);
+    expect(result.items[0].warnings.join(' ')).toContain('unknown nutrient key "EPA"');
+  });
+
+  it('null legacy keys are review-only in v1 write mode', () => {
+    const observations = legacyObservations().map((entry) => entry.key === 'fiber' ? observation('fiber', null) : entry);
+    const result = parseNutritionJson(JSON.stringify(v2Document([...observations, observation('fatSaturated', 1)])));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.items[0].errors).toEqual([]);
+    expect(result.items[0].nutrients.fiber).toBeNull();
+    expect(result.items[0].commitBlockers?.join(' ')).toContain('fiber is unknown and is review-only while storage is v1');
+    expect(result.items[0].warnings.join(' ')).toContain('detail nutrients are not stored while storage is v1');
+    const v2 = parseNutritionJson(JSON.stringify(v2Document(observations)), { writeVersion: 2 });
+    expect(v2.ok && v2.items[0].commitBlockers).toEqual([]);
+  });
+
+  it('rejects vitamin D 400 mcg on a schemaVersion 2 row with the schema v1 message', () => {
+    const plausible = 'is 400 mcg, above the plausible maximum of 300 mcg per 100 g — check the unit (mg vs mcg, IU vs mcg) and that the value is per 100 g.';
+    const v1 = parseNutritionJson(JSON.stringify(document([item({ nutrients: { ...nutrients(), vitaminD: 400 } })])));
+    expect(v1.ok).toBe(true);
+    if (!v1.ok) return;
+    expect(v1.items[0].errors.join(' ')).toContain(`items[0].nutrients.vitaminD ${plausible}`);
+    expect(v1.items[0].nutrients.vitaminD).toBeNull();
+
+    for (const writeVersion of [1, 2] as const) {
+      const result = parseNutritionJson(JSON.stringify(v2Document([
+        observation('vitaminD', 400),
+      ])), { writeVersion });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.items[0].nutrients.vitaminD).toBeNull();
+      expect(result.items[0].errors.join(' ')).toContain(`items[0].observations[0] ${plausible}`);
+      expect(result.items[0].detail ?? {}).not.toHaveProperty('vitaminD');
+    }
+
+    const atCap = parseNutritionJson(JSON.stringify(v2Document([observation('vitaminD', 300)])));
+    expect(atCap.ok).toBe(true);
+    if (!atCap.ok) return;
+    expect(atCap.items[0].errors).toEqual([]);
+    expect(atCap.items[0].nutrients.vitaminD).toBe(300);
+
+    const b6 = parseNutritionJson(JSON.stringify(v2Document([observation('vitaminB6', 500)])));
+    expect(b6.ok).toBe(true);
+    if (!b6.ok) return;
+    expect(b6.items[0].nutrients.vitaminB6).toBeNull();
+    expect(b6.items[0].errors.join(' ')).toContain('above the plausible maximum of 50 mg');
+  });
+
+  it('per-100-g salt accepted', () => {
+    const observations = TRACKER_NUTRIENT_KEYS.map((key) => observation(key, key === 'sodium' ? 39340 : 0));
+    const v1 = parseNutritionJson(JSON.stringify(v2Document(observations)));
+    expect(v1.ok).toBe(true);
+    if (!v1.ok) return;
+    expect(v1.items[0].errors).toEqual([]);
+    expect(v1.items[0].nutrients.sodium).toBe(39340);
+    expect(v1.items[0].errors.join(' ')).not.toContain('23000');
+    expect(v1.items[0].commitBlockers?.join(' ')).toContain('sodium is 39340 mg, above what storage v1 can save per unit');
+    const v2 = parseNutritionJson(JSON.stringify(v2Document(observations)), { writeVersion: 2 });
+    expect(v2.ok).toBe(true);
+    if (!v2.ok) return;
+    expect(v2.items[0].errors).toEqual([]);
+    expect(v2.items[0].nutrients.sodium).toBe(39340);
+    expect(v2.items[0].commitBlockers).toEqual([]);
+    expect(V2_DETAIL_KEYS.length).toBeGreaterThan(0);
+  });
+
+  it('applies macro, omega-3 and calorie checks to assembled schema 2 rows', () => {
+    const withKeys = (values: Partial<Record<string, number>>) => TRACKER_NUTRIENT_KEYS.map((key) => (
+      observation(key, values[key] ?? 0)
+    ));
+    const mass = parseNutritionJson(JSON.stringify(v2Document(withKeys({
+      protein: 100, carbs: 100, fat: 100, calories: 1700,
+    }))), { writeVersion: 2 });
+    expect(mass.ok).toBe(true);
+    if (!mass.ok) return;
+    expect(mass.items[0].errors.join(' ')).toContain('exceeds 100 g');
+    expect(mass.items[0].warnings.join(' ')).not.toContain('differs from protein/carbs/fat');
+
+    const omega = parseNutritionJson(JSON.stringify(v2Document(withKeys({
+      omega3: 10, fat: 1, calories: 9,
+    }))), { writeVersion: 2 });
+    expect(omega.ok).toBe(true);
+    if (!omega.ok) return;
+    expect(omega.items[0].errors.join(' ')).toContain('omega3 (10 g) cannot exceed fat (1 g)');
+    expect(omega.items[0].errors.join(' ')).not.toContain('exceeds 100 g');
+
+    const calories = parseNutritionJson(JSON.stringify(v2Document(withKeys({ calories: 200 }))), { writeVersion: 2 });
+    expect(calories.ok).toBe(true);
+    if (!calories.ok) return;
+    expect(calories.items[0].errors).toEqual([]);
+    expect(calories.items[0].warnings.join(' ')).toContain('differs from protein/carbs/fat');
+    expect(calories.items[0].commitBlockers).toEqual([]);
   });
 });

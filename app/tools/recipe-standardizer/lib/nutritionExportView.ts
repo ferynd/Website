@@ -11,7 +11,7 @@ import {
   type ExportStatus,
 } from './nutritionExport';
 import {
-  fingerprintTrackerFood,
+  currentFingerprint,
   trackerFoodId,
   validateTrackerFoodName,
   type FoodsState,
@@ -45,7 +45,7 @@ export const exportReviewIdentity = (input: {
   input.payloadResult.ok ? input.payloadResult.payload.fingerprint : input.payloadResult.ok,
   input.action,
   input.targetFood?.lastUpdated ?? '',
-  input.targetFood === null ? '' : fingerprintTrackerFood(input.targetFood),
+  input.targetFood === null ? '' : currentFingerprint(input.targetFood),
 ].join(':');
 
 /** Commit requires valid create identity and all applicable explicit confirmations. */

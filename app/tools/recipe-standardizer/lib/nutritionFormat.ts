@@ -1,17 +1,35 @@
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: nutrition labels, groups, and display copy      */
 /* ------------------------------------------------------------ */
+import { V1_DISPLAY_GROUPS, keysForGroup } from '@/public/shared/nutrition/nutrientRegistry.js';
+
 /** Headline nutrients mirror CalorieTracker's macro group. */
-export const HEADLINE_NUTRIENT_KEYS = ['calories', 'protein', 'carbs', 'fat'] as const;
+export const HEADLINE_NUTRIENT_KEYS = keysForGroup('macros', 1) as readonly TrackerNutrientKey[];
 /** Display groups mirror CalorieTracker's nutrient groups. */
-export const NUTRIENT_DISPLAY_GROUPS = [
-  { key: 'macros', title: 'Macronutrients', nutrients: ['calories', 'protein', 'carbs', 'fat'] },
-  { key: 'dailyFloors', title: 'Fiber, electrolytes & choline', nutrients: ['fiber', 'potassium', 'magnesium', 'sodium', 'calcium', 'choline'] },
-  { key: 'dailyVitamins', title: 'Water-soluble vitamins', nutrients: ['vitaminB12', 'folate', 'vitaminC', 'vitaminB6'] },
-  { key: 'avgVitamins', title: 'Fat-soluble vitamins', nutrients: ['vitaminA', 'vitaminD', 'vitaminE', 'vitaminK'] },
-  { key: 'avgMinerals', title: 'Minerals', nutrients: ['selenium', 'iodine', 'phosphorus', 'iron', 'zinc'] },
-  { key: 'optional', title: 'Other', nutrients: ['omega3'] },
-] as const;
+export const NUTRIENT_DISPLAY_GROUPS = V1_DISPLAY_GROUPS.map((group) => ({
+  key: group.key,
+  title: group.title,
+  nutrients: keysForGroup(group.key, 1) as readonly TrackerNutrientKey[],
+}));
+/** v2 detail groups stay collapsed until storage writes are enabled. */
+export const DETAIL_DISPLAY_GROUPS = (
+  [
+    ['fatClasses', 'Fat classes'],
+    ['fattyAcids', 'Fatty acids'],
+    ['sugars', 'Sugars'],
+    ['polyols', 'Polyols'],
+    ['fiberDetail', 'Fiber detail'],
+    ['extraVitamins', 'Additional vitamins'],
+    ['extraMinerals', 'Additional minerals'],
+    ['otherComponents', 'Other components'],
+    ['fodmap', 'FODMAP'],
+  ] as const
+).map(([key, title]) => ({
+  key,
+  title,
+  collapsed: true as const,
+  nutrients: keysForGroup(key, 2),
+}));
 /** Prefix shown when a nutrient amount is a lower bound. */
 export const LOWER_BOUND_PREFIX = '≥ ';
 /** Placeholder for unavailable nutrient data. */

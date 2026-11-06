@@ -20,6 +20,7 @@ import {
   cunningham,
 } from './nutritionReferences.js';
 import { WEIGHT_FRESHNESS_THRESHOLD_DAYS } from '../constants.js';
+import { targetableKeys } from '../../../shared/nutrition/nutrientRegistry.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -28,12 +29,8 @@ import { WEIGHT_FRESHNESS_THRESHOLD_DAYS } from '../constants.js';
 const LB_TO_KG = 0.45359237;
 const IN_TO_CM = 2.54;
 
-const MICRONUTRIENT_KEYS = [
-  'fiber', 'potassium', 'magnesium', 'sodium', 'calcium', 'choline',
-  'vitaminB12', 'folate', 'vitaminC', 'vitaminB6',
-  'vitaminA', 'vitaminD', 'vitaminE', 'vitaminK',
-  'selenium', 'iodine', 'phosphorus', 'iron', 'zinc', 'omega3',
-];
+const MACRO_TARGET_KEYS = new Set(['calories', 'protein', 'carbs', 'fat']);
+const MICRONUTRIENT_KEYS = targetableKeys().filter((key) => !MACRO_TARGET_KEYS.has(key));
 
 const PROTEIN_RATES = {
   fatLoss:     { rate: 2.2, note: '2.2 g/kg body weight — high protein preserves muscle during a deficit' },

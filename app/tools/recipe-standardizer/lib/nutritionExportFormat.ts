@@ -61,6 +61,7 @@ const EXPORT_COPY = {
  */
 
 import type { FoodsState, TrackerNutrientKey } from './trackerFoods';
+import { getNutrient } from '@/public/shared/nutrition/nutrientRegistry.js';
 import { nutrientLabel } from './nutritionFormat';
 import type {
   ExportBasisChoice,
@@ -175,9 +176,10 @@ export const partialExportWarning = (payload: ExportPayload): string => {
     payload.excludedNames.length === 0
       ? ''
       : ` ${EXPORT_COPY.notCounted} ${payload.excludedNames.join(', ')}.`;
-  const lowerBounds = TRACKER_NUTRIENT_KEYS.filter((key) => payload.lowerBoundKeys.includes(key)).map(
-    nutrientLabel,
-  );
+  const lowerBounds = [
+    ...TRACKER_NUTRIENT_KEYS.filter((key) => payload.lowerBoundKeys.includes(key)).map(nutrientLabel),
+    ...(payload.detailLowerBoundKeys ?? []).map((key) => getNutrient(key)?.label ?? key),
+  ];
   const lowerBoundCopy =
     lowerBounds.length === 0 ? '' : ` ${EXPORT_COPY.lowerBound} ${lowerBounds.join(', ')}.`;
   const zeroFilled = zeroFilledNote(payload);

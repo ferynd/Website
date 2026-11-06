@@ -5,7 +5,7 @@ import {
   type NutritionLink,
 } from './types';
 import { normalizeIngredientName } from './shoppingList';
-import { fingerprintTrackerFood, type TrackerFood } from './trackerFoods';
+import { currentFingerprint, verifyTrackerFoodFingerprint, type TrackerFood } from './trackerFoods';
 
 export const isValidGramsPerUnit = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= MAX_GRAMS_PER_UNIT;
@@ -80,7 +80,7 @@ export const confirmNutritionLink = (
     gramsPerUnit,
     confirmedAtMs: Number.isFinite(nowMs) && nowMs >= 0 ? nowMs : null,
     targetRevision: food.lastUpdated,
-    targetFingerprint: fingerprintTrackerFood(food),
+    targetFingerprint: currentFingerprint(food),
   };
 };
 
@@ -93,7 +93,7 @@ export const linkAfterRename = (link: NutritionLink): NutritionLink =>
 
 export type LinkReviewState =
   | 'unlinked' | 'no-match' | 'candidate' | 'candidate-missing'
-  | 'confirmed' | 'confirmed-unverified'
+  | 'confirmed' | 'confirmed-legacy' | 'confirmed-unverified'
   | 'stale-missing' | 'stale-renamed' | 'stale-revised';
 
 export interface LinkAssessment { state: LinkReviewState; food: TrackerFood | null; currentName: string | null; }
@@ -111,24 +111,29 @@ export const assessNutritionLink = (link: NutritionLink, foodsById: Map<string, 
   if (normalizeIngredientName(food.name) !== normalizeIngredientName(link.matchedName ?? '')) {
     return { state: 'stale-renamed', food, currentName: food.name };
   }
-  if (link.targetFingerprint !== null && fingerprintTrackerFood(food) !== link.targetFingerprint) {
-    return { state: 'stale-revised', food, currentName: food.name };
+  if (link.targetFingerprint !== null) {
+    const verdict = verifyTrackerFoodFingerprint(food, link.targetFingerprint);
+    if (verdict === 'mismatch') return { state: 'stale-revised', food, currentName: food.name };
+    if (verdict === 'match-v1-expanded') return { state: 'confirmed-legacy', food, currentName: food.name };
   }
   return { state: 'confirmed', food, currentName: food.name };
 };
 
 export const isStale = (state: LinkReviewState): boolean => state.startsWith('stale-');
 
-export interface LinkReviewSummary { stale: number; candidates: number; unlinked: number; noMatch: number; confirmed: number; unverified: number; }
+export interface LinkReviewSummary { stale: number; candidates: number; unlinked: number; noMatch: number; confirmed: number; confirmedLegacy: number; unverified: number; }
 
 export const summarizeLinkReview = (assessments: Iterable<LinkAssessment>): LinkReviewSummary => {
-  const summary: LinkReviewSummary = { stale: 0, candidates: 0, unlinked: 0, noMatch: 0, confirmed: 0, unverified: 0 };
+  const summary: LinkReviewSummary = { stale: 0, candidates: 0, unlinked: 0, noMatch: 0, confirmed: 0, confirmedLegacy: 0, unverified: 0 };
   for (const { state } of assessments) {
     if (isStale(state)) summary.stale += 1;
     else if (state === 'candidate' || state === 'candidate-missing') summary.candidates += 1;
     else if (state === 'unlinked') summary.unlinked += 1;
     else if (state === 'no-match') summary.noMatch += 1;
-    else if (state === 'confirmed') summary.confirmed += 1;
+    else if (state === 'confirmed' || state === 'confirmed-legacy') {
+      summary.confirmed += 1;
+      if (state === 'confirmed-legacy') summary.confirmedLegacy += 1;
+    }
     else if (state === 'confirmed-unverified') summary.unverified += 1;
   }
   return summary;

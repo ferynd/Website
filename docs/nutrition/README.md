@@ -1,6 +1,6 @@
 # Ingredient-based nutrition
 
-Status: planned. The research manifest and execution contract are prepared under CalorieTracker item #59. Database population, schema changes, calculations, and website screens remain separate backlog work. This document does not describe deployed behavior.
+Status: registry and readers implemented in #60; v2 storage disabled pending approval. The research manifest and execution contract were prepared under CalorieTracker item #59. Database population, ingredient identity, calculations, and website screens remain separate backlog work. This document does not describe a deployed v2 write path.
 
 ## Goal
 

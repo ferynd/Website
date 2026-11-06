@@ -6,6 +6,8 @@
 
 import { state, coerceQuantity } from '../state/store.js';
 import { allNutrients } from '../constants.js';
+import { legacyItemAmount } from '../nutrition/nutrientRecord.js';
+import { applySavedFoodToStaging } from './stageSavedFood.js';
 import { showConfirmationModal } from '../ui/modals.js';
 import { saveDailyEntrySnapshot, deleteFoodItem } from '../services/firebase.js';
 import { updateFoodItemsList, getCurrentDailyEntry } from '../services/data.js';
@@ -24,18 +26,7 @@ const MANAGER_CONFIG = {
  * @param {object} foodData - The food item data object.
  */
 export function populateStagingFromFood(foodData) {
-  allNutrients.forEach(n => {
-    const input = document.getElementById(`actual-${n}`);
-    if (input && foodData[n] !== undefined) {
-      input.value = foodData[n];
-    }
-  });
-
-  const quantity = foodData.quantity ?? MANAGER_CONFIG.DEFAULT_QUANTITY;
-  const qInput = document.getElementById('actual-quantity');
-  if (qInput) qInput.value = quantity;
-  const inlineQty = document.getElementById('food-inline-qty');
-  if (inlineQty) inlineQty.value = quantity;
+  applySavedFoodToStaging(foodData, MANAGER_CONFIG.DEFAULT_QUANTITY);
 }
 
 /**
@@ -69,7 +60,7 @@ export function removeFoodItem(index) {
   coerceQuantity(itemToRemove);
   const removedDelta = {};
   allNutrients.forEach(n => {
-    removedDelta[n] = itemToRemove.quantity * (parseFloat(itemToRemove[n]) || 0);
+    removedDelta[n] = legacyItemAmount(itemToRemove, n, { missingQuantity: 0 }).amount;
     todayEntry[n] = Math.max(0, (parseFloat(todayEntry[n]) || 0) - removedDelta[n]);
   });
 

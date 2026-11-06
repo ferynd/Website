@@ -15,7 +15,9 @@ const ROUNDING_CASES = [
 import { describe, expect, it } from 'vitest';
 import { allNutrients, NUTRIENT_MAX_BOUNDS } from '../../../../public/tools/CalorieTracker/constants.js';
 import { parseQty } from '../../../../public/tools/CalorieTracker/state/store.js';
-import { calculateRecipeNutrition } from '../lib/nutritionCalc';
+import { calculateRecipeNutrition, type RecipeNutritionResult } from '../lib/nutritionCalc';
+import { partialExportWarning } from '../lib/nutritionExportFormat';
+import { getNutrient } from '@/public/shared/nutrition/nutrientRegistry.js';
 import {
   foodsReady,
   butterCookiesRecipe,
@@ -38,6 +40,7 @@ import {
   deriveExportStatus,
   diffExportNutrients,
   exportAction,
+  exportFingerprintInput,
   exportTargetChangedSinceReview,
   findExportCollision,
   primaryExportTarget,
@@ -50,10 +53,13 @@ import {
 } from '../lib/nutritionExport';
 import {
   buildTrackerFoodDoc,
+  buildTrackerFoodDocV2,
   fingerprintTrackerFood,
+  fingerprintTrackerFoodV2,
   parseTrackerFood,
   TRACKER_NUTRIENT_KEYS,
   trackerFoodId,
+  verifyTrackerFoodFingerprint,
 } from '../lib/trackerFoods';
 import type { ExportPayload, ExportStatus } from '../lib/nutritionExport';
 import type { NutritionExportBasisKey, Recipe } from '../lib/types';
@@ -1084,6 +1090,106 @@ describe('nutritionExport', () => {
       nowMs: 1,
     });
     expect(Object.keys(request.doc)).toEqual(['name', 'quantity', ...allNutrients, 'lastUpdated']);
+  });
+
+  it('flag off: export doc shape and key order unchanged', () => {
+    const recipe = butterCookiesRecipe();
+    const payload = payloadFor(recipe);
+    const request = buildExportCommitRequest({
+      recipeRevision: 0,
+      recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion',
+      status: statusFor(recipe, 'perPortion', payload),
+      payload,
+      sourceTargets: [],
+      chosenName: 'Butter cookies (per portion)',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      partialConfirmed: false,
+      nowIso: 'now',
+      nowMs: 1,
+    });
+    expect(request.writeVersion).toBeUndefined();
+    expect(Object.keys(request.doc)).toEqual(['name', 'quantity', ...allNutrients, 'lastUpdated']);
+    expect(request.doc).not.toHaveProperty('nutrientSchemaVersion');
+    expect(request.doc).not.toHaveProperty('nutrientMeta');
+    expect(payload.fingerprint).not.toMatch(/^v2:/);
+  });
+
+  it('injected writeVersion 2 writes nulls, meta and a v2 fingerprint', () => {
+    const recipe = butterCookiesRecipe();
+    const result = calculateExportNutrition(recipe, sourceFoodsReady());
+    const built = buildExportPayload(recipe, result, 'perPortion', { writeVersion: 2 });
+    if (!built.ok) throw new Error('Expected a v2 export payload.');
+    const request = buildExportCommitRequest({
+      recipeRevision: 0,
+      recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion',
+      status: statusFor(recipe, 'perPortion', built.payload),
+      payload: built.payload,
+      sourceTargets: [],
+      chosenName: 'Butter cookies (per portion)',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      partialConfirmed: true,
+      nowIso: '2026-01-01T00:00:00.000Z',
+      nowMs: 1,
+      writeVersion: 2,
+    });
+    expect(request.writeVersion).toBe(2);
+    const doc = request.doc as Record<string, unknown>;
+    expect(doc.nutrientSchemaVersion).toBe(2);
+    expect(doc.nutrientMeta).toMatchObject({ registryVersion: 2 });
+    expect(doc.fatSaturated).toBeNull();
+    expect(String(request.nextRef.nutritionFingerprint)).toMatch(/^v2:/);
+    expect(fingerprintTrackerFoodV2(parseTrackerFood('id', request.doc)!)).toBe(built.payload.fingerprint);
+  });
+
+  it('stored v1 export ref stays unchanged when live 24-key payload matches, with and without detail, at writeVersion 2', () => {
+    const recipe = butterCookiesRecipe();
+    const foods = sourceFoodsReady();
+    const result = calculateExportNutrition(recipe, foods);
+    const v1 = buildExportPayload(recipe, result, 'perPortion');
+    const v2 = buildExportPayload(recipe, result, 'perPortion', { writeVersion: 2 });
+    if (!v1.ok || !v2.ok) throw new Error('Expected export payloads.');
+    const ref = makeRef({ nutritionFingerprint: v1.payload.fingerprint, foodId: 'butter_cookies__per_portion_' });
+    const plain = deriveExportStatus({ basis: 'perPortion', ref, recipeId: 'recipe-1', payload: v2, foods });
+    expect(plain.recipe).toBe('current');
+    const expandedPayload = {
+      ...v2.payload,
+      detail: { fatSaturated: 4 },
+    };
+    const expanded = deriveExportStatus({
+      basis: 'perPortion',
+      ref,
+      recipeId: 'recipe-1',
+      payload: { ok: true, payload: expandedPayload },
+      foods,
+    });
+    expect(expanded.recipe).toBe('current');
+  });
+
+  it('request doc keeps the legacy key order when writes are off', () => {
+    const recipe = butterCookiesRecipe();
+    const payload = payloadFor(recipe);
+    const request = buildExportCommitRequest({
+      recipeRevision: 0,
+      recipe,
+      recipeId: 'recipe-1',
+      basis: 'perPortion',
+      status: statusFor(recipe, 'perPortion', payload),
+      payload,
+      sourceTargets: [],
+      chosenName: 'Butter cookies (per portion)',
+      overwriteTrackerEdits: false,
+      reviewedTarget: null,
+      partialConfirmed: false,
+      nowIso: 'now',
+      nowMs: 1,
+    });
+    expect(Object.keys(request.doc)).toEqual(['name', 'quantity', ...allNutrients, 'lastUpdated']);
     expect(request.doc.quantity).toBe(1);
     expect(request.doc).not.toHaveProperty('recipeId');
   });
@@ -1146,6 +1252,218 @@ describe('nutritionExport', () => {
     const quantity = parseQty(String(doc.quantity));
     expect(quantity).toBe(TRACKER_EXPORT_QUANTITY);
     expect(quantity * doc.calories).toBe(doc.calories);
+  });
+
+  function syntheticExport(options: {
+    basis: 'perPortion' | 'per100gCooked';
+    amounts?: Partial<Record<typeof TRACKER_NUTRIENT_KEYS[number], number | null>>;
+    lowerBoundKeys?: readonly (typeof TRACKER_NUTRIENT_KEYS[number])[];
+    detail?: Record<string, { value: number | null; isLowerBound?: boolean }>;
+    portionCount?: number | null;
+    portionMode?: 'count' | 'size' | 'override';
+    portionSizeG?: number | null;
+    finalWeightG?: number | null;
+    weightSource?: 'actual' | 'estimated' | null;
+  }): RecipeNutritionResult {
+    const lowerBound = new Set(options.lowerBoundKeys ?? []);
+    const amounts = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => {
+      const value = options.amounts && Object.prototype.hasOwnProperty.call(options.amounts, key)
+        ? options.amounts[key]
+        : 0;
+      return [key, { value, isLowerBound: lowerBound.has(key), missingFromIngredientIds: [] }];
+    }));
+    return {
+      foodsStatus: 'ready',
+      coverage: {
+        status: 'complete',
+        includedCount: 1,
+        totalCount: 1,
+        coveredGrams: 100,
+        knownGrams: 100,
+        unknownWeightCount: 0,
+        optionalIncludedCount: 0,
+        nutrientGaps: [],
+      },
+      bases: {
+        [options.basis]: {
+          available: true,
+          amounts,
+          portionMode: options.portionMode ?? 'count',
+          portionCount: options.portionCount ?? 1,
+          portionSizeG: options.portionSizeG ?? null,
+          finalWeightG: options.finalWeightG ?? 100,
+          weightSource: options.weightSource ?? 'actual',
+          unavailableReason: null,
+        },
+      },
+      excluded: [],
+      detail: {
+        amounts: options.detail ?? {},
+        gaps: [],
+      },
+    } as unknown as RecipeNutritionResult;
+  }
+
+  it('scales detail from portion metadata when every legacy total is zero', () => {
+    const result = syntheticExport({
+      basis: 'perPortion',
+      portionCount: 2,
+      portionMode: 'count',
+      finalWeightG: 400,
+      detail: { water: { value: 200, isLowerBound: false } },
+    });
+    const built = buildExportPayload({} as Recipe, result, 'perPortion', { writeVersion: 2 });
+    if (!built.ok) throw new Error(built.reason);
+    expect(built.payload.detail?.water).toBe(100);
+    expect(built.payload.coverage).toBe('complete');
+    expect(built.payload.detailLowerBoundKeys).toBeUndefined();
+    const cooked = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'per100gCooked',
+      finalWeightG: 400,
+      weightSource: 'actual',
+      detail: { water: { value: 200, isLowerBound: false } },
+    }), 'per100gCooked', { writeVersion: 2 });
+    if (!cooked.ok) throw new Error(cooked.reason);
+    expect(cooked.payload.detail?.water).toBe(50);
+    const sized = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionMode: 'size',
+      portionCount: 2,
+      portionSizeG: 80,
+      finalWeightG: 400,
+      weightSource: 'actual',
+      detail: { water: { value: 200, isLowerBound: false } },
+    }), 'perPortion', { writeVersion: 2 });
+    if (!sized.ok) throw new Error(sized.reason);
+    expect(sized.payload.detail?.water).toBe(40);
+  });
+
+  it('marks a numeric lower-bound detail export partial and leaves null gaps complete', () => {
+    const gap = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      detail: { water: { value: null, isLowerBound: true } },
+    }), 'perPortion', { writeVersion: 2 });
+    if (!gap.ok) throw new Error(gap.reason);
+    expect(gap.payload.coverage).toBe('complete');
+    expect(gap.payload.detailLowerBoundKeys).toBeUndefined();
+    expect(gap.payload.quality).toBeUndefined();
+
+    const bounded = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      detail: { water: { value: 80, isLowerBound: true } },
+    }), 'perPortion', { writeVersion: 2 });
+    if (!bounded.ok) throw new Error(bounded.reason);
+    expect(bounded.payload.coverage).toBe('partial');
+    expect(bounded.payload.detail?.water).toBe(80);
+    expect(bounded.payload.detailLowerBoundKeys).toEqual(['water']);
+    expect(bounded.payload.quality?.water).toEqual({ status: 'calculated', qualifier: 'lower_bound' });
+    expect(partialExportWarning(bounded.payload)).toContain(getNutrient('water')!.label);
+    expect(verifyTrackerFoodFingerprint(exportFingerprintInput(bounded.payload), bounded.payload.fingerprint)).toBe('match');
+    const doc = buildTrackerFoodDocV2('Water', {
+      nutrients: bounded.payload.sparseNutrients!,
+      detail: bounded.payload.detail,
+      quality: bounded.payload.quality,
+    }, 't');
+    expect(fingerprintTrackerFoodV2(parseTrackerFood('water', doc)!)).toBe(bounded.payload.fingerprint);
+  });
+
+  it('stores calculated lower_bound quality for core lower bounds and fingerprints it', () => {
+    const partial = syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { fiber: 4, protein: 10 },
+      lowerBoundKeys: ['fiber'],
+      detail: { water: { value: 80, isLowerBound: true } },
+    });
+    const bounded = buildExportPayload({} as Recipe, partial, 'perPortion', { writeVersion: 2 });
+    if (!bounded.ok) throw new Error(bounded.reason);
+    expect(bounded.payload.lowerBoundKeys).toContain('fiber');
+    expect(bounded.payload.quality?.fiber).toEqual({ status: 'calculated', qualifier: 'lower_bound' });
+    expect(bounded.payload.quality?.water).toEqual({ status: 'calculated', qualifier: 'lower_bound' });
+    expect(bounded.payload.quality?.protein).toBeUndefined();
+    const exact = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { fiber: 4, protein: 10 },
+      detail: { water: { value: 80, isLowerBound: true } },
+    }), 'perPortion', { writeVersion: 2 });
+    if (!exact.ok) throw new Error(exact.reason);
+    expect(exact.payload.fingerprint).not.toBe(bounded.payload.fingerprint);
+    const doc = buildTrackerFoodDocV2('Fiber', {
+      nutrients: bounded.payload.sparseNutrients!,
+      detail: bounded.payload.detail,
+      quality: bounded.payload.quality,
+    }, 't');
+    const meta = doc.nutrientMeta as { quality: Record<string, { status: string; qualifier?: string }> };
+    expect(meta.quality.fiber).toEqual({ status: 'calculated', qualifier: 'lower_bound' });
+    expect(fingerprintTrackerFoodV2(parseTrackerFood('fiber', doc)!)).toBe(bounded.payload.fingerprint);
+    const ordinary = buildTrackerFoodDocV2('Fiber', {
+      nutrients: bounded.payload.sparseNutrients!,
+      detail: bounded.payload.detail,
+      quality: { water: bounded.payload.quality!.water! },
+    }, 't');
+    expect(verifyTrackerFoodFingerprint(parseTrackerFood('fiber', ordinary)!, bounded.payload.fingerprint)).toBe('mismatch');
+    const flaggedOff = buildExportPayload({} as Recipe, partial, 'perPortion');
+    if (!flaggedOff.ok) throw new Error(flaggedOff.reason);
+    expect(flaggedOff.payload.quality).toBeUndefined();
+    expect(flaggedOff.payload.lowerBoundKeys).toContain('fiber');
+    expect(flaggedOff.payload.fingerprint).not.toMatch(/^v2:/);
+  });
+
+  it('verifies a v2 review against sparse nutrients, not the zero-filled view', () => {
+    const built = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { vitaminD: null },
+    }), 'perPortion', { writeVersion: 2 });
+    if (!built.ok) throw new Error(built.reason);
+    expect(built.payload.sparseNutrients?.vitaminD).toBeNull();
+    expect(built.payload.nutrients.vitaminD).toBe(0);
+    expect(verifyTrackerFoodFingerprint(exportFingerprintInput(built.payload), built.payload.fingerprint)).toBe('match');
+    expect(verifyTrackerFoodFingerprint({
+      quantity: 1,
+      nutrients: built.payload.nutrients,
+      detail: built.payload.detail,
+      quality: built.payload.quality,
+    }, built.payload.fingerprint)).toBe('mismatch');
+  });
+
+  it('uses per-unit bounds for a per-portion export and per-100 g bounds for cooked weight', () => {
+    const portion = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { calories: 1200, fat: 101 },
+    }), 'perPortion', { writeVersion: 2 });
+    expect(portion.ok).toBe(true);
+    const cooked = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'per100gCooked',
+      weightSource: 'actual',
+      finalWeightG: 100,
+      amounts: { calories: 950 },
+    }), 'per100gCooked', { writeVersion: 2 });
+    expect(cooked.ok).toBe(false);
+    if (!cooked.ok) expect(cooked.overCapKeys).toContain('calories');
+    const saltPortion = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { sodium: 39340 },
+    }), 'perPortion', { writeVersion: 2 });
+    const saltCooked = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'per100gCooked',
+      weightSource: 'actual',
+      finalWeightG: 100,
+      amounts: { sodium: 39340 },
+    }), 'per100gCooked', { writeVersion: 2 });
+    expect(saltPortion.ok).toBe(true);
+    expect(saltCooked.ok).toBe(true);
+    const huge = buildExportPayload({} as Recipe, syntheticExport({
+      basis: 'perPortion',
+      portionCount: 1,
+      amounts: { calories: 20000 },
+    }), 'perPortion', { writeVersion: 2 });
+    expect(huge.ok).toBe(false);
   });
 
   it('every exported value is within tracker clamp bounds so logging never clamps', () => {

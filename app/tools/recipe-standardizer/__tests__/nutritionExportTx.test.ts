@@ -31,6 +31,7 @@ import {
   ExportRefChangedError,
   ExportTargetChangedError,
   ExportTargetMissingError,
+  ExportTargetNewerSchemaError,
   runExportTransaction,
   assertExportRequestIds,
 } from '../lib/nutritionExportTx';
@@ -224,6 +225,47 @@ describe('nutritionExportTx', () => {
     ]);
     await run(request, store);
     expect(store.get(FOOD_PATH(request.foodId))).toEqual(request.doc);
+  });
+
+  it('update refuses a target with nutrientSchemaVersion 2 in v1 mode', async () => {
+    const request = makeRequest();
+    const target = parseTrackerFood(request.foodId, request.doc);
+    if (target === null) throw new Error('Expected food.');
+    const updateRequest = {
+      ...request,
+      mode: 'update' as const,
+      expectedTarget: {
+        id: request.foodId,
+        fingerprint: fingerprintTrackerFood(target),
+        normalizedName: 'butter cookies per portion',
+        lastUpdated: target.lastUpdated,
+      },
+    };
+    const stored = { ...request.doc, nutrientSchemaVersion: 2 };
+    const store = seed(updateRequest);
+    store.set(FOOD_PATH(request.foodId), stored);
+    await expect(run(updateRequest, store)).rejects.toBeInstanceOf(ExportTargetNewerSchemaError);
+    expect(store.get(FOOD_PATH(request.foodId))).toEqual(stored);
+  });
+
+  it('injected writeVersion 2 does not refuse a nutrient schema 2 target', async () => {
+    const request = makeRequest();
+    const target = parseTrackerFood(request.foodId, request.doc);
+    if (target === null) throw new Error('Expected food.');
+    const updateRequest = {
+      ...request,
+      mode: 'update' as const,
+      writeVersion: 2 as const,
+      expectedTarget: {
+        id: request.foodId,
+        fingerprint: fingerprintTrackerFood(target),
+        normalizedName: 'butter cookies per portion',
+        lastUpdated: target.lastUpdated,
+      },
+    };
+    const store = seed(updateRequest);
+    store.set(FOOD_PATH(request.foodId), { ...request.doc, nutrientSchemaVersion: 2 });
+    await expect(run(updateRequest, store)).resolves.toBeTruthy();
   });
 
   it('update aborts with ExportTargetChangedError when the tracker edited nutrients, nothing written', async () => {

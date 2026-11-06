@@ -77,3 +77,26 @@ export function classifyTargetSource(nutrient, effectiveTargets, defaultTargets,
   }
   return 'dri';
 }
+
+const STATUS_BADGES = {
+  measured: 'measured',
+  label_reported: 'label',
+  calculated: 'calculated',
+  estimated_from_comparable: 'estimated',
+  estimated_from_recipe: 'estimated',
+  below_quantification_limit: 'below LOQ',
+  unknown: 'unknown',
+  not_applicable: 'n/a',
+  legacy_unclassified: 'legacy',
+};
+
+/** Pure display string. Partial coverage is a caller prefix ("≥"), not baked in here. */
+export function formatNutrientWithStatus(value, def, quality) {
+  const unit = def?.unit ? ` ${def.unit}` : '';
+  const badge = STATUS_BADGES[quality?.status] || 'unknown';
+  if (value == null) {
+    if (quality?.upperBound != null) return `< ${quality.upperBound}${unit} (${badge})`;
+    return `unknown (${badge})`;
+  }
+  return `${value}${unit} (${badge})`;
+}

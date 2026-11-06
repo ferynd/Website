@@ -147,6 +147,7 @@
                 <i class="fas fa-arrow-down mr-2"></i>Parse to Staging Area
               </button>
               <div id="parse-missing-warning" class="hidden mt-2 p-2 rounded text-xs text-warning surface-2 border border-warning"></div>
+              <div id="nutrient-detail-staging"></div>
             </div>
           </details>
 
@@ -177,6 +178,7 @@
                 <i class="fas fa-minus"></i>
               </button>
             </div>
+            <div id="nutrient-detail-food"></div>
 
             <div>
               <h4 class="text-sm font-semibold text-secondary mb-2">Today's Food Items:</h4>
@@ -652,6 +654,8 @@
               <div><label for="target-choline" class="block text-sm font-medium text-primary mb-1">Choline (mg)</label><input type="number" step="any" min="0" max="35000" id="target-choline"></div>
             </div>
           </div>
+
+          <p id="nutrient-capability" class="text-xs text-muted"></p>
 
           <!-- Actions row -->
           <div class="flex justify-between items-center flex-wrap gap-3">
