@@ -77,6 +77,59 @@ describe('trackerFoods', () => {
     expect(fingerprintTrackerFoodV2({ ...food, quality: { calories: { status: 'measured' } } })).not.toBe(digest);
   });
 
+  it('v2 fingerprint changes when only upperBound, roundingInterval, or qualifier changes', () => {
+    const food = parseTrackerFood('egg', fullFood())!;
+    const statusOnly = {
+      ...food,
+      quality: { protein: { status: 'label_reported' as const } },
+    };
+    const upper5 = {
+      ...food,
+      quality: { protein: { status: 'label_reported' as const, upperBound: 5 } },
+    };
+    const upper10 = {
+      ...food,
+      quality: { protein: { status: 'label_reported' as const, upperBound: 10 } },
+    };
+    const interval1 = {
+      ...food,
+      quality: { fiber: { status: 'label_reported' as const, roundingInterval: 1 } },
+    };
+    const intervalTenth = {
+      ...food,
+      quality: { fiber: { status: 'label_reported' as const, roundingInterval: 0.1 } },
+    };
+    const calculated = {
+      ...food,
+      quality: { calories: { status: 'calculated' as const } },
+    };
+    const lowerBound = {
+      ...food,
+      quality: { calories: { status: 'calculated' as const, qualifier: 'lower_bound' } },
+    };
+    expect(fingerprintTrackerFoodV1(food)).toBe('9418d4fb');
+    expect(fingerprintTrackerFoodV1(upper5)).toBe('9418d4fb');
+    expect(fingerprintTrackerFoodV1(upper10)).toBe('9418d4fb');
+    expect(fingerprintTrackerFoodV1(interval1)).toBe('9418d4fb');
+    expect(fingerprintTrackerFoodV1(lowerBound)).toBe('9418d4fb');
+    const statusDigest = fingerprintTrackerFoodV2(statusOnly);
+    expect(fingerprintTrackerFoodV2(upper5)).not.toBe(statusDigest);
+    expect(fingerprintTrackerFoodV2(upper10)).not.toBe(fingerprintTrackerFoodV2(upper5));
+    expect(fingerprintTrackerFoodV2({
+      ...statusOnly,
+      quality: { protein: { status: 'label_reported', upperBound: undefined } },
+    })).toBe(statusDigest);
+    expect(fingerprintTrackerFoodV2(interval1)).not.toBe(fingerprintTrackerFoodV2(intervalTenth));
+    expect(fingerprintTrackerFoodV2(interval1)).not.toBe(fingerprintTrackerFoodV2({
+      ...food,
+      quality: { fiber: { status: 'label_reported' } },
+    }));
+    expect(fingerprintTrackerFoodV2(lowerBound)).not.toBe(fingerprintTrackerFoodV2(calculated));
+    expect(verifyTrackerFoodFingerprint(upper10, fingerprintTrackerFoodV2(upper5))).toBe('mismatch');
+    expect(verifyTrackerFoodFingerprint(upper5, fingerprintTrackerFoodV2(upper5))).toBe('match');
+    expect(verifyTrackerFoodFingerprint(food, fingerprintTrackerFoodV1(food))).toBe('match');
+  });
+
   it('v2 fingerprint changes when only fiberMeaning or carbConvention changes', () => {
     const food = parseTrackerFood('egg', fullFood())!;
     const weighted = { ...food, fiberMeaning: 'weighted_legacy' as const, carbConvention: 'includes_fiber' as const };

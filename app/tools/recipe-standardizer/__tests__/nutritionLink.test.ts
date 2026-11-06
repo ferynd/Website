@@ -103,6 +103,57 @@ describe('nutrition link lifecycle', () => {
     expect(link.targetFingerprint).not.toMatch(/^v2:/);
   });
 
+  it('a v2 confirmation goes stale when only upperBound, rounding interval, or qualifier changes', () => {
+    const bounded = {
+      ...food(),
+      schema: 2 as const,
+      quality: { protein: { status: 'label_reported' as const, upperBound: 5 } },
+    };
+    const boundedLink = {
+      ...confirmNutritionLink(bounded, 50, 1, UNLINKED_NUTRITION),
+      targetFingerprint: fingerprintTrackerFoodV2(bounded),
+    };
+    expect(assessNutritionLink(boundedLink, new Map([['egg', bounded]])).state).toBe('confirmed');
+    expect(assessNutritionLink(boundedLink, new Map([['egg', {
+      ...bounded,
+      quality: { protein: { status: 'label_reported', upperBound: 10 } },
+    }]])).state).toBe('stale-revised');
+
+    const rounded = {
+      ...food(),
+      schema: 2 as const,
+      quality: { fiber: { status: 'label_reported' as const, roundingInterval: 1 } },
+    };
+    const roundedLink = {
+      ...confirmNutritionLink(rounded, 50, 1, UNLINKED_NUTRITION),
+      targetFingerprint: fingerprintTrackerFoodV2(rounded),
+    };
+    expect(assessNutritionLink(roundedLink, new Map([['egg', {
+      ...rounded,
+      quality: { fiber: { status: 'label_reported', roundingInterval: 0.1 } },
+    }]])).state).toBe('stale-revised');
+
+    const calculated = {
+      ...food(),
+      schema: 2 as const,
+      quality: { calories: { status: 'calculated' as const, qualifier: 'lower_bound' } },
+    };
+    const calculatedLink = {
+      ...confirmNutritionLink(calculated, 50, 1, UNLINKED_NUTRITION),
+      targetFingerprint: fingerprintTrackerFoodV2(calculated),
+    };
+    expect(assessNutritionLink(calculatedLink, new Map([['egg', {
+      ...calculated,
+      quality: { calories: { status: 'calculated' } },
+    }]])).state).toBe('stale-revised');
+
+    const v1 = confirmNutritionLink(food(), 50, 1, UNLINKED_NUTRITION);
+    expect(v1.targetFingerprint).toBe(fingerprintTrackerFood(food()));
+    expect(v1.targetFingerprint).not.toMatch(/^v2:/);
+    expect(assessNutritionLink(v1, new Map([['egg', bounded]])).state).toBe('confirmed');
+    expect(assessNutritionLink(v1, new Map([['egg', calculated]])).state).toBe('confirmed');
+  });
+
   it('a v2 confirmation goes stale when only fiber or carbohydrate convention changes', () => {
     const base = { ...food(), schema: 2 as const, fiberMeaning: 'weighted_legacy' as const, carbConvention: 'includes_fiber' as const };
     const link = {

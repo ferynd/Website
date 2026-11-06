@@ -227,6 +227,38 @@ describe('nutrient records', () => {
     expect(built.fields.calories).toBe(0);
   });
 
+  it('blank legacy overlay keeps an upper bound and a cleared number becomes unknown', () => {
+    const record = parseNutritionText('Protein: <1 g\nFat: 3 g');
+    expect(record.values.protein).toBeNull();
+    expect(record.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 1 });
+    const overlaid = applyLegacyInputOverlay(record, { protein: '', fat: '3', calories: '' });
+    expect(overlaid.values.protein).toBeNull();
+    expect(overlaid.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 1 });
+    expect(overlaid.values.fat).toBe(3);
+    expect(overlaid.quality.fat.status).toBe('label_reported');
+    expect(overlaid.values.calories).toBeNull();
+    expect(overlaid.quality.calories).toEqual({ status: 'unknown' });
+
+    const cleared = applyLegacyInputOverlay(record, { fat: '' });
+    expect(cleared.values.fat).toBeNull();
+    expect(cleared.quality.fat).toEqual({ status: 'unknown' });
+    expect(cleared.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 1 });
+
+    const replaced = applyLegacyInputOverlay(record, { protein: '4' });
+    expect(replaced.values.protein).toBe(4);
+    expect(replaced.quality.protein).toEqual({ status: 'label_reported' });
+
+    const v2 = buildFoodWrite(overlaid, { writeVersion: 2, name: 'Yogurt', quantity: 1, lastUpdated: 't' });
+    expect(v2.doc.protein).toBeNull();
+    expect(v2.doc.nutrientMeta.quality.protein).toMatchObject({ status: 'label_reported', upperBound: 1 });
+    const v1 = buildFoodWrite(overlaid, { writeVersion: 1, name: 'Yogurt', quantity: 1, lastUpdated: 't' });
+    expect(Object.keys(v1.doc)).toEqual(['name', 'quantity', ...LEGACY_V1_KEYS, 'lastUpdated']);
+    expect(v1.doc.protein).toBe(0);
+    expect(v1.doc.fat).toBe(3);
+    expect(v1.doc).not.toHaveProperty('nutrientSchemaVersion');
+    expect(v1.doc).not.toHaveProperty('nutrientMeta');
+  });
+
   it('v2 writes reject values that fail both per-unit and per-100 g bounds', () => {
     const options = { writeVersion: 1 + 1, name: 'Salt', quantity: 1, lastUpdated: 't' };
     expect(buildFoodWrite(recordWith({ sodium: 39340 }), options).doc.sodium).toBe(39340);

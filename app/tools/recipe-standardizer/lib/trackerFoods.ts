@@ -272,7 +272,16 @@ const conventionToken = (value: string | undefined): string => (
   value && value !== 'unknown' ? value : ''
 );
 
-/** v2 fingerprint includes every registry key, its quality status, and fiber/carb conventions. */
+/** Absent bound, interval, or qualifier hashes as empty, matching a doc that omits it. */
+const finiteToken = (value: number | undefined): string => (
+  typeof value === 'number' && Number.isFinite(value) ? String(value) : ''
+);
+
+const textToken = (value: string | undefined): string => (
+  typeof value === 'string' && value ? value : ''
+);
+
+/** v2 fingerprint includes every registry key, its quality metadata, and fiber/carb conventions. */
 export const fingerprintTrackerFoodV2 = (
   food: Pick<TrackerFood, 'quantity' | 'nutrients' | 'detail' | 'quality' | 'fiberMeaning' | 'carbConvention'>,
 ): string => {
@@ -280,8 +289,9 @@ export const fingerprintTrackerFoodV2 = (
     const value = (LEGACY_V1_KEYS as readonly string[]).includes(key)
       ? food.nutrients[key as TrackerNutrientKey]
       : detailValue(food, key as DetailKey);
-    const status = food.quality?.[key]?.status ?? '';
-    return `;${key}=${value ?? ''}:${status ?? ''}`;
+    const entry = food.quality?.[key];
+    const status = entry?.status ?? '';
+    return `;${key}=${value ?? ''}:${status}:${finiteToken(entry?.upperBound)}:${finiteToken(entry?.roundingInterval)}:${textToken(entry?.qualifier)}`;
   }).join('')}`;
   return `v2:${fnv1aHex(canonical)}`;
 };

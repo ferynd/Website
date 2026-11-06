@@ -78,11 +78,13 @@ export function applyLegacyInputOverlay(record, inputs) {
     if (!Object.prototype.hasOwnProperty.call(inputs || {}, key)) continue;
     const raw = inputs[key];
     if (raw === '' || raw == null) {
+      // A bound such as "<1 g" is stored as null and has no legacy input to show.
+      // An unchanged blank keeps that quality. A blank over a real number is a clear.
       if (next.values[key] !== null) {
+        next.values[key] = null;
+        next.quality[key] = { status: 'unknown' };
         next.conflicts = next.conflicts.filter((conflict) => conflict.key !== key);
       }
-      next.values[key] = null;
-      next.quality[key] = { status: 'unknown' };
       continue;
     }
     const number = typeof raw === 'number' ? raw : Number(String(raw).trim());

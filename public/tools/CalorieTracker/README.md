@@ -308,7 +308,7 @@ The analysis engine (`analysis/engine.js`) is designed for gradual fat-loss trac
 Run from `public/tools/CalorieTracker/`:
 
 ```bash
-npm test          # run Vitest test suite (635 tests across 17 files)
+npm test          # run Vitest test suite (639 tests across 17 files)
 npm run dev       # start Vite dev server at localhost:5173
 npm run build     # Vite production build (optional — the app runs directly as static files)
 npm run preview   # preview the Vite build
