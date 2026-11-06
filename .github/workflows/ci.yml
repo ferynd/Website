@@ -146,7 +146,11 @@ jobs:
       - name: Verify Worker assets and privacy
         run: |
           test -f .open-next/worker.js && test -d .open-next/assets
-          ! find .open-next/assets -name '*.map' | grep -q .
+          maps="$(find .open-next/assets -name '*.map' -print -quit || true)"
+          if [ -n "$maps" ]; then
+            echo "source maps must not ship in Worker assets" >&2
+            exit 1
+          fi
           node scripts/ci/check-docs-manifest.mjs --only sensitive --root .open-next/assets
 
   browser-public:
@@ -169,10 +173,12 @@ jobs:
         run: |
           npx next start -p 3100 > /tmp/next-start.log 2>&1 &
           echo "$!" > /tmp/next-start.pid
-          for attempt in {1..60}; do
+          i=0
+          while [ "$i" -lt 60 ]; do
             if curl --fail --silent --output /dev/null http://127.0.0.1:3100; then
               exit 0
             fi
+            i=$((i + 1))
             sleep 1
           done
           exit 1
@@ -198,4 +204,9 @@ jobs:
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
         run: |
-          node -e 'const n=JSON.parse(process.env.NEEDS_JSON);const bad=Object.entries(n).filter(([,v])=>v.result!=="success");for(const [k,v] of bad)console.log(`::error::${k} = ${v.result}`);process.exit(bad.length?1:0)'
+          node <<'NODE'
+          const n = JSON.parse(process.env.NEEDS_JSON);
+          const bad = Object.entries(n).filter(([, v]) => v.result !== "success");
+          for (const [k, v] of bad) console.log(`::error::${k} = ${v.result}`);
+          process.exit(bad.length ? 1 : 0);
+          NODE
