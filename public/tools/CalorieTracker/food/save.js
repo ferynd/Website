@@ -51,8 +51,10 @@ export async function saveFoodItemToDatabase() {
       return false;
     }
     if (!assessment.identical) {
+      // Keep Both uses this distinct status so a second collision does not
+      // put the previous name back while this dialog is about the typed name.
       showDuplicateDialog(existingFood, record, foodName);
-      return false;
+      return 'duplicate';
     }
     showMessage(`Food item "${foodName}" already exists with identical values. Ready to add to today's log!`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
     return true;

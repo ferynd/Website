@@ -141,6 +141,16 @@ describe('round 5 staging holes', () => {
     })).rejects.toThrow('offline');
     expect(input.value).toBe('Yogurt (v2)');
     expect(state.stagedDetailFoodName).toBe('Yogurt (v2)');
+
+    const duplicated = await commitKeepBothRename('Yogurt (v5)', 'Yogurt (v2)', async () => 'duplicate');
+    expect(duplicated).toEqual({ status: 'duplicate' });
+    expect(input.value).toBe('Yogurt (v5)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v5)');
+
+    const failedAfter = await commitKeepBothRename('Yogurt (v6)', 'Yogurt (v5)', async () => false);
+    expect(failedAfter).toEqual({ status: 'failed' });
+    expect(input.value).toBe('Yogurt (v5)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v5)');
   });
 
   it('a rename with no remembered food does not invent an anchor', () => {

@@ -337,8 +337,9 @@ export function normalizeLabel(raw) {
   // USDA comma tails that still mean the same nutrient. Do not strip other
   // comma tails here: "Fat, saturated" must not collapse to the fat parent.
   // "Folate, total" is micrograms of folate, not DFE, so it stays intact and
-  // is rejected as unknown instead of filling the folate key.
-  if (!/^folate,\s*total$/.test(text)) {
+  // is rejected as unknown instead of filling the folate key. A space before
+  // the comma ("Folate , total") is the same label.
+  if (!/^folate\s*,\s*total$/.test(text)) {
     text = text.replace(/,\s*(?:total dietary|by difference|total)\s*$/i, '').trim();
   }
   text = text.replace(TRAILING_UNIT_STRIP_RE, '').trim();

@@ -55,7 +55,9 @@ export function applyKeepBothRename(newName) {
 
 /**
  * Rename, then save. The duplicate dialog stays open until the save commits.
- * @returns {Promise<{ status: 'name' | 'saved' | 'failed' }>}
+ * A save that opens another duplicate dialog returns 'duplicate' and leaves
+ * the typed name in place. Any other failure puts the previous name back.
+ * @returns {Promise<{ status: 'name' | 'saved' | 'failed' | 'duplicate' }>}
  */
 export async function commitKeepBothRename(newName, currentName, save) {
   const next = String(newName ?? '').trim();
@@ -65,6 +67,7 @@ export async function commitKeepBothRename(newName, currentName, save) {
   try {
     const saved = await save();
     if (saved === true) return { status: 'saved' };
+    if (saved === 'duplicate') return { status: 'duplicate' };
   } catch (error) {
     applyKeepBothRename(current);
     throw error;

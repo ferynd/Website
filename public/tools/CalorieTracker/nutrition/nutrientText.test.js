@@ -158,6 +158,9 @@ describe('parseNutritionText', () => {
     expect(paired.values.folate).toBe(200);
     expect(paired.conflicts).toEqual([]);
     expect(paired.unknownLabels).toEqual(['Folate, total']);
+    const spaced = parseNutritionText('Folate , total 400 mcg');
+    expect(spaced.values.folate).toBeNull();
+    expect(spaced.unknownLabels).toEqual(['Folate , total']);
   });
 
   it('ranges and negative values are flagged for review', () => {

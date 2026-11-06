@@ -422,6 +422,46 @@ const ADVERSARIAL = [
   ['Fat 9 • Carbohydrate 4 • Protein 4', { key: 'fat', value: 9, unit: 'g', assumed: true, warning: false }],
 ];
 
+/**
+ * Round 10. A "Calories per gram" line is skipped only when the phrase starts
+ * the line, plus the next line when that line is a bare factor row. An inline
+ * mention does not drop later lines. A leading serving basis with no other
+ * amount is unknown, including for bases that have no children. A "(approx)"
+ * note on the colon or comma path is an estimate. "Folate , total" is unknown.
+ * A spaced U+2212 is a sign. A child word after the amount does not fill the parent.
+ */
+const ROUND10 = [
+  ['Sodium: per 100 g', { unknown: 'Sodium: per 100 g' }],
+  ['Sodium: per 100g', { unknown: 'Sodium: per 100g' }],
+  ['Sodium: per serving', { unknown: 'Sodium: per serving' }],
+  ['Sodium: per portion', { unknown: 'Sodium: per portion' }],
+  ['Potassium: per 100 g', { unknown: 'Potassium: per 100 g' }],
+  ['Calcium: per 100 g', { unknown: 'Calcium: per 100 g' }],
+  ['Iron: per 100 g', { unknown: 'Iron: per 100 g' }],
+  ['Vitamin C: per 100 g', { unknown: 'Vitamin C: per 100 g' }],
+  ['Iodine: per 100 g', { unknown: 'Iodine: per 100 g' }],
+  ['Protein: per 100 g', { unknown: 'Protein: per 100 g' }],
+  ['Protein: per serving', { unknown: 'Protein: per serving' }],
+  ['Vitamin C: per portion', { unknown: 'Vitamin C: per portion' }],
+  ['Fat: per 100 g', { unknown: 'Fat: per 100 g' }],
+  ['Sodium: per 100 g 400 mg', { key: 'sodium', value: 400, unit: 'mg', assumed: false, warning: false }],
+  ['Calories: per 100 g 250 kcal', { key: 'calories', value: 250, unit: 'kcal', assumed: false, warning: false }],
+  ['Vitamin C: per 100 g 60 mg', { key: 'vitaminC', value: 60, unit: 'mg', assumed: false, warning: false }],
+  ['Fat: per portion 8 g', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Calories (approx.): 250', { key: 'calories', value: 250, unit: 'kcal', status: 'estimated_from_comparable', assumed: true, warning: 'approximate' }],
+  ['Carbohydrates (approx): 30 g', { key: 'carbs', value: 30, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Fat, approx 8 g', { key: 'fat', value: 8, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: 'approximate' }],
+  ['Folate , total 400 mcg', { unknown: 'Folate , total' }],
+  ['Folate , total: 400 mcg', { unknown: 'Folate , total' }],
+  ['Fat \u2212 5 g', { key: 'fat', code: 'negative' }],
+  ['Sodium: \u2212 5 mg', { key: 'sodium', code: 'negative' }],
+  ['Fat - 5 g', { key: 'fat', value: 5, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: 30 g net', { unknown: 'Carbs: 30 g net' }],
+  ['Carbs 30 g (net)', { unknown: 'Carbs 30 g (net)' }],
+  ['Fat 3 g (saturated)', { unknown: 'Fat 3 g (saturated)' }],
+  ['Fiber 4 g soluble', { unknown: 'Fiber 4 g soluble' }],
+];
+
 /** Older US Nutrition Facts panel, including the calorie-needs footer. */
 const OLD_US_LABEL = [
   'Nutrition Facts',
@@ -653,6 +693,111 @@ describe('paste line golden', () => {
     expect(record.conflicts.some((conflict) => conflict.key === 'fat')).toBe(false);
     expect(record.conflicts.some((conflict) => conflict.key === 'carbs')).toBe(false);
     expect(record.conflicts.some((conflict) => conflict.key === 'protein')).toBe(false);
+  });
+
+  it('maps the round-10 line table exactly', () => {
+    expect(ROUND10.length).toBeGreaterThanOrEqual(20);
+    for (const [line, expected] of ROUND10) assertLine(line, expected);
+  });
+
+  it('keeps nutrient lines after a calories-per-gram footer and ignores only that footer', () => {
+    const afterFooter = parseNutritionText([
+      'Protein 20 g',
+      'Calories per gram:',
+      'Fat 9 • Carbohydrate 4 • Protein 4',
+      'Total Fat 8 g',
+      'Fiber 4 g',
+    ].join('\n'));
+    expect(afterFooter.values.protein).toBe(20);
+    expect(afterFooter.values.fat).toBe(8);
+    expect(afterFooter.values.fiber).toBe(4);
+    expect(afterFooter.values.carbs).toBeNull();
+    expect(afterFooter.conflicts).toEqual([]);
+    expect(afterFooter.unknownLabels).toEqual([]);
+
+    const sentence = parseNutritionText([
+      'Calories 200',
+      'Protein 31 g',
+      'Calories per gram of fat is 9',
+      'Total Fat 8 g',
+    ].join('\n'));
+    expect(sentence.values.calories).toBe(200);
+    expect(sentence.values.protein).toBe(31);
+    expect(sentence.values.fat).toBe(8);
+    expect(sentence.unknownLabels).toEqual([]);
+    expect(sentence.conflicts).toEqual([]);
+
+    const headerFirst = parseNutritionText('Calories per gram:\nProtein 20 g');
+    expect(headerFirst.values.protein).toBe(20);
+    expect(headerFirst.values.fat).toBeNull();
+    expect(headerFirst.values.carbs).toBeNull();
+    expect(headerFirst.unknownLabels).toEqual([]);
+
+    const density = parseNutritionText([
+      'Calories 250',
+      'Calories per gram 2.5',
+      'Protein 20 g',
+      'Fat 8 g',
+      'Sodium 400 mg',
+    ].join('\n'));
+    expect(density.values.calories).toBe(250);
+    expect(density.values.protein).toBe(20);
+    expect(density.values.fat).toBe(8);
+    expect(density.values.sodium).toBe(400);
+    expect(density.conflicts).toEqual([]);
+
+    const inline = parseNutritionText([
+      'Protein: 20 g (80 kcal, 4 calories per gram)',
+      'Fat: 8 g',
+      'Sodium: 400 mg',
+    ].join('\n'));
+    expect(inline.values.protein).toBe(20);
+    expect(inline.values.fat).toBe(8);
+    expect(inline.values.sodium).toBe(400);
+    expect(inline.values.calories).toBeNull();
+    expect(inline.unknownLabels).toEqual([]);
+
+    const energy = parseNutritionText([
+      'Energy density: 2.5 calories per gram',
+      'Protein 20 g',
+      'Fat 8 g',
+    ].join('\n'));
+    expect(energy.values.protein).toBe(20);
+    expect(energy.values.fat).toBe(8);
+    expect(energy.values.calories).toBeNull();
+    expect(energy.unknownLabels).toEqual(['Energy density']);
+
+    const twoFoods = parseNutritionText([
+      'Calories 250',
+      'Total Fat 12 g',
+      'Protein 5 g',
+      'Calories per gram:',
+      'Fat 9 • Carbohydrate 4 • Protein 4',
+      'Calories 180',
+      'Protein 20 g',
+      'Sodium 400 mg',
+      'Fiber 4 g',
+      'Iron 2 mg',
+    ].join('\n'));
+    expect(twoFoods.values.fat).toBe(12);
+    expect(twoFoods.values.carbs).toBeNull();
+    expect(twoFoods.values.sodium).toBe(400);
+    expect(twoFoods.values.fiber).toBe(4);
+    expect(twoFoods.values.iron).toBe(2);
+    expect(twoFoods.values.calories).toBeNull();
+    expect(twoFoods.values.protein).toBeNull();
+    expect(twoFoods.conflicts.map((conflict) => conflict.key).sort()).toEqual(['calories', 'protein']);
+
+    const bold = parseNutritionText([
+      '**Calories per gram:**',
+      'Fat 9 • Carbohydrate 4 • Protein 4',
+      'Potassium 200 mg',
+    ].join('\n'));
+    expect(bold.values.potassium).toBe(200);
+    expect(bold.values.fat).toBeNull();
+    expect(bold.values.protein).toBeNull();
+    expect(bold.values.carbs).toBeNull();
+    expect(bold.unknownLabels).toEqual([]);
   });
 
   it('skips the calorie-per-gram factor row in footer context', () => {

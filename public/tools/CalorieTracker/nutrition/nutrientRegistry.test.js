@@ -127,6 +127,8 @@ describe('nutrient registry', () => {
     expect(lookupLabel('Dietary Fibre')?.key).toBe('fiber');
     expect(lookupLabel('Dietary fibre')?.key).toBe('fiber');
     expect(lookupLabel('Folate, total')).toBeNull();
+    expect(lookupLabel('Folate , total')).toBeNull();
+    expect(lookupLabel('Folate,total')).toBeNull();
     expect(lookupLabel('Folate (total)')).toBeNull();
     expect(lookupLabel('Fat (approx)')?.key).toBe('fat');
     expect(lookupLabel('Fat (approx.)')?.key).toBe('fat');

@@ -74,7 +74,8 @@ function isWordBoundary(next) {
 /** The value token: a number, a leading decimal, < / ~ / ≈, or a sign glued to a digit. */
 function valueStartsImmediately(valuePart) {
   return /^(?:[<~≈]\s*)?(?:\d|\.\d)/.test(valuePart)
-    || /^(?:[<~≈]\s*)?[−–—-](?:\d|\.\d)/.test(valuePart);
+    || /^(?:[<~≈]\s*)?[−–—-](?:\d|\.\d)/.test(valuePart)
+    || /^(?:[<~≈]\s*)?\u2212\s+(?:\d|\.\d)/.test(valuePart);
 }
 
 /** Whole tokens that are units. A longer word ("total", "per", "each") is not a unit. */
@@ -129,7 +130,10 @@ function takeSeparator(rest) {
     const symbol = rest[0];
     return { length: 1, approximate: symbol === '~' || symbol === '≈' };
   }
-  if (/^[−–—-](?=\s)/.test(rest)) return { length: 1, approximate: false };
+  // A spaced hyphen, en dash, or em dash separates the label from the value.
+  // A spaced minus sign (U+2212) is still a sign, so the value keeps it.
+  if (/^\u2212(?=\s)/.test(rest)) return { length: 0, valueSplit: true };
+  if (/^[–—-](?=\s)/.test(rest)) return { length: 1, approximate: false };
   return null;
 }
 
@@ -313,11 +317,47 @@ function trailingApproximate(valuePart, number) {
   return stripLeadingApproximation(rest).approximate;
 }
 
+/** A parenthetical or comma note on the label that starts with an estimate word. */
+function labelNoteStartsApproximate(label) {
+  const text = String(label ?? '').trim();
+  const paren = text.match(/\(\s*([^()]*)\s*\)\s*$/);
+  if (paren && stripLeadingApproximation(paren[1]).approximate) return true;
+  const comma = text.match(/,\s*([^,]+)\s*$/);
+  if (comma && stripLeadingApproximation(comma[1]).approximate) return true;
+  return false;
+}
+
+/**
+ * A leading "per 100 g" / "per serving" / "per portion" is a basis, not an amount.
+ * True when that phrase is present and no separate number follows it.
+ */
+function leadingServingWithoutAmount(valuePart) {
+  let text = String(valuePart ?? '').trim();
+  const leading = stripLeadingApproximation(text);
+  if (leading.approximate) text = leading.rest;
+  const serving = stripLeadingServingBasis(text);
+  if (!serving.matched) return false;
+  return !/\d/.test(serving.rest);
+}
+
+/**
+ * A child word or "net" after the amount must not fill the parent.
+ * A remainder that still contains a number is a second column, not a subtype note.
+ */
+function trailingNoteRejectsParent(hit, valuePart, number) {
+  const rest = remainderAfterAmount(valuePart, number);
+  if (!rest || /\d/.test(rest)) return false;
+  const wrapped = rest.match(/^\(\s*([^()]*)\s*\)$/);
+  const note = (wrapped ? wrapped[1] : rest).trim();
+  if (!note || /\d/.test(note)) return false;
+  return !noteKeepsParent(hit.key, note);
+}
+
 /**
  * Drop a leading estimate word (and mark the amount approximate) and a leading
  * serving basis before the colon-path note check. "per 100 g" contains a digit,
  * so it has to come off before wordsBeforeNumber treats 100 as the amount.
- * A serving phrase is removed only when another number remains after it.
+ * The basis is removed only when another number remains after it.
  */
 function peelEstimateAndServing(split) {
   const applyApprox = () => {
@@ -435,9 +475,12 @@ function wordsBeforeNumber(valuePart) {
   return text.slice(0, match.index).trim();
 }
 
-/** "Calories per gram:" is the energy-factor footer, not a calorie amount. */
+/**
+ * "Calories per gram" at the start of a line is the energy-factor footer.
+ * Call this after bullet and markdown stripping. An inline mention does not match.
+ */
 function isCaloriesPerGramLine(line) {
-  return /\bcalories\s+per\s+gram\b/i.test(line);
+  return /^\s*calories\s+per\s+gram\b/i.test(line);
 }
 
 /**
@@ -561,7 +604,7 @@ export function parseNutritionText(text) {
   const unknownLabels = [];
   let fiberMeaning = null;
   let footerContext = false;
-  let afterCaloriesPerGram = false;
+  let skipBareFactorRow = false;
 
   const consumeLine = (line) => {
     const lessThan = lessThanLine(line);
@@ -569,7 +612,9 @@ export function parseNutritionText(text) {
     const source = lessThan.line;
     const split = matchIncludesAddedSugars(source) || splitLabelValue(source);
     if (!split || !split.label) return;
-    if (!hasNumber(split.valuePart)) return;
+    if (labelNoteStartsApproximate(split.label)) split.approximate = true;
+    const servingWithoutAmount = leadingServingWithoutAmount(split.valuePart);
+    if (!hasNumber(split.valuePart) && !servingWithoutAmount) return;
 
     if (folicAcidNeedsReview(split.label, split.valuePart)) {
       pushWarning(warnings, {
@@ -583,11 +628,23 @@ export function parseNutritionText(text) {
 
     const hit = lookupLabel(split.label);
     if (!hit) {
+      if (!hasNumber(split.valuePart)) return;
       unknownLabels.push(split.label);
       pushWarning(warnings, {
         level: 'review',
         code: 'unknown_label',
         message: `Unknown nutrient label "${split.label}".`,
+      });
+      return;
+    }
+
+    // "Sodium: per 100 g" has no amount of its own. The 100 is the basis.
+    if (servingWithoutAmount) {
+      unknownLabels.push(source);
+      pushWarning(warnings, {
+        level: 'review',
+        code: 'unknown_label',
+        message: `Unknown nutrient label "${source}".`,
       });
       return;
     }
@@ -652,6 +709,15 @@ export function parseNutritionText(text) {
       });
       return;
     }
+    if (trailingNoteRejectsParent(hit, valuePart, number)) {
+      unknownLabels.push(source);
+      pushWarning(warnings, {
+        level: 'review',
+        code: 'unknown_label',
+        message: `Unknown nutrient label "${source}".`,
+      });
+      return;
+    }
     const second = readSecondAmount(valuePart, number);
     if (second && !secondAmountUsesDifferentUnit(valuePart, number, second)) {
       // Footer rows ("2,000 2,500", "300g 375g") are reference text. Any other
@@ -671,10 +737,13 @@ export function parseNutritionText(text) {
 
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = stripDecorations(rawLine);
+    if (skipBareFactorRow) {
+      skipBareFactorRow = false;
+      if (line && isMultiBareLabelLine(line)) continue;
+    }
     if (!line) continue;
-    if (afterCaloriesPerGram) continue;
     if (isCaloriesPerGramLine(line)) {
-      afterCaloriesPerGram = true;
+      skipBareFactorRow = true;
       continue;
     }
     const opensFooter = FOOTER_NOTE_RE.test(line) || isCalorieReferenceRow(line);
