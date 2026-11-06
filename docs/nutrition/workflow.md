@@ -23,7 +23,7 @@ The tracker's meal-analysis workspace (#70) runs these stages in order. Each sta
 
 | Stage | Behavior | Owner |
 | --- | --- | --- |
-| 1. Extract evidence | Accept a photo, nutrition label, ingredient list, recipe, saved meal, or legacy paste. Use deterministic parsers and on-device OCR first; optional AI vision only on user action when they cannot supply needed evidence. Show extracted facts for correction. | #67 |
+| 1. Extract evidence | Accept a photo, nutrition label, ingredient list, recipe, barcode, saved meal, or legacy paste. Use deterministic parsers and on-device OCR first; optional AI vision only on user action when they cannot supply needed evidence. Show extracted facts for correction. | #67 |
 | 2. Match | Match identities/forms against cached, private, and curated profiles with exact variant compatibility. | #61 |
 | 3. Resolve gaps | List missing and ambiguous items together. Per item: choose existing, enter manually, research through official sources, research with the AI API, save an incomplete draft, or cancel. | #66 (choices), #62 (research jobs), #67 (AI research) |
 | 4. Recalculate | Recalculate automatically through the shared module once records are resolved, without repeating finished research. | #64, #66 |
