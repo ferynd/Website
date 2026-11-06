@@ -1,6 +1,6 @@
 # Ingredient store release (#61)
 
-Part A implements code, tests, and emulator-only rules validation. **Rules not deployed; INGREDIENT_STORE_WRITES_ENABLED=false; NUTRIENT_V2_WRITES_ENABLED unchanged (false); no production data touched.** The census script is built and logic-tested but has not been run. The curated catalog is empty (`nutrition-curated`, `profileCount: 0`). No #60 Part B, #62, or #63 action is included.
+Part A implements code, tests, and emulator-only rules validation. **Rules not deployed; INGREDIENT_STORE_WRITES_ENABLED=false; NUTRIENT_V2_WRITES_ENABLED unchanged (false); no production data touched.** The census script is built and logic-tested but has not been run. The curated catalog is empty (`nutrition-curated`, `profileCount: 0`). No #60 Part B, #62, or #63 action is included. Firestore storage for research jobs or meal records is outside this release and would need its own later rules release (#62 follow-on, #64 Part B).
 
 Source rules use the explicit `{collectionName}/{subpath=**}` form, not recursive path indexing. Emulator acceptance covers atomic create/hash agreement, curated override creation without a private identity, head +1, metadata retirement, immutable revisions/conversions, ownership, catalog denial, and legacy regression cases.
 
