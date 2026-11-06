@@ -226,6 +226,7 @@ export function normalizeUnit(raw: string): string;
 export function splitLabelUnit(raw: string): { text: string; unit: string | null };
 export function getNutrient(key: string): NutrientDef | undefined;
 export function lookupLabel(rawLabel: string): { key: NutrientKey; via: 'exact' | 'legacy_alias'; unit?: string } | null;
+export function noteKeepsParent(baseKey: string, note: string): boolean;
 export function targetableKeys(): NutrientKey[];
 export function keysForGroup(group: string, since?: 1 | 2): NutrientKey[];
 export function convertUnit(

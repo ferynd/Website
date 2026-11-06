@@ -118,17 +118,17 @@ const DEFINITIONS = [
   v1({
     key: 'carbs', label: 'Carbs', unit: 'g', group: 'macros', targetRole: 'floor', perUnitMax: 1000,
     notes: 'total carbohydrate',
-    labels: ['Carbs', 'Carbohydrate', 'Carbohydrates', 'Total Carbohydrate', 'Total Carbohydrates', 'Carbohydrate, by difference'],
+    labels: ['Carbs', 'Carbohydrate', 'Carbohydrates', 'Total Carbohydrate', 'Total Carbohydrates', 'Total Carbs', 'Carbohydrate, by difference'],
     legacyAliases: ['carbohydrate', 'carbohydrates', 'carbs', 'cho'],
   }),
   v1({
     key: 'fat', label: 'Fat', unit: 'g', group: 'macros', targetRole: 'floor', perUnitMax: 1000,
-    labels: ['Fat', 'Total Fat'],
+    labels: ['Fat', 'Total Fat', 'Total Fats', 'Total lipid (fat)'],
     legacyAliases: ['fat', 'fats'],
   }),
   v1({
     key: 'fiber', label: 'Fiber', unit: 'g', group: 'dailyFloors', targetRole: 'floor', perUnitMax: 500,
-    labels: ['Fiber', 'Fibre', 'Dietary fiber'],
+    labels: ['Fiber', 'Fibre', 'Dietary fiber', 'Total Fiber'],
     legacyAliases: ['fiber', 'fibre', 'dietary fiber'],
   }),
   v1({
@@ -166,7 +166,7 @@ const DEFINITIONS = [
   v1({
     key: 'folate', label: 'Folate', unit: 'mcg', group: 'dailyVitamins', targetRole: 'floor', perUnitMax: 10000,
     notes: 'mcg DFE',
-    labels: ['Folate', 'Vitamin B9', 'B9'],
+    labels: ['Folate', 'Folate DFE', 'Vitamin B9', 'B9'],
     legacyAliases: ['folate', 'b9'],
   }),
   v1({
@@ -188,7 +188,7 @@ const DEFINITIONS = [
   v1({
     key: 'vitaminD', label: 'Vitamin D', unit: 'mcg', group: 'avgVitamins', targetRole: 'average', perUnitMax: 1000,
     notes: 'not IU',
-    labels: ['Vitamin D', 'Vit D', 'Vitamin D3', 'D3', 'Cholecalciferol'],
+    labels: ['Vitamin D', 'Vit D', 'Vitamin D3', 'Vitamin D (D2 + D3)', 'D3', 'Cholecalciferol'],
     legacyAliases: ['vitamin d', 'vit d'],
   }),
   v1({
@@ -328,6 +328,10 @@ export function splitLabelUnit(raw) {
 
 export function normalizeLabel(raw) {
   let text = String(raw ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  // "Vit. B12" is the same label as "Vit B12". Other periods stay, so a
+  // shortened subtype such as "monounsat." is not rewritten into a real label.
+  text = text.replace(/\bvit\.\s*/g, 'vit ');
+  text = text.replace(/\s+/g, ' ').trim();
   text = text.replace(/^includes\s+/, '');
   text = text.replace(TRAILING_UNIT_STRIP_RE, '').trim();
   // USDA comma tails that still mean the same nutrient. Do not strip other
@@ -415,49 +419,21 @@ function qualifierNamesNutrient(rawQual) {
 }
 
 /**
- * Words that mark a subtype inside a note. Built from child and detail labels
- * (soluble, saturated, trans, …) plus short forms that are not labels on their own.
- * A note that contains one must not give the amount to the parent.
+ * Phrases that are not a registered nutrient and must not fall through to a parent.
+ * "Net carbs" has no key of its own.
  */
-const SUBTYPE_NOTE_EXTRA = [
-  'soluble', 'insoluble', 'added', 'saturated', 'trans', 'monounsaturated', 'polyunsaturated',
-  'net', 'sat', 'saturates', 'sfa', 'mufa', 'pufa', 'unsaturated', 'free', 'natural', 'available', 'digestible',
-];
-const SUBTYPE_WORD_STOP = new Set([
-  'acid', 'acids', 'alpha', 'and', 'dietary', 'fat', 'fatty', 'fiber', 'fibre', 'from',
-  'includes', 'of', 'oil', 'omega', 'sugar', 'sugars', 'the', 'total', 'vitamin', 'which', 'with',
-]);
-const SUBTYPE_LABEL_KEYS = new Set(['fiberSoluble', 'fiberInsoluble', 'sugarsAdded']);
-
-function buildSubtypeNoteWords() {
-  const words = new Set(SUBTYPE_NOTE_EXTRA);
-  for (const def of NUTRIENTS) {
-    if (!def.parent && !SUBTYPE_LABEL_KEYS.has(def.key)) continue;
-    for (const label of def.labels || []) {
-      for (const word of normalizeLabel(label).split(/[^a-z0-9]+/)) {
-        if (!word || word.length < 4 || SUBTYPE_WORD_STOP.has(word)) continue;
-        words.add(word);
-      }
-    }
-  }
-  return words;
-}
-
-const SUBTYPE_NOTE_WORDS = buildSubtypeNoteWords();
-
-/** Phrases that are not the parent nutrient, even when no subtype word matched. */
 const KNOWN_UNKNOWN_PHRASES = new Set([
   'net carb', 'net carbs', 'net carbohydrate', 'net carbohydrates',
   'unsaturated fat', 'unsaturated fats',
 ]);
 
-function noteWords(qualNorm) {
-  return String(qualNorm ?? '').split(/[^a-z0-9]+/).filter(Boolean);
-}
+const UNIT_NOTES = new Set(['g', 'mg', 'mcg', 'kcal', 'cal', 'kj', 'iu']);
 
-function noteHasSubtypeWord(qualNorm) {
-  return noteWords(qualNorm).some((word) => SUBTYPE_NOTE_WORDS.has(word));
-}
+/**
+ * Groups whose members are fractions of carbohydrate. Their labels do not
+ * contain the word "carbohydrate", so the parent link is the group, not a phrase.
+ */
+const CARB_FRACTION_GROUPS = new Set(['sugars', 'polyols', 'fiberDetail']);
 
 function joinedQualifierPhrases(base, qualifier) {
   if (!base || !qualifier) return [];
@@ -479,6 +455,113 @@ function knownUnknownPhrase(base, qualifier) {
   return joinedQualifierPhrases(base, qualifier).some((phrase) => KNOWN_UNKNOWN_PHRASES.has(phrase));
 }
 
+function containsPhrase(text, phrase) {
+  if (!text || !phrase || text === phrase || phrase.length < 3) return false;
+  return ` ${text} `.includes(` ${phrase} `);
+}
+
+/** parent key → child keys. Built from the registry, not from a word deny-list. */
+function buildChildren() {
+  const children = new Map();
+  const add = (parent, child) => {
+    if (!parent || !child || parent === child) return;
+    if (!BY_KEY.has(parent) || !BY_KEY.has(child)) return;
+    if (!children.has(parent)) children.set(parent, new Set());
+    children.get(parent).add(child);
+  };
+
+  for (const def of NUTRIENTS) {
+    if (def.parent) add(def.parent, def.key);
+  }
+
+  const norms = [];
+  for (const def of NUTRIENTS) {
+    for (const raw of [...(def.labels || []), ...(def.legacyAliases || [])]) {
+      const norm = normalizeLabel(raw);
+      if (norm) norms.push({ key: def.key, norm });
+    }
+  }
+  for (const host of norms) {
+    for (const other of norms) {
+      if (other.key === host.key) continue;
+      if (containsPhrase(other.norm, host.norm)) add(host.key, other.key);
+    }
+  }
+
+  const byGroup = new Map();
+  for (const def of NUTRIENTS) {
+    if (!byGroup.has(def.group)) byGroup.set(def.group, []);
+    byGroup.get(def.group).push(def);
+  }
+  for (const defs of byGroup.values()) {
+    const heads = defs.filter((def) => /Total$/.test(def.key));
+    if (heads.length !== 1 || defs.length < 2) continue;
+    for (const def of defs) add(heads[0].key, def.key);
+  }
+
+  for (const def of NUTRIENTS) {
+    if (!CARB_FRACTION_GROUPS.has(def.group)) continue;
+    add('carbs', def.key);
+    if (def.group === 'fiberDetail') add('fiber', def.key);
+  }
+  return children;
+}
+
+const CHILDREN = buildChildren();
+
+function baseHasChildren(key) {
+  return (CHILDREN.get(key)?.size || 0) > 0;
+}
+
+function isUnitNote(qualNorm) {
+  if (!qualNorm || /\s/.test(qualNorm)) return false;
+  return UNIT_NOTES.has(normalizeUnit(qualNorm));
+}
+
+function asNoteNamesOther(rest, baseKey) {
+  if (!rest) return true;
+  const hit = lookupNormalized(rest);
+  if (hit && hit.key !== baseKey) return true;
+  if (qualifierNamesNutrient(rest)) return true;
+  const kids = CHILDREN.get(baseKey);
+  if (!kids) return false;
+  const padded = ` ${rest} `;
+  for (const childKey of kids) {
+    const def = getNutrient(childKey);
+    const labels = [...(def?.labels || []), ...(def?.legacyAliases || [])];
+    for (const label of labels) {
+      const norm = normalizeLabel(label);
+      if (norm && norm.length >= 3 && padded.includes(` ${norm} `)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Notes that may stay on a parent: total, dietary, by difference, a unit,
+ * an "as …" form that does not name a child or another nutrient, and FORM_QUALIFIERS.
+ */
+function parentNoteAllowListed(qualNorm, baseKey) {
+  if (!qualNorm) return false;
+  if (qualNorm === 'total' || qualNorm === 'dietary' || qualNorm === 'by difference') return true;
+  if (FORM_QUALIFIERS.has(qualNorm)) return true;
+  if (isUnitNote(qualNorm)) return true;
+  if (/^as\s+\S/.test(qualNorm)) return !asNoteNamesOther(qualNorm.replace(/^as\s+/, '').trim(), baseKey);
+  return false;
+}
+
+/**
+ * True when a leading note may keep this base. Bases with children accept only
+ * the allow-list above. Bases without children are not restricted here, so a
+ * form word such as "natural" still names vitamin E.
+ */
+export function noteKeepsParent(baseKey, note) {
+  if (!baseKey || !baseHasChildren(baseKey)) return true;
+  const qualNorm = normalizeLabel(note);
+  if (!qualNorm) return true;
+  return parentNoteAllowListed(qualNorm, baseKey);
+}
+
 function resolveLabelNorm(norm) {
   const direct = lookupNormalized(norm);
   if (direct) return direct;
@@ -494,7 +577,7 @@ function resolveLabelNorm(norm) {
   const qualNorm = rawQual.replace(/^as\s+/, '').trim();
   const qualHit = lookupNormalized(qualNorm);
   if (qualHit && baseHit) {
-    if (getNutrient(qualHit.key)?.parent === baseHit.key) return qualHit;
+    if (getNutrient(qualHit.key)?.parent === baseHit.key || CHILDREN.get(baseHit.key)?.has(qualHit.key)) return qualHit;
     if (qualHit.key === baseHit.key) return baseHit;
     return null;
   }
@@ -502,11 +585,15 @@ function resolveLabelNorm(norm) {
   // "Fiber, soluble" / "Sugars, added" / "Fat (sat)" are the subtype label, not the parent.
   const joined = lookupJoinedQualifier(baseNorm, qualNorm);
   if (joined && joined.key !== baseHit.key) return joined;
-  // "net", "soluble", "saturates" and the other subtype words must not fall through.
-  if (noteHasSubtypeWord(qualNorm) || knownUnknownPhrase(baseNorm, qualNorm)) return null;
+  if (knownUnknownPhrase(baseNorm, qualNorm)) return null;
   if (joined) return joined;
-  // Any other note is a form remark when none of its words is a nutrient name.
-  // That keeps "Omega-3 (EPA + DHA)" and "Saturated Fat (fat)" unknown.
+  if (baseHasChildren(baseHit.key)) {
+    if (asForm && !asNoteNamesOther(qualNorm, baseHit.key)) return baseHit;
+    if (parentNoteAllowListed(qualNorm, baseHit.key)) return baseHit;
+    return null;
+  }
+  // No children: a form note is allowed. Subtype words do not reject it.
+  // A note that names another nutrient ("Saturated Fat (fat)") stays unknown.
   if (FORM_QUALIFIERS.has(qualNorm) || asForm || !qualifierNamesNutrient(qualNorm)) return baseHit;
   return null;
 }

@@ -272,6 +272,40 @@ export function legacyPartialNote(partialKeys) {
   return `Partial day totals (≥): ${partialKeys.join(', ')}.`;
 }
 
+const LEGACY_GAP_SHOWN = 10;
+
+/**
+ * Paste warnings for the 24 legacy keys. An upper bound is not "no value":
+ * the line names the bound. Zero-fill on a v1 save is unchanged.
+ */
+export function legacyPasteGapLines(record) {
+  const lines = [];
+  const conflicts = new Set((record?.conflicts || []).map((conflict) => conflict.key));
+  const bounded = [];
+  for (const key of V2_KEYS) {
+    if (conflicts.has(key)) continue;
+    const upper = record?.quality?.[key]?.upperBound;
+    if (record?.values?.[key] == null && upper != null) {
+      const def = getNutrient(key);
+      const unit = def?.unit ? ` ${def.unit}` : '';
+      bounded.push(`${def?.label || key} < ${upper}${unit}`);
+    }
+  }
+  if (bounded.length) lines.push(`Upper bound only: ${bounded.join(', ')}.`);
+  const absent = LEGACY_V1_KEYS.filter((key) => {
+    if (conflicts.has(key)) return false;
+    if (record?.values?.[key] == null && record?.quality?.[key]?.upperBound != null) return false;
+    return record?.values?.[key] == null;
+  });
+  if (absent.length) {
+    const shown = absent.slice(0, LEGACY_GAP_SHOWN).map((key) => getNutrient(key)?.label || key).join(', ');
+    const overflow = absent.length - LEGACY_GAP_SHOWN;
+    const suffix = overflow > 0 ? ` (+ ${overflow} more)` : '';
+    lines.push(`No value detected for: ${shown}${suffix}. Review parsed nutrients before adding if this looks wrong.`);
+  }
+  return lines;
+}
+
 export function legacyItemAmount(item, key, options = {}) {
   const missingQuantity = options.missingQuantity ?? 0;
   if (isPartialV2(item, key)) return { amount: 0, partial: true };

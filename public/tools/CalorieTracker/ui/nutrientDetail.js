@@ -53,6 +53,19 @@ export function applyKeepBothRename(newName) {
   return trimmed;
 }
 
+/**
+ * Rename, then save. The duplicate dialog stays open until the save commits.
+ * @returns {Promise<{ status: 'name' | 'saved' | 'failed' }>}
+ */
+export async function commitKeepBothRename(newName, currentName, save) {
+  const next = String(newName ?? '').trim();
+  const current = String(currentName ?? '').trim();
+  if (!next || next.toLowerCase() === current.toLowerCase()) return { status: 'name' };
+  applyKeepBothRename(next);
+  const saved = await save();
+  return { status: saved === true ? 'saved' : 'failed' };
+}
+
 /** Drop a stale parse-conflict warning and re-enable the staging actions. */
 export function releaseStagingConflictBlock() {
   setNutrientConflictsBlocked(false);

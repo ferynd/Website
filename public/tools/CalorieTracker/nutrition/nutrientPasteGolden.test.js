@@ -262,6 +262,126 @@ const LINES = [
   ['Protein / Protéines 20 g', { key: 'protein', value: 20, unit: 'g' }],
 ];
 
+/**
+ * Round 8 adversarial table. A parent with children keeps a note only from the
+ * allow-list (total, dietary, by difference, a unit, a safe "as …" form, or a
+ * form qualifier). Anything else is unknown, unless the note is itself the
+ * subtype. A colon value that starts with a child word stays unknown.
+ * Folic acid is not stored unless the value says DFE.
+ */
+const ADVERSARIAL = [
+  ['Fat (mono) 2 g', { unknown: 'Fat (mono)' }],
+  ['Fat (poly) 2 g', { unknown: 'Fat (poly)' }],
+  ['Fat, mono 2 g', { unknown: 'Fat, mono' }],
+  ['Fat (monounsat.) 2 g', { unknown: 'Fat (monounsat.)' }],
+  ['Fat (polyunsat) 2 g', { unknown: 'Fat (polyunsat)' }],
+  ['Fat (monos) 2 g', { unknown: 'Fat (monos)' }],
+  ['Fat (n-3) 1 g', { unknown: 'Fat (n-3)' }],
+  ['Fat (omega3) 1 g', { unknown: 'Fat (omega3)' }],
+  ['Fat (cis) 2 g', { unknown: 'Fat (cis)' }],
+  ['Fat (omega-3) 1 g', { unknown: 'Fat (omega-3)' }],
+  ['Fat (omega-6) 2 g', { unknown: 'Fat (omega-6)' }],
+  ['Sugars (alcohols) 3 g', { unknown: 'Sugars (alcohols)' }],
+  ['Sugars, alcohols 3 g', { unknown: 'Sugars, alcohols' }],
+  ['Sugars (free) 4 g', { unknown: 'Sugars (free)' }],
+  ['Sugars (intrinsic) 4 g', { unknown: 'Sugars (intrinsic)' }],
+  ['Fat: saturated 3g', { unknown: 'Fat: saturated 3g' }],
+  ['Fat: of which saturates 3 g', { unknown: 'Fat: of which saturates 3 g' }],
+  ['Fat: mono 2 g', { unknown: 'Fat: mono 2 g' }],
+  ['Fat: as saturated fat 3 g', { unknown: 'Fat: as saturated fat 3 g' }],
+  ['Carbs: net 20g', { unknown: 'Carbs: net 20g' }],
+  ['Carbs: starch 20 g', { unknown: 'Carbs: starch 20 g' }],
+  ['Carbs: of which sugars 10 g', { unknown: 'Carbs: of which sugars 10 g' }],
+  ['Omega-3: EPA 0.3 g', { unknown: 'Omega-3: EPA 0.3 g' }],
+  ['Omega-3: as EPA 0.2 g', { unknown: 'Omega-3: as EPA 0.2 g' }],
+  ['Fiber: soluble 2 g', { unknown: 'Fiber: soluble 2 g' }],
+  ['Sugar Alcohols: erythritol 3 g', { unknown: 'Sugar Alcohols: erythritol 3 g' }],
+  ['Omega-3 (fish oil) 1 g', { unknown: 'Omega-3 (fish oil)' }],
+  ['Omega-3 (as EPA + DHA) 1 g', { unknown: 'Omega-3 (as EPA + DHA)' }],
+  ['Total Carbs (net) 20 g', { unknown: 'Total Carbs (net)' }],
+  ['Carbs (available) 20 g', { unknown: 'Carbs (available)' }],
+  ['Carbs (digestible) 20 g', { unknown: 'Carbs (digestible)' }],
+  ['Fiber (crude) 2 g', { unknown: 'Fiber (crude)' }],
+  ['Dietary Fiber (soluble) 2 g', { unknown: 'Dietary Fiber (soluble)' }],
+  ['Fat (of which saturates) 3 g', { unknown: 'Fat (of which saturates)' }],
+  ['Saturated Fat (fat) 3 g', { unknown: 'Saturated Fat (fat)' }],
+  ['Allulose (sugars) 1 g', { unknown: 'Allulose (sugars)' }],
+  ['Fat: approx 3 g', { unknown: 'Fat: approx 3 g' }],
+  ['Calories from Fat 110', { unknown: 'Calories from Fat' }],
+  ['Net Carbs 20 g', { unknown: 'Net Carbs' }],
+  ['EPA + DHA 500 mg', { unknown: 'EPA + DHA' }],
+
+  ['Fat: total 8 g', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat: dietary 8 g', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat (dietary) 8 g', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat (g) 8', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: by difference 20 g', { key: 'carbs', value: 20, unit: 'g', assumed: false, warning: false }],
+  ['Carbohydrates (by difference) 27 g', { key: 'carbs', value: 27, unit: 'g', assumed: false, warning: false }],
+  ['Omega-3: total 1.2 g', { key: 'omega3', value: 1.2, unit: 'g', assumed: false, warning: false }],
+  ['Sugar Alcohols (total) 5 g', { key: 'sugarAlcoholsTotal', value: 5, unit: 'g', assumed: false, warning: false }],
+  ['Fat (MUFA) 2 g', { key: 'fatMonounsaturated', value: 2, unit: 'g', assumed: false, warning: false }],
+  ['Fat (PUFA) 2 g', { key: 'fatPolyunsaturated', value: 2, unit: 'g', assumed: false, warning: false }],
+  ['Fat (trans) 1 g', { key: 'fatTrans', value: 1, unit: 'g', assumed: false, warning: false }],
+  ['Fat (as saturated fat) 3 g', { key: 'fatSaturated', value: 3, unit: 'g', assumed: false, warning: false }],
+  ['Carbs (starch) 20 g', { key: 'starch', value: 20, unit: 'g', assumed: false, warning: false }],
+  ['Sugar Alcohols (erythritol) 3 g', { key: 'erythritol', value: 3, unit: 'g', assumed: false, warning: false }],
+  ['Fibre (soluble) 2 g', { key: 'fiberSoluble', value: 2, unit: 'g', assumed: false, warning: false }],
+  ['Starch (resistant) 3 g', { key: 'resistantStarch', value: 3, unit: 'g', assumed: false, warning: false }],
+  ['Omega-3 (ALA) 0.5 g', { key: 'omega3ALA', value: 0.5, unit: 'g', assumed: false, warning: false }],
+  ['Omega-3 (as EPA) 0.2 g', { key: 'omega3EPA', value: 0.2, unit: 'g', assumed: false, warning: false }],
+  ['Omega-3 (DHA) 0.2 g', { key: 'omega3DHA', value: 0.2, unit: 'g', assumed: false, warning: false }],
+  ['Omega-3 (as fish oil) 1 g', { key: 'omega3', value: 1, unit: 'g', assumed: false, warning: false }],
+
+  ['Vitamin E (natural) 15 mg', { key: 'vitaminE', value: 15, unit: 'mg', assumed: false, warning: false }],
+  ['Vitamin E: natural 15 mg', { key: 'vitaminE', value: 15, unit: 'mg', assumed: false, warning: false }],
+  ['Vitamin E (alpha-tocopherol) 15 mg', { key: 'vitaminE', value: 15, unit: 'mg', assumed: false, warning: false }],
+  ['Protein (natural) 20 g', { key: 'protein', value: 20, unit: 'g', assumed: false, warning: false }],
+  ['Vitamin B12 (natural) 2.4 mcg', { key: 'vitaminB12', value: 2.4, unit: 'mcg', assumed: false, warning: false }],
+  ['Protein (as casein) 20 g', { key: 'protein', value: 20, unit: 'g', assumed: false, warning: false }],
+  ['Calcium (as calcium carbonate) 200 mg', { key: 'calcium', value: 200, unit: 'mg', assumed: false, warning: false }],
+  ['Sodium (Na) 160 mg', { key: 'sodium', value: 160, unit: 'mg', assumed: false, warning: false }],
+  ['Iron (Fe) 8 mg', { key: 'iron', value: 8, unit: 'mg', assumed: false, warning: false }],
+  ['Vitamin A (mcg RAE) 900', { key: 'vitaminA', value: 900, unit: 'mcg', assumed: false, warning: false }],
+
+  ['Total Carbs 30 g', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Total Fiber 4 g', { key: 'fiber', value: 4, unit: 'g', assumed: false, warning: false }],
+  ['Total Fats 10 g', { key: 'fat', value: 10, unit: 'g', assumed: false, warning: false }],
+  ['Total lipid (fat) 9 g', { key: 'fat', value: 9, unit: 'g', assumed: false, warning: false }],
+  ['Vitamin D (D2 + D3) 10 mcg', { key: 'vitaminD', value: 10, unit: 'mcg', assumed: false, warning: false }],
+  ['Folate DFE 400 mcg', { key: 'folate', value: 400, unit: 'mcg', assumed: false, warning: false }],
+  ['Vit. B12 2.4 mcg', { key: 'vitaminB12', value: 2.4, unit: 'mcg', assumed: false, warning: false }],
+  ['Vit.B6 1.7 mg', { key: 'vitaminB6', value: 1.7, unit: 'mg', assumed: false, warning: false }],
+  ['Vit. C 60 mg', { key: 'vitaminC', value: 60, unit: 'mg', assumed: false, warning: false }],
+  ['Vit. A 900 mcg', { key: 'vitaminA', value: 900, unit: 'mcg', assumed: false, warning: false }],
+  ['Vit. E 15 mg', { key: 'vitaminE', value: 15, unit: 'mg', assumed: false, warning: false }],
+  ['Vit. K 80 mcg', { key: 'vitaminK', value: 80, unit: 'mcg', assumed: false, warning: false }],
+
+  ['Folate: 400 mcg folic acid', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folate 400 mcg (as folic acid)', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folate 400 mcg (400 mcg folic acid)', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folate 400 mcg (folic acid)', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folic acid (DFE): 200 mcg', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folate 680 mcg DFE (400 mcg folic acid)', { key: 'folate', value: 680, unit: 'mcg', assumed: false, warning: false }],
+  ['Folate 667 mcg DFE (400 mcg folic acid)', { key: 'folate', value: 667, unit: 'mcg', assumed: false, warning: false }],
+  ['Folate (as folic acid) 400 mcg DFE', { key: 'folate', value: 400, unit: 'mcg', assumed: false, warning: false }],
+
+  ['Sodium Less than 5mg 0%', { key: 'sodium', upperBound: 5, unit: 'mg' }],
+  ['Cholesterol Less than 5mg 1%', { key: 'cholesterol', upperBound: 5, unit: 'mg' }],
+  ['Trans Fat Less than 0.5 g 0%', { key: 'fatTrans', upperBound: 0.5, unit: 'g' }],
+  ['Protein Less than 1 g 10%', { key: 'protein', upperBound: 1, unit: 'g' }],
+  ['Sodium <5mg 0%', { key: 'sodium', upperBound: 5, unit: 'mg' }],
+  ['Total Fat Less than 65g 80g', 'ignored'],
+
+  ['Includes 10g Added Sugars 20%', { key: 'sugarsAdded', value: 10, unit: 'g', assumed: false, warning: false }],
+  ['Calories 250 Calories from Fat 110', { key: 'calories', value: 250, unit: 'kcal', assumed: false, warning: false }],
+  ['Protein / Protéines 20 g', { key: 'protein', value: 20, unit: 'g', assumed: false, warning: false }],
+  ['Fat -5 g', { key: 'fat', code: 'negative' }],
+  ['Vitamin A 4%', { key: 'vitaminA', code: 'percent_daily_value' }],
+  ['Fat approx 3 g', { key: 'fat', value: 3, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: false }],
+  ['Fat: ~3 g', { key: 'fat', value: 3, unit: 'g', status: 'estimated_from_comparable', assumed: false, warning: false }],
+  ['Protein 20 g 25 g', { key: 'protein', value: 20, unit: 'g', warning: 'multiple_values' }],
+];
+
 /** Older US Nutrition Facts panel, including the calorie-needs footer. */
 const OLD_US_LABEL = [
   'Nutrition Facts',
@@ -315,6 +435,20 @@ function assertLine(line, expected) {
     });
     return;
   }
+  if (expected.unknown) {
+    expect({
+      line,
+      observed,
+      unknown: record.unknownLabels,
+      codes: record.warnings.map((warning) => warning.code),
+    }).toEqual({
+      line,
+      observed: [],
+      unknown: [expected.unknown],
+      codes: ['unknown_label'],
+    });
+    return;
+  }
   if (expected.code) {
     const codes = record.warnings.filter((warning) => warning.code === expected.code && warning.key === expected.key);
     expect({ line, observed, codes: codes.length, unknown: record.unknownLabels }).toEqual({
@@ -331,6 +465,8 @@ function assertLine(line, expected) {
       upperBound: record.quality[expected.key]?.upperBound,
       status: record.quality[expected.key]?.status,
       unit: getNutrient(expected.key)?.unit,
+      unknown: record.unknownLabels,
+      warnings: record.warnings.map((warning) => warning.code),
     }).toEqual({
       line,
       observed: [expected.key],
@@ -338,6 +474,8 @@ function assertLine(line, expected) {
       upperBound: expected.upperBound,
       status: 'label_reported',
       unit: expected.unit,
+      unknown: [],
+      warnings: [],
     });
     return;
   }
@@ -377,6 +515,76 @@ describe('paste line golden', () => {
     expect(KJ_1000).not.toBe(1000);
     expect(LINES.length).toBeGreaterThanOrEqual(24 + 40);
     for (const [line, expected] of LINES) assertLine(line, expected);
+  });
+
+  it('maps the round-8 adversarial table exactly', () => {
+    expect(ADVERSARIAL.length).toBeGreaterThanOrEqual(40);
+    for (const [line, expected] of ADVERSARIAL) assertLine(line, expected);
+    const totalFiber = parseNutritionText('Total Fiber 4 g');
+    expect(totalFiber.values.fiber).toBe(4);
+    expect(totalFiber.values.fiberTotal).toBeNull();
+    expect(totalFiber.fiberMeaning).toBe('unknown');
+  });
+
+  it('keeps product rows under a % Daily Value header and a markdown table', () => {
+    const header = parseNutritionText([
+      'Nutrition Facts',
+      '% Daily Value*',
+      'Calories 250',
+      'Total Fat 8 g 12',
+      'Sodium 160 mg 7',
+    ].join('\n'));
+    expect(header.values.calories).toBe(250);
+    expect(header.values.fat).toBe(8);
+    expect(header.values.sodium).toBe(160);
+    expect(header.warnings.filter((warning) => warning.code === 'multiple_values').map((warning) => warning.key).sort())
+      .toEqual(['fat', 'sodium']);
+
+    const table = parseNutritionText([
+      '| Nutrient | Amount | % Daily Value |',
+      '| Total Fat | 8 g | 12 |',
+      '| Sodium | 160 mg | 7 |',
+      '| Protein | 20 g | 40 |',
+    ].join('\n'));
+    expect(table.values.fat).toBe(8);
+    expect(table.values.sodium).toBe(160);
+    expect(table.values.protein).toBe(20);
+    expect(table.warnings.filter((warning) => warning.code === 'multiple_values').map((warning) => warning.key).sort())
+      .toEqual(['fat', 'protein', 'sodium']);
+
+    const amount = parseNutritionText('Amount per serving % Daily Value\nProtein 20 g 25 g');
+    expect(amount.values.protein).toBe(20);
+    expect(amount.warnings.some((warning) => warning.code === 'multiple_values' && warning.key === 'protein')).toBe(true);
+  });
+
+  it('opens footer mode only on footnote wording or the 2,000 / 2,500 calorie row', () => {
+    const tells = parseNutritionText('The % Daily Value (DV) tells you how much a nutrient in a serving of food contributes to a daily diet.\nProtein 20 g 25 g');
+    expect(tells.values.protein).toBeNull();
+    expect(tells.warnings.some((warning) => warning.code === 'multiple_values')).toBe(false);
+
+    const tellsBare = parseNutritionText('The % Daily Value tells you how much a nutrient contributes.\nProtein 20 g 25 g');
+    expect(tellsBare.values.protein).toBeNull();
+    expect(tellsBare.warnings.some((warning) => warning.code === 'multiple_values')).toBe(false);
+
+    const higher = parseNutritionText('Your daily values may be higher or lower depending on your calorie needs.\nFat 12 g 18 g');
+    expect(higher.values.fat).toBeNull();
+    expect(higher.warnings.some((warning) => warning.code === 'multiple_values')).toBe(false);
+
+    const based = parseNutritionText('* Percent Daily Values are based on a 2,000 calorie diet.\nFat 12 g 18 g');
+    expect(based.values.fat).toBeNull();
+    expect(based.warnings.some((warning) => warning.code === 'multiple_values')).toBe(false);
+
+    const calrow = parseNutritionText('Calories: 2,000 2,500\nProtein 20 g 25 g');
+    expect(calrow.values.calories).toBe(2000);
+    expect(calrow.values.protein).toBeNull();
+    expect(calrow.warnings.some((warning) => warning.code === 'multiple_values' && warning.key === 'calories')).toBe(true);
+    expect(calrow.warnings.some((warning) => warning.code === 'multiple_values' && warning.key === 'protein')).toBe(false);
+
+    const before = parseNutritionText('Protein 20 g 25 g\n* Percent Daily Values are based on a 2,000 calorie diet.\nFat 12 g 18 g');
+    expect(before.values.protein).toBe(20);
+    expect(before.values.fat).toBeNull();
+    expect(before.warnings.some((warning) => warning.code === 'multiple_values' && warning.key === 'protein')).toBe(true);
+    expect(before.warnings.some((warning) => warning.code === 'multiple_values' && warning.key === 'fat')).toBe(false);
   });
 
   it('keeps an older US label calories value and ignores the daily-value footer', () => {

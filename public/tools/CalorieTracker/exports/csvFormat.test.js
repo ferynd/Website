@@ -3,6 +3,7 @@ import { LEGACY_V1_KEYS, V2_DETAIL_KEYS } from '../../../shared/nutrition/nutrie
 import {
   decideCsvFoodWrite,
   formatSavedFoodsCsv,
+  mapSavedFoodHeader,
   parseSavedFoodsCsv,
   savedFoodDocId,
   summarizeCsvImport,
@@ -183,6 +184,37 @@ describe('saved food CSV', () => {
     const agreedWrite = decideCsvFoodWrite(agreed.rows[0], null, 1, 't');
     expect(agreedWrite.doc.sodium).toBe(1200);
     expect(agreedWrite.doc).not.toHaveProperty('nutrientSchemaVersion');
+  });
+
+  it('rejects a folic acid header and keeps a folate DFE header', () => {
+    const rejected = parseSavedFoodsCsv(
+      '"name","quantity","Folic acid","Folic acid (DFE)","Folate (as folic acid)"\n"Pill","1","400","200","400"\n',
+      1,
+    );
+    expect(rejected.rows[0].fields.folate).toBeUndefined();
+    expect(rejected.unknownHeaders).toEqual([]);
+    expect(rejected.warnings.filter((warning) => warning.code === 'nondefensible_conversion' && warning.key === 'folate')
+      .map((warning) => warning.message)).toEqual([
+      'Folic acid is not converted to folate DFE (Folic acid).',
+      'Folic acid is not converted to folate DFE (Folic acid (DFE)).',
+      'Folic acid is not converted to folate DFE (Folate (as folic acid)).',
+    ]);
+    expect(mapSavedFoodHeader('Folic acid')).toBeNull();
+    expect(mapSavedFoodHeader('Folic acid (DFE)')).toBeNull();
+    expect(mapSavedFoodHeader('Folate (as folic acid)')).toBeNull();
+
+    const paren = parseSavedFoodsCsv('"name","quantity","Folate (DFE)"\n"Pill","1","680"\n', 1);
+    expect(paren.rows[0].fields.folate).toBe(680);
+    expect(paren.unknownHeaders).toEqual([]);
+    expect(paren.warnings.some((warning) => warning.code === 'nondefensible_conversion' || warning.code === 'unknown_header')).toBe(false);
+    const plain = parseSavedFoodsCsv('"name","quantity","Folate DFE"\n"Pill","1","400"\n', 1);
+    expect(plain.rows[0].fields.folate).toBe(400);
+    expect(mapSavedFoodHeader('Folate (DFE)')).toBe('folate');
+    expect(mapSavedFoodHeader('Folate DFE')).toBe('folate');
+    const written = decideCsvFoodWrite(paren.rows[0], null, 1, 't');
+    expect(written.doc.folate).toBe(680);
+    expect(written.doc).not.toHaveProperty('nutrientSchemaVersion');
+    expect(written.doc).not.toHaveProperty('nutrientMeta');
   });
 
   it('summarizes import warnings without repeating unknown headers', () => {

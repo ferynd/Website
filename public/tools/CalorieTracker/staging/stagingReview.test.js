@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { emptyStagedRecord } from '../../../shared/nutrition/nutrientRegistry.js';
 import { foodNameLeavesStagedDetail, withoutStagedDetail } from '../nutrition/nutrientRecord.js';
 import { state } from '../state/store.js';
-import { applyKeepBothRename, settleEmptyPaste } from '../ui/nutrientDetail.js';
+import { applyKeepBothRename, commitKeepBothRename, settleEmptyPaste } from '../ui/nutrientDetail.js';
 
 const BUTTONS = ['add-day-btn', 'save-food-item-btn', 'replace-day-btn', 'subtract-day-btn'];
 
@@ -108,6 +108,33 @@ describe('round 5 staging holes', () => {
     expect(kept.values.protein).toBe(6);
     expect(kept.values.fatSaturated).toBe(3);
     expect(foodNameLeavesStagedDetail(state.stagedDetailFoodName, input.value)).toBe(false);
+  });
+
+  it('Keep Both closes only after the save commits', async () => {
+    const documentStub = installDocument();
+    const input = documentStub.getElementById('food-item-input');
+    input.value = 'Yogurt';
+    state.stagedDetailFoodName = 'Yogurt';
+
+    expect(await commitKeepBothRename('Yogurt', 'Yogurt', async () => true)).toEqual({ status: 'name' });
+    expect(await commitKeepBothRename('  ', 'Yogurt', async () => true)).toEqual({ status: 'name' });
+    expect(input.value).toBe('Yogurt');
+    expect(state.stagedDetailFoodName).toBe('Yogurt');
+
+    let ran = false;
+    const saved = await commitKeepBothRename('Yogurt (v2)', 'Yogurt', async () => {
+      ran = true;
+      expect(input.value).toBe('Yogurt (v2)');
+      return true;
+    });
+    expect(ran).toBe(true);
+    expect(saved).toEqual({ status: 'saved' });
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v2)');
+
+    const failed = await commitKeepBothRename('Yogurt (v3)', 'Yogurt (v2)', async () => false);
+    expect(failed).toEqual({ status: 'failed' });
+    expect(input.value).toBe('Yogurt (v3)');
+    expect(state.stagedDetailFoodName).toBe('Yogurt (v3)');
   });
 
   it('a rename with no remembered food does not invent an anchor', () => {

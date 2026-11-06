@@ -11,7 +11,7 @@ import { db } from '../services/firebase.js';
 import { doc, runTransaction } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
 import { appId } from '../config.js';
 import { getStagedRecord, rememberStagedFoodName } from '../staging/parser.js';
-import { applyKeepBothRename } from '../ui/nutrientDetail.js';
+import { commitKeepBothRename } from '../ui/nutrientDetail.js';
 import { selectFoodItem } from './manager.js';
 import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import { LEGACY_V1_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
@@ -31,7 +31,7 @@ export async function saveFoodItemToDatabase() {
   const record = getStagedRecord();
   if (record.conflicts.length) {
     showMessage('Resolve conflicting nutrient values before saving.', true);
-    return;
+    return false;
   }
 
   if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
@@ -40,7 +40,7 @@ export async function saveFoodItemToDatabase() {
 
   if (!foodName) {
     handleBlankName(record);
-    return;
+    return false;
   }
 
   const existingFood = Array.from(state.savedFoodItems.values()).find(f => f.name.toLowerCase() === foodName.toLowerCase());
@@ -48,17 +48,17 @@ export async function saveFoodItemToDatabase() {
     const assessment = assessFoodSave(existingFood, record, resolveNutrientWriteVersion());
     if (assessment.newerSchema) {
       showMessage('This food was saved by a newer version — reload.', true);
-      return;
+      return false;
     }
     if (!assessment.identical) {
       showDuplicateDialog(existingFood, record, foodName);
-      return;
+      return false;
     }
     showMessage(`Food item "${foodName}" already exists with identical values. Ready to add to today's log!`, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
-    return;
+    return true;
   }
 
-  await processSaveFoodItem(foodName, record);
+  return Boolean(await processSaveFoodItem(foodName, record));
 }
 
 /**
@@ -232,14 +232,13 @@ function showDuplicateDialog(existingFood, record, foodName) {
     const currentName = document.getElementById('food-item-input').value.trim();
     showConfirmationModal(`Enter a new name for the current version (currently "${currentName}"):`,
       async (newName) => {
-        if (newName && newName.trim() && newName.trim().toLowerCase() !== currentName.toLowerCase()) {
-          closeDuplicateDialog();
-          // Update the visible name and the detail anchor together, then save.
-          applyKeepBothRename(newName);
-          await saveFoodItemToDatabase();
-        } else {
+        const outcome = await commitKeepBothRename(newName, currentName, () => saveFoodItemToDatabase());
+        if (outcome.status === 'name') {
           showMessage('Please enter a unique name.', true);
+          return;
         }
+        // A failed save leaves the comparison up. Replace already waits for commit.
+        if (outcome.status === 'saved') closeDuplicateDialog();
       },
       null, true, `${currentName} (v2)`
     );

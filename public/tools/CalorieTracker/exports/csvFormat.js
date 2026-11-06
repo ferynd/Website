@@ -51,8 +51,22 @@ for (const key of V2_KEYS) {
   for (const alias of def.legacyAliases || []) HEADER_MAP.set(compact(alias), key);
 }
 
+/**
+ * A header that names folic acid is not a folate DFE column unless it also
+ * says DFE and is not itself the folic-acid nutrient. There is no cell value
+ * here, so the header text is the whole check.
+ */
+function folicAcidHeaderRejected(trimmed) {
+  if (!/\bfolic\s+acid\b/i.test(trimmed)) return false;
+  const folateMeasure = /\bdfe\b/i.test(trimmed) && !/^\s*folic\s+acid\b/i.test(trimmed);
+  return !folateMeasure;
+}
+
 function describeHeader(raw) {
   const trimmed = String(raw ?? '').replace(/^\uFEFF/, '').trim();
+  if (folicAcidHeaderRejected(trimmed)) {
+    return { key: null, unit: null, rejected: 'nondefensible_conversion' };
+  }
   const packed = compact(trimmed);
   if (packed === 'name' || packed === 'quantity') return { key: packed, unit: null };
   if (packed === 'lastupdated') return { key: 'lastUpdated', unit: null };
@@ -126,11 +140,20 @@ export function parseSavedFoodsCsv(text, writeVersion = resolveNutrientWriteVers
   const rawHeaders = parseCsvRow(lines[0]);
   const mapped = rawHeaders.map((header) => {
     const described = describeHeader(header);
-    return { raw: header, key: described.key, unit: described.unit };
+    return { raw: header, key: described.key, unit: described.unit, rejected: described.rejected || null };
   });
   const missingName = !mapped.some((column) => column.key === 'name');
   for (const column of mapped) {
     if (!String(column.raw).trim()) continue;
+    if (column.rejected) {
+      warnings.push({
+        level: 'review',
+        code: column.rejected,
+        key: 'folate',
+        message: `Folic acid is not converted to folate DFE (${String(column.raw).trim()}).`,
+      });
+      continue;
+    }
     if (!column.key && !unknownHeaders.includes(column.raw.trim())) unknownHeaders.push(column.raw.trim());
   }
   if (unknownHeaders.length) {

@@ -10,6 +10,7 @@ import {
   getNutrient,
   LEGACY_V1_KEYS,
   lookupLabel,
+  noteKeepsParent,
   NUTRIENT_STATUSES,
   NUTRIENTS,
   RESERVED_DOC_FIELDS,
@@ -114,6 +115,28 @@ describe('nutrient registry', () => {
     expect(lookupLabel('Fiber (total dietary)')?.key).toBe('fiberTotal');
     expect(lookupLabel('Vitamin A (RAE)')?.key).toBe('vitaminA');
     expect(lookupLabel('Folate (DFE)')?.key).toBe('folate');
+    expect(lookupLabel('Total Carbs')?.key).toBe('carbs');
+    expect(lookupLabel('Total Fiber')?.key).toBe('fiber');
+    expect(lookupLabel('Total Fats')?.key).toBe('fat');
+    expect(lookupLabel('Total lipid (fat)')?.key).toBe('fat');
+    expect(lookupLabel('Vitamin D (D2 + D3)')?.key).toBe('vitaminD');
+    expect(lookupLabel('Folate DFE')?.key).toBe('folate');
+    expect(lookupLabel('Vit. B12')?.key).toBe('vitaminB12');
+    expect(lookupLabel('Vit.B6')?.key).toBe('vitaminB6');
+    expect(lookupLabel('Vitamin E (natural)')?.key).toBe('vitaminE');
+    expect(lookupLabel('Fat (mono)')).toBeNull();
+    expect(lookupLabel('Sugars (alcohols)')).toBeNull();
+    expect(noteKeepsParent('fat', 'mono')).toBe(false);
+    expect(noteKeepsParent('fat', 'total')).toBe(true);
+    expect(noteKeepsParent('fat', 'of which saturates')).toBe(false);
+    expect(noteKeepsParent('carbs', 'net')).toBe(false);
+    expect(noteKeepsParent('carbs', 'by difference')).toBe(true);
+    expect(noteKeepsParent('sugarsTotal', 'alcohols')).toBe(false);
+    expect(noteKeepsParent('fiber', 'soluble')).toBe(false);
+    expect(noteKeepsParent('omega3', 'fish oil')).toBe(false);
+    expect(noteKeepsParent('omega3', 'as fish oil')).toBe(true);
+    expect(noteKeepsParent('vitaminE', 'natural')).toBe(true);
+    expect(noteKeepsParent('protein', 'natural')).toBe(true);
     expect(lookupLabel('Omega-3 (ALA)')?.key).toBe('omega3ALA');
     expect(lookupLabel('Fat, saturated')?.key).toBe('fatSaturated');
     expect(lookupLabel('Fat, saturated')?.key).not.toBe('fat');

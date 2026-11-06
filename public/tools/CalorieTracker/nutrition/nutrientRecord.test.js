@@ -12,6 +12,7 @@ import {
   diaryFoodItem,
   foodNameLeavesStagedDetail,
   legacyPartialNote,
+  legacyPasteGapLines,
   readFoodNutrients,
   sumLegacyDayTotals,
   targetsFromStagedRecord,
@@ -263,6 +264,24 @@ describe('nutrient records', () => {
     expect(Object.keys(v1.doc)).toEqual(['name', 'quantity', ...LEGACY_V1_KEYS, 'lastUpdated']);
     expect(v1.doc.protein).toBe(0);
     expect(v1.doc.fat).toBe(3);
+    expect(v1.doc).not.toHaveProperty('nutrientSchemaVersion');
+    expect(v1.doc).not.toHaveProperty('nutrientMeta');
+  });
+
+  it('reports an upper bound instead of calling the legacy key missing', () => {
+    const record = parseNutritionText('Protein Less than 1 g\nTrans Fat Less than 0.5 g\nSodium Less than 5 mg\nFat: 3 g');
+    const lines = legacyPasteGapLines(record);
+    expect(lines[0]).toBe('Upper bound only: Protein < 1 g, Sodium < 5 mg, Trans Fat < 0.5 g.');
+    const missing = lines.find((line) => line.startsWith('No value detected'));
+    expect(missing).toBeTruthy();
+    expect(missing).not.toContain('Protein');
+    expect(missing).not.toContain('Sodium');
+    expect(missing).not.toContain('Trans Fat');
+    const v1 = buildFoodWrite(record, { writeVersion: 1, name: 'Soup', quantity: 1, lastUpdated: 't' });
+    expect(v1.doc.protein).toBe(0);
+    expect(v1.doc.sodium).toBe(0);
+    expect(v1.doc.fat).toBe(3);
+    expect(v1.doc).not.toHaveProperty('fatTrans');
     expect(v1.doc).not.toHaveProperty('nutrientSchemaVersion');
     expect(v1.doc).not.toHaveProperty('nutrientMeta');
   });

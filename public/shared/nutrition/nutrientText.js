@@ -12,6 +12,7 @@ import {
   mergeObservations,
   normalizeLabel,
   normalizeUnit,
+  noteKeepsParent,
   resolveAmount,
   emptyStagedRecord,
 } from './nutrientRegistry.js';
@@ -367,23 +368,60 @@ function fiberMeaningFor(key) {
   return null;
 }
 
-/** Folic acid is not DFE. A note that names it is review-only unless the value says DFE. */
+/**
+ * Folic acid is not DFE, wherever it sits on the line.
+ * Keep the amount only when the value itself says DFE.
+ */
 function folicAcidNeedsReview(label, valuePart) {
-  const text = normalizeLabel(label);
-  if (!/\bfolic\s+acid\b/.test(text)) return false;
+  const combined = `${label ?? ''} ${valuePart ?? ''}`;
+  if (!/\bfolic\s+acid\b/i.test(combined)) return false;
   return !/\bdfe\b/i.test(String(valuePart ?? ''));
 }
 
-const FOOTER_CONTEXT_RE = /\bdaily\s+values?\b|\b2,?000\s*calorie\b/i;
+/**
+ * Footnote sentences and the calorie-needs reference row. A bare "% Daily Value"
+ * header is the column title on a product label, not this footer.
+ */
+const FOOTER_NOTE_RE = /based on an?\s+2,?000\s+calorie\b|daily\s+values?\s+may\s+be\s+higher\s+or\s+lower|%\s*daily\s+value(?:\s*\(\s*dv\s*\))?\s+tells you\b/i;
 
-/** "Less than 65g 80g" is a footer row. One amount is an upper bound, like "<". */
+function amountNumbers(after, skipPercent) {
+  const re = new RegExp(NUMBER_CORE, 'g');
+  const numbers = [];
+  let match = re.exec(after);
+  while (match) {
+    const tail = after.slice(match.index + match[0].length);
+    if (!(skipPercent && /^\s*%/.test(tail))) numbers.push(Number(match[0].replace(/,/g, '')));
+    match = re.exec(after);
+  }
+  return numbers;
+}
+
+/** "Less than 65g 80g" is a footer row. A trailing % column is not a second amount. */
 function lessThanLine(line) {
   const match = String(line).match(/\bless\s+than\b/i);
   if (!match) return { action: 'none', line };
   const after = String(line).slice(match.index + match[0].length);
-  const numbers = after.match(new RegExp(NUMBER_CORE, 'g')) || [];
-  if (numbers.length >= 2) return { action: 'skip', line };
+  if (amountNumbers(after, true).length >= 2) return { action: 'skip', line };
   return { action: 'rewrite', line: String(line).replace(/\bless\s+than\b/i, '<') };
+}
+
+/** Words before the first amount. A sign or "<" is not a word. */
+function wordsBeforeNumber(valuePart) {
+  let text = String(valuePart ?? '').trim().replace(/^[<~≈]\s*/, '');
+  text = text.replace(/^[−–—-]+\s*/, '');
+  const match = text.match(new RegExp(NUMBER_CORE));
+  if (!match || match.index == null || match.index === 0) return '';
+  return text.slice(0, match.index).trim();
+}
+
+/** "Calories: 2,000 2,500" is the reference row that opens the footnote block. */
+function isCalorieReferenceRow(line) {
+  const split = splitLabelValue(line);
+  if (!split) return false;
+  const hit = lookupLabel(split.label);
+  if (hit?.key !== 'calories') return false;
+  const numbers = amountNumbers(split.valuePart, false);
+  return numbers.length >= 2 && numbers[0] === 2000 && numbers[1] === 2500;
 }
 
 function readConverted(hit, valuePart, number, split) {
@@ -490,6 +528,19 @@ export function parseNutritionText(text) {
       return;
     }
 
+    // "Fat: saturated 3g" puts the child word in the value, not the label.
+    // That must not fill the parent. A registered "Fat (saturated)" note still maps.
+    const prefix = wordsBeforeNumber(split.valuePart);
+    if (prefix && !noteKeepsParent(hit.key, prefix)) {
+      unknownLabels.push(source);
+      pushWarning(warnings, {
+        level: 'review',
+        code: 'unknown_label',
+        message: `Unknown nutrient label "${source}".`,
+      });
+      return;
+    }
+
     const explicitFiber = fiberMeaningFor(hit.key);
     if (explicitFiber) {
       if (fiberMeaning && fiberMeaning !== explicitFiber) {
@@ -555,7 +606,7 @@ export function parseNutritionText(text) {
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = stripDecorations(rawLine);
     if (!line) continue;
-    const opensFooter = FOOTER_CONTEXT_RE.test(line);
+    const opensFooter = FOOTER_NOTE_RE.test(line) || isCalorieReferenceRow(line);
     consumeLine(line);
     if (opensFooter) footerContext = true;
   }

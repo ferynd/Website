@@ -20,6 +20,7 @@ import {
   buildFoodWrite,
   diaryFoodItem,
   foodNameLeavesStagedDetail,
+  legacyPasteGapLines,
   targetsFromStagedRecord,
   v1StorageNotice,
   withoutStagedDetail,
@@ -29,8 +30,6 @@ import { renderNutrientDetail, setNutrientConflictsBlocked, settleEmptyPaste } f
 const PARSER_CONFIG = {
   DEFAULT_QUANTITY: 1
 };
-
-const WARN_MAX_SHOWN = 10;
 
 function getStagedQuantity() {
   return parseQty(document.getElementById('actual-quantity')?.value) || PARSER_CONFIG.DEFAULT_QUANTITY;
@@ -52,13 +51,7 @@ function renderParseFeedback(record) {
   for (const warning of record.warnings) {
     if (warning.level === 'review' && warning.code !== 'unknown_label') lines.push(warning.message);
   }
-  const absent = LEGACY_V1_KEYS.filter((key) => record.values[key] == null && !record.conflicts.some((conflict) => conflict.key === key));
-  if (absent.length > 0) {
-    const shown = absent.slice(0, WARN_MAX_SHOWN).map((key) => getNutrient(key)?.label || key).join(', ');
-    const overflow = absent.length - WARN_MAX_SHOWN;
-    const suffix = overflow > 0 ? ` (+ ${overflow} more)` : '';
-    lines.push(`No value detected for: ${shown}${suffix}. Review parsed nutrients before adding if this looks wrong.`);
-  }
+  lines.push(...legacyPasteGapLines(record));
 
   if (lines.length === 0 && !blocked) {
     warningEl.classList.add('hidden');
