@@ -75,7 +75,7 @@ AR-06 uploads **no** CI artifacts. Scripts print method/path/status/check name o
 
 ## Sensitive allowlist
 
-`.github/ci/sensitive-allowlist.json` entries need `file`, `pattern`, `owner`, `reason`, `reviewBy` (and optional exact `match`). Firebase web keys (`AIza…`) are public client identifiers (AGENTS.md) and are not scanned. The allowlist is seeded for the already-public admin email in rules fixtures and the synthetic OpenAI-shaped redaction fixture. New hits outside the allowlist fail CI; do not silently broaden patterns — ask before allowlisting real content.
+`.github/ci/sensitive-allowlist.json` entries need `file`, `pattern`, `owner`, `reason`, `reviewBy` (and optional exact `match`). Firebase web keys (`AIza…`) are public client identifiers (AGENTS.md). The allowlist permits **only the exact** Firebase `apiKey` string (any path, including bundles). Any other `AIza…` value (for example a leaked `GEMINI_API_KEY`) fails CI. The allowlist is also seeded for the already-public admin email in rules fixtures and the synthetic OpenAI-shaped redaction fixture. New hits outside the allowlist fail CI; do not silently broaden patterns — ask before allowlisting real content.
 
 ## Deploy smoke
 

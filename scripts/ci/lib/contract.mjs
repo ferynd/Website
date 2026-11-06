@@ -41,8 +41,11 @@ export function stageErrors(contract, workflows, now = new Date()) {
   return errors;
 }
 export function ownershipErrors(files, stages) {
-  return files.filter((file) => /\.test\.[cm]?[jt]sx?$/.test(file)).flatMap((file) => {
+  return files.filter((file) => /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(file)).flatMap((file) => {
     const matches = stages.filter((stage) => (stage.tests ?? []).some((pattern) => new RegExp(pattern).test(file)));
+    if (/\.spec\.[cm]?[jt]sx?$/.test(file) && matches.length === 0) {
+      return [`ownership: ${file} uses unsupported .spec naming (use .test.ts or register a stage)`];
+    }
     return matches.length === 1 ? [] : [`ownership: ${file} has ${matches.length} owners`];
   });
 }
@@ -66,22 +69,22 @@ export function quarantineErrors(quarantine, sources, stages, now = new Date()) 
   }
   for (const [file, source] of Object.entries(sources)) {
     const lines = source.split('\n');
-    for (let i = 0; i < lines.length; i++) {
-      // Ignore comments and quoted fixture strings; inspect test API call expressions.
-      const line = lines[i].trim();
-      if (/^(?:\/\/|\*|\/\*)/.test(line)) continue;
-      const call = /\b(?:it|test|describe|suite)(?:\s*\.\s*\w+(?:\([^;]*?\))?)*\s*\.\s*(only|skip|skipIf|todo|fails)\b|\b(xit|xdescribe)\s*\(/g;
-      for (const match of line.matchAll(call)) {
-        // A string literal containing a synthetic call isn't executable suppression.
-        const prefix = line.slice(0, match.index);
-        if (/['"`]/.test(prefix.replace(/\b(?:export|const|let|var|async)\b/g, ''))) continue;
-        if (match[1] === 'only') { errors.push(`only: ${file}:${i + 1}`); continue; }
-        const marker = lines[i - 1]?.match(/^\s*\/\/ ci-quarantine: ([\w-]+)\s*$/)?.[1];
-        const entry = quarantine.entries.find((item) => item.id === marker);
-        const owners = stages.filter((stage) => (stage.tests ?? []).some((pattern) => new RegExp(pattern).test(file)));
-        if (!entry || !entry.test.startsWith(`${file} > `) || !owners.some((stage) => stage.id === entry.stage)) errors.push(`quarantine-marker: ${file}:${i + 1}`);
-        else { used.add(entry.id); warnings.push(`quarantine: ${entry.id} ${file}`); }
-      }
+    // Blank strings and comments so fixture text like "it.skip(...)" does not match.
+    const scrubbed = source
+      .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/(^|[^:])\/\/.*$/gm, (m) => m.replace(/[^\n]/g, ' '))
+      .replace(/'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|`(?:\\.|[^`\\])*`/g, (m) => m.replace(/[^\n]/g, ' '));
+    const flat = scrubbed.replace(/\n/g, ' ');
+    const call = /\b(?:it|test|describe|suite)(?:\s*\.\s*\w+(?:\([^;]*?\))?)*\s*\.\s*(only|skip|skipIf|todo|fails)\b|\b(xit|xdescribe)\s*\(/g;
+    for (const match of flat.matchAll(call)) {
+      const abs = match.index ?? 0;
+      const lineNo = scrubbed.slice(0, abs).split('\n').length;
+      if (match[1] === 'only') { errors.push(`only: ${file}:${lineNo}`); continue; }
+      const marker = lines[lineNo - 2]?.match(/^\s*\/\/ ci-quarantine: ([\w-]+)\s*$/)?.[1];
+      const entry = quarantine.entries.find((item) => item.id === marker);
+      const owners = stages.filter((stage) => (stage.tests ?? []).some((pattern) => new RegExp(pattern).test(file)));
+      if (!entry || !entry.test.startsWith(`${file} > `) || !owners.some((stage) => stage.id === entry.stage)) errors.push(`quarantine-marker: ${file}:${lineNo}`);
+      else { used.add(entry.id); warnings.push(`quarantine: ${entry.id} ${file}`); }
     }
   }
   for (const id of ids) if (!used.has(id)) errors.push(`quarantine-orphan: ${id}`);

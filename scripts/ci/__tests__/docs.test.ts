@@ -33,4 +33,8 @@ describe('documentation checks', () => {
   it('still validates archive links while allowing historical code paths', () => {
     expect(docLinkErrors('backlogs/example-completed.md', '[Broken](gone.md) `app/gone.ts`', () => false, { checkCodePaths: false })).toEqual(['doc-link: backlogs/example-completed.md -> gone.md']);
   });
+  it('rejects documentation links that escape the repository', () => {
+    const errors = docLinkErrors('docs/a.md', '[x](../../../etc/passwd)', () => true);
+    expect(errors.some((e: string) => e.includes('doc-link'))).toBe(true);
+  });
 });

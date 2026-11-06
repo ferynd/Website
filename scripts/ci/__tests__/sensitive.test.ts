@@ -31,6 +31,15 @@ describe('sensitive content', () => {
     expect(unexpectedSensitive(hits, [{ file: 'tests/a.test.ts', pattern: 'email', match: 'other@example.com' }])).toHaveLength(1);
     expect(allowlistErrors([{ file: 'example' }])).toEqual(['allowlist: incomplete entry']);
   });
+  it('flags unmarked AIza keys and allows Firebase configs via allowlist', () => {
+    const key = ['AIza', 'SyREAL_LOOKING_KEY_123456789012345'].join('');
+    expect(scanSensitive('app/secret.ts', key)[0]?.pattern).toBe('google-api-key');
+    expect(scanSensitive('app/secret.ts', key.replace('SyREAL', 'SyFAKE_REAL'))).toEqual([]);
+    const hits = scanSensitive('app/tools/trip-cost/firebaseConfig.ts', key);
+    expect(unexpectedSensitive(hits, [{ file: 'app/tools/trip-cost/firebaseConfig.ts', pattern: 'google-api-key' }])).toEqual([]);
+    const built = scanSensitive('_next/static/chunks/app/tools/trip-cost/page.js', key);
+    expect(unexpectedSensitive(built, [{ file: 're:^_next/static/chunks/app/tools/trip-cost/.*\\.js$', pattern: 'google-api-key' }])).toEqual([]);
+  });
   it('rejects tracked secret files but permits the environment template', () => {
     for (const path of ['.env', '.env.local', '.dev.vars', 'key.pem', 'service-account-prod.json', '.wrangler/cache', '.open-next/worker.js', '.firebase/cache']) expect(secretFile(path)).toBe(true);
     expect(secretFile('.env.example')).toBe(false);

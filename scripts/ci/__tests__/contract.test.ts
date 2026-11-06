@@ -78,4 +78,13 @@ describe('test ownership and workflow policy', () => {
     expect(stageErrors(contract, { ...workflows, '.github/workflows/ci.yml': ci + '  browser-auth:\n    name: browser-auth\n' }, now)).toContain('stages: pending job browser-auth');
     expect(stageErrors(contract, workflows, new Date('2027-02-02')).join()).toContain('stages: invalid pending');
   });
+  it('rejects unregistered .spec test files', () => {
+    expect(ownershipErrors(['tests/api/foo.spec.ts'], [{ id: 'api-contract', tests: ['^tests/api/.*\\.test\\.ts$'] }])[0]).toMatch(/unsupported \.spec/);
+  });
+  it('detects multiline skip modifiers', () => {
+    const sources = { 'app/x.test.ts': "it\n  .skip('case', () => {});\n" };
+    const stages = [{ id: 'unit-core', tests: ['^app/.*\\.test\\.tsx?$'] }];
+    const { errors } = quarantineErrors({ version: 1, maxDays: 30, entries: [] }, sources, stages);
+    expect(errors.some((e: string) => e.startsWith('quarantine-marker:'))).toBe(true);
+  });
 });

@@ -1,8 +1,7 @@
 import path from 'node:path';
 
 export function hasBackLink(source) {
-  return /<a\b[^>]*\bhref\s*=\s*['"](?:\/(?:tools|games|trips)?\/?|\.\.\/)['"]/i.test(source)
-    || /<a\b[^>]*\bhref\s*=\s*['"](?:\/games\/?|\.\.\/)['"][^>]*>/i.test(source);
+  return /<a\b[^>]*\bhref\s*=\s*['"](?:\/(?:tools|games|trips)?\/?|\.\.\/)['"]/i.test(source);
 }
 
 /** Paths that are intentionally absent (deleted, policy-forbidden, or historical). */
@@ -23,6 +22,11 @@ export function docLinkErrors(file, source, exists, { checkCodePaths = true } = 
     const resolved = decoded.startsWith('/')
       ? decoded.slice(1)
       : path.posix.normalize(path.posix.join(path.posix.dirname(file), decoded));
+    // Reject links that escape the repository root.
+    if (resolved.startsWith('../') || path.posix.isAbsolute(resolved) || resolved === '..') {
+      errors.push(`${rule}: ${file} -> ${target}`);
+      return;
+    }
     if (KNOWN_ABSENT.has(resolved)) return;
     if (!exists(resolved)) errors.push(`${rule}: ${file} -> ${target}`);
   };
@@ -32,7 +36,6 @@ export function docLinkErrors(file, source, exists, { checkCodePaths = true } = 
   if (checkCodePaths) {
     for (const match of prose.matchAll(/`([^`\n]+)`/g)) {
       const target = match[1];
-      // Repo-root docs, or directory-prefixed source/docs paths with an extension.
       if (/^(?:(?:app|public|scripts|tests|docs|backlogs|reviews|\.github)\/[\w./-]+\.[\w-]+|(?:README|AGENTS|CLAUDE|ARCHITECTURE|SECURITY|BACKLOG|CONTRIBUTING|GROK_BOT)\.md)$/.test(target)) {
         if (KNOWN_ABSENT.has(target)) continue;
         if (!exists(target)) errors.push(`doc-path: ${file} -> ${target}`);
