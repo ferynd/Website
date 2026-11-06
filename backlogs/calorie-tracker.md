@@ -58,7 +58,7 @@ Dependency order: #59 and #61 Part A are archived. Critical path: **#62 → #67 
 ### #62: Build the shared research pipeline (deterministic sources + research packets)
 
 - [p] **Implement one research pipeline for bulk population, library research, and meal gaps.** Depends: #60 Part A, #61 Part A (both merged). No Part B is needed; #62 performs no production writes.
-  > in progress — paused uncommitted implementation exists in another worktree; preserve it on a WIP branch first, then reshape it per this item (vocabulary module, packet module, two-phase adapters, `awaiting_response`, IndexedDB job store, CLI packet commands). No commit or PR yet.
+  > in progress — vocabulary first PR slice pushed on working/calorie-tracker-62-vocabulary (variantVocabulary v1: 56 catalog states, 21 state slugs, 31 preparation terms); checks: tracker 867, root 1982, lint/build/ci:contract/ci:docs pass; PR #188 (under review). Rest of #62 follows after this slice merges (packet module, two-phase adapters, `awaiting_response`, IndexedDB job store, CLI packet commands). Paused implementation preserved on wip/calorie-tracker-62-paused-gemini (0dfecfd).
   - **Surfaces:** shared research modules under `public/shared/nutrition/` (job, adapters, validator, review, packet), a shared state/preparation vocabulary module (first PR slice, merged before the rest of #62), `scripts/nutrition/` CLI, [contract](../docs/nutrition/assistant-contracts.md).
   - **Accept:**
     - One job/validator/review path for bulk population, Ingredient Library research (#69), and missing-ingredient research (#66). Single-item jobs use the same adapters with a one-ID batch.
