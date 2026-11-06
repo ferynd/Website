@@ -455,3 +455,16 @@ describe('apply intake links to the recipe draft', () => {
     expect(result.recipe).not.toBe(recipe);
   });
 });
+
+import { PROFILE_INTAKE_STATES, INTAKE_ELIGIBLE_STATES as profileIntakeEligible } from '../lib/nutritionIntakeReview';
+it('all profile states are explicitly ineligible for legacy food intake', () => {
+  expect(PROFILE_INTAKE_STATES.size).toBe(5);
+  for (const state of PROFILE_INTAKE_STATES) expect(profileIntakeEligible.has(state)).toBe(false);
+});
+
+import { ingredientFixture } from './ingredientFixtures';
+it('excludes candidate ingredient refs from legacy intake as well as confirmed refs', async () => {
+  const { ref } = await ingredientFixture();
+  const recipe = makeRecipe(ingredient('profile', 'Chicken', 'candidate', null, { nutritionLink:{ ...UNLINKED_NUTRITION,status:'candidate',ingredientRef:ref } }));
+  expect(selectIntakeGroups(recipe, assessments([['profile','candidate-missing']]))).toEqual([]);
+});

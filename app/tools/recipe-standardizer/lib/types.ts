@@ -1,3 +1,4 @@
+import type {IngredientProfileRef} from '@/public/shared/nutrition/ingredientRefs.js';
 /* --- CONFIGURATION: recipe schema version --- */
 /** Recipe data contracts. Grams are authoritative; baked-equivalent annotations retain old-batch provenance. */
 
@@ -101,6 +102,7 @@ export const MAX_GRAMS_PER_UNIT = 10000;
 export type NutritionLinkStatus = 'unlinked' | 'candidate' | 'confirmed' | 'no-match';
 
 export interface NutritionLink {
+  ingredientRef?: IngredientProfileRef | null;
   status: NutritionLinkStatus;
   /** Tracker foodItems doc id — set for candidate/confirmed, null otherwise. */
   foodItemId: string | null;

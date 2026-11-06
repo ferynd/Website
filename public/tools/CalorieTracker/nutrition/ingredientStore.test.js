@@ -1,0 +1,55 @@
+import { it, expect, vi, beforeEach } from 'vitest';
+const flags = vi.hoisted(() => ({ enabled: true }));
+vi.mock('../../../shared/nutrition/capabilities.js', () => ({ get INGREDIENT_STORE_WRITES_ENABLED() { return flags.enabled; } }));
+import { createIngredientStore, RevisionConflictError, IngredientWritesDisabledError, IdentityKeyCollisionError, NeedsReviewError } from '../../../shared/nutrition/ingredientStore.js';
+import { fixture, fakePort, identity, dims } from './ingredientFixtures.js';
+import { matchIngredient } from '../../../shared/nutrition/ingredientMatch.js';
+import { overrideVariantId } from '../../../shared/nutrition/ingredientIds.js';
+import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
+let port, store, pending;
+beforeEach(() => { flags.enabled = true; port = fakePort(); pending = new Map(); store = createIngredientStore({ port, namespace: 'default-app-id', ownerUid: 'owner', cache: { getRevision: async () => ({ status: 'missing' }), putRevision: async () => { }, getHead: async () => ({ status: 'missing' }), putHead: async () => { }, putPendingSave: async (d) => pending.set(d.idempotencyKey, d), deletePendingSave: async (k) => pending.delete(k), listPendingSaves: async () => [...pending.values()] } }); });
+const payload = async (v = 10) => ({ identity, variant: { dims }, revisionDraft: (await fixture(v)).draft, confirmNew: true });
+it('concurrent creates converge and repeat saves are idempotent', async () => { const p = await payload(); let arrivals=0,release; const barrier=new Promise(resolve=>{release=resolve;}); port.beforeCommit=async()=>{if(++arrivals===2)release();await barrier;}; const [a, b] = await Promise.all([store.createIngredient(p), store.createIngredient(p)]); expect(a).toEqual(b); expect(port.docs.size).toBe(3); expect(port.attempts).toBeGreaterThanOrEqual(3); const draft = (await fixture(20)).draft; const r2 = await store.saveRevision({ variantId: a.variantId, baseRevision: 1, revisionDraft: draft }); expect(r2.revision).toBe(2); expect(await store.saveRevision({ variantId: a.variantId, baseRevision: 1, revisionDraft: draft })).toEqual(r2); expect(port.docs.size).toBe(4); });
+it('retains stale drafts and retries after explicit rebase', async () => { const r = await store.createIngredient(await payload()); await store.saveRevision({ variantId: r.variantId, baseRevision: 1, revisionDraft: (await fixture(20)).draft }); await expect(store.saveRevision({ variantId: r.variantId, baseRevision: 1, revisionDraft: (await fixture(30)).draft })).rejects.toBeInstanceOf(RevisionConflictError); expect(pending.size).toBe(1); const [saved] = await store.listPendingSaves(); const result = await store.retryPendingSave(saved.idempotencyKey, { ...saved.payload, baseRevision: 2 }); expect(result.revision).toBe(3); expect(pending.size).toBe(0); });
+it('all writes fail with flag off', async () => { flags.enabled = false; await expect(store.createIngredient(await payload())).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.saveRevision({})).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.addConversion({})).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.retireVariant('pv-test')).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.updateIdentity('pi-test', {})).rejects.toBeInstanceOf(IngredientWritesDisabledError); await expect(store.retryPendingSave('x')).rejects.toBeInstanceOf(IngredientWritesDisabledError); expect(port.docs.size).toBe(0); });
+it('detects an injected key collision and ambiguous aliases', async () => { await store.createIngredient(await payload()); const [key, doc] = [...port.docs].find(([p]) => p.includes('/ingredientIdentities/')); port.docs.set(key, { ...doc, identityKeyV1: 'collision' }); await expect(store.createIngredient(await payload())).rejects.toBeInstanceOf(IdentityKeyCollisionError); await expect(store.createIngredient({ ...await payload(), confirmNew: false })).rejects.toBeInstanceOf(NeedsReviewError); });
+it('resolves pinned refs without research, detects corrupt content', async () => { const ref = await store.createIngredient(await payload()); const research = vi.fn(); expect((await store.resolveRef(ref)).status).toBe('fresh'); expect(research).not.toHaveBeenCalled(); const key = [...port.docs.keys()].find(p => p.includes('/ingredientRevisions/')); port.docs.get(key).nutrients.protein = 999; expect((await store.resolveRef(ref)).status).toBe('corrupt'); });
+it('private override takes precedence without a private identity; pinned curated ref stays pinned', async () => { const f = await fixture(); const variantId = await overrideVariantId('nutrition-curated', 'chicken'); const draft = await buildRevisionDraft({ ...f.input, identityId: 'chicken', variantId }); const ref = await store.createIngredient({ identity, variant: { dims, overrides: { catalogId: 'nutrition-curated', variantId: 'chicken', revision: 1 } }, revisionDraft: draft, confirmNew: true }); expect([...port.docs.keys()].some(k => k.includes('/ingredientIdentities/'))).toBe(false); expect((await store.resolveEffectiveProfile({ ...f.ref, scope: 'curated', namespace: 'catalog:nutrition-curated', variantId: 'chicken' })).ref).toEqual(ref); });
+it('alias-only suggestions require review, exact compatible confirmed alias may reuse', async () => { const { ref } = await fixture(); const candidate = { canonicalName: 'Chicken', aliases: [{ text: 'chicken', kind: 'search' }], dims, ref }; const services = { privateSearch: async () => [candidate], curatedSearch: async () => [] }; expect((await matchIngredient({ name: 'chicken', dims }, services)).kind).toBe('candidates'); candidate.aliases[0].kind = 'confirmed'; expect((await matchIngredient({ name: 'chicken', dims }, services)).kind).toBe('exact'); expect((await matchIngredient({ name: 'chicken', dims: { state: 'cooked' } }, services)).kind).toBe('candidates'); });
+it('confirmed exact reference skips both searches and research', async () => {
+    const ref = await store.createIngredient(await payload());
+    const privateSearch = vi.fn(() => { throw new Error('Unexpected search'); });
+    const curatedSearch = vi.fn(() => { throw new Error('Unexpected search'); });
+    const research = vi.fn(() => { throw new Error('Unexpected research'); });
+    const result = await matchIngredient({ ref, name: 'chicken', dims }, { privateSearch, curatedSearch, confirmedRefs: [ref], research });
+    expect(result).toEqual({ kind: 'exact', ref });
+    expect((await store.resolveRef(result.ref)).revision.nutrients.protein).toBe(10);
+    expect(privateSearch).not.toHaveBeenCalled();
+    expect(curatedSearch).not.toHaveBeenCalled();
+    expect(research).not.toHaveBeenCalled();
+});
+it('failed atomic creates preserve a recoverable draft without partial documents', async () => {
+    port.failCommit = true;
+    await expect(store.createIngredient(await payload())).rejects.toThrow('Offline');
+    expect(port.docs.size).toBe(0);
+    expect(pending.size).toBe(1);
+    port.failCommit = false;
+    const [draft] = await store.listPendingSaves();
+    const ref = await store.retryPendingSave(draft.idempotencyKey);
+    expect(ref.revision).toBe(1);
+    expect(port.docs.size).toBe(3);
+    expect(pending.size).toBe(0);
+});
+it('keeps conversions immutable and validates the pinned source revision',async()=>{
+ const {buildConversion}=await import('../../../shared/nutrition/ingredientConversion.js');
+ const ref=await store.createIngredient(await payload());
+ const conversion=await buildConversion({variantRef:ref,kind:'piece',unit:'piece',amount:1,grams:100,state:'raw',source:{type:'manual'},confidence:1});
+ await store.addConversion(conversion);await store.addConversion(conversion);
+ expect([...port.docs.keys()].filter(p=>p.includes('/ingredientConversions/'))).toHaveLength(1);
+ await expect(store.addConversion({...conversion,variantRef:{...ref,contentHash:'sha256:'+'0'.repeat(64)}})).rejects.toThrow('mismatch');
+});
+it('private search caps pages and forwards an indexed token/cursor query',async()=>{
+ const query=vi.spyOn(port,'queryCollection');
+ await store.searchPrivate('Chicken',{pageSize:100,cursor:'previous'});
+ expect(query).toHaveBeenCalledWith(expect.stringContaining('/ingredientIdentities'),{arrayContains:['searchTokens','chicken'],orderById:true,limit:26,startAfterId:'previous'});
+});

@@ -1,3 +1,4 @@
+import {onIngredientAuthChange} from './services/ingredientSession.js';
 /**
  * @file main.js
  * @description Main application entry point. Imports all modules and wires up Firebase auth.
@@ -211,18 +212,14 @@ function setupAuthListener() {
       throw new Error('onAuth function not available');
     }
 
+    let authTransitions = Promise.resolve();
     authFunctions.onAuth((user) => {
       debugLog('AUTH-CHANGE', 'Authentication state changed', user ? `User: ${user.uid}` : 'No user');
 
-      try {
-        if (user) {
-          handleUserLoggedIn(user);
-        } else {
-          handleUserLoggedOut();
-        }
-      } catch (error) {
-        errorLog('AUTH-HANDLER', error, 'Error in auth state handler');
-      }
+      authTransitions = authTransitions.then(async () => {
+        if (user) await handleUserLoggedIn(user);
+        else await handleUserLoggedOut();
+      }).catch(error => errorLog('AUTH-HANDLER', error, 'Error in auth state handler'));
     });
 
     debugLog('AUTH-SETUP', '✅ Authentication listener set up successfully');
@@ -235,6 +232,7 @@ function setupAuthListener() {
 
 // ===== STEP 5: USER STATE HANDLERS =====
 async function handleUserLoggedIn(user) {
+    await onIngredientAuthChange(stateObject.userId, user.uid);
   debugLog('AUTH-LOGIN', 'Handling logged in user', user.uid);
 
   try {
@@ -255,6 +253,7 @@ async function handleUserLoggedIn(user) {
 }
 
 async function handleUserLoggedOut() {
+    await onIngredientAuthChange(stateObject.userId, null);
   debugLog('AUTH-LOGOUT', 'Handling logged out user');
 
   try {

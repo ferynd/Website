@@ -102,3 +102,13 @@ describe('saved shapes', () => {
     expect(parsed(raw).recipe.ingredients[0].equivalentBakeFactor).toBeNull();
   });
 });
+
+import { ingredientFixture } from './ingredientFixtures';
+it('round-trips a pinned ingredientRef without a foodItemId', async () => {
+  const { ref } = await ingredientFixture();
+  const raw = annotated();
+  first(raw).nutritionLink = { status:'confirmed', foodItemId:null, ingredientRef:ref };
+  const result = parsed(raw);
+  expect(parsed(result.recipe).recipe).toEqual(result.recipe);
+  expect(result.recipe.ingredients[0].nutritionLink.ingredientRef).toEqual(ref);
+});

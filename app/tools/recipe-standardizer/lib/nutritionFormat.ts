@@ -137,6 +137,7 @@ export const describeExclusionReason = (
     case 'candidate-missing': return `The suggested food "${name}" no longer exists in the Nutrition Tracker.`;
     case 'stale-missing': return `Needs review: the confirmed food "${name}" was deleted from the Nutrition Tracker.`;
     case 'stale-renamed': return `Needs review: the confirmed food was renamed from "${name}" to "${current}".`;
+    case 'profile-unavailable': return 'Profile unavailable offline';
     case 'stale-revised': return `Needs review: "${name}" changed in the Nutrition Tracker since you confirmed it.`;
     case 'unverifiable-target': return 'Confirmed without change tracking — re-confirm the link to count it.';
     case 'invalid-basis': return 'The grams in one Nutrition Tracker unit are missing or invalid — re-confirm the link.';

@@ -1,0 +1,5 @@
+import { it, expect } from 'vitest';
+import { buildConversion, toGrams } from '../../../shared/nutrition/ingredientConversion.js';
+import { fixture } from './ingredientFixtures.js';
+it.each([['household', 'cup', 200, 2, 400], ['piece', 'egg', 50, 2, 100], ['package', 'pack', 300, 1, 300], ['density', 'mL', 1.2, 100, 120]])('converts sourced %s quantities', async (kind, unit, value, quantity, grams) => { const { ref } = await fixture(); const c = await buildConversion({ variantRef: ref, kind, unit, amount: 1, ...(kind === 'density' ? { gramsPerMl: value } : { grams: value }), state: 'raw', source: { type: 'manual' }, confidence: 1 }); expect(toGrams(quantity, unit, null, [c], 'raw')).toEqual({ grams, conversionId: c.conversionId }); expect(toGrams(quantity, unit, null, [c], 'cooked')).toEqual({ error: 'state_mismatch' }); });
+it('refuses missing density instead of assuming water', () => { expect(toGrams(100, 'mL', null, [], 'raw')).toEqual({ error: 'missing_conversion' }); expect(toGrams(10, 'g', null, [], 'raw')).toEqual({ grams: 10, conversionId: null }); });

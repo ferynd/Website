@@ -28,6 +28,7 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth';
+import {clearProfileCache} from '@/public/shared/nutrition/profileCache.js';
 import AuthForm from '../trip-cost/components/AuthForm';
 import { auth } from './lib/firebase';
 import {
@@ -86,11 +87,17 @@ export function RecipeProvider({ children }: {
   const [listError, setListError] = useState<string | null>(null);
 
   useEffect(() => {
+    let previousUid: string | null = null;
+    let active = true;
+    let transitions = Promise.resolve();
     const unsub = onAuthStateChanged(auth, (nextUser) => {
-      setUser(nextUser);
-      setAuthLoading(false);
+      transitions = transitions.then(async () => {
+        if (!nextUser || previousUid !== nextUser.uid) await clearProfileCache();
+        previousUid = nextUser?.uid ?? null;
+        if (active) { setUser(nextUser); setAuthLoading(false); }
+      });
     });
-    return unsub;
+    return () => { active = false; unsub(); };
   }, []);
 
   useEffect(() => {
@@ -120,7 +127,7 @@ export function RecipeProvider({ children }: {
     savedRecipes,
     listError,
     listLoaded,
-    signOut: useCallback(() => firebaseSignOut(auth), []),
+    signOut: useCallback(async () => { await clearProfileCache(); await firebaseSignOut(auth); }, []),
     loadSavedRecipe: useCallback((recipeId: string) => loadRecipe(requireUid(), recipeId), [requireUid]),
     saveNew: useCallback((recipe: Recipe) => saveNewRecipe(requireUid(), recipe), [requireUid]),
     update: useCallback(

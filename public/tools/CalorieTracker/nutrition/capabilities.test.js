@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   NUTRIENT_V2_WRITES_ENABLED,
+  INGREDIENT_STORE_WRITES_ENABLED,
+  NUTRITION_CAPABILITIES,
   resolveNutrientWriteVersion,
 } from '../../../shared/nutrition/capabilities.js';
 
@@ -42,3 +44,5 @@ describe('nutrient write capability', () => {
     expect(hits).toEqual([]);
   });
 });
+
+it('ingredient writes stay off with no runtime override', () => { expect(INGREDIENT_STORE_WRITES_ENABLED).toBe(false); expect(NUTRITION_CAPABILITIES.ingredientStore).toEqual({schemaVersion:1,writes:false}); const source=readFileSync(resolve(REPO_ROOT,'public/shared/nutrition/capabilities.js'),'utf8'); expect(source).not.toMatch(/localStorage\.|process\.env|URLSearchParams/); });

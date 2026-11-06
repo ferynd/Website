@@ -92,3 +92,11 @@ describe('rankFoodsForQuery', () => {
     expect(rankFoodsForQuery('butter', foods)[0].name).toBe('Butter');
   });
 });
+
+import { suggestIngredientProfiles } from '../lib/nutritionMatch';
+import type { IngredientStore } from '@/public/shared/nutrition/ingredientStore.js';
+it('profile lookup stays a suggestion even for raw chicken vs cooked chicken', async () => {
+  const store = { searchPrivate: async () => ({ items:[{ canonicalName:'Cooked chicken',dims:{state:'cooked'} }],cursor:null }) } as unknown as IngredientStore;
+  const suggestions = await suggestIngredientProfiles('raw chicken',store);
+  expect(suggestions[0]).toMatchObject({ status:'candidate',needsUserReview:true });
+});

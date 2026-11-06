@@ -170,6 +170,10 @@ import Button from '@/components/Button';
 import Input from '@/components/Input';
 import { useRecipeTool } from '../RecipeContext';
 import { applyNutritionMatches, type MatchSummary } from '../lib/nutritionMatch';
+import {createRecipeIngredientStore} from '../lib/ingredientStore';
+import type {IngredientStore} from '@/public/shared/nutrition/ingredientStore.js';
+import type {ProfilesState} from '../lib/ingredientLink';
+import {refCacheKey} from '@/public/shared/nutrition/ingredientRefs.js';
 import { assessNutritionLink, confirmNutritionLink, summarizeLinkReview } from '../lib/nutritionLink';
 import {
   applyIntakeLinks,
@@ -276,6 +280,7 @@ const NO_SCALE: ScaleResult = { factor: 1, label: 'baseline' };
  */
 export default function RecipeWorkspace() {
   const {
+    user,
     savedRecipes,
     listError,
     listLoaded,
@@ -320,6 +325,23 @@ export default function RecipeWorkspace() {
     items: [],
     error: '',
   });
+  const [profiles, setProfiles] = useState<ProfilesState>(new Map());
+  const profileRefs = useMemo(() => (draft?.ingredients ?? []).flatMap(i => i.nutritionLink.ingredientRef ? [i.nutritionLink.ingredientRef] : []), [draft]);
+  useEffect(() => {
+    let cancelled = false;
+    let ingredientStore: IngredientStore | undefined;
+    setProfiles(new Map());
+    if (!user || !profileRefs.length) return;
+    const resolve = async () => {
+      const store = await createRecipeIngredientStore(user.uid);
+      ingredientStore = store;
+      if (cancelled) { store.close(); return; }
+      const entries = await Promise.all(profileRefs.map(async ref => [refCacheKey(ref),await store.resolveRef(ref)] as const));
+      if (!cancelled) setProfiles(new Map(entries));
+    };
+    void resolve().catch(() => { if (!cancelled) setProfiles(new Map(profileRefs.map(ref => [refCacheKey(ref),{status:'missing',ref}]))); });
+    return () => { cancelled = true; ingredientStore?.close(); };
+  }, [user, profileRefs]);
   // Only Overview (and its timeline) starts open — the working panels are a
   // tap away via the sticky nav, keeping the default view phone-concise.
   const [open, setOpen] = useState<Record<PanelKey, boolean>>({
@@ -958,7 +980,7 @@ export default function RecipeWorkspace() {
     };
     foodsRequestRef.current += 1;
     setFoods(readyFoods);
-    const freshResult = calculateExportNutrition(latestRecipe, readyFoods);
+    const freshResult = calculateExportNutrition(latestRecipe, readyFoods, profiles);
     const payloadResult = buildExportPayload(latestRecipe, freshResult, input.basis);
     if (!payloadResult.ok || verifyTrackerFoodFingerprint(
       exportFingerprintInput(payloadResult.payload),
@@ -1112,18 +1134,19 @@ export default function RecipeWorkspace() {
   const workflow = useMemo(() => (draft ? normalizeRecipeWorkflow(draft) : null), [draft]);
   const foodsById = useMemo(() => foods.status === 'ready' ? new Map(foods.items.map((food) => [food.id, food])) : null, [foods]);
   const linkAssessments = useMemo(() => new Map((draft?.ingredients ?? []).map((ingredient) => [
-    ingredient.id, assessNutritionLink(ingredient.nutritionLink, foodsById),
-  ])), [draft, foodsById]);
+    ingredient.id, assessNutritionLink(ingredient.nutritionLink, foodsById, profiles),
+  ])), [draft, foodsById, profiles]);
   const linkSummary = useMemo(() => summarizeLinkReview(linkAssessments.values()), [linkAssessments]);
   const nutrition = useMemo(
     () => (draft ? calculateRecipeNutrition({
       recipe: draft,
       foods,
+      profiles,
       scale,
     }) : null),
-    [draft, foods, scale],
+    [draft, foods, scale, profiles],
   );
-  const exportResult = useMemo(() => (draft ? calculateExportNutrition(draft, foods) : null), [draft, foods]);
+  const exportResult = useMemo(() => (draft ? calculateExportNutrition(draft, foods, profiles) : null), [draft, foods, profiles]);
   const exportStatuses = useMemo(
     () => (draft && exportResult ? deriveExportStatuses(draft, currentId, exportResult, foods) : []),
     [draft, currentId, exportResult, foods],

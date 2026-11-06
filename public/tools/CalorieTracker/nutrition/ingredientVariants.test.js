@@ -1,0 +1,4 @@
+import { it, expect } from 'vitest';
+import { compareVariants, normalizeVariantDims } from '../../../shared/nutrition/ingredientVariants.js';
+it.each([[{ state: 'raw' }, { state: 'cooked' }], [{ drained: 'drained' }, { drained: 'undrained' }], [{ leanPercent: 90, fatPercent: 10 }, { leanPercent: 80, fatPercent: 20 }], [{ fortification: 'fortified' }, { fortification: 'unfortified' }], [{ salt: 'salted' }, { salt: 'unsalted' }], [{ brand: { gtin: '123' } }, { brand: { gtin: '456' } }]])('never conflates incompatible variants %j %j', (a, b) => expect(compareVariants(a, b)).toBe('conflict'));
+it('specified vs unspecified needs review', () => { expect(compareVariants({}, { state: 'raw' })).toBe('underspecified'); expect(compareVariants({ state: 'raw' }, { state: 'raw' })).toBe('exact'); expect(() => normalizeVariantDims({ fatPercent: 101 })).toThrow(); expect(() => normalizeVariantDims({ salt: 'invalid' })).toThrow(); });

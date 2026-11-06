@@ -114,8 +114,145 @@ service cloud.firestore {
     // `{appId}` segment, so a future per-user tool placed under
     // /artifacts/{anything}/users/{uid}/** does not become writable before
     // its own validation rules are designed (AR-02/F-138).
-    match /artifacts/default-app-id/users/{userId}/{document=**} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+
+    // #61 source only, pending Part B deployment. The named first segment
+    // prevents recursive grants from bypassing the immutable collections.
+    match /artifacts/default-app-id/users/{userId}/{collectionName}/{subpath=**} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && !(collectionName in [
+        'ingredientIdentities', 'ingredientVariants', 'ingredientRevisions', 'ingredientConversions'
+      ]);
+    }
+
+    function ingredientBase(d, userId) {
+      return isOwner(userId) && d.schemaVersion == 1 && d.ownerUid == userId;
+    }
+    function ingredientHash(hash) { return hash is string && hash.matches('sha256:[a-f0-9]{64}'); }
+    function ingredientVariant(userId, variantId) {
+      return /databases/$(database)/documents/artifacts/default-app-id/users/$(userId)/ingredientVariants/$(variantId);
+    }
+    function ingredientRevision(userId, revisionId) {
+      return /databases/$(database)/documents/artifacts/default-app-id/users/$(userId)/ingredientRevisions/$(revisionId);
+    }
+    match /artifacts/default-app-id/users/{userId}/ingredientIdentities/{identityId} {
+      function validIdentity(d) {
+        return ingredientBase(d, userId) && d.identityId == identityId
+          && identityId.matches('pi-[a-f0-9]{20}')
+          && d.keys().hasOnly(['schemaVersion','ownerUid','identityId','identityKeyV1','canonicalName','category','kind','aliases','searchTokens','createdAt','updatedAt','retiredAt'])
+          && d.identityKeyV1 is string && d.identityKeyV1.size() <= 1000
+          && d.canonicalName is string && d.canonicalName.size() > 0 && d.canonicalName.size() <= 200
+          && d.category is string && d.kind is string
+          && d.aliases is list && d.aliases.size() <= 64
+          && d.searchTokens is list && d.searchTokens.size() <= 64;
+      }
+      allow create: if validIdentity(request.resource.data)
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && request.resource.data.retiredAt == null;
+      allow update: if validIdentity(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['canonicalName','aliases','searchTokens','updatedAt','retiredAt'])
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.retiredAt == null || request.resource.data.retiredAt is timestamp);
+      allow delete: if false;
+    }
+    match /artifacts/default-app-id/users/{userId}/ingredientVariants/{variantId} {
+      function validVariant(d) {
+        return ingredientBase(d,userId) && d.variantId == variantId
+          && d.keys().hasOnly(['schemaVersion','ownerUid','identityId','variantId','variantKeyV1','dims','overrides','headRevision','headRevisionId','headContentHash','createdAt','updatedAt','retiredAt'])
+          && d.identityId is string && d.variantKeyV1 is string && d.variantKeyV1.size() <= 4000
+          && d.dims is map && d.dims.size() <= 12
+          && d.headRevision is int && d.headRevision >= 1
+          && d.headRevisionId == variantId + '~r' + string(d.headRevision)
+          && ingredientHash(d.headContentHash);
+      }
+      function validLink(d) {
+        return d.overrides != null
+          ? (variantId.matches('ov-[a-f0-9]{20}') && d.overrides is map
+            && d.overrides.keys().hasOnly(['catalogId','variantId','revision'])
+            && d.overrides.catalogId == 'nutrition-curated'
+            && d.overrides.variantId is string && d.overrides.variantId.matches('[a-z0-9]+(-[a-z0-9]+)*')
+            && d.overrides.revision is int && d.overrides.revision >= 1)
+          : (variantId.matches('pv-[a-f0-9]{20}') && d.identityId.matches('pi-[a-f0-9]{20}')
+            && existsAfter(/databases/$(database)/documents/artifacts/default-app-id/users/$(userId)/ingredientIdentities/$(d.identityId)));
+      }
+      function validHead(d) {
+        let revision = getAfter(ingredientRevision(userId,d.headRevisionId)).data;
+        return revision.variantId == variantId && revision.identityId == d.identityId
+          && revision.ownerUid == userId && revision.revision == d.headRevision
+          && revision.contentHash == d.headContentHash;
+      }
+      allow create: if validVariant(request.resource.data) && validLink(request.resource.data)
+        && request.resource.data.headRevision == 1 && validHead(request.resource.data)
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && request.resource.data.retiredAt == null;
+      allow update: if validVariant(request.resource.data)
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.retiredAt == null || request.resource.data.retiredAt is timestamp)
+        && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['headRevision','headRevisionId','headContentHash','updatedAt'])
+            && request.resource.data.headRevision == resource.data.headRevision + 1
+            && validHead(request.resource.data))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['retiredAt','updatedAt'])
+            && request.resource.data.headRevision == resource.data.headRevision
+            && request.resource.data.headRevisionId == resource.data.headRevisionId
+            && request.resource.data.headContentHash == resource.data.headContentHash)
+        );
+      allow delete: if false;
+    }
+    match /artifacts/default-app-id/users/{userId}/ingredientRevisions/{revisionId} {
+      function validSupersedes(d) {
+        let previousId = d.variantId + '~r' + string(d.revision - 1);
+        return d.revision == 1 ? d.supersedes == null : (
+          d.supersedes is map && d.supersedes.keys().hasOnly(['revision','revisionId','contentHash'])
+          && d.supersedes.revision == d.revision - 1 && d.supersedes.revisionId == previousId
+          && d.supersedes.contentHash == get(ingredientRevision(userId,previousId)).data.contentHash
+          && get(ingredientVariant(userId,d.variantId)).data.headRevision == d.revision - 1
+        );
+      }
+      function validRevision(d) {
+        let head = getAfter(ingredientVariant(userId,d.variantId)).data;
+        return ingredientBase(d,userId)
+          && d.keys().hasOnly(['schemaVersion','ownerUid','identityId','variantId','basis','nutrients','nutrientMeta','fieldProvenance','sources','basedOn','supersedes','contentHash','revision','revisionId','idempotencyKey','createdAt'])
+          && d.revision is int && d.revision >= 1 && d.revisionId == revisionId
+          && revisionId == d.variantId + '~r' + string(d.revision)
+          && d.identityId == head.identityId && head.headRevisionId == revisionId
+          && head.headRevision == d.revision && head.headContentHash == d.contentHash
+          && ingredientHash(d.contentHash) && d.idempotencyKey is string && d.idempotencyKey.size() <= 100
+          && d.basis is map && d.basis.keys().hasOnly(['kind','state'])
+          && d.basis.kind == 'per_100g_edible' && d.basis.state is string
+          && d.nutrients is map && d.nutrients.size() <= 68
+          && d.nutrientMeta is map && d.nutrientMeta.registryVersion == 2
+          && d.fieldProvenance is map && d.fieldProvenance.size() <= 68
+          && d.sources is map && d.sources.size() <= 64
+          && d.createdAt == request.time && validSupersedes(d);
+      }
+      allow create: if validRevision(request.resource.data);
+      allow update, delete: if false;
+    }
+    match /artifacts/default-app-id/users/{userId}/ingredientConversions/{conversionId} {
+      function validConversion(d) {
+        return ingredientBase(d,userId) && d.conversionId == conversionId && conversionId.matches('pc-[a-f0-9]{20}')
+          && d.keys().hasOnly(['schemaVersion','ownerUid','conversionId','variantRef','kind','unit','unitQualifier','amount','grams','gramsPerMl','state','source','confidence','range','supersedes','createdAt'])
+          && d.variantRef is map && d.variantRef.refVersion == 1 && d.variantRef.scope == 'private'
+          && d.variantRef.namespace == 'default-app-id'
+          && d.variantRef.keys().hasOnly(['refVersion','scope','namespace','identityId','variantId','revision','revisionId','contentHash'])
+          && d.variantRef.revision is int && d.variantRef.revision >= 1
+          && d.variantRef.revisionId == d.variantRef.variantId + '~r' + string(d.variantRef.revision)
+          && getAfter(ingredientRevision(userId,d.variantRef.revisionId)).data.variantId == d.variantRef.variantId
+          && getAfter(ingredientRevision(userId,d.variantRef.revisionId)).data.identityId == d.variantRef.identityId
+          && existsAfter(ingredientVariant(userId,d.variantRef.variantId))
+          && getAfter(ingredientRevision(userId,d.variantRef.revisionId)).data.contentHash == d.variantRef.contentHash
+          && d.kind in ['household','density','piece','package'] && d.unit is string && d.unit.size() <= 80
+          && d.amount is number && d.amount > 0 && d.amount <= 1000000
+          && (d.kind == 'density' ? (d.unit == 'mL' && d.gramsPerMl is number && d.gramsPerMl > 0 && d.gramsPerMl <= 100)
+             : (d.grams is number && d.grams > 0 && d.grams <= 1000000))
+          && d.state is string && d.source is map && d.source.size() <= 20
+          && d.source.type in ['fdc','label','manufacturer','manual','comparable','legacy_food','curated_catalog']
+          && d.confidence is number && d.confidence >= 0 && d.confidence <= 1
+          && d.createdAt == request.time;
+      }
+      allow create: if validConversion(request.resource.data);
+      allow update, delete: if false;
     }
 
     /* ==================================================================================

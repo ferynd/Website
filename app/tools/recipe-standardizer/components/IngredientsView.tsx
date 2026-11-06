@@ -44,6 +44,11 @@ const VIEW_COPY = {
 
 const BADGE_STYLES: Record<LinkAssessment['state'], string> = {
   confirmed: 'bg-success/10 text-success',
+  'confirmed-profile': 'bg-success/10 text-success',
+  'profile-newer-available': 'bg-success/10 text-success',
+  'profile-missing': 'bg-error/10 text-error',
+  'profile-unavailable': 'bg-error/10 text-error',
+  'profile-corrupt': 'bg-error/10 text-error',
   'confirmed-legacy': 'bg-success/10 text-success',
   'confirmed-unverified': 'bg-surface-1 border border-border text-text-2',
   candidate: 'bg-warning/10 text-warning',
@@ -55,6 +60,11 @@ const BADGE_STYLES: Record<LinkAssessment['state'], string> = {
   unlinked: 'bg-surface-1 border border-border text-text-3',
 };
 const BADGE_LABELS = {
+  'confirmed-profile': 'Pinned ingredient profile',
+  'profile-newer-available': 'Pinned profile (newer available)',
+  'profile-missing': 'Profile missing',
+  'profile-unavailable': 'Profile unavailable offline',
+  'profile-corrupt': 'Profile integrity check failed',
   'candidate-missing': 'candidate missing',
   'stale-missing': 'review: deleted',
   'stale-renamed': 'review: renamed',
@@ -135,9 +145,14 @@ function nutritionBadgeLabel(state: LinkAssessment['state'], matchedName: string
 function NutritionBadgeIcon({ state }: { state: LinkAssessment['state']; }) {
   switch (state) {
     case 'confirmed':
+    case 'confirmed-profile':
+    case 'profile-newer-available':
     case 'confirmed-legacy':
     case 'confirmed-unverified':
       return <BadgeCheck size={11} />;
+    case 'profile-missing':
+    case 'profile-unavailable':
+    case 'profile-corrupt':
     case 'stale-missing':
     case 'stale-renamed':
     case 'stale-revised':

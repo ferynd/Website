@@ -1,0 +1,32 @@
+import { it, expect, vi, afterEach } from 'vitest';
+import { openProfileCache, clearProfileCache } from '../../../shared/nutrition/profileCache.js';
+import { memoryIndexedDb } from './memoryIndexedDb.js';
+import { fixture } from './ingredientFixtures.js';
+afterEach(() => vi.useRealTimers());
+it('owner mismatch wipes all stores and signout deletes DB; old handles cannot repopulate', async () => { const idb = memoryIndexedDb(), a = await openProfileCache({ ownerUid: 'a', idb }); const { ref, revision } = await fixture(); await a.putRevision(ref, revision); await a.putPendingSave({ idempotencyKey: 'draft' }); const b = await openProfileCache({ ownerUid: 'b', idb }); expect((await b.getRevision(ref)).status).toBe('missing'); expect(await b.listPendingSaves()).toEqual([]); await a.putRevision(ref, revision); expect((await b.getRevision(ref)).status).toBe('missing'); await clearProfileCache({ idb }); expect(idb.databases.size).toBe(0); });
+it('keys include namespace and revision; bounded LRU retains outbox', async () => { const idb = memoryIndexedDb(), cache = await openProfileCache({ ownerUid: 'owner', idb, limits: { revisions: 1, conversions: 1 } }); const a = await fixture(10), b = await fixture(20); b.ref = { ...b.ref, revision: 2, revisionId: b.ref.variantId + '~r2' }; b.revision = { ...b.revision, revision: 2, revisionId: b.ref.revisionId }; await cache.putPendingSave({ idempotencyKey: 'draft', payload: 'keep' }); await cache.putRevision(a.ref, a.revision); await cache.putRevision(b.ref, b.revision); expect((await cache.getRevision(a.ref)).status).toBe('missing'); expect((await cache.getRevision({ ...b.ref, namespace: 'other' })).status).toBe('missing'); expect((await cache.getRevision(b.ref)).status).toBe('fresh'); expect(await cache.listPendingSaves()).toHaveLength(1); await cache.putConversion('default-app-id', { conversionId: 'a' }); await cache.putConversion('default-app-id', { conversionId: 'b' }); expect(await cache.getConversions('default-app-id')).toHaveLength(1); cache.close(); });
+it('heads expire and revalidate without changing pinned revisions', async () => { vi.useFakeTimers(); const idb = memoryIndexedDb(), cache = await openProfileCache({ ownerUid: 'owner', idb }); const { ref } = await fixture(); await cache.putHead(ref, { headRevision: 1 }); vi.setSystemTime(Date.now() + 86400001); expect((await cache.getHead(ref)).status).toBe('stale'); await cache.revalidate(async () => ({ headRevision: 2 })); expect((await cache.getHead(ref)).head.headRevision).toBe(2); expect((await cache.getHead(ref)).status).toBe('fresh'); cache.close(); });
+it('drops corrupt data, uses no zero fallback, and disables unavailable IDB', async () => { const idb = memoryIndexedDb(), cache = await openProfileCache({ ownerUid: 'owner', idb }); const { ref, revision } = await fixture(); await cache.putRevision(ref, revision); idb.databases.get('nutrition-profile-cache-v1').get('revisions').values().next().value.revision.nutrients.protein = 999; expect((await cache.getRevision(ref)).status).toBe('corrupt'); expect((await cache.getRevision(ref)).status).toBe('missing'); const disabled = await openProfileCache({ ownerUid: 'owner', idb: null }); expect(await disabled.getRevision(ref)).toEqual({ status: 'missing' }); cache.close(); });
+it('refreshes known heads when the browser reconnects', async () => {
+    const target = new EventTarget();
+    vi.stubGlobal('addEventListener', target.addEventListener.bind(target));
+    vi.stubGlobal('removeEventListener', target.removeEventListener.bind(target));
+    const idb = memoryIndexedDb(), cache = await openProfileCache({ ownerUid: 'owner', idb });
+    const { ref } = await fixture();
+    await cache.putHead(ref, { headRevision: 1 });
+    const fetcher = vi.fn(async () => ({ headRevision: 2 }));
+    await cache.revalidate(fetcher);
+    target.dispatchEvent(new Event('online'));
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    cache.close();
+    vi.unstubAllGlobals();
+});
+it('enforces total estimated JSON size without evicting pending drafts', async () => {
+    const idb = memoryIndexedDb(), cache = await openProfileCache({ ownerUid: 'owner', idb, limits: { bytes: 50 } });
+    const { ref, revision } = await fixture();
+    await cache.putPendingSave({ idempotencyKey: 'keep', payload: 'x'.repeat(1000) });
+    await cache.putRevision(ref, revision);
+    expect((await cache.getRevision(ref)).status).toBe('missing');
+    expect(await cache.listPendingSaves()).toHaveLength(1);
+    cache.close();
+});
