@@ -2,7 +2,7 @@
  * Pure saved-food CSV. Version 1 keeps today's columns and omits empty cells.
  * Version 2 appends detail keys and a nutrientMeta JSON column.
  */
-import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
+import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import {
   LEGACY_V1_KEYS,
   V2_DETAIL_KEYS,
@@ -10,7 +10,7 @@ import {
   emptyStagedRecord,
   getNutrient,
   lookupLabel,
-} from '../../shared/nutrition/nutrientRegistry.js';
+} from '../../../shared/nutrition/nutrientRegistry.js';
 
 const LEGACY_HEADERS = ['name', 'quantity', 'lastUpdated', ...LEGACY_V1_KEYS];
 

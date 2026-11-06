@@ -24,7 +24,7 @@ import {
 } from '../exercise/met.js';
 import { computeTrendDirection, classifyTargetSource, resolveWeightKg } from './nutrientHelpers.js';
 import { renderDayNutrientDetail } from './nutrientDetail.js';
-import { NUTRITION_CAPABILITIES } from '../../shared/nutrition/capabilities.js';
+import { NUTRITION_CAPABILITIES } from '../../../shared/nutrition/capabilities.js';
 import { formatNutrientName } from '../utils/ui.js';
 import { getPastDate, formatDate } from '../utils/time.js';
 import { initializeChartControls } from './chart.js';

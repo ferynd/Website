@@ -10,7 +10,7 @@ import { fetchTargets, fetchAllEntries, db } from '../services/firebase.js';
 import { allNutrients } from '../constants.js';
 import { appId } from '../config.js';
 import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
-import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
+import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import { formatSavedFoodsCsv, parseSavedFoodsCsv } from './csvFormat.js';
 import { NewerSchemaError, buildFoodWrite } from '../nutrition/nutrientRecord.js';
 

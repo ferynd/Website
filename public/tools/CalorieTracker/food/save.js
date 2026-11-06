@@ -12,8 +12,8 @@ import { doc, setDoc } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-
 import { appId } from '../config.js';
 import { getStagedRecord } from '../staging/parser.js';
 import { selectFoodItem } from './manager.js';
-import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
-import { LEGACY_V1_KEYS, getNutrient } from '../../shared/nutrition/nutrientRegistry.js';
+import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
+import { LEGACY_V1_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
 import { NewerSchemaError, assessFoodSave, buildFoodWrite, readFoodNutrients, targetsFromStagedRecord, v1StorageNotice } from '../nutrition/nutrientRecord.js';
 
 const SAVE_CONFIG = {

@@ -3,7 +3,7 @@
  * food document: name, quantity, 24 numbers, lastUpdated. No coverage field
  * is stored on day documents.
  */
-import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
+import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
 import {
   LEGACY_V1_KEYS,
   V2_DETAIL_KEYS,
@@ -13,7 +13,7 @@ import {
   projectToV1,
   readNutrientFields,
   toV2Fields,
-} from '../../shared/nutrition/nutrientRegistry.js';
+} from '../../../shared/nutrition/nutrientRegistry.js';
 
 export class NewerSchemaError extends Error {
   constructor() {

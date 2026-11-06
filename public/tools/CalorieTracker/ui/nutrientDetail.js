@@ -1,7 +1,7 @@
 /**
  * Collapsed nutrient-detail panels. Text is assigned with textContent only.
  */
-import { getNutrient, keysForGroup } from '../../shared/nutrition/nutrientRegistry.js';
+import { getNutrient, keysForGroup } from '../../../shared/nutrition/nutrientRegistry.js';
 import { deriveDayDetailTotals, sumLegacyDayTotals } from '../nutrition/nutrientRecord.js';
 import { formatNutrientWithStatus } from './nutrientHelpers.js';
 

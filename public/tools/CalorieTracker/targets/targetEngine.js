@@ -20,7 +20,7 @@ import {
   cunningham,
 } from './nutritionReferences.js';
 import { WEIGHT_FRESHNESS_THRESHOLD_DAYS } from '../constants.js';
-import { targetableKeys } from '../../shared/nutrition/nutrientRegistry.js';
+import { targetableKeys } from '../../../shared/nutrition/nutrientRegistry.js';
 
 // ---------------------------------------------------------------------------
 // Constants

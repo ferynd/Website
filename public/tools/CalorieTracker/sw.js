@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nutritrack-v2';
+const CACHE_NAME = 'nutritrack-v3';
 
 const APP_SHELL = [
   './',
@@ -36,8 +36,15 @@ const APP_SHELL = [
   './ui/dashboard.js',
   './ui/modals.js',
   './ui/nutrientHelpers.js',
+  './ui/nutrientDetail.js',
+  './ui/dateRange.js',
   './utils/time.js',
   './utils/ui.js',
+  './nutrition/nutrientRecord.js',
+  './exports/csvFormat.js',
+  '/shared/nutrition/nutrientRegistry.js',
+  '/shared/nutrition/capabilities.js',
+  '/shared/nutrition/nutrientText.js',
 ];
 
 const EXTERNAL_RUNTIME = [
@@ -97,6 +104,25 @@ self.addEventListener('fetch', (event) => {
           })
           .catch(() => cached || new Response('', { status: 503 }))
       )
+    );
+    return;
+  }
+
+  const path = url.pathname;
+  const appShell = event.request.mode === 'navigate'
+    || path.endsWith('/')
+    || /\.(?:js|mjs|html)$/i.test(path);
+  if (appShell) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request).then((cached) => cached || new Response('', { status: 503 })))
     );
     return;
   }

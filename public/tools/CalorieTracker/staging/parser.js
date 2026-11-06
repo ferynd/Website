@@ -11,9 +11,9 @@ import { clearStagingArea, updateFoodItemsList, getCurrentDailyEntry } from '../
 import { showConfirmationModal } from '../ui/modals.js';
 import { updateDashboard } from '../ui/dashboard.js';
 import { updateChart } from '../ui/chart.js';
-import { resolveNutrientWriteVersion } from '../../shared/nutrition/capabilities.js';
-import { LEGACY_V1_KEYS, V2_KEYS, getNutrient } from '../../shared/nutrition/nutrientRegistry.js';
-import { parseNutritionText } from '../../shared/nutrition/nutrientText.js';
+import { resolveNutrientWriteVersion } from '../../../shared/nutrition/capabilities.js';
+import { LEGACY_V1_KEYS, V2_KEYS, getNutrient } from '../../../shared/nutrition/nutrientRegistry.js';
+import { parseNutritionText } from '../../../shared/nutrition/nutrientText.js';
 import {
   applyLegacyInputOverlay,
   buildFoodWrite,
