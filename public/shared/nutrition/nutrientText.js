@@ -7,6 +7,8 @@
  */
 import {
   V2_KEYS,
+  baseHasChildren,
+  isChildNutrient,
   getNutrient,
   lookupLabel,
   mergeObservations,
@@ -340,31 +342,78 @@ function leadingServingWithoutAmount(valuePart) {
   return !/\d/.test(serving.rest);
 }
 
-const SUBTYPE_WORDS = /\b(net|sat|saturated|saturates|mono|monounsaturated|poly|polyunsaturated|trans|soluble|insoluble|added|epa|dha|ala|of\s+which)\b/i;
+const BASE_SUBTYPE_WORDS = {
+  carbs: /\b(net)\b/i,
+  fat: /\b(sat|saturated|saturates|mono|monounsaturated|poly|polyunsaturated|trans)\b/i,
+  sugarsTotal: /\b(added)\b/i,
+  fiber: /\b(soluble|insoluble)\b/i,
+  fiberTotal: /\b(soluble|insoluble)\b/i,
+  omega3: /\b(epa|dha|ala)\b/i,
+};
+
+function findSubtypeInText(baseKey, text) {
+  const pattern = BASE_SUBTYPE_WORDS[baseKey];
+  if (pattern) {
+    const match = pattern.exec(text);
+    if (match) {
+      return { index: match.index, length: match[0].length };
+    }
+  }
+
+  const tokens = text.match(/[a-zA-Z0-9_-]+/g);
+  if (tokens) {
+    let searchStart = 0;
+    for (const token of tokens) {
+      const idx = text.indexOf(token, searchStart);
+      searchStart = idx + token.length;
+      const hit = lookupLabel(token);
+      if (hit && isChildNutrient(baseKey, hit.key)) {
+        return { index: idx, length: token.length };
+      }
+    }
+  }
+
+  return null;
+}
 
 /**
  * A child word or "net" after the amount must not fill the parent.
- * A remainder that still contains a number is a second column, not a subtype note.
+ * Scoped only to bases that have children, using that base's own words and child labels.
+ * If a digit follows, verify whether the subtype word is directly followed by its own number.
  */
 function trailingNoteRejectsParent(hit, valuePart, number) {
+  if (!hit || !baseHasChildren(hit.key)) return false;
+
   const rest = remainderAfterAmount(valuePart, number);
-  if (!rest || /\d/.test(rest)) return false;
-  
-  const cleanNote = rest
-    .replace(/[*†‡]/g, '')
-    .replace(/(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu, '')
-    .replace(/[()[\].,;:'"]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-    
-  if (!cleanNote) return false;
-  if (SUBTYPE_WORDS.test(cleanNote)) return true;
-  
-  const noteHit = lookupLabel(cleanNote);
-  if (noteHit) {
-    const def = getNutrient(noteHit.key);
-    if (def && def.parent === hit.key) return true;
+  if (!rest) return false;
+
+  const digitMatch = rest.match(/\d/);
+  if (!digitMatch) {
+    const cleanNote = rest
+      .replace(/[*†‡]/g, '')
+      .replace(/(?:\p{Emoji_Presentation}|\p{Extended_Pictographic})/gu, '')
+      .replace(/[()[\].,;:'"]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleanNote) return false;
+    return findSubtypeInText(hit.key, cleanNote) !== null;
   }
+
+  const textBeforeDigit = rest.slice(0, digitMatch.index);
+  const subtypeMatch = findSubtypeInText(hit.key, textBeforeDigit);
+  if (!subtypeMatch) return false;
+
+  const afterSubtype = textBeforeDigit.slice(subtypeMatch.index + subtypeMatch.length);
+  if (!/^[=:]?\s*$/.test(afterSubtype)) {
+    return true;
+  }
+
+  const afterDigit = rest.slice(digitMatch.index);
+  const num = readNumber(afterDigit);
+  if (num && isBarePercent(afterDigit, num)) {
+    return true;
+  }
+
   return false;
 }
 
@@ -535,20 +584,29 @@ function isMultiBareLabelLine(line) {
   return count >= 2;
 }
 
+const MACRO_ENERGY_FACTORS = {
+  fat: 9,
+  carbs: 4,
+  protein: 4,
+  alcohol: 7,
+};
+
 function isSingleBareMacroFactor(line) {
   const split = splitLabelValue(line);
   if (!split || !split.label) return false;
   const hit = lookupLabel(split.label);
   if (!hit) return false;
-  if (!['fat', 'carbs', 'protein', 'alcohol'].includes(hit.key)) return false;
-  
+  const expected = MACRO_ENERGY_FACTORS[hit.key];
+  if (expected == null) return false;
+
   const number = readNumber(split.valuePart);
   if (!number) return false;
+  if (number.value !== expected) return false;
   if (readUnit(split.valuePart, number.end)) return false;
-  
+
   const rest = remainderAfterAmount(split.valuePart, number);
   if (rest && !/^\s*%/.test(rest)) return false;
-  
+
   return true;
 }
 
@@ -560,6 +618,19 @@ function isCalorieReferenceRow(line) {
   if (hit?.key !== 'calories') return false;
   const numbers = amountNumbers(split.valuePart, false);
   return numbers.length >= 2 && numbers[0] === 2000 && numbers[1] === 2500;
+}
+
+/** True when a line starts with a registered nutrient label followed by an amount. */
+function startsNutrientAmount(line) {
+  const lessThan = lessThanLine(line);
+  if (lessThan.action === 'skip') return false;
+  const source = lessThan.line;
+  const split = matchIncludesAddedSugars(source) || splitLabelValue(source);
+  if (!split || !split.label) return false;
+  const hit = lookupLabel(split.label);
+  if (!hit) return false;
+  peelEstimateAndServing(split);
+  return readNumber(split.valuePart) !== null;
 }
 
 function readConverted(hit, valuePart, number, split) {
@@ -784,16 +855,17 @@ export function parseNutritionText(text) {
         skipBareFactorRow = false;
         continue;
       }
-      if (isSingleBareMacroFactor(line) && bareFactorsSkipped < 3) {
+      if (isSingleBareMacroFactor(line) && bareFactorsSkipped < 4) {
         bareFactorsSkipped += 1;
         continue;
       }
       skipBareFactorRow = false;
     }
 
-    const opensFooter = FOOTER_NOTE_RE.test(line) || isCalorieReferenceRow(line);
+    const isFooterNote = FOOTER_NOTE_RE.test(line) && !startsNutrientAmount(line);
+    const opensFooter = isFooterNote || isCalorieReferenceRow(line);
     if (footerContext && isMultiBareLabelLine(line)) continue;
-    if (!FOOTER_NOTE_RE.test(line)) {
+    if (!isFooterNote) {
       consumeLine(line);
     }
     if (opensFooter) footerContext = true;

@@ -484,6 +484,21 @@ const ROUND10 = [
   ['Vitamin D: 400 [IU]', { key: 'vitaminD', value: 10, unit: 'mcg', assumed: false, warning: false }],
   ['Protein 20\u221225 g', { key: 'protein', code: 'range' }],
   ['Protein: 20 g \u2212 25 g', { key: 'protein', code: 'range' }],
+  ['Carbs: 25 g net (32 g total)', { unknown: 'Carbs: 25 g net (32 g total)' }],
+  ['Carbs 25 g net, 32 g total', { unknown: 'Carbs 25 g net, 32 g total' }],
+  ['Fat 3 g saturated (15% DV)', { unknown: 'Fat 3 g saturated (15% DV)' }],
+  ['Carbs 30 g (net 25 g)', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g (of which saturated 3 g)', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Fat 8 g (sat 3 g)', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Carbs: 30 g (net: 25 g)', { key: 'carbs', value: 30, unit: 'g', assumed: false, warning: false }],
+  ['Total Fat 8g 10%', { key: 'fat', value: 8, unit: 'g', assumed: false, warning: false }],
+  ['Saturated Fat 3g 15%', { key: 'fatSaturated', value: 3, unit: 'g', assumed: false, warning: false }],
+  ['Sodium 400 mg (no added salt)', { key: 'sodium', value: 400, unit: 'mg', assumed: false, warning: false }],
+  ['Protein: 25 g (whey, no added sugar)', { key: 'protein', value: 25, unit: 'g', assumed: false, warning: false }],
+  ['Vitamin A 900 mcg (as all-trans retinol)', { key: 'vitaminA', value: 900, unit: 'mcg', assumed: false, warning: false }],
+  ['Calories: 250 (net)', { key: 'calories', value: 250, unit: 'kcal', assumed: true, warning: false }],
+  ['Calories: 250 kcal (12% DV based on a 2,000 calorie diet)', { key: 'calories', value: 250, unit: 'kcal', assumed: false, warning: false }],
+  ['Calories 250 (based on a 2,000 calorie diet)', { key: 'calories', value: 250, unit: 'kcal', assumed: true, warning: false }],
 ];
 
 /** Older US Nutrition Facts panel, including the calorie-needs footer. */
@@ -866,10 +881,47 @@ describe('paste line golden', () => {
       'Alcohol 7',
       'Potassium 200 mg',
     ].join('\n'));
-    // Since Alcohol 7 is the 4th, it won't be skipped because bareFactorsSkipped < 3 is checked, wait, the rule says:
-    // "skip up to three following consecutive single-label rows". Fat, Carbohydrate, Protein is 3.
-    // Alcohol is 4. Will Alcohol 7 be parsed?
-    // Let's just test Fat, Carbs, Protein (3 rows)
+    expect(splitRowsBlank.values.fat).toBeNull();
+    expect(splitRowsBlank.values.carbs).toBeNull();
+    expect(splitRowsBlank.values.protein).toBeNull();
+    expect(splitRowsBlank.values.alcohol).toBeNull();
+    expect(splitRowsBlank.values.potassium).toBe(200);
+
+    const nonFactorRows = parseNutritionText([
+      'Calories per gram: 2.5',
+      'Fat 12',
+      'Carbs 30',
+      'Protein 20',
+    ].join('\n'));
+    expect(nonFactorRows.values.fat).toBe(12);
+    expect(nonFactorRows.values.carbs).toBe(30);
+    expect(nonFactorRows.values.protein).toBe(20);
+    expect(nonFactorRows.unknownLabels).toEqual([]);
+  });
+
+  it('does not turn on footer mode for nutrient lines mentioning a 2,000 calorie diet', () => {
+    const res = parseNutritionText([
+      'Calories: 250 kcal (12% DV based on a 2,000 calorie diet)',
+      'Total Fat 8 g 12 g',
+    ].join('\n'));
+    expect(res.values.calories).toBe(250);
+    expect(res.values.fat).toBe(8);
+    expect(res.warnings.some((w) => w.code === 'multiple_values' && w.key === 'fat')).toBe(true);
+
+    const res2 = parseNutritionText([
+      'Calories 250 (based on a 2,000 calorie diet)',
+      'Total Fat 8 g 12 g',
+    ].join('\n'));
+    expect(res2.values.calories).toBe(250);
+    expect(res2.values.fat).toBe(8);
+    expect(res2.warnings.some((w) => w.code === 'multiple_values' && w.key === 'fat')).toBe(true);
+
+    const res3 = parseNutritionText([
+      '* Percent Daily Values are based on a 2,000 calorie diet.',
+      'Total Fat 8 g 12 g',
+    ].join('\n'));
+    expect(res3.values.fat).toBeNull();
+    expect(res3.unknownLabels).toEqual([]);
   });
 
   it('skips the calorie-per-gram factor row in footer context', () => {

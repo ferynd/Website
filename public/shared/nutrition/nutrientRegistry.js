@@ -515,8 +515,15 @@ function buildChildren() {
 
 const CHILDREN = buildChildren();
 
-function baseHasChildren(key) {
+export function baseHasChildren(key) {
   return (CHILDREN.get(key)?.size || 0) > 0;
+}
+
+export function isChildNutrient(baseKey, childKey) {
+  if (!baseKey || !childKey) return false;
+  const def = getNutrient(childKey);
+  if (def && def.parent === baseKey) return true;
+  return CHILDREN.get(baseKey)?.has(childKey) ?? false;
 }
 
 function isUnitNote(qualNorm) {

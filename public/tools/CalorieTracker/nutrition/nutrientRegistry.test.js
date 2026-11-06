@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { allNutrients, DEFAULT_TARGETS, NUTRIENT_MAX_BOUNDS, nutrients } from '../constants.js';
 import {
+  baseHasChildren,
+  isChildNutrient,
   checkPer100g,
   convertUnit,
   FIBER_MEANINGS,
@@ -158,6 +160,15 @@ describe('nutrient registry', () => {
     expect(noteKeepsParent('carbs', 'per 100 g')).toBe(true);
     expect(noteKeepsParent('carbs', 'per 100g')).toBe(true);
     expect(noteKeepsParent('fiber', 'per portion')).toBe(true);
+    expect(baseHasChildren('carbs')).toBe(true);
+    expect(baseHasChildren('fat')).toBe(true);
+    expect(baseHasChildren('protein')).toBe(false);
+    expect(baseHasChildren('sodium')).toBe(false);
+    expect(baseHasChildren('calories')).toBe(false);
+    expect(isChildNutrient('fat', 'fatSaturated')).toBe(true);
+    expect(isChildNutrient('carbs', 'sugarsTotal')).toBe(true);
+    expect(isChildNutrient('carbs', 'carbs')).toBe(false);
+    expect(isChildNutrient('protein', 'protein')).toBe(false);
     expect(lookupLabel('Omega-3 (ALA)')?.key).toBe('omega3ALA');
     expect(lookupLabel('Fat, saturated')?.key).toBe('fatSaturated');
     expect(lookupLabel('Fat, saturated')?.key).not.toBe('fat');
