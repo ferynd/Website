@@ -1,0 +1,83 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 9900006,
+  "description": "Synthetic food with definition-mismatch vitamins",
+  "dataType": "Foundation",
+  "publicationDate": "2020-10-30",
+  "foodNutrients": [
+    {
+      "nutrient": {
+        "id": 1008,
+        "number": "208",
+        "name": "Energy",
+        "unitName": "kcal"
+      },
+      "amount": 40
+    },
+    {
+      "nutrient": {
+        "id": 1003,
+        "number": "203",
+        "name": "Protein",
+        "unitName": "g"
+      },
+      "amount": 1.0
+    },
+    {
+      "nutrient": {
+        "id": 1004,
+        "number": "204",
+        "name": "Total lipid (fat)",
+        "unitName": "g"
+      },
+      "amount": 0.5
+    },
+    {
+      "nutrient": {
+        "id": 1005,
+        "number": "205",
+        "name": "Carbohydrate, by difference",
+        "unitName": "g"
+      },
+      "amount": 8.0
+    },
+    {
+      "nutrient": {
+        "id": 1104,
+        "number": "318",
+        "name": "Vitamin A, IU",
+        "unitName": "IU"
+      },
+      "amount": 500
+    },
+    {
+      "nutrient": {
+        "id": 1185,
+        "number": "430",
+        "name": "Vitamin K (phylloquinone)",
+        "unitName": "mcg"
+      },
+      "amount": 25
+    },
+    {
+      "nutrient": {
+        "id": 1177,
+        "number": "417",
+        "name": "Folate, total",
+        "unitName": "mcg"
+      },
+      "amount": 30
+    },
+    {
+      "nutrient": {
+        "id": 1270,
+        "number": "685",
+        "name": "18:3 undifferentiated",
+        "unitName": "g"
+      },
+      "amount": 0.05
+    }
+  ],
+  "foodPortions": [],
+  "_fixture": "synthetic; not nutrition data"
+}

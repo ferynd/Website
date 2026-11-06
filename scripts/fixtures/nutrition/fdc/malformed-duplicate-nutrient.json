@@ -1,0 +1,26 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 9900009,
+  "description": "Malformed: duplicate nutrientId",
+  "foodNutrients": [
+    {
+      "nutrient": {
+        "id": 1008,
+        "number": "208",
+        "name": "Energy",
+        "unitName": "kcal"
+      },
+      "amount": 50
+    },
+    {
+      "nutrient": {
+        "id": 1008,
+        "number": "208",
+        "name": "Energy",
+        "unitName": "kcal"
+      },
+      "amount": 55
+    }
+  ],
+  "_fixture": "synthetic; not nutrition data"
+}

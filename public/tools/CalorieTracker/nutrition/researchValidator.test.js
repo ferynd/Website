@@ -1,0 +1,197 @@
+import { it, expect, describe } from 'vitest';
+import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
+import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
+import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
+import { validateProposal } from '../../../shared/nutrition/research/researchValidator.js';
+async function makeValidJob({ state = 'raw', sourceStrategy = 'usda-foundation-first', kind = 'produce', scope = 'curated', ownerUid, sourceType = 'fdc', values = {}, qualities = {}, provenance = {}, sources = {}, extractedStateWords = ['raw'], hasConcentrationFormula = false, } = {}) {
+    const staged = emptyStagedRecord();
+    for (const k of V2_KEYS) {
+        staged.values[k] = values[k] !== undefined ? values[k] : null;
+        staged.quality[k] = qualities[k] || { status: 'unknown', qualifier: 'gap:not_reported_by_source' };
+    }
+    // Set default protein to 10
+    if (values.protein === undefined && staged.values.protein === null) {
+        staged.values.protein = 10;
+        staged.quality.protein = { status: 'measured' };
+    }
+    if (values.calories === undefined && staged.values.calories === null) {
+        staged.values.calories = 40;
+        staged.quality.calories = { status: 'measured' };
+    }
+    const defaultProvenance = {
+        protein: { sourceKey: 'src-1', sourceNutrientId: '1003' },
+        calories: { sourceKey: 'src-1', sourceNutrientId: '1008' },
+        ...provenance,
+    };
+    const defaultSources = {
+        'src-1': {
+            type: sourceType,
+            datasetId: 'Foundation',
+            recordId: '9900001',
+            title: 'Test source',
+            url: 'https://fdc.nal.usda.gov/test',
+            version: '2024-10-31',
+            accessedAt: '2026-11-06',
+            permittedUse: 'CC0 1.0',
+        },
+        ...sources,
+    };
+    const draft = await buildRevisionDraft({
+        identityId: 'pi-11111111111111111111',
+        variantId: 'pv-22222222222222222222',
+        basis: { kind: 'per_100g_edible', state },
+        stagedRecord: staged,
+        fieldProvenance: defaultProvenance,
+        sources: defaultSources,
+    });
+    const job = await createResearchJob({
+        scope,
+        ownerUid,
+        targetKind: 'catalog',
+        target: {
+            manifestId: 'test-manifest-id',
+            dims: { state },
+            sourceStrategy,
+            kind,
+        },
+        sourceRelease: '2024-10-31',
+    });
+    job.proposal = {
+        revisionDraft: draft,
+        conversions: [],
+        extractedStateWords,
+        hasConcentrationFormula,
+    };
+    return job;
+}
+describe('Research Validator', () => {
+    it('validates a correct proposal with zero errors', async () => {
+        const job = await makeValidJob();
+        const outcome = await validateProposal(job);
+        expect(outcome.errors).toEqual([]);
+        expect(outcome.isValid).toBe(true);
+    });
+    it('validates LOQ and unknown values correctly', async () => {
+        const job = await makeValidJob({
+            values: { fat: null },
+            qualities: { fat: { status: 'below_quantification_limit', upperBound: 0.05 } },
+            provenance: { fat: { sourceKey: 'src-1' } },
+        });
+        const outcome = await validateProposal(job);
+        expect(outcome.errors).toEqual([]);
+    });
+    it('rejects zero values without evidence/provenance', async () => {
+        const job = await makeValidJob();
+        // Directly mutate the proposal draft to have zero without evidence
+        job.proposal.revisionDraft.nutrients.fat = 0;
+        job.proposal.revisionDraft.nutrientMeta.quality.fat = { status: 'unknown' };
+        delete job.proposal.revisionDraft.fieldProvenance.fat;
+        const outcome = await validateProposal(job);
+        expect(outcome.isValid).toBe(false);
+    });
+    it('passes pure salt at 38,758 mg sodium and rejects physically impossible values', async () => {
+        const saltJob = await makeValidJob({
+            state: 'food-grade-dry',
+            sourceStrategy: 'compound-reference',
+            sourceType: 'manual',
+            values: { sodium: 38758 },
+            qualities: { sodium: { status: 'measured' } },
+            provenance: { sodium: { sourceKey: 'src-1' } },
+            extractedStateWords: ['dry'],
+        });
+        const saltOutcome = await validateProposal(saltJob);
+        expect(saltOutcome.errors).toEqual([]);
+        const badJob = await makeValidJob();
+        // Mutate protein to 150 (> 100g per 100g)
+        badJob.proposal.revisionDraft.nutrients.protein = 150;
+        const badOutcome = await validateProposal(badJob);
+        expect(badOutcome.isValid).toBe(false);
+        expect(badOutcome.errors.some(e => e.includes('rejected by checkPer100g'))).toBe(true);
+    });
+    it('detects explicit raw vs cooked state conflicts', async () => {
+        const job = await makeValidJob({
+            state: 'raw',
+            extractedStateWords: ['cooked', 'boiled'],
+        });
+        const outcome = await validateProposal(job);
+        expect(outcome.isValid).toBe(false);
+        expect(outcome.errors.some(e => e.includes('conflict: target is raw but source is cooked'))).toBe(true);
+    });
+    it('detects drained and fortification conflicts', async () => {
+        const job = await makeValidJob({
+            extractedStateWords: ['raw', 'undrained', 'unfortified'],
+        });
+        job.target.dims.drained = 'drained';
+        job.target.dims.fortification = 'fortified';
+        const outcome = await validateProposal(job);
+        expect(outcome.isValid).toBe(false);
+        expect(outcome.errors.some(e => e.includes('target is drained but source is undrained'))).toBe(true);
+        expect(outcome.errors.some(e => e.includes('target is fortified but source is unfortified'))).toBe(true);
+    });
+    it('rejects FDC adapter used on compound-reference entry', async () => {
+        const job = await makeValidJob({
+            sourceStrategy: 'compound-reference',
+            sourceType: 'fdc',
+        });
+        const outcome = await validateProposal(job);
+        expect(outcome.isValid).toBe(false);
+        expect(outcome.errors.some(e => e.includes('FDC adapter used on a compound-reference entry'))).toBe(true);
+    });
+    it('blocks concentration-needed state if no concentration formula is provided', async () => {
+        const job = await makeValidJob({
+            state: 'food-grade-solution-concentration-needed',
+            hasConcentrationFormula: false,
+        });
+        const outcome = await validateProposal(job);
+        expect(outcome.isValid).toBe(false);
+        expect(outcome.blockedReason?.code).toBe('requires_composition');
+    });
+    it('emits warnings for Atwater inconsistency and fat class overshoot', async () => {
+        const job = await makeValidJob({
+            values: {
+                calories: 500, // declared 500, but 4*10 + 4*0 + 9*0 = 40 kcal -> major inconsistency!
+                protein: 10,
+                carbs: 0,
+                fat: 10,
+                fatSaturated: 8,
+                fatMonounsaturated: 5, // 8 + 5 = 13 > 10 * 1.05
+            },
+            qualities: {
+                calories: { status: 'measured' },
+                protein: { status: 'measured' },
+                carbs: { status: 'measured' },
+                fat: { status: 'measured' },
+                fatSaturated: { status: 'measured' },
+                fatMonounsaturated: { status: 'measured' },
+            },
+            provenance: {
+                calories: { sourceKey: 'src-1' },
+                protein: { sourceKey: 'src-1' },
+                carbs: { sourceKey: 'src-1' },
+                fat: { sourceKey: 'src-1' },
+                fatSaturated: { sourceKey: 'src-1' },
+                fatMonounsaturated: { sourceKey: 'src-1' },
+            },
+        });
+        const outcome = await validateProposal(job);
+        expect(outcome.warnings.some(w => w.includes('Atwater energy inconsistency'))).toBe(true);
+        expect(outcome.warnings.some(w => w.includes('Fat classes sum'))).toBe(true);
+    });
+    it('rejects private material in curated scope', async () => {
+        const job = await makeValidJob({
+            scope: 'curated',
+            sources: {
+                'src-1': {
+                    type: 'manual',
+                    recordId: '1',
+                    version: '1',
+                    accessedAt: '2026-11-06',
+                    permittedUse: 'private-user-data',
+                },
+            },
+        });
+        const outcome = await validateProposal(job);
+        expect(outcome.isValid).toBe(false);
+        expect(outcome.errors.some(e => e.includes('non-public permittedUse'))).toBe(true);
+    });
+});

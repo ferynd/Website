@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "entries": [
+    {
+      "manifestId": "apple-raw-with-skin",
+      "adapter": "fdc_bulk",
+      "dataType": "Foundation",
+      "fdcId": "9900001",
+      "release": "2024-10-31",
+      "description": "Synthetic fixture",
+      "stateEvidence": "raw",
+      "rationale": "Exact match for raw apple with skin",
+      "reviewer": "fixture-reviewer",
+      "reviewedAt": "2026-11-06",
+      "checklistVersion": 1
+    },
+    {
+      "manifestId": "olive-oil-extra-virgin-as-sold",
+      "adapter": "fdc_bulk",
+      "dataType": "Foundation",
+      "fdcId": "9900002",
+      "release": "2024-10-31",
+      "description": "Synthetic fixture",
+      "stateEvidence": "raw",
+      "rationale": "Exact match for extra virgin olive oil",
+      "reviewer": "fixture-reviewer",
+      "reviewedAt": "2026-11-06",
+      "checklistVersion": 1
+    },
+    {
+      "manifestId": "lentils-mature-seeds-cooked-boiled-without-salt",
+      "adapter": "fdc_bulk",
+      "dataType": "Foundation",
+      "fdcId": "9900003",
+      "release": "2024-10-31",
+      "description": "Synthetic fixture",
+      "stateEvidence": "raw",
+      "rationale": "Exact match for boiled drained lentils",
+      "reviewer": "fixture-reviewer",
+      "reviewedAt": "2026-11-06",
+      "checklistVersion": 1
+    },
+    {
+      "manifestId": "sodium-chloride-iodized-food-grade-dry",
+      "adapter": "fdc_bulk",
+      "dataType": "Foundation",
+      "fdcId": "9900004",
+      "release": "2024-10-31",
+      "description": "Synthetic fixture",
+      "stateEvidence": "raw",
+      "rationale": "Exact match for iodized table salt",
+      "reviewer": "fixture-reviewer",
+      "reviewedAt": "2026-11-06",
+      "checklistVersion": 1
+    }
+  ],
+  "_fixture": "synthetic; not nutrition data"
+}

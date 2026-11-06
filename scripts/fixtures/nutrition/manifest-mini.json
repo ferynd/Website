@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Mini manifest fixture for testing research pipeline",
+  "entries": [
+    {
+      "id": "apple-raw-with-skin",
+      "name": "Apple, raw, with skin",
+      "category": "fruits-fruit-juices",
+      "kind": "generic",
+      "state": "raw",
+      "priority": 1,
+      "sourceStrategy": "usda-first",
+      "status": "queued",
+      "notes": "Test produce entry"
+    },
+    {
+      "id": "olive-oil-extra-virgin-as-sold",
+      "name": "Olive oil, extra virgin",
+      "category": "fats-oils",
+      "kind": "generic",
+      "state": "as-sold",
+      "priority": 1,
+      "sourceStrategy": "usda-first",
+      "status": "queued",
+      "notes": "Test oil entry"
+    },
+    {
+      "id": "lentils-mature-seeds-cooked-boiled-without-salt",
+      "name": "Lentils, mature seeds, cooked, boiled, without salt",
+      "category": "legumes-legume-products",
+      "kind": "generic",
+      "state": "boiled-drained-without-added-salt",
+      "priority": 1,
+      "sourceStrategy": "usda-first",
+      "status": "queued",
+      "notes": "Test cooked legume entry"
+    },
+    {
+      "id": "sodium-chloride-iodized-food-grade-dry",
+      "name": "Sodium chloride, iodized",
+      "category": "additives-preservatives",
+      "kind": "additive",
+      "state": "food-grade-dry",
+      "priority": 1,
+      "sourceStrategy": "compound-reference",
+      "status": "queued",
+      "notes": "Test salt additive entry"
+    }
+  ],
+  "_fixture": "synthetic; not nutrition data"
+}

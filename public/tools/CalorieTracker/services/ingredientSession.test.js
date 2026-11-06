@@ -40,7 +40,7 @@ it.each([false,true])('explicit logout clears before auth, including failed clea
  const start=source.indexOf('export async function handleLogout()');
  const body=source.slice(start,source.indexOf('\n}',start)+2).replace('export ','');
  const calls=[],clear=async()=>{calls.push('clear');if(failure)throw new Error('denied');};
- const logout=new Function('clearProfileCache','authFunctions','debugLog','errorLog','stateObject','showMessageFunction',body+'; return handleLogout;')(
- clear,{logout:async()=>calls.push('logout')},vi.fn(),vi.fn(),{dailyEntries:new Map(),savedFoodItems:new Map(),weightEntries:new Map()},vi.fn());
- await logout();expect(calls).toEqual(['clear','logout']);
+ const logout=new Function('clearResearchJobs','clearProfileCache','authFunctions','debugLog','errorLog','stateObject','showMessageFunction',body+'; return handleLogout;')(
+ async()=>calls.push('research'),clear,{logout:async()=>calls.push('logout')},vi.fn(),vi.fn(),{dailyEntries:new Map(),savedFoodItems:new Map(),weightEntries:new Map()},vi.fn());
+ await logout();expect(calls).toEqual(['research','clear','logout']);
 });

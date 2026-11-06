@@ -1,0 +1,180 @@
+import { it, expect, vi } from 'vitest';
+import { packetFixture, responseFor } from './researchPacketFixtures.js';
+import { buildResearchPackets, canonicalRequestBody, requestDigestFor, copyableResearchPacket, PACKET_LIMITS } from '../../../shared/nutrition/research/researchPacket.js';
+import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
+import { createResearchService } from '../../../shared/nutrition/research/researchService.js';
+import { PROFILE_FIELDS } from '../../../shared/nutrition/research/profileFields.js';
+import { stageCatalog } from '../../../shared/nutrition/research/stagedCatalog.js';
+it('round trips, resumes awaiting_response without fetch, and records one pass per issued request', async () => {
+    const f = await packetFixture(), fetch = vi.fn();
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch }], now: f.now });
+    expect((await service.runJob(f.job.jobId)).state).toBe('awaiting_response');
+    expect(fetch).not.toHaveBeenCalled();
+    const [result] = await service.acceptResponse(f.response);
+    expect(result.state).toBe('needs_review');
+    expect(result.proposal.verification).toBe('unverified');
+    expect(result.requests).toEqual([{ requestId: f.request.requestId, requestDigest: f.request.requestDigest, passId: result.passId, status: 'answered' }]);
+    await expect(service.acceptResponse(f.response)).rejects.toThrow('stale');
+});
+it('starts assistant values unverified and gates curated/private approval', async () => {
+    for (const scope of ['curated', 'private']) {
+        const f = await packetFixture({ scope });
+        f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+        const [j] = await f.service.acceptResponse(f.response);
+        expect(j.validation.errors).toEqual([]);
+        const decision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: j.proposal.revisionDraft.contentHash, acknowledgedWarnings: j.validation.warnings };
+        await expect(f.service.review(j.jobId, decision)).rejects.toThrow(scope === 'curated' ? 'verified' : 'attestation');
+        if (scope === 'curated')
+            await f.service.attestSource(j.jobId, 's1', 'reviewer');
+        const approved = await f.service.review(j.jobId, { ...decision, attestation: true });
+        expect(approved.state).toBe('approved');
+        if (scope === 'private') {
+            expect(approved.review.label).toBe('assistant-researched');
+            await expect(stageCatalog([approved])).rejects.toThrow('private');
+        }
+    }
+});
+it.each([
+    ['wrong echo', r => { r.requestId = 'rq-' + '0'.repeat(24); }, 'requestId'],
+    ['wrong digest', r => { r.requestDigest = 'sha256:' + '0'.repeat(64); }, 'requestId'],
+    ['unrequested target', r => { r.results[0].targetId = 'another'; }, 'targetId'],
+    ['duplicate target', r => { r.results.push(r.results[0]); }, 'duplicate'],
+    ['missing target', r => { r.results = []; }, 'missing requested'],
+    ['missing status', r => { delete r.results[0].nutrients.protein.status; }, '.status'],
+    ['derived field', r => { r.results[0].nutrients.fiberWeightedLegacy = { value: 1 }; }, 'fiberWeightedLegacy'],
+    ['unrequested field', r => { r.results[0].nutrients.sodium = { value: 1 }; }, 'sodium'],
+    ['numeric text', r => { r.results[0].nutrients.protein.value = '2 g'; }, 'numeric text'],
+    ['zero without evidence', r => { r.results[0].nutrients.protein.value = 0; }, 'evidence'],
+    ['unsourced value', r => { r.results[0].nutrients.protein.value = 2; }, 'evidence'],
+    ['unknown reason', r => { r.results[0].unresolved = []; }, 'reason'],
+    ['http URL', r => { r.results[0].sources[0].url = 'http://example.test'; }, 'https'],
+    ['unknown source', r => { r.results[0].nutrients.protein.sourceIds = ['fake']; }, 'sourceId'],
+    ['unsupported unit', r => { r.results[0].nutrients.protein.unit = 'cups'; }, 'unit'],
+    ['bounds', r => { r.results[0].nutrients.protein = { value: 101, unit: 'g', status: 'measured', sourceIds: ['s1'] }; }, 'checkPer100g'],
+    ['false measured', r => { r.results[0].sources[0].type = 'other'; r.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] }; }, 'proper source'],
+    ['estimate missing comparator', r => { r.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'estimated_from_comparable', sourceIds: ['s1'] }; }, 'comparator'],
+    ['text range', r => { r.results[0].nutrients.protein.range = { min: '1', max: 3 }; }, 'finite'],
+    ['extra property', r => { r.meal = {}; }, 'unknown field'],
+    ['unrequested conversion', r => { r.results[0].conversions = [{}]; }, 'unrequested conversions'],
+])('rejects %s without staging', async (_label, mutate, message) => {
+    const f = await packetFixture();
+    mutate(f.response);
+    await expect(f.service.acceptResponse(f.response)).rejects.toThrow(message);
+    expect((await f.store.get(f.job.jobId)).state).toBe('awaiting_response');
+});
+it('rejects changed known observations, profile revision, and registry', async () => {
+    const f = await packetFixture({ knownObservations: { protein: { value: 2, unit: 'g', status: 'measured' } } });
+    f.response.results[0].nutrients.protein = { value: 3, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    await expect(f.service.acceptResponse(f.response)).rejects.toThrow('known observation');
+    let j = await f.store.get(f.job.jobId);
+    j.target.baseRef = { revision: 2 };
+    j.version++;
+    await f.store.save(j);
+    await expect(f.service.acceptResponse(f.response)).rejects.toThrow('revision changed');
+    const g = await packetFixture();
+    await expect(g.service.acceptResponse(g.response, { registryVersion: 3 })).rejects.toThrow('registry changed');
+});
+it('cancel and expiry return jobs to queued and reject old responses', async () => {
+    const f = await packetFixture();
+    await f.service.cancelRequest(f.request.requestId);
+    expect((await f.store.get(f.job.jobId)).state).toBe('queued');
+    await expect(f.service.acceptResponse(f.response)).rejects.toThrow('unknown or stale');
+    const clock = { value: Date.now() }, g = await packetFixture({ now: () => clock.value });
+    clock.value += PACKET_LIMITS.ttlMs + 1;
+    await expect(g.service.acceptResponse(g.response)).rejects.toThrow('expired');
+    expect((await g.service.runJob(g.job.jobId)).state).toBe('queued');
+});
+it('converts units/ranges and retains estimate comparator with transfer reason', async () => {
+    const f = await packetFixture();
+    f.response.results[0].nutrients.protein = { value: 2000, unit: 'mg', status: 'estimated_from_comparable', sourceIds: ['s1'], comparator: { name: 'Synthetic comparable', sourceId: 's1', transferReason: 'Same form' }, derivation: 'Comparable estimate', range: { min: 1000, max: 3000 } };
+    const [j] = await f.service.acceptResponse(f.response);
+    expect(j.proposal.revisionDraft.nutrients.protein).toBe(2);
+    expect(j.proposal.revisionDraft.fieldProvenance.protein.range).toEqual({ min: 1, max: 3 });
+    expect(j.proposal.revisionDraft.fieldProvenance.protein.comparatorRef).toContain('Same form');
+});
+it('deterministically separates mixed sets, enforces caps, and excludes derived fields from star', async () => {
+    const jobs = [];
+    for (let i = 0; i < 71; i++)
+        jobs.push(await createResearchJob({ target: { manifestId: 'synthetic-' + i, dims: { state: 'raw' } }, fields: i < 17 ? '*' : ['protein'] }));
+    const a = await buildResearchPackets(jobs), b = await buildResearchPackets([...jobs].reverse());
+    expect(a.map(r => r.targets.length)).toEqual([8, 8, 1, 25, 25, 4]);
+    expect(a.map(canonicalRequestBody)).toEqual(b.map(canonicalRequestBody));
+    for (const r of a) {
+        expect(r.requestId).toMatch(/^rq-[a-f0-9]{24}$/);
+        expect(r.requestDigest).toBe(await requestDigestFor(r));
+        for (const t of r.targets)
+            expect(Object.keys(t.expectedUnits)).not.toContain('fiberWeightedLegacy');
+        expect(copyableResearchPacket(r)).toContain(JSON.stringify(r, null, 2));
+    }
+    const smaller = await buildResearchPackets(jobs, { limits: { allFieldTargets: 3, fieldLimitedTargets: 4 } });
+    expect(smaller.every(r => r.targets.length <= (r.targets[0].requestedFields === '*' ? 3 : 4))).toBe(true);
+    await expect(createResearchJob({ target: { manifestId: 'derived' }, fields: ['fiberWeightedLegacy'] })).rejects.toThrow('derived');
+    expect(PROFILE_FIELDS).not.toContain('fiberWeightedLegacy');
+});
+it('bounds request and response bytes and never copies meal composition or unselected label evidence', async () => {
+    const f = await packetFixture();
+    const j = { ...f.job, target: { ...f.job.target, meal: { private: true }, labelEvidence: { title: 'Selected label' } } };
+    const [r] = await buildResearchPackets([j]);
+    expect(JSON.stringify(r)).not.toContain('private');
+    expect(r.targets[0]).not.toHaveProperty('labelEvidence');
+    await expect(buildResearchPackets([j], { limits: { requestBytes: 50 } })).rejects.toThrow('byte limit');
+    await expect(f.service.acceptResponse(f.response, { limits: { responseBytes: 50 } })).rejects.toThrow('byte limit');
+});
+it('source attestation is tied to a specific source and cannot inject values into review', async () => {
+    const f = await packetFixture();
+    const [j] = await f.service.acceptResponse(f.response);
+    await expect(f.service.attestSource(j.jobId, 'unknown', 'r')).rejects.toThrow('Specific source');
+    const before = j.proposal.revisionDraft.contentHash;
+    const approved = await f.service.attestSource(j.jobId, 's1', 'r');
+    expect(approved.proposal.revisionDraft.contentHash).toBe(before);
+});
+it('rejects externally refreshed profile heads and estimates missing transfer reason, derivation or range', async () => {
+    const f = await packetFixture();
+    await expect(f.service.acceptResponse(f.response, { currentRefs: { [f.job.jobId]: { revision: 2 } } })).rejects.toThrow('revision changed');
+    for (const missing of ['transferReason', 'derivation', 'range']) {
+        const g = await packetFixture(), n = { value: 2, unit: 'g', status: 'estimated_from_comparable', sourceIds: ['s1'], comparator: { name: 'Synthetic', sourceId: 's1', transferReason: 'Same state' }, derivation: 'Comparable', range: { min: 1, max: 3 } };
+        if (missing === 'transferReason')
+            delete n.comparator.transferReason;
+        else
+            delete n[missing];
+        g.response.results[0].nutrients.protein = n;
+        await expect(g.service.acceptResponse(g.response)).rejects.toThrow();
+    }
+});
+it('verifies a cited FDC source only after deterministic value comparison', async () => {
+    const f = await packetFixture();
+    f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    const [j] = await f.service.acceptResponse(f.response);
+    const adapter = { id: 'fdc_bulk', fetch: vi.fn(async () => ({})), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] }) };
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [adapter] });
+    const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
+    expect(verified.proposal.sourceVerification.s1.method).toBe('deterministic_refetch');
+    adapter.toSourceResult = async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 3, unitName: 'g' }] });
+    await expect(service.verifySource(j.jobId, 's1', 'fdc_bulk')).rejects.toThrow('mismatch');
+});
+it('field passes preserve the base revision and its provenance when response source IDs collide', async () => {
+    const { buildRevisionDraft } = await import('../../../shared/nutrition/ingredientProfile.js'), { emptyStagedRecord } = await import('../../../shared/nutrition/nutrientRegistry.js');
+    const record = emptyStagedRecord();
+    record.values.calories = 40;
+    record.quality.calories = { status: 'measured' };
+    const base = await buildRevisionDraft({ identityId: 'synthetic-identity', variantId: 'synthetic-variant', stagedRecord: record, basis: { kind: 'per_100g_edible', state: 'raw' }, sources: { s1: { type: 'fdc', recordId: '9900002', title: 'Synthetic base', version: 'fixture', accessedAt: '2026-11-06', permittedUse: 'CC0' } }, fieldProvenance: { calories: { sourceKey: 's1' } } });
+    base.revision = 1;
+    base.revisionId = base.variantId + '~r1';
+    const baseRef = { refVersion: 1, scope: 'curated', namespace: 'catalog:nutrition-curated', identityId: base.identityId, variantId: base.variantId, revision: 1, revisionId: base.revisionId, contentHash: base.contentHash };
+    const f = await packetFixture({ baseRevision: base, baseRef });
+    f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    const [result] = await f.service.acceptResponse(f.response), draft = result.proposal.revisionDraft;
+    expect(draft.nutrients.calories).toBe(40);
+    expect(draft.sources.s1.recordId).toBe('9900002');
+    expect(draft.fieldProvenance.protein.sourceKey).not.toBe('s1');
+    expect(draft.nutrients.protein).toBe(2);
+});
+it('copies selected text label evidence and strips alias metadata; rejects nested meal/image payloads', async () => {
+    const f = await packetFixture(), job = { ...f.job, target: { ...f.job.target, aliases: [{ text: 'Synthetic alias', ownerUid: 'private-metadata' }], labelEvidence: { title: 'Synthetic label', nutrients: { protein: { value: 2, unit: 'g' } } } } };
+    const [request] = await buildResearchPackets([job], { includeLabelEvidence: true });
+    expect(request.targets[0].labelEvidence.title).toBe('Synthetic label');
+    expect(request.targets[0].identity.aliases).toEqual(['Synthetic alias']);
+    expect(JSON.stringify(request)).not.toContain('private-metadata');
+    job.target.labelEvidence.nutrients = { meal: { ingredients: ['private meal'] } };
+    await expect(buildResearchPackets([job], { includeLabelEvidence: true })).rejects.toThrow('requestedFields');
+});

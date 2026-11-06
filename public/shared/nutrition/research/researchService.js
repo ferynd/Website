@@ -1,0 +1,481 @@
+import { createAssistantPacketAdapter } from './assistantPacketAdapter.js';
+import { PACKET_LIMITS } from './researchPacket.js';
+import { packetProposal } from './packetProposal.js';
+import { canonicalJson } from '../contentHash.js';
+import { emptyStagedRecord } from '../nutrientRegistry.js';
+import { buildRevisionDraft } from '../ingredientProfile.js';
+import { buildConversion } from '../ingredientConversion.js';
+import { CURATED_CATALOG_ID } from '../ingredientIds.js';
+import { PermanentSourceError } from './fdcFood.js';
+import { normalizeSourceResult } from './sourceResult.js';
+import { validateProposal } from './researchValidator.js';
+import { buildRevisionDiff, applyReviewDecision } from './researchReview.js';
+import { jobKeyV1, createResearchJob, transition, passIdFor } from './researchJob.js';
+export function createResearchService({ store, sourceCache, adapters = [], now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)), random = () => Math.random(), retry: retryConfig = { maxAttempts: 3, baseMs: 1000, maxMs: 30000 }, } = {}) {
+    const adapterMap = new Map();
+    for (const a of adapters) {
+        adapterMap.set(a.id, a);
+    }
+    const { maxAttempts = 3, baseMs = 1000, maxMs = 30000 } = retryConfig;
+    if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 10 || baseMs < 0 || maxMs < baseMs)
+        throw new TypeError('Invalid retry limits');
+    async function enqueue({ scope = 'curated', ownerUid, targetKind = 'catalog', target, fields = '*', sourceRelease = 'unknown', parentBatchId, passId, }) {
+        const key = jobKeyV1({ targetKind, target: { ...target, ownerUid: ownerUid || target.ownerUid }, fields, sourceRelease });
+        const existing = await store.getByKey(key);
+        if (existing) {
+            return existing;
+        }
+        const job = await createResearchJob({
+            scope,
+            ownerUid,
+            targetKind,
+            target,
+            fields,
+            sourceRelease,
+            parentBatchId,
+            passId,
+        });
+        try {
+            await store.save(job, { expectedVersion: 0 });
+        }
+        catch (error) {
+            const concurrent = await store.getByKey(key);
+            if (concurrent)
+                return concurrent;
+            throw error;
+        }
+        return job;
+    }
+    async function runJob(jobId, { signal, passId, context = {}, adapterId: chosenAdapter } = {}) {
+        if (signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+        }
+        let job = await store.get(jobId);
+        if (!job)
+            throw new Error(`Job not found: ${jobId}`);
+        if (job.state === 'awaiting_response' && Date.parse(job.pendingRequest.expiresAt) <= now()) {
+            await cancelRequest(job.pendingRequest.requestId, { expiredOnly: true });
+            return store.get(jobId);
+        }
+        // Terminal or awaiting review states: do not re-run
+        if (['awaiting_response', 'needs_review', 'approved', 'imported', 'blocked'].includes(job.state)) {
+            return job;
+        }
+        if (job.state === 'matched' && job.proposal)
+            return job;
+        if (job.nextAttemptAt) {
+            const delay = Date.parse(job.nextAttemptAt) - now();
+            if (delay > 0)
+                await sleep(Math.min(maxMs, delay));
+            if (signal?.aborted)
+                throw new DOMException('Aborted', 'AbortError');
+            job.nextAttemptAt = null;
+        }
+        // Determine adapter
+        let adapterId = chosenAdapter || job.match?.sourceAdapter;
+        if (!adapterId) {
+            if (job.target?.sourceStrategy === 'compound-reference') {
+                adapterId = 'manual';
+            }
+            else if (job.target?.kind === 'branded') {
+                adapterId = 'label';
+            }
+            else {
+                adapterId = 'fdc_bulk';
+            }
+        }
+        // Normalize fdc_bulk or fdc_api to fdc if needed
+        let adapter = adapterMap.get(adapterId);
+        if (!adapter && (adapterId === 'fdc_bulk' || adapterId === 'fdc_api')) {
+            adapter = adapterMap.get('fdc') || adapterMap.get('fdc_bulk') || adapterMap.get('fdc_api');
+        }
+        if (!adapter) {
+            job = transition(job, 'blocked', {
+                blocked: {
+                    code: 'no_adapter_available',
+                    needs: `No registered adapter for id ${adapterId}`,
+                },
+            });
+            await store.save(job, { expectedVersion: job.version - 1 });
+            return job;
+        }
+        // Step 1: Matching
+        if (job.state === 'queued') {
+            if (!job.match) {
+                try {
+                    const matchResult = await adapter.match(job.target, context);
+                    if (!matchResult) {
+                        job = transition(job, 'blocked', {
+                            blocked: {
+                                code: 'match_not_found',
+                                needs: 'Manual match review or entry into source match table required',
+                            },
+                        });
+                        await store.save(job, { expectedVersion: job.version - 1 });
+                        return job;
+                    }
+                    job.match = matchResult;
+                }
+                catch (err) {
+                    job = transition(job, 'blocked', {
+                        blocked: {
+                            code: 'match_error',
+                            needs: err.message,
+                        },
+                    });
+                    await store.save(job, { expectedVersion: job.version - 1 });
+                    return job;
+                }
+            }
+            job = transition(job, 'matched', {
+                checkpoint: { step: 'matched' },
+            });
+            await store.save(job, { expectedVersion: job.version - 1 });
+        }
+        if (signal?.aborted) {
+            throw new DOMException('Aborted', 'AbortError');
+        }
+        // Step 2: Fetch and normalization
+        if (job.state === 'matched') {
+            const sourceId = job.match.sourceId || job.target.manifestId;
+            const release = job.match.sourceRelease || (await adapter.release()) || 'unknown';
+            const cacheKey = `${adapter.id}:${release}:${sourceId}`;
+            let cachedEntry;
+            let attemptOutcome = 'success';
+            let attemptError = null;
+            try {
+                cachedEntry = await sourceCache.getOrFetch(cacheKey, async () => {
+                    return await adapter.fetch(sourceId, { ...context, scope: job.scope });
+                });
+            }
+            catch (err) {
+                attemptError = err;
+                const isPermanent = err instanceof PermanentSourceError ||
+                    err.name === 'PermanentSourceError' ||
+                    err.isPermanent;
+                if (isPermanent) {
+                    attemptOutcome = 'blocked';
+                    job.attempts.push({
+                        attemptId: `att-${job.attempts.length + 1}`,
+                        passId: passId || job.passId,
+                        adapter: adapter.id,
+                        release,
+                        outcome: 'blocked',
+                        errorCode: err.message,
+                        timestamp: new Date(now()).toISOString(),
+                    });
+                    job = transition(job, 'blocked', {
+                        blocked: {
+                            code: 'source_permanent_error',
+                            needs: err.message,
+                        },
+                    });
+                    await store.save(job, { expectedVersion: job.version - 1 });
+                    return job;
+                }
+                // Temporary error handling
+                const currentAttempts = job.attempts.length;
+                if (currentAttempts + 1 >= maxAttempts) {
+                    job.attempts.push({
+                        attemptId: `att-${currentAttempts + 1}`,
+                        passId: passId || job.passId,
+                        adapter: adapter.id,
+                        release,
+                        outcome: 'blocked',
+                        errorCode: err.message,
+                        timestamp: new Date(now()).toISOString(),
+                    });
+                    job = transition(job, 'blocked', {
+                        blocked: {
+                            code: 'retries_exhausted',
+                            needs: `Exhausted ${maxAttempts} retry attempts: ${err.message}`,
+                        },
+                    });
+                    await store.save(job, { expectedVersion: job.version - 1 });
+                    return job;
+                }
+                // Schedule retry
+                const backoffMs = Math.min(maxMs, Math.max(baseMs * Math.pow(2, currentAttempts) * (0.75 + random() * 0.5), attemptError.retryAfterMs || 0));
+                const nextAttemptAt = new Date(now() + backoffMs).toISOString();
+                job.attempts.push({
+                    attemptId: `att-${currentAttempts + 1}`,
+                    passId: passId || job.passId,
+                    adapter: adapter.id,
+                    release,
+                    outcome: 'retry',
+                    errorCode: err.message,
+                    timestamp: new Date(now()).toISOString(),
+                });
+                job.nextAttemptAt = nextAttemptAt;
+                job.version += 1;
+                await store.save(job, { expectedVersion: job.version - 1 });
+                if (signal?.aborted) {
+                    throw new DOMException('Aborted', 'AbortError');
+                }
+                return runJob(jobId, { signal, passId, context, adapterId: chosenAdapter });
+            }
+            // Convert cached source data to SourceResult
+            let sourceResult;
+            try {
+                sourceResult = await adapter.toSourceResult(cachedEntry.data, { ...context, scope: job.scope });
+            }
+            catch (error) {
+                job = transition(job, 'blocked', { blocked: { code: 'source_malformed', needs: error.message } });
+                await store.save(job, { expectedVersion: job.version - 1 });
+                return job;
+            }
+            if (sourceResult.existingRevision) {
+                job = { ...job, version: job.version + 1, proposal: { revisionDraft: sourceResult.existingRevision, reused: true, conversions: [] }, checkpoint: { step: 'curated_reused' } };
+                await store.save(job, { expectedVersion: job.version - 1 });
+                return job;
+            }
+            const proposal = normalizeSourceResult(sourceResult, { ...job.target, requestedFields: job.requestedFields });
+            // Determine identityId and variantId (D6: catalog identityId and variantId both equal manifestId)
+            let identityId = job.target.identityId;
+            let variantId = job.target.variantId;
+            if (job.scope === 'curated' || job.target.targetKind === 'catalog') {
+                identityId = identityId || job.target.manifestId;
+                variantId = variantId || job.target.manifestId;
+            }
+            // Staged record for buildRevisionDraft
+            const stagedRecord = emptyStagedRecord();
+            stagedRecord.values = proposal.nutrients;
+            stagedRecord.quality = proposal.nutrientMeta.quality;
+            const revisionDraft = await buildRevisionDraft({
+                identityId,
+                variantId,
+                stagedRecord,
+                fieldProvenance: proposal.fieldProvenance,
+                sources: proposal.sources,
+                basis: {
+                    kind: 'per_100g_edible',
+                    state: job.target.dims?.state || 'unspecified',
+                },
+                basedOn: job.target.baseRef || null,
+                base: job.target.baseRevision || null,
+            });
+            proposal.revisionDraft = revisionDraft;
+            proposal.diff = buildRevisionDiff(null, revisionDraft);
+            // Attach variantRef to portion conversions
+            const variantRef = {
+                refVersion: 1,
+                scope: job.scope,
+                namespace: job.scope === 'curated' ? 'catalog:' + CURATED_CATALOG_ID : (job.target.namespace || 'default-app-id'),
+                identityId,
+                variantId,
+                revision: (job.target.baseRef?.revision || 0) + 1,
+                revisionId: `${variantId}~r${(job.target.baseRef?.revision || 0) + 1}`,
+                contentHash: revisionDraft.contentHash,
+            };
+            const conversions = [];
+            for (const conv of proposal.conversions || []) {
+                try {
+                    const fullConv = await buildConversion({
+                        ...conv,
+                        variantRef,
+                    });
+                    conversions.push(fullConv);
+                }
+                catch {
+                    // If conversion fails building, preserve as-is for validator to inspect
+                    conversions.push({ ...conv, variantRef });
+                }
+            }
+            proposal.conversions = conversions;
+            // Validate proposal
+            const validation = await validateProposal({
+                ...job,
+                proposal,
+            });
+            job.attempts.push({
+                attemptId: `att-${job.attempts.length + 1}`,
+                passId: passId || job.passId,
+                adapter: adapter.id,
+                release,
+                outcome: 'success',
+                timestamp: new Date(now()).toISOString(),
+            });
+            job = transition(job, 'needs_review', {
+                proposal,
+                validation,
+                checkpoint: {
+                    step: 'proposal_ready',
+                    sourceCacheKeys: [cacheKey],
+                },
+                sourceEvidence: [
+                    {
+                        cacheKey,
+                        checksum: cachedEntry.checksum,
+                        license: sourceResult.sourceRecord?.permittedUse || sourceResult.permittedUse || 'public',
+                    },
+                ],
+            });
+            await store.save(job, { expectedVersion: job.version - 1 });
+        }
+        return job;
+    }
+    async function runBatch(batchId, { signal } = {}) {
+        const jobs = await store.listByBatch(batchId);
+        // Sort order: priority, category, jobId
+        jobs.sort((a, b) => {
+            const pA = a.target?.priority ?? 999;
+            const pB = b.target?.priority ?? 999;
+            if (pA !== pB)
+                return pA - pB;
+            const cA = a.target?.category || '';
+            const cB = b.target?.category || '';
+            if (cA !== cB)
+                return cA.localeCompare(cB);
+            return a.jobId.localeCompare(b.jobId);
+        });
+        const results = [];
+        for (const j of jobs) {
+            if (signal?.aborted)
+                break;
+            const res = await runJob(j.jobId, { signal, passId: j.passId });
+            results.push(res);
+        }
+        return {
+            batchId,
+            total: jobs.length,
+            processed: results.length,
+            completed: results.filter(r => r.state === 'needs_review' || r.state === 'approved').length,
+            blocked: results.filter(r => r.state === 'blocked').length,
+            items: results,
+        };
+    }
+    async function saveGroup(updated, previous) {
+        if (store.saveMany)
+            return store.saveMany(updated.map((job, i) => ({ job, expectedVersion: previous[i].version })));
+        if (updated.length > 1)
+            throw new Error('Store must support atomic saveMany for packet groups');
+        if (updated.length)
+            await store.save(updated[0], { expectedVersion: previous[0].version });
+    }
+    async function prepareRequest(jobIds, options = {}) {
+        const jobs = await Promise.all(jobIds.map(id => store.get(id)));
+        if (jobs.some(j => !j))
+            throw new Error('Unknown job');
+        const adapter = adapterMap.get('assistant-packet') || createAssistantPacketAdapter();
+        const requests = await adapter.prepareRequest(jobs, { ...options, now });
+        const updated = [];
+        for (const request of requests) {
+            const passId = await passIdFor({ parentBatchId: jobs[0].parentBatchId || 'single', adapter: adapter.id, sourceRelease: request.requestId, purpose: request.purpose });
+            for (const target of request.targets) {
+                const job = jobs.find(j => j.jobId === target.targetId);
+                const pendingRequest = { requestId: request.requestId, requestDigest: request.requestDigest, passId, status: 'pending', expiresAt: new Date(now() + (options.limits?.ttlMs || PACKET_LIMITS.ttlMs)).toISOString(), baseRef: job.target.baseRef || null, request };
+                updated.push(transition(job, 'awaiting_response', { pendingRequest, requests: [...(job.requests || []), { requestId: request.requestId, requestDigest: request.requestDigest, passId, status: 'pending' }], passId }));
+            }
+        }
+        await saveGroup(updated, updated.map(j => jobs.find(old => old.jobId === j.jobId)));
+        return requests;
+    }
+    async function acceptResponse(input, options = {}) {
+        let echo;
+        try {
+            echo = typeof input === 'string' ? JSON.parse(input) : input;
+        }
+        catch {
+            throw new TypeError('$: strict JSON required');
+        }
+        let jobs = [];
+        let cursor;
+        do {
+            const page = await store.list({ limit: 100, cursor });
+            jobs.push(...page.items);
+            cursor = page.cursor;
+        } while (cursor);
+        const first = jobs.find(j => j.pendingRequest?.requestId === echo.requestId);
+        if (!first)
+            throw new TypeError('$.requestId: unknown or stale request');
+        const request = first.pendingRequest.request;
+        const adapter = adapterMap.get('assistant-packet') || createAssistantPacketAdapter();
+        const response = await adapter.acceptResponse(input, { ...options, request, jobs, now: now() });
+        const previous = [], updated = [];
+        for (const result of response.results) {
+            const job = jobs.find(j => j.jobId === result.targetId), proposal = await packetProposal(job, result);
+            const validation = await validateProposal({ ...job, proposal });
+            previous.push(job);
+            updated.push(transition(job, 'needs_review', { proposal, validation, pendingRequest: { ...job.pendingRequest, status: 'answered' }, requests: job.requests.map(r => r.requestId === request.requestId ? { ...r, status: 'answered' } : r) }));
+        }
+        await saveGroup(updated, previous);
+        return updated;
+    }
+    async function cancelRequest(requestId, { expiredOnly = false } = {}) {
+        const previous = [];
+        let cursor;
+        do {
+            const page = await store.list({ state: 'awaiting_response', limit: 100, cursor });
+            previous.push(...page.items.filter(j => j.pendingRequest.requestId === requestId));
+            cursor = page.cursor;
+        } while (cursor);
+        if (expiredOnly && previous.some(j => Date.parse(j.pendingRequest.expiresAt) > now()))
+            return [];
+        const updated = previous.map(job => transition(job, 'queued', { pendingRequest: null, requests: job.requests.map(r => r.requestId === requestId ? { ...r, status: expiredOnly ? 'expired' : 'cancelled' } : r) }));
+        await saveGroup(updated, previous);
+        return updated;
+    }
+    async function attestSource(jobId, sourceId, reviewer) {
+        const job = await store.get(jobId);
+        if (job?.state !== 'needs_review' || !job.proposal?.sourceVerification?.[sourceId] || !reviewer?.trim())
+            throw new TypeError('Specific source and reviewer required');
+        const proposal = structuredClone(job.proposal);
+        proposal.sourceVerification[sourceId] = { status: 'verified', method: 'reviewer_attestation', reviewer, verifiedAt: new Date(now()).toISOString() };
+        const updated = { ...job, proposal, version: job.version + 1 };
+        await store.save(updated, { expectedVersion: job.version });
+        return updated;
+    }
+    async function verifySource(jobId, sourceId, adapterId, context = {}) {
+        const job = await store.get(jobId), source = job?.proposal?.revisionDraft?.sources?.[job.proposal.assistantSourceKeys?.[sourceId] || sourceId], adapter = adapterMap.get(adapterId);
+        if (job?.state !== 'needs_review' || source?.type !== 'fdc' || !source.recordId || !adapter || !['fdc_bulk', 'fdc_api'].includes(adapter.id))
+            throw new TypeError('Deterministic FDC verification required');
+        const raw = await adapter.fetch(source.recordId, context), result = await adapter.toSourceResult(raw, context), normalized = normalizeSourceResult(result, job.target);
+        if (String(result.recordId) !== source.recordId)
+            throw new TypeError('Source record changed');
+        for (const [key, n] of Object.entries(job.proposal.assistantResult.nutrients))
+            if (n.sourceIds.includes(sourceId) && canonicalJson(normalized.nutrients[key]) !== canonicalJson(n.value))
+                throw new TypeError('Source value mismatch: ' + key);
+        const proposal = structuredClone(job.proposal);
+        proposal.sourceVerification[sourceId] = { status: 'verified', method: 'deterministic_refetch', verifiedAt: new Date(now()).toISOString() };
+        const updated = { ...job, proposal, version: job.version + 1 };
+        await store.save(updated, { expectedVersion: job.version });
+        return updated;
+    }
+    async function review(jobId, decision) {
+        const job = await store.get(jobId);
+        if (!job)
+            throw new Error(`Job not found: ${jobId}`);
+        const validation = await validateProposal(job);
+        const updated = applyReviewDecision({ ...job, validation }, decision);
+        await store.save(updated, { expectedVersion: job.version });
+        return updated;
+    }
+    async function report(batchId) {
+        const jobs = await store.listByBatch(batchId);
+        const summary = {
+            batchId,
+            total: jobs.length,
+            queued: 0,
+            awaiting_response: 0,
+            matched: 0,
+            needs_review: 0,
+            approved: 0,
+            imported: 0,
+            blocked: 0,
+        };
+        for (const j of jobs) {
+            if (summary[j.state] !== undefined) {
+                summary[j.state]++;
+            }
+        }
+        return summary;
+    }
+    return {
+        enqueue,
+        prepareRequest, acceptResponse, cancelRequest, attestSource, verifySource,
+        runJob,
+        runBatch,
+        review,
+        report,
+    };
+}

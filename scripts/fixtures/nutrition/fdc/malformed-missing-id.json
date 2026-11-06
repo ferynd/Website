@@ -1,0 +1,6 @@
+{
+  "syntheticFixture": true,
+  "description": "Malformed: missing fdcId",
+  "foodNutrients": [],
+  "_fixture": "synthetic; not nutrition data"
+}
