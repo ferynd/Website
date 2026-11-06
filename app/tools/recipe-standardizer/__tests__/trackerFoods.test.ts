@@ -44,6 +44,18 @@ describe('trackerFoods', () => {
     expect(fingerprintTrackerFood(food)).toBe('9418d4fb');
   });
 
+  it('v1 fingerprint matches pinned golden hashes', () => {
+    const zeros = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 0]));
+    const nulls = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, null]));
+    const salt = { ...zeros, sodium: 39340 };
+    const ones = Object.fromEntries(TRACKER_NUTRIENT_KEYS.map((key) => [key, 1]));
+    expect(fingerprintTrackerFood({ quantity: 1, nutrients: zeros })).toBe('2d7ade36');
+    expect(fingerprintTrackerFood({ quantity: null, nutrients: nulls })).toBe('6dcb2209');
+    expect(fingerprintTrackerFood({ quantity: 1, nutrients: salt })).toBe('8194e8a5');
+    expect(fingerprintTrackerFood({ quantity: 1, nutrients: ones })).toBe('68da78c4');
+    expect(fingerprintTrackerFood(parseTrackerFood('egg', fullFood())!)).toBe('9418d4fb');
+  });
+
   it('TRACKER_NUTRIENT_MAX_BOUNDS mirrors CalorieTracker NUTRIENT_MAX_BOUNDS', () => {
     expect(TRACKER_NUTRIENT_MAX_BOUNDS).toEqual(NUTRIENT_MAX_BOUNDS);
   });
