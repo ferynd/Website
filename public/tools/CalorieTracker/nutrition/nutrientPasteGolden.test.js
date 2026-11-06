@@ -183,17 +183,19 @@ const LINES = [
   ['Calories 200 each', { key: 'calories', value: 200, unit: 'kcal', assumed: true }],
   ['Fiber 5 total', { key: 'fiber', value: 5, unit: 'g', assumed: true }],
   ['Calories: 200 approx', { key: 'calories', value: 200, unit: 'kcal', status: 'estimated_from_comparable', assumed: true }],
-  ['Calories: 2,000 2,500', 'ignored'],
-  ['Calories 2,000 2,500', 'ignored'],
+  // Same-unit or bare pairs are a review warning on their own. The full-label
+  // test still drops them after the daily-value / 2,000-calorie footer starts.
+  ['Calories: 2,000 2,500', { key: 'calories', value: 2000, unit: 'kcal', assumed: true, warning: 'multiple_values' }],
+  ['Calories 2,000 2,500', { key: 'calories', value: 2000, unit: 'kcal', assumed: true, warning: 'multiple_values' }],
   ['Total Fat Less than 65g 80g', 'ignored'],
   ['Sat Fat Less than 20g 25g', 'ignored'],
   ['Cholesterol Less than 300mg 300mg', 'ignored'],
   ['Sodium Less than 2,400mg 2,400mg', 'ignored'],
-  ['Total Carbohydrate 300g 375g', 'ignored'],
-  ['Dietary Fiber 25g 30g', 'ignored'],
-  ['Total Fat 12g 18%', { key: 'fat', value: 12, unit: 'g' }],
-  ['Sodium 470mg 20%', { key: 'sodium', value: 470, unit: 'mg' }],
-  ['Dietary Fiber 0g 0%', { key: 'fiber', value: 0, unit: 'g' }],
+  ['Total Carbohydrate 300g 375g', { key: 'carbs', value: 300, unit: 'g', warning: 'multiple_values' }],
+  ['Dietary Fiber 25g 30g', { key: 'fiber', value: 25, unit: 'g', warning: 'multiple_values' }],
+  ['Total Fat 12g 18%', { key: 'fat', value: 12, unit: 'g', warning: false }],
+  ['Sodium 470mg 20%', { key: 'sodium', value: 470, unit: 'mg', warning: false }],
+  ['Dietary Fiber 0g 0%', { key: 'fiber', value: 0, unit: 'g', warning: false }],
 
   // A bracketed note is a form note unless a word in it names a nutrient.
   ['Vitamin B12 (cobalamin) 2.4 mcg', { key: 'vitaminB12', value: 2.4, unit: 'mcg' }],
@@ -218,6 +220,46 @@ const LINES = [
   ['Vitamin A 4%', { key: 'vitaminA', code: 'percent_daily_value' }],
   ['Calcium 20%', { key: 'calcium', code: 'percent_daily_value' }],
   ['Vitamin A 4 %', { key: 'vitaminA', code: 'percent_daily_value' }],
+
+  // Round 7. A subtype note never fills the parent. A registered subtype label maps to that key.
+  ['Carbs (net) 20 g', 'unknown'],
+  ['Carbohydrates (net) 20 g', 'unknown'],
+  ['Carbohydrate, net 20 g', 'unknown'],
+  ['Fiber (soluble) 2 g', { key: 'fiberSoluble', value: 2, unit: 'g' }],
+  ['Fiber (insoluble) 3 g', { key: 'fiberInsoluble', value: 3, unit: 'g' }],
+  ['Fiber, soluble 2 g', { key: 'fiberSoluble', value: 2, unit: 'g' }],
+  ['Fat (sat) 3 g', { key: 'fatSaturated', value: 3, unit: 'g' }],
+  ['Fat (saturated) 3 g', { key: 'fatSaturated', value: 3, unit: 'g' }],
+  ['Fat (saturates) 3 g', 'unknown'],
+  ['Fat (SFA) 2 g', 'unknown'],
+  ['Fat (of which saturates) 3 g', 'unknown'],
+  ['Fat (unsaturated) 5 g', 'unknown'],
+  ['Sugars (added) 5 g', { key: 'sugarsAdded', value: 5, unit: 'g' }],
+  ['Sugars, added 5 g', { key: 'sugarsAdded', value: 5, unit: 'g' }],
+
+  // Different units keep the first amount. Same unit or a bare second number warns.
+  ['Calories 250 kcal 1046 kJ', { key: 'calories', value: 250, unit: 'kcal', warning: false }],
+  ['Energy 250kcal 1046kJ', { key: 'calories', value: 250, unit: 'kcal', warning: false }],
+  ['Vitamin D 10 mcg 400 IU', { key: 'vitaminD', value: 10, unit: 'mcg', warning: false }],
+  ['Protein 20 g 25 g', { key: 'protein', value: 20, unit: 'g', warning: 'multiple_values' }],
+  ['| Protein | 20 g | 40 |', { key: 'protein', value: 20, unit: 'g', warning: 'multiple_values' }],
+  ['Iron 2.5 mg 14', { key: 'iron', value: 2.5, unit: 'mg', warning: 'multiple_values' }],
+
+  // Folic acid in the note is not DFE unless the value says so.
+  ['Folate (folic acid) 400 mcg', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folate (as folic acid) 400 mcg', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Vitamin B9 (folic acid) 400 mcg', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folate, folic acid 400 mcg', { key: 'folate', code: 'nondefensible_conversion' }],
+  ['Folate (folic acid) 400 mcg DFE', { key: 'folate', value: 400, unit: 'mcg' }],
+
+  // Signs, approximation, ranges, spelled-out bounds, and a second language.
+  ['Fat: --5 g', { key: 'fat', code: 'negative' }],
+  ['Protein: 20g (approx)', { key: 'protein', value: 20, unit: 'g', status: 'estimated_from_comparable' }],
+  ['Calories: 250 (approx.)', { key: 'calories', value: 250, unit: 'kcal', status: 'estimated_from_comparable', assumed: true }],
+  ['Protein: 20g - 25g', { key: 'protein', code: 'range' }],
+  ['Protein Less than 1 g', { key: 'protein', upperBound: 1, unit: 'g' }],
+  ['Trans Fat Less than 0.5 g', { key: 'fatTrans', upperBound: 0.5, unit: 'g' }],
+  ['Protein / Protéines 20 g', { key: 'protein', value: 20, unit: 'g' }],
 ];
 
 /** Older US Nutrition Facts panel, including the calorie-needs footer. */
@@ -319,6 +361,13 @@ function assertLine(line, expected) {
     payload.assumed = record.warnings.some((warning) => warning.code === 'unit_assumed' && warning.key === expected.key);
     want.assumed = expected.assumed;
   }
+  if (expected.warning) {
+    payload.warning = record.warnings.some((warning) => warning.code === expected.warning && warning.key === expected.key);
+    want.warning = true;
+  } else if (expected.warning === false) {
+    payload.warning = record.warnings.some((warning) => warning.code === 'multiple_values');
+    want.warning = false;
+  }
   expect(payload).toEqual(want);
 }
 
@@ -350,5 +399,6 @@ describe('paste line golden', () => {
     expect(record.warnings.some((warning) => warning.code === 'percent_daily_value' && warning.key === 'vitaminA')).toBe(true);
     expect(record.warnings.some((warning) => warning.code === 'percent_daily_value' && warning.key === 'calcium')).toBe(true);
     expect(record.unknownLabels.some((label) => /calories from fat/i.test(label))).toBe(false);
+    expect(record.warnings.some((warning) => warning.code === 'multiple_values')).toBe(false);
   });
 });

@@ -173,8 +173,10 @@ export async function importSavedFoodsCsv(file) {
   let newer = 0;
   let bounds = 0;
   let offline = false;
+  let unattempted = 0;
 
-  for (const row of parsed.rows) {
+  for (let index = 0; index < parsed.rows.length; index += 1) {
+    const row = parsed.rows[index];
     if (row.rejected) {
       skipped += 1;
       continue;
@@ -205,7 +207,10 @@ export async function importSavedFoodsCsv(file) {
       if (offlineError) offline = true;
       handleError('import-food-row', error, transactionFailureMessage(error, `Failed to import "${row.name}"`));
       // One offline failure covers the batch. Later rows would each retry and toast.
-      if (offlineError) break;
+      if (offlineError) {
+        unattempted = parsed.rows.length - index - 1;
+        break;
+      }
     }
   }
 
@@ -219,6 +224,7 @@ export async function importSavedFoodsCsv(file) {
     unknownHeaders: parsed.unknownHeaders,
     warnings: parsed.warnings,
     offline,
+    unattempted,
   });
   showMessage(summary.message, summary.isError);
 }

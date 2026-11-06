@@ -83,6 +83,8 @@ const KNOWN_UNIT_TOKENS = new Set([
   'kj', 'iu',
 ]);
 
+const UNIT_PATTERN = [...KNOWN_UNIT_TOKENS].sort((a, b) => b.length - a.length).join('|');
+
 function knownUnitWord(token) {
   const text = String(token ?? '').trim().toLowerCase().replace(/\.$/, '');
   return KNOWN_UNIT_TOKENS.has(text);
@@ -195,7 +197,6 @@ function matchRegisteredLabel(line) {
 const NUMBER_CORE = '(?:\\d[\\d,]*(?:\\.\\d+)?|\\.\\d+)';
 const SPACED_VALUE = new RegExp(`\\s+([<~≈]?(?:${NUMBER_CORE}))`);
 const READ_NUMBER = new RegExp(`(${NUMBER_CORE})`);
-const RANGE_NUMBER = new RegExp(`${NUMBER_CORE}\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE}`);
 const INCLUDES_ADDED_SUGARS = new RegExp(
   `^includes\\s+(?:([<~≈])\\s*)?(${NUMBER_CORE})\\s*(mcg|mg|µg|μg|ug|g)?\\s+added sugars\\b\\s*(.*)$`,
   'i',
@@ -222,12 +223,28 @@ function splitAtValueToken(line) {
   return null;
 }
 
+/** "Protein / Protéines" keeps the registered language and ignores the other tail. */
+function peelBilingualLabel(label) {
+  const match = String(label).match(/^(.*?)\s+\/\s+\S/);
+  if (!match) return label;
+  const head = match[1].trim();
+  if (!head || !lookupLabel(head)) return label;
+  return head;
+}
+
 function splitLabelValue(line) {
   const colon = line.indexOf(':');
   if (colon >= 0) {
-    return { label: line.slice(0, colon).trim(), valuePart: line.slice(colon + 1).trim() };
+    return {
+      label: peelBilingualLabel(line.slice(0, colon).trim()),
+      valuePart: line.slice(colon + 1).trim(),
+    };
   }
-  return matchRegisteredLabel(line) || splitAtValueToken(line);
+  const matched = matchRegisteredLabel(line);
+  if (matched) return matched;
+  const token = splitAtValueToken(line);
+  if (!token) return null;
+  return { label: peelBilingualLabel(token.label), valuePart: token.valuePart };
 }
 
 function isPercentDailyValue(rest) {
@@ -289,7 +306,8 @@ function remainderAfterAmount(valuePart, number) {
 }
 
 function trailingApproximate(valuePart, number) {
-  return /^(?:approximately|approx|about)\b/i.test(remainderAfterAmount(valuePart, number));
+  const rest = remainderAfterAmount(valuePart, number);
+  return /^(?:\(\s*)?(?:approximately|approx|about)\b/i.test(rest);
 }
 
 /** A % glued to the amount is % DV, not a quantity in the canonical unit. */
@@ -298,32 +316,45 @@ function isBarePercent(valuePart, number) {
 }
 
 /**
- * Footer daily-value columns: "2,000 2,500" or "300g 375g".
- * A later "18%" is the % DV of one amount, not a second column.
+ * A second amount after the first. "%" is its own unit.
+ * A bare second number is the other column of a pair, not a different unit.
  */
-function isReferencePair(valuePart, number) {
+function readSecondAmount(valuePart, number) {
   const rest = remainderAfterAmount(valuePart, number);
   const match = rest.match(new RegExp(`^(${NUMBER_CORE})`));
-  if (!match) return false;
-  return !rest.slice(match[1].length).trim().startsWith('%');
+  if (!match) return null;
+  const tail = rest.slice(match[1].length).trim();
+  if (tail.startsWith('%')) return { kind: 'percent' };
+  const unitMatch = tail.match(/^([a-zA-Zµμ]+)\b/);
+  if (unitMatch && knownUnitWord(unitMatch[1])) {
+    return { kind: 'unit', unit: normalizeUnit(unitMatch[1]) };
+  }
+  return { kind: 'bare' };
 }
 
-const LEADING_VALUE = new RegExp(`^(${NUMBER_CORE}(?:\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE})?)`);
-
-/** Range and sign apply only to the first number, before the unit or any later note. */
-function leadingValueToken(text) {
-  const trimmed = String(text).trim().replace(/^[<~≈]\s*/, '');
-  const match = trimmed.match(LEADING_VALUE);
-  return match ? match[1] : '';
+function secondAmountUsesDifferentUnit(valuePart, number, second) {
+  if (!second || second.kind === 'bare') return false;
+  if (second.kind === 'percent') return true;
+  const first = readUnit(valuePart, number.end);
+  const firstNorm = first ? normalizeUnit(first) : '';
+  if (!firstNorm) return true;
+  return firstNorm !== second.unit;
 }
 
 function isRange(text) {
-  return RANGE_NUMBER.test(leadingValueToken(text));
+  const trimmed = String(text).trim().replace(/^[<~≈]\s*/, '');
+  // "20g - 25g" and "20 g - 25 g" are ranges. A later "(10-15% DV)" is not.
+  return new RegExp(
+    `^${NUMBER_CORE}\\s*(?:${UNIT_PATTERN})?\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE}`,
+    'i',
+  ).test(trimmed);
 }
 
 function isNegative(text) {
   const trimmed = String(text).trim().replace(/^[<~≈]\s*/, '');
-  return new RegExp(`^\\s*[−–—-]\\s*${NUMBER_CORE}`).test(trimmed);
+  if (!/^[−–—-]/.test(trimmed)) return false;
+  const rest = trimmed.replace(/^[−–—\s-]+/, '');
+  return new RegExp(`^${NUMBER_CORE}`).test(rest);
 }
 
 function pushWarning(warnings, warning) {
@@ -336,11 +367,23 @@ function fiberMeaningFor(key) {
   return null;
 }
 
-function isFolicAcidLabel(label) {
-  let text = normalizeLabel(label);
-  text = text.replace(/\s*\([^)]*\)\s*$/, '').trim();
-  text = text.replace(/,\s*[^,]+$/, '').trim();
-  return text === 'folic acid';
+/** Folic acid is not DFE. A note that names it is review-only unless the value says DFE. */
+function folicAcidNeedsReview(label, valuePart) {
+  const text = normalizeLabel(label);
+  if (!/\bfolic\s+acid\b/.test(text)) return false;
+  return !/\bdfe\b/i.test(String(valuePart ?? ''));
+}
+
+const FOOTER_CONTEXT_RE = /\bdaily\s+values?\b|\b2,?000\s*calorie\b/i;
+
+/** "Less than 65g 80g" is a footer row. One amount is an upper bound, like "<". */
+function lessThanLine(line) {
+  const match = String(line).match(/\bless\s+than\b/i);
+  if (!match) return { action: 'none', line };
+  const after = String(line).slice(match.index + match[0].length);
+  const numbers = after.match(new RegExp(NUMBER_CORE, 'g')) || [];
+  if (numbers.length >= 2) return { action: 'skip', line };
+  return { action: 'rewrite', line: String(line).replace(/\bless\s+than\b/i, '<') };
 }
 
 function readConverted(hit, valuePart, number, split) {
@@ -416,24 +459,24 @@ export function parseNutritionText(text) {
   const warnings = [];
   const unknownLabels = [];
   let fiberMeaning = null;
+  let footerContext = false;
 
-  for (const rawLine of String(text ?? '').split(/\r?\n/)) {
-    const line = stripDecorations(rawLine);
-    if (!line) continue;
-    // Daily-value footnote rows ("Total Fat Less than 65g 80g") are reference text.
-    if (/\bless\s+than\b/i.test(line)) continue;
-    const split = matchIncludesAddedSugars(line) || splitLabelValue(line);
-    if (!split || !split.label) continue;
-    if (!hasNumber(split.valuePart)) continue;
+  const consumeLine = (line) => {
+    const lessThan = lessThanLine(line);
+    if (lessThan.action === 'skip') return;
+    const source = lessThan.line;
+    const split = matchIncludesAddedSugars(source) || splitLabelValue(source);
+    if (!split || !split.label) return;
+    if (!hasNumber(split.valuePart)) return;
 
-    if (isFolicAcidLabel(split.label)) {
+    if (folicAcidNeedsReview(split.label, split.valuePart)) {
       pushWarning(warnings, {
         level: 'review',
         code: 'nondefensible_conversion',
         key: 'folate',
         message: 'Folic acid is not converted to folate DFE.',
       });
-      continue;
+      return;
     }
 
     const hit = lookupLabel(split.label);
@@ -444,7 +487,7 @@ export function parseNutritionText(text) {
         code: 'unknown_label',
         message: `Unknown nutrient label "${split.label}".`,
       });
-      continue;
+      return;
     }
 
     const explicitFiber = fiberMeaningFor(hit.key);
@@ -469,7 +512,7 @@ export function parseNutritionText(text) {
         key: hit.key,
         message: `${split.label} is a range and was not stored.`,
       });
-      continue;
+      return;
     }
     if (isNegative(valuePart)) {
       pushWarning(warnings, {
@@ -478,11 +521,11 @@ export function parseNutritionText(text) {
         key: hit.key,
         message: `${split.label} is negative and was not stored.`,
       });
-      continue;
+      return;
     }
 
     const number = readNumber(valuePart);
-    if (!number) continue;
+    if (!number) return;
     if (isBarePercent(valuePart, number)) {
       pushWarning(warnings, {
         level: 'review',
@@ -490,10 +533,31 @@ export function parseNutritionText(text) {
         key: hit.key,
         message: `${split.label} is a % daily value, not an amount, and was not stored.`,
       });
-      continue;
+      return;
     }
-    if (isReferencePair(valuePart, number)) continue;
+    const second = readSecondAmount(valuePart, number);
+    if (second && !secondAmountUsesDifferentUnit(valuePart, number, second)) {
+      // Footer rows ("2,000 2,500", "300g 375g") are reference text. Any other
+      // second column keeps the first amount and is visible in review.
+      if (footerContext) return;
+      stageAmount(hit, split, number, observations, warnings);
+      pushWarning(warnings, {
+        level: 'review',
+        code: 'multiple_values',
+        key: hit.key,
+        message: `${split.label} has more than one amount; stored the first and left the rest for review.`,
+      });
+      return;
+    }
     stageAmount(hit, split, number, observations, warnings);
+  };
+
+  for (const rawLine of String(text ?? '').split(/\r?\n/)) {
+    const line = stripDecorations(rawLine);
+    if (!line) continue;
+    const opensFooter = FOOTER_CONTEXT_RE.test(line);
+    consumeLine(line);
+    if (opensFooter) footerContext = true;
   }
 
   const record = mergeObservations(observations);

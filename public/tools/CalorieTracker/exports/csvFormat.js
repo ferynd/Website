@@ -287,9 +287,13 @@ export function summarizeCsvImport(counts) {
   const imported = counts?.imported || 0;
   const skipped = counts?.skipped || 0;
   const errored = counts?.errored || 0;
-  let message = errored > 0
-    ? `Import complete: ${imported} food(s) imported, ${skipped} skipped, ${errored} failed.`
-    : `Import complete: ${imported} food(s) imported, ${skipped} skipped.`;
+  const unattempted = counts?.unattempted || 0;
+  const stopped = Boolean(counts?.offline);
+  let message = stopped
+    ? `Import stopped: ${imported} food(s) imported, ${skipped} skipped, ${errored} failed, ${unattempted} not attempted.`
+    : errored > 0
+      ? `Import complete: ${imported} food(s) imported, ${skipped} skipped, ${errored} failed.`
+      : `Import complete: ${imported} food(s) imported, ${skipped} skipped.`;
   if (counts?.clamped > 0) message += ` ${counts.clamped} value(s) clamped to bounds.`;
   if (counts?.newer > 0) message += ` ${counts.newer} skipped because they were saved by a newer version — reload.`;
   if (counts?.bounds > 0) message += ` ${counts.bounds} skipped because a nutrient is outside the registry bounds.`;

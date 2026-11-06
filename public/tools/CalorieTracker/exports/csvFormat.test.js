@@ -15,9 +15,13 @@ describe('saved food CSV', () => {
     const ok = summarizeCsvImport({ imported: 2, skipped: 1, errored: 0, clamped: 0, newer: 0, bounds: 0 });
     expect(ok.isError).toBe(false);
     expect(ok.message).toBe('Import complete: 2 food(s) imported, 1 skipped.');
-    const failed = summarizeCsvImport({ imported: 0, skipped: 1, errored: 2, offline: true });
+    const failed = summarizeCsvImport({ imported: 0, skipped: 1, errored: 2, offline: true, unattempted: 0 });
     expect(failed.isError).toBe(true);
-    expect(failed.message).toBe('Import complete: 0 food(s) imported, 1 skipped, 2 failed. Offline — not saved.');
+    expect(failed.message).toBe('Import stopped: 0 food(s) imported, 1 skipped, 2 failed, 0 not attempted. Offline — not saved.');
+    expect(failed.message).not.toContain('Import complete');
+    const stopped = summarizeCsvImport({ imported: 0, skipped: 0, errored: 1, offline: true, unattempted: 99 });
+    expect(stopped.isError).toBe(true);
+    expect(stopped.message).toBe('Import stopped: 0 food(s) imported, 0 skipped, 1 failed, 99 not attempted. Offline — not saved.');
   });
 
   it('legacy CSV columns keep order and v2 columns are appended', () => {

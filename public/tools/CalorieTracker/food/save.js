@@ -66,7 +66,10 @@ export async function saveFoodItemToDatabase() {
  * The staging area is intentionally not cleared so the user can add to today's log immediately.
  */
 async function processSaveFoodItem(foodName, record) {
-  if (!state.userId) return showMessage('Cannot save food item. Not authenticated.', true);
+  if (!state.userId) {
+    showMessage('Cannot save food item. Not authenticated.', true);
+    return false;
+  }
 
   try {
     const foodId = foodName.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -95,22 +98,24 @@ async function processSaveFoodItem(foodName, record) {
     showMessage(message, false, SAVE_CONFIG.SUCCESS_MESSAGE_DURATION);
     flashSaveConfirmation(document.getElementById('save-food-item-btn'));
     rememberStagedFoodName(foodName);
+    return true;
 
   } catch (e) {
     if (e instanceof NewerSchemaError || e?.name === 'NewerSchemaError') {
       showMessage('This food was saved by a newer version — reload.', true);
-      return;
+      return false;
     }
     if (e instanceof NutrientBoundsError || e?.name === 'NutrientBoundsError') {
       const label = getNutrient(e.key)?.label || 'A nutrient';
       showMessage(`${label} is outside the registry bounds and was not saved.`, true);
-      return;
+      return false;
     }
     handleError('save-food-item', e, transactionFailureMessage(e, 'Failed to save food item'));
     
     if (SAVE_CONFIG.DEBUG_SAVE_OPERATIONS) {
       console.error('❌ [FOOD-SAVE] Save failed:', e);
     }
+    return false;
   }
 }
 
@@ -219,8 +224,8 @@ function showDuplicateDialog(existingFood, record, foodName) {
   };
   
   document.getElementById('dup-replace').onclick = async () => {
-    await processSaveFoodItem(foodName, record);
-    closeDuplicateDialog();
+    const saved = await processSaveFoodItem(foodName, record);
+    if (saved) closeDuplicateDialog();
   };
   
   document.getElementById('dup-keep-both').onclick = () => {

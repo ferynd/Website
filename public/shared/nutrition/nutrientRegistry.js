@@ -414,13 +414,79 @@ function qualifierNamesNutrient(rawQual) {
   return false;
 }
 
+/**
+ * Words that mark a subtype inside a note. Built from child and detail labels
+ * (soluble, saturated, trans, …) plus short forms that are not labels on their own.
+ * A note that contains one must not give the amount to the parent.
+ */
+const SUBTYPE_NOTE_EXTRA = [
+  'soluble', 'insoluble', 'added', 'saturated', 'trans', 'monounsaturated', 'polyunsaturated',
+  'net', 'sat', 'saturates', 'sfa', 'mufa', 'pufa', 'unsaturated', 'free', 'natural', 'available', 'digestible',
+];
+const SUBTYPE_WORD_STOP = new Set([
+  'acid', 'acids', 'alpha', 'and', 'dietary', 'fat', 'fatty', 'fiber', 'fibre', 'from',
+  'includes', 'of', 'oil', 'omega', 'sugar', 'sugars', 'the', 'total', 'vitamin', 'which', 'with',
+]);
+const SUBTYPE_LABEL_KEYS = new Set(['fiberSoluble', 'fiberInsoluble', 'sugarsAdded']);
+
+function buildSubtypeNoteWords() {
+  const words = new Set(SUBTYPE_NOTE_EXTRA);
+  for (const def of NUTRIENTS) {
+    if (!def.parent && !SUBTYPE_LABEL_KEYS.has(def.key)) continue;
+    for (const label of def.labels || []) {
+      for (const word of normalizeLabel(label).split(/[^a-z0-9]+/)) {
+        if (!word || word.length < 4 || SUBTYPE_WORD_STOP.has(word)) continue;
+        words.add(word);
+      }
+    }
+  }
+  return words;
+}
+
+const SUBTYPE_NOTE_WORDS = buildSubtypeNoteWords();
+
+/** Phrases that are not the parent nutrient, even when no subtype word matched. */
+const KNOWN_UNKNOWN_PHRASES = new Set([
+  'net carb', 'net carbs', 'net carbohydrate', 'net carbohydrates',
+  'unsaturated fat', 'unsaturated fats',
+]);
+
+function noteWords(qualNorm) {
+  return String(qualNorm ?? '').split(/[^a-z0-9]+/).filter(Boolean);
+}
+
+function noteHasSubtypeWord(qualNorm) {
+  return noteWords(qualNorm).some((word) => SUBTYPE_NOTE_WORDS.has(word));
+}
+
+function joinedQualifierPhrases(base, qualifier) {
+  if (!base || !qualifier) return [];
+  return [
+    normalizeLabel(`${qualifier} ${base}`),
+    normalizeLabel(`${base} ${qualifier}`),
+  ];
+}
+
+function lookupJoinedQualifier(base, qualifier) {
+  for (const phrase of joinedQualifierPhrases(base, qualifier)) {
+    const hit = lookupNormalized(phrase);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function knownUnknownPhrase(base, qualifier) {
+  return joinedQualifierPhrases(base, qualifier).some((phrase) => KNOWN_UNKNOWN_PHRASES.has(phrase));
+}
+
 function resolveLabelNorm(norm) {
   const direct = lookupNormalized(norm);
   if (direct) return direct;
 
   const trailing = splitTrailingQualifier(norm);
   if (!trailing) return null;
-  const baseHit = lookupNormalized(normalizeLabel(trailing.base));
+  const baseNorm = normalizeLabel(trailing.base);
+  const baseHit = lookupNormalized(baseNorm);
   const rawQual = normalizeLabel(trailing.qualifier);
   // "(as ascorbic acid)" / "(as zinc oxide)" names the chemical form, not a
   // different nutrient. A qualifier that is itself a child (ALA, EPA) still wins.
@@ -433,6 +499,12 @@ function resolveLabelNorm(norm) {
     return null;
   }
   if (!baseHit || qualHit) return null;
+  // "Fiber, soluble" / "Sugars, added" / "Fat (sat)" are the subtype label, not the parent.
+  const joined = lookupJoinedQualifier(baseNorm, qualNorm);
+  if (joined && joined.key !== baseHit.key) return joined;
+  // "net", "soluble", "saturates" and the other subtype words must not fall through.
+  if (noteHasSubtypeWord(qualNorm) || knownUnknownPhrase(baseNorm, qualNorm)) return null;
+  if (joined) return joined;
   // Any other note is a form remark when none of its words is a nutrient name.
   // That keeps "Omega-3 (EPA + DHA)" and "Saturated Fat (fat)" unknown.
   if (FORM_QUALIFIERS.has(qualNorm) || asForm || !qualifierNamesNutrient(qualNorm)) return baseHit;
