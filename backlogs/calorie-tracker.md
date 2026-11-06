@@ -64,13 +64,14 @@ Dependency order: #59 → #60 → #61 → #62 → #63 (batches) → #69 → #64 
 
 ### #60: Expand nutrient contracts and make parsing lossless
 
-- [ ] **Implement a versioned registry and quality-aware imports/exports.** Depends: #59.
+- [p] **Implement a versioned registry and quality-aware imports/exports.** Depends: #59.
+  > in progress — Part A is committed locally on `working/calorie-tracker-60-nutrient-registry` (shared registry, readers, v1-identical writes, service worker `nutritrack-v3`, census script built and not run). Not pushed and no PR. Part B (census, backup, flag, deploy) still needs James's approval. checks: tracker 626/16, root 1935/99, lint, build, ci:contract, ci:docs, rules 107/7; commits: 27fadc7, 3561499, 67107a2, 051be4e, e68f0ee
   - **Surfaces:** tracker constants/parser/staging/save/display/export/targets; recipe `trackerFoods`, `nutritionIntake`, calculation/export formats and parity tests.
   - **Accept:** saturated/trans/mono/poly fat and planned groups supported; exact labels cannot overwrite parent totals; null/rounded-zero/measured/estimated states survive round trips. EPA/DHA cannot overwrite total omega-3. Unknown keys warn; conflicting duplicate keys require review. Units/carbohydrate conventions explicit. Per-100-g bounds accommodate salt/additives. Legacy fiber preserved and classified only with evidence. New fields are not all minimum targets.
   - **Shared module:** one registry module is consumed by the Vite tracker and the React tool (shared source or build artifact, chosen and documented here); no per-tool copies. Parity tests guard any generated artifact.
   - **Legacy paste:** the existing paste parser keeps accepting the 24-field block with anchored labels; it becomes a secondary adapter onto the same staged record, not a separate data model.
   - **Checks:** tracker/root suites; lint/build for UI; regression cases for subtype collisions, unknowns, unit conversion, fiber ambiguity, and parity.
-  - **Migration/deploy:** version readers before writers, preserve v1, and declare capabilities. Verify cached/PWA clients cannot erase v2 fields before enabling writes. **Requires James's explicit approval** before enabling v2 writes against production data.
+  - **Migration/deploy:** version readers before writers, preserve v1, and declare capabilities. Part A does not deploy rules and does not enable v2 writes. Part B (read-only census, backup, flag, and deploy) is still open. Verify cached/PWA clients cannot erase v2 fields before enabling writes. **Requires James's explicit approval** before enabling v2 writes against production data.
   - **Fingerprint compatibility:** version the quantity/nutrient hash and retain v1 verification for existing confirmed links and export references. Test that dictionary expansion neither silently trusts a changed source nor invalidates unchanged legacy links.
 
 ### #61: Add versioned ingredient storage and identity matching

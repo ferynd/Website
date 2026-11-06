@@ -81,7 +81,7 @@ Preserve the project's existing weighted estimate under `fiberWeightedLegacy`:
 - When subtypes are unknown: fruit/legumes/oats/barley 0.8; non-starchy vegetables 0.7; nuts/seeds 0.6; wheat/bran-heavy foods 0.5 times total fiber.
 - Apply one method per amount, with the specific subtype rule taking precedence. Do not count a fiber twice or invent a group weight for an unsupported food.
 
-Historical `fiber` values are ambiguous because the chat workflow used weighted fiber while other tracker imports could use standard fiber. Preserve the original value and mark its meaning `total`, `weighted`, or `unknown` only when evidence supports the classification. Never silently rewrite history or infer the classification solely from the field name. New standard-fiber targets must not be applied to the custom metric.
+Historical `fiber` values are ambiguous because the chat workflow used weighted fiber while other tracker imports could use standard fiber. Preserve the original value and mark its meaning `total`, `weighted_legacy`, or `unknown` only when evidence supports the classification. `weighted_legacy` is the stored name for this contract's weighted custom metric; the registry uses that spelling so the value is not mistaken for a future standard weighting. Never silently rewrite history or infer the classification solely from the field name. New standard-fiber targets must not be applied to the custom metric.
 
 ### Nutrient quality
 
@@ -97,6 +97,20 @@ Zero requires supporting evidence. Label-rounded zero is a label observation, no
 
 Assess coverage per nutrient as well as per ingredient and gram. When inputs are estimated, use an estimate marker. Use a lower-bound indicator only when the included values and omitted nonnegative contributions justify it. "All ingredients linked" does not mean "all micronutrients known."
 
+Reading a v1 document that has a number and no stored quality uses status `legacy_unclassified`. That status is part of `NUTRIENT_STATUSES` and is not written onto new v2 observations.
+
+### Registry implementation (#60)
+
+The shared module is `public/shared/nutrition/nutrientRegistry.js`, `public/shared/nutrition/capabilities.js`, and `public/shared/nutrition/nutrientText.js`. The static tracker imports those files by relative URL. Recipe Standardizer imports them with the `@/public/shared/nutrition/` alias. There is no generated second copy.
+
+v2 food documents, only when writes are enabled, store flat top-level keys (`null` means unknown), `nutrientSchemaVersion: 2`, and a sparse `nutrientMeta` object with `registryVersion`, `quality`, and `fiberMeaning` / `carbConvention` only when those are not `unknown`. Unknown quality entries are omitted. Day documents do not store detail totals. Readers derive them, and a key missing from any logged item is partial coverage rather than zero.
+
+`checkPer100g` and `checkPerUnit` are the bounds. Pure salt at 39,340 mg sodium per 100 g passes the per-100 g check (review above 40,000 mg, hard maximum 100,000 mg). The v1 per-unit editor cap stays the historical maximum, including sodium 23,000.
+
+`NUTRIENT_V2_WRITES_ENABLED` in `public/shared/nutrition/capabilities.js` is the only write switch. It is false. `resolveNutrientWriteVersion()` returns 1 or 2 from that constant and has no localStorage, query, or environment override. With the flag off, food writes stay `{name, quantity, 24 numbers, lastUpdated}`. A v1 writer refuses to overwrite a document whose `nutrientSchemaVersion` is 2 or higher.
+
+Tracker Settings shows `Nutrient registry v2 · storage v1 · build nutritrack-v3`. The service worker cache is `nutritrack-v3` (`public/tools/CalorieTracker/sw.js`). Same-origin JavaScript, HTML, and navigations are network-first with cache fallback. Styles and images stay cache-first. Firebase hosts stay network-only. The read-only census is `scripts/firebase/nutrientCensus.ts`. It is not run as part of this change, and no Firestore rules deploy is required for these fields.
+
 ## Ingredient and meal records
 
 ### Ingredient identity and profile
@@ -106,6 +120,8 @@ Use a stable ID independent of a display name. A family such as ground beef has 
 The current recipe fuzzy matcher treats words such as raw, cooked, dried, salted, and unsalted as noise. It can remain a candidate suggester, but must not become the canonical automatic resolver. Require exact variant compatibility for automatic reuse. Add indexed lookup, pagination, and bounded local caches; do not load the entire expanded catalog every time either tool opens.
 
 Version fingerprints explicitly. The existing fingerprint includes the ordered 24 nutrient keys, so simply adding keys changes old hashes. Keep a v1 verifier for stored confirmed links and export references, and introduce a v2 fingerprint/version together. Reconfirmation, if required, must be visible and deliberate. A legacy reference must never be silently trusted or invalidated merely because the supported nutrient dictionary grew.
+
+#60 keeps the v1 fingerprint as the FNV-1a 32-bit hex of quantity plus the ordered 24 keys. The v2 fingerprint is `v2:` plus the FNV-1a hex of registry version, quantity, and every key as `value:status`. `verifyTrackerFoodFingerprint` returns `match`, `match-v1-expanded`, or `mismatch`. `match` and `match-v1-expanded` both mean the legacy 24 keys are unchanged. `confirmed-legacy` is a review state for a v1 fingerprint on a food that now carries detail. It is not a stored link status, and those links still contribute the 24 keys. While `NUTRIENT_V2_WRITES_ENABLED` is false, new confirmations store another v1 fingerprint and the review UI does not ask to reconfirm merely to include detail.
 
 Suggested logical records:
 
@@ -270,13 +286,13 @@ The tracker and Recipe Standardizer use one nutrient registry (#60), one set of 
 
 The legacy paste parser remains supported, but structured ingredient-level data is the primary future interface. The structured assistant request/response packets (#67) are the preferred bridge to ChatGPT project instructions and other assistants; freeform paste is the fallback. The project's current installed instructions cover full ingredient estimation, source hierarchy, scaling, hidden ingredients, weighted fiber, FODMAP equivalents, adjusted carbs, and the fixed 24-field copy format. The updated chat workflow should apply the database-first and evidence rules above without pretending a connector can access the live Firebase database.
 
-Until #60 and #64 ship and the target capability is verified:
+The #60 registry and readers are in the tree. v2 storage stays off until Part B is approved (`NUTRIENT_V2_WRITES_ENABLED` is false), and #64 has not shipped:
 
-- Keep the existing 24-field tracker copy/import path intact. Display newly requested fat/fiber/sugar detail separately; do not paste unsupported subtype lines into the current parser.
-- Preserve the legacy copy block's historical fiber meaning and disclose the distinction next to it. Use standard total fiber in the additional details.
-- Do not emit expanded v2 JSON to a v1-only `recipe-nutrition` importer. Do not erase missing values to satisfy its numeric-only contract; show the unsupported gap and use a draft/manual review instead.
-- The legacy plain-text path also turns blank or nonnumeric fields into zero on save. If any legacy core nutrient is genuinely unknown, present a review-only result or a supported explicit estimate, not an import-ready block claiming to preserve unknowns. An `unknown` string is not a safe legacy persistence mechanism.
-- Once the target declares v2 support, use exact registry labels and the expanded contract. Carry unknowns, evidence, and versioned ingredient references through import.
+- The 24-field paste block still parses. Anchored subtype labels fill the staged record and do not overwrite parent totals. While storage is v1, those detail values are not written.
+- Preserve the legacy copy block's historical fiber meaning and disclose the distinction next to it. Classify it only as `total`, `weighted_legacy`, or `unknown`, and only with evidence. Use standard total fiber in the additional details.
+- Do not emit expanded v2 JSON to a caller that is still on storage v1 and expect nulls to be stored. Null legacy keys are review-only until the flag is on. Do not erase missing values to satisfy a numeric-only contract.
+- If any legacy core nutrient is genuinely unknown, present a review-only result or a supported explicit estimate, not an import-ready block claiming to preserve unknowns. An `unknown` string is not a safe v1 persistence mechanism.
+- Once Settings shows storage v2, use exact registry labels and the expanded contract. Carry unknowns, evidence, and versioned ingredient references through import.
 - Use an authorized database connector or supplied export when available. If neither is available, state that reuse/save could not be verified. Offer batched research or an import-ready result without claiming it reached the website.
 
 The website is the durable home for ingredient data. A chat response, generated file, or GitHub code change does not itself save a user's meal to Firestore.
