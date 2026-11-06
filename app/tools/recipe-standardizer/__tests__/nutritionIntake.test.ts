@@ -308,7 +308,7 @@ describe('schemaVersion 2 observations', () => {
       if (!result.ok) return;
       expect(result.items[0].nutrients.vitaminD).toBeNull();
       expect(result.items[0].errors.join(' ')).toContain(`items[0].observations[0] ${plausible}`);
-      expect(result.items[0].detail?.vitaminD).toBeUndefined();
+      expect(result.items[0].detail ?? {}).not.toHaveProperty('vitaminD');
     }
 
     const atCap = parseNutritionJson(JSON.stringify(v2Document([observation('vitaminD', 300)])));

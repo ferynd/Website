@@ -160,7 +160,7 @@ const DEFINITIONS = [
   }),
   v1({
     key: 'vitaminB12', label: 'Vitamin B12', unit: 'mcg', group: 'dailyVitamins', targetRole: 'floor', perUnitMax: 10000,
-    labels: ['Vitamin B12', 'Vit B12', 'B12'],
+    labels: ['Vitamin B12', 'Vit B12', 'B12', 'Vitamin B-12', 'Vitamin B 12'],
     legacyAliases: ['vitamin b12', 'vit b12', 'b12'],
   }),
   v1({
@@ -199,7 +199,7 @@ const DEFINITIONS = [
   }),
   v1({
     key: 'vitaminK', label: 'Vitamin K', unit: 'mcg', group: 'avgVitamins', targetRole: 'average', perUnitMax: 10000,
-    labels: ['Vitamin K', 'Vit K', 'Vitamin K2', 'K2', 'Menaquinone'],
+    labels: ['Vitamin K', 'Vit K', 'Vitamin K1', 'Vitamin K2', 'K2', 'Menaquinone'],
     legacyAliases: ['vitamin k', 'vit k'],
   }),
   v1({
@@ -357,6 +357,8 @@ for (const def of NUTRIENTS) {
   for (const alias of def.legacyAliases) claim(ALIAS_LABELS, alias, def.key, EXACT_LABELS);
 }
 
+const REGISTERED_NORMS = new Set([...EXACT_LABELS.keys(), ...ALIAS_LABELS.keys()]);
+
 const RESERVED = new Set(RESERVED_DOC_FIELDS);
 for (const key of V2_KEYS) {
   if (RESERVED.has(key)) throw new Error(`Nutrient key ${key} collides with a reserved document field`);
@@ -397,6 +399,21 @@ function splitTrailingQualifier(norm) {
   return null;
 }
 
+/** True when a parenthetical names a registered label, not a chemical form. */
+function qualifierNamesNutrient(rawQual) {
+  const qual = normalizeLabel(rawQual);
+  if (!qual) return false;
+  if (REGISTERED_NORMS.has(qual)) return true;
+  const words = qual.split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.some((word) => REGISTERED_NORMS.has(word))) return true;
+  const padded = ` ${qual} `;
+  for (const label of REGISTERED_NORMS) {
+    if (!/[^a-z0-9]/.test(label)) continue;
+    if (padded.includes(` ${label} `)) return true;
+  }
+  return false;
+}
+
 function resolveLabelNorm(norm) {
   const direct = lookupNormalized(norm);
   if (direct) return direct;
@@ -415,7 +432,10 @@ function resolveLabelNorm(norm) {
     if (qualHit.key === baseHit.key) return baseHit;
     return null;
   }
-  if (baseHit && !qualHit && (FORM_QUALIFIERS.has(qualNorm) || asForm)) return baseHit;
+  if (!baseHit || qualHit) return null;
+  // Any other note is a form remark when none of its words is a nutrient name.
+  // That keeps "Omega-3 (EPA + DHA)" and "Saturated Fat (fat)" unknown.
+  if (FORM_QUALIFIERS.has(qualNorm) || asForm || !qualifierNamesNutrient(qualNorm)) return baseHit;
   return null;
 }
 
@@ -448,6 +468,7 @@ export function normalizeUnit(raw) {
   if (text === 'grams' || text === 'gram') return 'g';
   if (text === 'milligrams' || text === 'milligram') return 'mg';
   if (text === 'micrograms' || text === 'microgram') return 'mcg';
+  if (text === 'calorie' || text === 'calories') return 'kcal';
   return text;
 }
 

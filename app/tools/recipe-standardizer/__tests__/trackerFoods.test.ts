@@ -55,11 +55,12 @@ describe('trackerFoods', () => {
     expect(fingerprintTrackerFood({ quantity: 1, nutrients: ones })).toBe('68da78c4');
     expect(fingerprintTrackerFood(parseTrackerFood('egg', fullFood())!)).toBe('9418d4fb');
     const withConventions = parseTrackerFood('egg', fullFood())!;
-    expect(fingerprintTrackerFood({
+    const ignoredByV1 = {
       ...withConventions,
-      fiberMeaning: 'total',
-      carbConvention: 'excludes_fiber',
-    })).toBe('9418d4fb');
+      fiberMeaning: 'total' as const,
+      carbConvention: 'excludes_fiber' as const,
+    };
+    expect(fingerprintTrackerFood(ignoredByV1)).toBe('9418d4fb');
   });
 
   it('registry expansion does not change v1 fingerprints', () => {

@@ -68,12 +68,35 @@ function isWordBoundary(next) {
   return next == null || !/[A-Za-z0-9]/.test(next);
 }
 
-/** The value token: a number, a leading decimal, or < / ~ / ≈ in front of one. */
+/** The value token: a number, a leading decimal, < / ~ / ≈, or a sign glued to a digit. */
 function valueStartsImmediately(valuePart) {
-  return /^(?:[<~≈]\s*)?(?:\d|\.\d)/.test(valuePart);
+  return /^(?:[<~≈]\s*)?(?:\d|\.\d)/.test(valuePart)
+    || /^(?:[<~≈]\s*)?[−–—-](?:\d|\.\d)/.test(valuePart);
 }
 
-const PAREN_UNIT = /^(mcg|mg|kcal|cal|kj|iu|µg|μg|ug|g)$/i;
+/** Whole tokens that are units. A longer word ("total", "per", "each") is not a unit. */
+const KNOWN_UNIT_TOKENS = new Set([
+  'g', 'gram', 'grams',
+  'mg', 'milligram', 'milligrams',
+  'mcg', 'microgram', 'micrograms', 'µg', 'μg', 'ug',
+  'kcal', 'cal', 'calorie', 'calories',
+  'kj', 'iu',
+]);
+
+function knownUnitWord(token) {
+  const text = String(token ?? '').trim().toLowerCase().replace(/\.$/, '');
+  return KNOWN_UNIT_TOKENS.has(text);
+}
+
+function leadingUnitToken(inner) {
+  const match = String(inner).trim().match(/^([a-zA-Zµμ]+)\b/);
+  if (!match || !knownUnitWord(match[1])) return '';
+  return match[1];
+}
+
+function isApproxNote(inner) {
+  return /^(?:approximately|approx|about)\b/i.test(String(inner).trim());
+}
 
 function takeParen(rest) {
   if (!rest.startsWith('(')) return null;
@@ -81,18 +104,27 @@ function takeParen(rest) {
   if (close < 0) return null;
   const text = rest.slice(0, close + 1);
   const inner = rest.slice(1, close).trim();
-  return { text, length: text.length, unit: PAREN_UNIT.test(inner) ? inner : null };
+  return {
+    text,
+    length: text.length,
+    unit: leadingUnitToken(inner) || null,
+    approximate: isApproxNote(inner),
+  };
 }
 
-/** Separators that may sit between a label and its value. A dash glued to a digit is a sign, not a separator. */
+/**
+ * Separators between a label and its value.
+ * A dash glued to a digit is a sign. Return that split so isNegative can see it.
+ */
 function takeSeparator(rest) {
   const word = rest.match(/^(?:approximately|approx|about)\.?(?![A-Za-z])/i);
   if (word) return { length: word[0].length, approximate: true };
+  if (/^[−–—-](?:\d|\.\d)/.test(rest)) return { length: 0, valueSplit: true };
   if (/^[=:~≈]/.test(rest)) {
     const symbol = rest[0];
     return { length: 1, approximate: symbol === '~' || symbol === '≈' };
   }
-  if (/^[-—–](?=\s)/.test(rest)) return { length: 1, approximate: false };
+  if (/^[−–—-](?=\s)/.test(rest)) return { length: 1, approximate: false };
   return null;
 }
 
@@ -109,20 +141,22 @@ function parseAfterLabel(line, originalEnd) {
   while (rest.length) {
     rest = rest.replace(/^\s+/, '');
     if (!rest) break;
-    if (valueStartsImmediately(rest)) break;
     const paren = takeParen(rest);
     if (paren) {
       label = `${label} ${paren.text}`.trim();
       if (paren.unit) labelUnit = paren.unit;
+      if (paren.approximate) approximate = true;
       rest = rest.slice(paren.length);
       continue;
     }
     const separator = takeSeparator(rest);
+    if (separator?.valueSplit) break;
     if (separator) {
       if (separator.approximate) approximate = true;
       rest = rest.slice(separator.length);
       continue;
     }
+    if (valueStartsImmediately(rest)) break;
     return null;
   }
   if (!valueStartsImmediately(rest) || !label) return null;
@@ -240,7 +274,38 @@ function readNumber(text) {
 function readUnit(text, start) {
   const rest = String(text).slice(start).trim();
   const match = rest.match(/^([a-zA-Zµμ]+)/);
-  return match ? match[1] : '';
+  if (!match || !knownUnitWord(match[1])) return '';
+  return match[1];
+}
+
+/** Text after the first amount and its unit, used for notes and a second column. */
+function remainderAfterAmount(valuePart, number) {
+  const rest = String(valuePart).slice(number.end);
+  const unit = readUnit(valuePart, number.end);
+  if (!unit) return rest.trim();
+  const trimmed = rest.trim();
+  if (!trimmed.toLowerCase().startsWith(unit.toLowerCase())) return trimmed;
+  return trimmed.slice(unit.length).trim();
+}
+
+function trailingApproximate(valuePart, number) {
+  return /^(?:approximately|approx|about)\b/i.test(remainderAfterAmount(valuePart, number));
+}
+
+/** A % glued to the amount is % DV, not a quantity in the canonical unit. */
+function isBarePercent(valuePart, number) {
+  return /^\s*%/.test(String(valuePart).slice(number.end));
+}
+
+/**
+ * Footer daily-value columns: "2,000 2,500" or "300g 375g".
+ * A later "18%" is the % DV of one amount, not a second column.
+ */
+function isReferencePair(valuePart, number) {
+  const rest = remainderAfterAmount(valuePart, number);
+  const match = rest.match(new RegExp(`^(${NUMBER_CORE})`));
+  if (!match) return false;
+  return !rest.slice(match[1].length).trim().startsWith('%');
 }
 
 const LEADING_VALUE = new RegExp(`^(${NUMBER_CORE}(?:\\s*(?:-|–|—|\\bto\\b)\\s*${NUMBER_CORE})?)`);
@@ -257,7 +322,8 @@ function isRange(text) {
 }
 
 function isNegative(text) {
-  return new RegExp(`^\\s*-\\s*${NUMBER_CORE}`).test(String(text).trim().replace(/^[<~≈]\s*/, ''));
+  const trimmed = String(text).trim().replace(/^[<~≈]\s*/, '');
+  return new RegExp(`^\\s*[−–—-]\\s*${NUMBER_CORE}`).test(trimmed);
 }
 
 function pushWarning(warnings, warning) {
@@ -288,7 +354,9 @@ function readConverted(hit, valuePart, number, split) {
 function stageAmount(hit, split, number, observations, warnings) {
   const valuePart = split.valuePart;
   const lessThan = /^\s*</.test(valuePart);
-  const approximate = Boolean(split.approximate) || /^\s*[~≈]/.test(valuePart);
+  const approximate = Boolean(split.approximate)
+    || /^\s*[~≈]/.test(valuePart)
+    || trailingApproximate(valuePart, number);
   const converted = readConverted(hit, valuePart, number, split);
   if (converted.error) {
     pushWarning(warnings, {
@@ -352,6 +420,8 @@ export function parseNutritionText(text) {
   for (const rawLine of String(text ?? '').split(/\r?\n/)) {
     const line = stripDecorations(rawLine);
     if (!line) continue;
+    // Daily-value footnote rows ("Total Fat Less than 65g 80g") are reference text.
+    if (/\bless\s+than\b/i.test(line)) continue;
     const split = matchIncludesAddedSugars(line) || splitLabelValue(line);
     if (!split || !split.label) continue;
     if (!hasNumber(split.valuePart)) continue;
@@ -413,6 +483,16 @@ export function parseNutritionText(text) {
 
     const number = readNumber(valuePart);
     if (!number) continue;
+    if (isBarePercent(valuePart, number)) {
+      pushWarning(warnings, {
+        level: 'review',
+        code: 'percent_daily_value',
+        key: hit.key,
+        message: `${split.label} is a % daily value, not an amount, and was not stored.`,
+      });
+      continue;
+    }
+    if (isReferencePair(valuePart, number)) continue;
     stageAmount(hit, split, number, observations, warnings);
   }
 

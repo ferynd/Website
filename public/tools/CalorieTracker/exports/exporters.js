@@ -201,8 +201,11 @@ export async function importSavedFoodsCsv(file) {
       imported += 1;
     } catch (error) {
       errored += 1;
-      if (error?.code === 'unavailable') offline = true;
+      const offlineError = error?.code === 'unavailable';
+      if (offlineError) offline = true;
       handleError('import-food-row', error, transactionFailureMessage(error, `Failed to import "${row.name}"`));
+      // One offline failure covers the batch. Later rows would each retry and toast.
+      if (offlineError) break;
     }
   }
 
