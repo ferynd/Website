@@ -3,6 +3,8 @@
  * @description Rolling 7-day balance system for calorie/macro target calculation
  */
 
+import { getNutrient, LEGACY_V1_KEYS, NUTRIENTS } from '../../shared/nutrition/nutrientRegistry.js';
+
 // Day-level activity quick-select (replaces legacy trainingBump select).
 // 'custom' means the user will log detailed sessions; bump = 0 from the level
 // itself — sessions provide the actual calorie estimate.
@@ -66,15 +68,8 @@ export const nutrients = {
   optional: ['omega3']
 };
 
-// A flattened array of all nutrient keys for easier iteration
-export const allNutrients = [
-  ...nutrients.macros,
-  ...nutrients.dailyFloors,
-  ...nutrients.dailyVitamins,
-  ...nutrients.avgVitamins,
-  ...nutrients.avgMinerals,
-  ...nutrients.optional
-];
+// Flattened legacy keys, derived from the shared registry (same order as the groups above).
+export const allNutrients = [...LEGACY_V1_KEYS];
 
 // Nutrients that require daily floor tracking (not just averages)
 export const dailyTrackedNutrients = [
@@ -131,85 +126,16 @@ export const DEFAULT_TARGETS = {
   omega3: 1.6
 };
 
-// Per-nutrient upper bounds for input validation (roughly 10× UL or physiological max).
-export const NUTRIENT_MAX_BOUNDS = {
-  calories: 10000, protein: 1000, carbs: 1000, fat: 1000,
-  fiber: 500, potassium: 50000, magnesium: 10000, sodium: 23000,
-  calcium: 25000, choline: 35000,
-  vitaminB12: 10000, folate: 10000, vitaminC: 20000, vitaminB6: 1000,
-  vitaminA: 30000, vitaminD: 1000, vitaminE: 10000, vitaminK: 10000,
-  selenium: 4000, iodine: 11000, phosphorus: 40000,
-  iron: 450, zinc: 400, omega3: 100,
-};
+// Per-nutrient upper bounds for input validation, derived from registry perUnit maxima.
+export const NUTRIENT_MAX_BOUNDS = Object.fromEntries(
+  LEGACY_V1_KEYS.map((key) => [key, getNutrient(key).bounds.perUnit.max]),
+);
 
-// Maps text variants to canonical nutrient keys.
-// Ordered from most specific to least specific to avoid prefix conflicts.
-export const nutrientMap = {
-  // Multi-word vitamin names (most specific first)
-  'vitamin b12': 'vitaminB12',
-  'vit b12': 'vitaminB12', 
-  'vitamin b6': 'vitaminB6',
-  'vit b6': 'vitaminB6',
-  'vitamin a': 'vitaminA',
-  'vit a': 'vitaminA',
-  'vitamin c': 'vitaminC', 
-  'vit c': 'vitaminC',
-  'vitamin d': 'vitaminD',
-  'vit d': 'vitaminD',
-  'vitamin e': 'vitaminE',
-  'vit e': 'vitaminE', 
-  'vitamin k': 'vitaminK',
-  'vit k': 'vitaminK',
-  
-  // Multi-word omega names
-  'omega-3': 'omega3',
-  'omega 3': 'omega3',
-  'omega-3 fatty acids': 'omega3',
-  'omega 3 fatty acids': 'omega3',
-  
-  // Full nutrient names
-  'calories': 'calories',
-  'protein': 'protein', 
-  'carbohydrate': 'carbs',
-  'carbohydrates': 'carbs',
-  'carbs': 'carbs',
-  'fat': 'fat',
-  'fats': 'fat',
-  'fiber': 'fiber',
-  'fibre': 'fiber',
-  'dietary fiber': 'fiber',
-  'potassium': 'potassium',
-  'magnesium': 'magnesium',
-  'sodium': 'sodium',
-  'calcium': 'calcium',
-  'choline': 'choline',
-  'folate': 'folate',
-  'folic acid': 'folate',
-  'iron': 'iron',
-  'zinc': 'zinc',
-  'selenium': 'selenium',
-  'iodine': 'iodine',
-  'phosphorus': 'phosphorus',
-  
-  // Common abbreviations (avoid conflicts with units)
-  'cal': 'calories',
-  'kcal': 'calories',
-  'prot': 'protein',
-  'cho': 'carbs',
-  'b12': 'vitaminB12',
-  'b6': 'vitaminB6', 
-  'b9': 'folate',
-  'dha': 'omega3',
-  'epa': 'omega3',
-  
-  // Chemical symbols (last to avoid conflicts)
-  'fe': 'iron',
-  'zn': 'zinc',
-  'se': 'selenium',
-  'na': 'sodium',
-  'ca': 'calcium'
-  
-};
+// Frozen legacy alias map. dha, epa, and folic acid are not aliases.
+// Nothing new should read this; parseNutritionText uses lookupLabel.
+export const nutrientMap = Object.freeze(Object.fromEntries(
+  NUTRIENTS.flatMap((def) => (def.legacyAliases || []).map((alias) => [alias, def.key])),
+));
 
 // =============================================================================
 // SCHEMA VERSIONS

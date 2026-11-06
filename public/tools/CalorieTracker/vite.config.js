@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig, searchForWorkspaceRoot } from 'vite';
 
 export default defineConfig({
   // Development server configuration
@@ -6,6 +6,9 @@ export default defineConfig({
     port: 3000,
     host: true, // Allow external connections
     open: true, // Open browser automatically
+    fs: {
+      allow: [searchForWorkspaceRoot(process.cwd()), '../../shared'],
+    },
   },
   
   // Build configuration
