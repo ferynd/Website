@@ -1,6 +1,6 @@
 # Ingredient-based nutrition
 
-Status: #60 registry/readers and #61 Part A ingredient identities, revisions, conversions, shared store/cache, and recipe dual-read are implemented. Both write flags remain false; ingredient rules are repo source pending Part B deployment. The static curated catalog ships empty (0 profiles); #62/#63 research and population remain separate; #62 is in progress (paused; being reshaped for the revised plan). The plan was revised on 2026-11-06 around external-assistant ingredient-list import; none of that import, research-packet, or workspace behavior has shipped. See [ingredient release](ingredient-store-release.md).
+Status: #60 registry/readers and #61 Part A ingredient identities, revisions, conversions, shared store/cache, and recipe dual-read are implemented. Both write flags remain false; ingredient rules are repo source pending Part B deployment. The static curated catalog ships empty (0 profiles); #62 provides a locally prepared shared research pipeline ([implementation](research-pipeline.md)); #63 population remains separate. The plan was revised on 2026-11-06 around external-assistant ingredient-list import; ingredient-list import and workspace UI have not shipped; research packets are available through shared code and the operator CLI pending merge. See [ingredient release](ingredient-store-release.md).
 
 ## Goal
 
@@ -20,6 +20,7 @@ Recipe Standardizer uses the same profiles, calculation modules, and research wo
 - [Active backlog](../../backlogs/calorie-tracker.md): dependency order, acceptance criteria, checks, and release steps.
 - [Workflow and data contract](workflow.md): staged analysis, ingredient identity, expanded nutrients, inference, saving, AI/offline boundaries, and website behavior.
 - [Assistant contracts](assistant-contracts.md): ingredient-list import, paste format, research request/response, and copyable assistant instructions.
+- [Research pipeline](research-pipeline.md): shared modules, resumable packets, verification, local stores and CLI.
 - [Population playbook](population-playbook.md): how to research, review, and populate every manifest entry accurately.
 - [Ingredient research catalog](ingredient-catalog.json): executable research queue. It contains identities and requested forms, not nutrition values.
 

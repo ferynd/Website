@@ -1,0 +1,130 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 9900003,
+  "description": "Lentils, mature seeds, cooked, boiled, without salt, synthetic test item",
+  "dataType": "Foundation",
+  "publicationDate": "2020-10-30",
+  "foodNutrients": [
+    {
+      "nutrient": {
+        "id": 1008,
+        "number": "208",
+        "name": "Energy",
+        "unitName": "kcal"
+      },
+      "amount": 116
+    },
+    {
+      "nutrient": {
+        "id": 1003,
+        "number": "203",
+        "name": "Protein",
+        "unitName": "g"
+      },
+      "amount": 9.02
+    },
+    {
+      "nutrient": {
+        "id": 1004,
+        "number": "204",
+        "name": "Total lipid (fat)",
+        "unitName": "g"
+      },
+      "amount": 0.38
+    },
+    {
+      "nutrient": {
+        "id": 1005,
+        "number": "205",
+        "name": "Carbohydrate, by difference",
+        "unitName": "g"
+      },
+      "amount": 20.13
+    },
+    {
+      "nutrient": {
+        "id": 1079,
+        "number": "291",
+        "name": "Fiber, total dietary",
+        "unitName": "g"
+      },
+      "amount": 7.9
+    },
+    {
+      "nutrient": {
+        "id": 2000,
+        "number": "269",
+        "name": "Sugars, total including NLEA",
+        "unitName": "g"
+      },
+      "amount": 1.8
+    },
+    {
+      "nutrient": {
+        "id": 1087,
+        "number": "301",
+        "name": "Calcium, Ca",
+        "unitName": "mg"
+      },
+      "amount": 19
+    },
+    {
+      "nutrient": {
+        "id": 1089,
+        "number": "303",
+        "name": "Iron, Fe",
+        "unitName": "mg"
+      },
+      "amount": 3.33
+    },
+    {
+      "nutrient": {
+        "id": 1090,
+        "number": "304",
+        "name": "Magnesium, Mg",
+        "unitName": "mg"
+      },
+      "amount": 36
+    },
+    {
+      "nutrient": {
+        "id": 1092,
+        "number": "306",
+        "name": "Potassium, K",
+        "unitName": "mg"
+      },
+      "amount": 369
+    },
+    {
+      "nutrient": {
+        "id": 1093,
+        "number": "307",
+        "name": "Sodium, Na",
+        "unitName": "mg"
+      },
+      "amount": 2
+    },
+    {
+      "nutrient": {
+        "id": 1190,
+        "number": "435",
+        "name": "Folate, DFE",
+        "unitName": "mcg"
+      },
+      "amount": 181
+    }
+  ],
+  "foodPortions": [
+    {
+      "id": 1004,
+      "gramWeight": 198,
+      "amount": 1,
+      "modifier": "cup",
+      "measureUnit": {
+        "id": 1001,
+        "name": "cup"
+      }
+    }
+  ],
+  "_fixture": "synthetic; not nutrition data"
+}

@@ -2,6 +2,8 @@
 
 Status: instructions for future CalorieTracker #62-#63 execution. [ingredient-catalog.json](ingredient-catalog.json) is the research queue. It is not a completed nutrition database.
 
+Local code and CLI entry points: [shared research pipeline](research-pipeline.md). Live source pins and publication remain approval-gated under #62 Part B.
+
 ## Contents
 
 1. [Scope and job selection](#scope-and-job-selection)

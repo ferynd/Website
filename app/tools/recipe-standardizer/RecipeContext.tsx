@@ -28,6 +28,7 @@ import {
   updateProfile,
   type User,
 } from 'firebase/auth';
+import {clearResearchJobs} from '@/public/shared/nutrition/research/indexedDbResearchStore.js';
 import {clearProfileCache} from '@/public/shared/nutrition/profileCache.js';
 import AuthForm from '../trip-cost/components/AuthForm';
 import { auth } from './lib/firebase';
@@ -92,7 +93,8 @@ export function RecipeProvider({ children }: {
     let transitions = Promise.resolve();
     const unsub = onAuthStateChanged(auth, (nextUser) => {
       transitions = transitions.catch(() => { /* Recover the auth queue. */ }).then(async () => {
-        if (previousUid && previousUid !== nextUser?.uid) {
+        if (!nextUser || (previousUid && previousUid !== nextUser.uid)) {
+          try { await clearResearchJobs(); } catch { /* Research storage is optional. */ }
           try { await clearProfileCache(); } catch { /* Cache cleanup is best effort. */ }
         }
         previousUid = nextUser?.uid ?? null;
@@ -129,7 +131,8 @@ export function RecipeProvider({ children }: {
     savedRecipes,
     listError,
     listLoaded,
-    signOut: useCallback(async () => { try { await clearProfileCache(); } catch { /* Always complete Firebase sign-out. */ } await firebaseSignOut(auth); }, []),
+    signOut: useCallback(async () => { try { await clearResearchJobs(); } catch { /* Research storage is optional. */ }
+          try { await clearProfileCache(); } catch { /* Always complete Firebase sign-out. */ } await firebaseSignOut(auth); }, []),
     loadSavedRecipe: useCallback((recipeId: string) => loadRecipe(requireUid(), recipeId), [requireUid]),
     saveNew: useCallback((recipe: Recipe) => saveNewRecipe(requireUid(), recipe), [requireUid]),
     update: useCallback(

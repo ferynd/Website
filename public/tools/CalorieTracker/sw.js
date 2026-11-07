@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nutritrack-v4';
+const CACHE_NAME = 'nutritrack-v5';
 
 const APP_SHELL = [
   './',
@@ -58,6 +58,9 @@ const APP_SHELL = [
   '/shared/nutrition/ingredientMatch.js',
   '/shared/nutrition/ingredientCatalog.js',
   '/shared/nutrition/profileCache.js',
+  '/shared/nutrition/research/indexedDbResearchStore.js',
+  '/shared/nutrition/research/researchJob.js',
+  '/shared/nutrition/research/profileFields.js',
 ];
 
 const EXTERNAL_RUNTIME = [

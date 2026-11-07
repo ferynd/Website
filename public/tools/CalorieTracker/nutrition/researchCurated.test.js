@@ -1,0 +1,21 @@
+import { it, expect, vi } from 'vitest';
+import { createCuratedResearchAdapter } from '../../../shared/nutrition/research/curatedAdapter.js';
+import { createResearchService } from '../../../shared/nutrition/research/researchService.js';
+import { createMemoryResearchStore, createMemorySourceCache } from '../../../shared/nutrition/research/memoryResearchStore.js';
+import { fixture } from './ingredientFixtures.js';
+import { normalizeVariantDims } from '../../../shared/nutrition/ingredientVariants.js';
+it('reuses an exact catalog profile as needs_review and does not research it again', async () => {
+    const { revision: privateRevision } = await fixture();
+    const { ownerUid: _owner, ...revision } = privateRevision;
+    const getRevision = vi.fn(async () => revision), catalog = { getVariant: async () => ({ identityId: revision.identityId, dims: normalizeVariantDims({ state: 'raw' }), headRevision: 1, headContentHash: revision.contentHash }), getRevision };
+    const adapter = createCuratedResearchAdapter({ catalog });
+    expect(await adapter.match({ variantId: 'synthetic', dims: { state: 'cooked' } })).toBeNull();
+    const service = createResearchService({ store: createMemoryResearchStore(), sourceCache: createMemorySourceCache(), adapters: [adapter] });
+    const j = await service.enqueue({ target: { manifestId: revision.variantId, dims: { state: 'raw' } } });
+    const matched = await service.runJob(j.jobId, { adapterId: 'curated' });
+    expect(matched.state).toBe('needs_review');
+    expect(matched.proposal.reused).toBe(true);
+    const again = await service.runJob(j.jobId);
+    expect(again.state).toBe('needs_review');
+    expect(getRevision).toHaveBeenCalledOnce();
+});

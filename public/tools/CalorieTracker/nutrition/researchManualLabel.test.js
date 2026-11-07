@@ -1,0 +1,259 @@
+import { it, expect, describe } from 'vitest';
+import { createManualAdapter, createLabelAdapter, getFdaRoundingInterval } from '../../../shared/nutrition/research/manualAdapters.js';
+import { normalizeSourceResult } from '../../../shared/nutrition/research/sourceResult.js';
+import { createResearchService } from '../../../shared/nutrition/research/researchService.js';
+import { createMemoryResearchStore, createMemorySourceCache } from '../../../shared/nutrition/research/memoryResearchStore.js';
+describe('Manual and Label Adapters', () => {
+    describe('FDA rounding intervals', () => {
+        it('calculates FDA rounding intervals for key nutrients', () => {
+            expect(getFdaRoundingInterval('calories', 40)).toBe(5);
+            expect(getFdaRoundingInterval('calories', 120)).toBe(10);
+            expect(getFdaRoundingInterval('fat', 3)).toBe(0.5);
+            expect(getFdaRoundingInterval('fat', 12)).toBe(1);
+            expect(getFdaRoundingInterval('sodium', 80)).toBe(5);
+            expect(getFdaRoundingInterval('sodium', 240)).toBe(10);
+            expect(getFdaRoundingInterval('cholesterol', 10)).toBe(5);
+            expect(getFdaRoundingInterval('carbs', 0.8)).toBe(0.5);
+            expect(getFdaRoundingInterval('protein', 5)).toBe(1);
+        });
+    });
+    describe('Manual Adapter', () => {
+        it('creates manual source result and enforces comparator requirement for estimates', async () => {
+            const adapter = createManualAdapter();
+            // Estimate without comparatorRef, transferReason and range must throw
+            await expect(adapter.toSourceResult({
+                source: { type: 'manual' },
+                recordId: 'man-1',
+                nutrients: {
+                    protein: { value: 12, status: 'estimated_from_comparable' },
+                },
+            })).rejects.toThrow('comparatorRef, transferReason and range');
+            // Estimate with comparatorRef succeeds
+            const result = await adapter.toSourceResult({
+                source: { type: 'manual' },
+                recordId: 'man-1',
+                title: 'Estimated beef cut',
+                nutrients: {
+                    protein: {
+                        value: 12,
+                        status: 'estimated_from_comparable',
+                        comparatorRef: 'catalog:beef-chuck-raw',
+                        transferReason: 'Similar cut', range: { min: 10, max: 14 },
+                    },
+                },
+            });
+            expect(result.type).toBe('manual');
+            expect(result.recordId).toBe('man-1');
+            expect(result.nutrients[0].status).toBe('estimated_from_comparable');
+            expect(result.nutrients[0].comparatorRef).toBe('catalog:beef-chuck-raw');
+        });
+    });
+    describe('Label Adapter', () => {
+        it('attaches label_reported status and FDA rounding interval to label values including label 0', async () => {
+            const adapter = createLabelAdapter();
+            const raw = {
+                recordId: 'lbl-1',
+                brand: 'TestBrand',
+                productName: 'Low Fat Crackers',
+                servingSize: 30,
+                servingSizeUnit: 'g',
+                nutrients: {
+                    calories: 120,
+                    fat: 0, // label zero!
+                    sodium: 150,
+                    protein: 2,
+                },
+            };
+            const result = await adapter.toSourceResult(raw);
+            expect(result.type).toBe('label');
+            expect(result.servingSize).toBe(30);
+            const fatNutrient = result.nutrients.find(n => n.key === 'fat');
+            expect(fatNutrient.amount).toBe(0);
+            expect(fatNutrient.status).toBe('label_reported');
+            expect(fatNutrient.roundingInterval).toBe(0.5);
+        });
+        it('produces gap:unit_not_convertible when serving basis is in mL with no density', async () => {
+            const adapter = createLabelAdapter();
+            const raw = {
+                recordId: 'lbl-2',
+                productName: 'Salad Dressing',
+                servingSize: 30,
+                servingSizeUnit: 'mL', // mL without density!
+                nutrients: {
+                    calories: 100,
+                    fat: 10,
+                },
+            };
+            const result = await adapter.toSourceResult(raw);
+            const proposal = normalizeSourceResult(result);
+            expect(proposal.nutrients.calories).toBeNull();
+            expect(proposal.nutrientMeta.quality.calories.qualifier).toBe('gap:unit_not_convertible');
+            expect(proposal.gaps.calories).toBe('unit_not_convertible');
+        });
+        it('rejects photos in curated scope', async () => {
+            const adapter = createLabelAdapter();
+            const rawWithPhoto = {
+                recordId: 'lbl-3',
+                productName: 'Yogurt',
+                photos: ['https://example.com/user-upload.jpg'],
+                nutrients: { calories: 80 },
+            };
+            await expect(adapter.toSourceResult(rawWithPhoto, { scope: 'curated' })).rejects.toThrow('Photos cannot enter curated data');
+        });
+    });
+});
+it('normalizes explicit manual observations and label zero into sourced values', async () => {
+    const manual = await createManualAdapter().toSourceResult({ source: { type: 'manual', url: 'https://example.test/fixture' }, recordId: 'fixture', nutrients: { protein: { value: 3, unit: 'g', status: 'measured' } } });
+    const proposal = normalizeSourceResult(manual);
+    expect(proposal.nutrients.protein).toBe(3);
+    expect(proposal.nutrientMeta.quality.protein.status).toBe('measured');
+    expect(proposal.sources.manual.url).toBe('https://example.test/fixture');
+    const label = await createLabelAdapter().toSourceResult({ recordId: 'fixture', servingSize: 50, servingSizeUnit: 'g', nutrients: { fat: 0 } });
+    const normalized = normalizeSourceResult(label);
+    expect(normalized.nutrients.fat).toBe(0);
+    expect(normalized.nutrientMeta.quality.fat).toEqual({ status: 'label_reported', roundingInterval: 1 });
+});
+it('rejects numeric text from manual/label inputs', async () => {
+    await expect(createLabelAdapter().toSourceResult({ nutrients: { protein: { value: '2' } } })).rejects.toThrow('number');
+    await expect(createManualAdapter().toSourceResult({ source: { type: 'manual' }, nutrients: { protein: { value: '2', status: 'measured' } } })).rejects.toThrow('observation');
+});
+it.each(['manual', 'label'])('%s inline cache keys follow canonical content across jobs and corrected passes', async type => {
+    const adapter = type === 'manual' ? createManualAdapter() : createLabelAdapter();
+    const record = value => type === 'manual'
+        ? { source: { type: 'manual' }, nutrients: { protein: { value, unit: 'g', status: 'measured' } } }
+        : { originalBasis: 'per_100g_edible', nutrients: { protein: value } };
+    const context = value => ({ [type + 'Record']: record(value) });
+    const first = await adapter.match({}, context(2));
+    const reordered = Object.fromEntries(Object.entries(record(2)).reverse());
+    expect((await adapter.match({}, { [type + 'Record']: reordered })).sourceId).toBe(first.sourceId);
+    expect((await adapter.match({}, context(3))).sourceId).not.toBe(first.sourceId);
+    expect((await adapter.toSourceResult(record(2))).recordId).toBe(first.sourceId);
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [adapter] });
+    const a = await service.enqueue({ fields: ['protein'], target: { manifestId: 'inline-a', dims: { state: 'raw' } } });
+    const b = await service.enqueue({ fields: ['protein'], target: { manifestId: 'inline-b', dims: { state: 'raw' } } });
+    await service.runJob(a.jobId, { adapterId: type, context: context(2) });
+    expect((await service.runJob(b.jobId, { adapterId: type, context: context(3) })).proposal.nutrients.protein).toBe(3);
+    await service.review(a.jobId, { decision: 'reject', reviewer: 'r' });
+    const corrected = await service.runJob(a.jobId, { adapterId: type, context: context(4) });
+    expect(corrected.proposal.nutrients.protein).toBe(4);
+    expect(corrected.match.sourceId).not.toBe(first.sourceId);
+});
+it.each([
+    {}, { servingSize: 0, servingSizeUnit: 'g' },
+    { servingSize: -1, servingSizeUnit: 'g' }, { servingSize: '50', servingSizeUnit: 'g' },
+])('rejects labels without a valid explicit basis: %j', async basis => {
+    await expect(createLabelAdapter().toSourceResult({ ...basis, nutrients: { protein: 2 } })).rejects.toThrow(/basis|positive/);
+});
+it('requires gram units and honors an explicit per-100g label basis', async () => {
+    const adapter = createLabelAdapter();
+    for (const servingSizeUnit of [undefined, 'cup']) {
+        const basis = servingSizeUnit ? { servingSizeUnit } : {};
+        const result = await adapter.toSourceResult({ servingSize: 50, ...basis, nutrients: { protein: 2 } });
+        expect(normalizeSourceResult(result).gaps.protein).toBe('unit_not_convertible');
+    }
+    const result = await adapter.toSourceResult({ originalBasis: 'per_100g_edible', servingSize: 50, servingSizeUnit: 'g', nutrients: { protein: 2 } });
+    expect(normalizeSourceResult(result).nutrients.protein).toBe(2);
+    const perServing = await adapter.toSourceResult({ servingSize: 50, servingSizeUnit: 'grams', nutrients: { protein: 2 } });
+    expect(normalizeSourceResult(perServing).nutrients.protein).toBe(4);
+});
+it.each(['manual', 'label'])('%s rejects unsupported nutrient keys even when their values are null', async type => {
+    const adapter = type === 'manual' ? createManualAdapter() : createLabelAdapter();
+    for (const key of ['protien', 'fiberWeightedLegacy']) {
+        for (const value of [null, 2]) {
+            await expect(adapter.toSourceResult({ source: { type: 'manual' }, originalBasis: 'per_100g_edible', nutrients: { [key]: value } })).rejects.toThrow('Unknown stored nutrient key');
+        }
+    }
+});
+it('converts manual LOQ bounds and estimate ranges from mg into registry grams', async () => {
+    const result = await createManualAdapter().toSourceResult({
+        source: { type: 'manual' }, nutrients: {
+            omega3: { value: 100, unit: 'mg', status: 'estimated_from_comparable', range: { min: 80, max: 120 }, comparatorRef: 'fixture', transferReason: 'Synthetic comparison' },
+            omega6: { value: null, unit: 'mg', status: 'below_quantification_limit', upperBound: 50 },
+        },
+    });
+    // Exercise both registry conversion and the existing serving scale.
+    for (const scale of [1, 2]) {
+        const proposal = normalizeSourceResult({ ...result, originalBasis: scale === 1 ? 'per_100g_edible' : 'per_serving_50g', servingSize: 50, servingSizeUnit: 'g' });
+        expect(proposal.nutrients.omega3).toBeCloseTo(0.1 * scale);
+        expect(proposal.fieldProvenance.omega3.range.min).toBeCloseTo(0.08 * scale);
+        expect(proposal.fieldProvenance.omega3.range.max).toBeCloseTo(0.12 * scale);
+        expect(proposal.nutrients.omega6).toBeNull();
+        expect(proposal.nutrientMeta.quality.omega6.upperBound).toBeCloseTo(0.05 * scale);
+    }
+});
+it.each(['manual', 'label'])('%s cache identity includes a content hash when recordId is set', async type => {
+    const adapter = type === 'manual' ? createManualAdapter() : createLabelAdapter();
+    const record = sodium => type === 'manual'
+        ? { recordId: 'ham-v1', source: { type: 'manual' }, nutrients: { sodium: { value: sodium, unit: 'mg', status: 'measured' } } }
+        : { recordId: 'ham-v1', originalBasis: 'per_100g_edible', nutrients: { sodium } };
+    const context = sodium => ({ [type + 'Record']: record(sodium) });
+    const first = await adapter.match({}, context(100));
+    const correctedId = await adapter.match({}, context(400));
+    expect(first.sourceId).toContain('ham-v1');
+    expect(first.sourceId).toContain('sha256:');
+    expect(correctedId.sourceId).not.toBe(first.sourceId);
+    const reordered = Object.fromEntries(Object.entries(record(100)).reverse());
+    expect((await adapter.match({}, { [type + 'Record']: reordered })).sourceId).toBe(first.sourceId);
+    expect((await adapter.toSourceResult(record(100))).recordId).toBe('ham-v1');
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [adapter] });
+    const job = await service.enqueue({ fields: ['sodium'], target: { manifestId: 'ham', dims: { state: 'raw' } } });
+    const initial = await service.runJob(job.jobId, { adapterId: type, context: context(100) });
+    expect(initial.proposal.nutrients.sodium).toBe(100);
+    await service.review(job.jobId, { decision: 'reject', reviewer: 'r' });
+    const rerun = await service.runJob(job.jobId, { adapterId: type, context: context(400) });
+    expect(rerun.proposal.nutrients.sodium).toBe(400);
+    expect(rerun.match.sourceId).toBe(correctedId.sourceId);
+    const sourceKey = rerun.proposal.revisionDraft.fieldProvenance.sodium.sourceKey;
+    expect(rerun.proposal.revisionDraft.sources[sourceKey].recordId).toBe('ham-v1');
+});
+it('forwards manual roundingInterval and gram servingSize into normalization', async () => {
+    const result = await createManualAdapter().toSourceResult({
+        source: { type: 'manual' },
+        servingSize: 40,
+        servingSizeUnit: 'g',
+        nutrients: { protein: { value: 8, unit: 'g', status: 'measured', roundingInterval: 0.1 } },
+    });
+    expect(result.servingSize).toBe(40);
+    expect(result.originalBasis).toBe('per_serving_40g');
+    expect(result.nutrients[0].roundingInterval).toBe(0.1);
+    const proposal = normalizeSourceResult(result);
+    expect(proposal.nutrients.protein).toBeCloseTo(20);
+    expect(proposal.nutrientMeta.quality.protein.roundingInterval).toBeCloseTo(0.25);
+});
+it('clears placeholder gaps for direct observations and qualifies limits from the real status', async () => {
+    const label = await createLabelAdapter().toSourceResult({ recordId: 'snack', servingSize: 50, servingSizeUnit: 'g', nutrients: { calories: 80 } });
+    const labeled = normalizeSourceResult(label);
+    expect(labeled.nutrients.calories).toBe(160);
+    expect(labeled.nutrientMeta.quality.calories.status).toBe('label_reported');
+    expect(labeled.gaps.calories).toBeUndefined();
+    expect(labeled.nutrientMeta.quality.calories.qualifier).toBeUndefined();
+    const manual = await createManualAdapter().toSourceResult({
+        source: { type: 'manual' },
+        nutrients: {
+            omega6: { value: null, unit: 'mg', status: 'below_quantification_limit', upperBound: 50 },
+            omega3: { value: null, unit: 'g', status: 'unknown', reason: 'requires_composition' },
+        },
+    });
+    const proposal = normalizeSourceResult(manual);
+    expect(proposal.nutrients.omega6).toBeNull();
+    expect(proposal.nutrientMeta.quality.omega6.upperBound).toBeCloseTo(0.05);
+    expect(proposal.nutrientMeta.quality.omega6.status).toBe('below_quantification_limit');
+    expect(proposal.nutrientMeta.quality.omega6.qualifier).toBe('below_quantification_limit');
+    expect(proposal.gaps.omega6).toBeUndefined();
+    expect(proposal.nutrientMeta.quality.omega3.qualifier).toBe('gap:requires_composition');
+    expect(proposal.gaps.omega3).toBe('requires_composition');
+});
+it('extracts cooked and unsalted state evidence from label productName and blocks a raw target', async () => {
+    const adapter = createLabelAdapter();
+    const raw = { productName: 'Cooked Ham, Unsalted', originalBasis: 'per_100g_edible', nutrients: { protein: 10 } };
+    const result = await adapter.toSourceResult(raw);
+    expect(result.extractedStateWords).toEqual(expect.arrayContaining(['cooked', 'unsalted']));
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [adapter] });
+    const job = await service.enqueue({ fields: ['protein'], target: { manifestId: 'ham', dims: { state: 'raw' } } });
+    const reviewed = await service.runJob(job.jobId, { adapterId: 'label', context: { labelRecord: raw } });
+    expect(reviewed.validation.isValid).toBe(false);
+    expect(reviewed.validation.errors).toContain('Explicit conflict: target is raw but source is cooked/prepared');
+});

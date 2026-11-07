@@ -1,0 +1,76 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 9900004,
+  "description": "Salt, table, iodized, food grade, synthetic test item",
+  "dataType": "Foundation",
+  "publicationDate": "2020-10-30",
+  "foodNutrients": [
+    {
+      "nutrient": {
+        "id": 1008,
+        "number": "208",
+        "name": "Energy",
+        "unitName": "kcal"
+      },
+      "amount": 0
+    },
+    {
+      "nutrient": {
+        "id": 1003,
+        "number": "203",
+        "name": "Protein",
+        "unitName": "g"
+      },
+      "amount": 0
+    },
+    {
+      "nutrient": {
+        "id": 1004,
+        "number": "204",
+        "name": "Total lipid (fat)",
+        "unitName": "g"
+      },
+      "amount": 0
+    },
+    {
+      "nutrient": {
+        "id": 1005,
+        "number": "205",
+        "name": "Carbohydrate, by difference",
+        "unitName": "g"
+      },
+      "amount": 0
+    },
+    {
+      "nutrient": {
+        "id": 1093,
+        "number": "307",
+        "name": "Sodium, Na",
+        "unitName": "mg"
+      },
+      "amount": 38758
+    },
+    {
+      "nutrient": {
+        "id": 1100,
+        "number": "314",
+        "name": "Iodine, I",
+        "unitName": "mcg"
+      },
+      "amount": 4500
+    }
+  ],
+  "foodPortions": [
+    {
+      "id": 1005,
+      "gramWeight": 6,
+      "amount": 1,
+      "modifier": "tsp",
+      "measureUnit": {
+        "id": 1002,
+        "name": "teaspoon"
+      }
+    }
+  ],
+  "_fixture": "synthetic; not nutrition data"
+}

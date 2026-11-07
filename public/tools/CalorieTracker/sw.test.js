@@ -66,7 +66,7 @@ describe('service worker shell', () => {
 
   it('CACHE_NAME changed from nutritrack-v2', () => {
     const match = source.match(/const CACHE_NAME = '([^']+)'/);
-    expect(match[1]).toBe('nutritrack-v4');
+    expect(match[1]).toBe('nutritrack-v5');
     expect(match[1]).toBe(NUTRITRACK_CACHE_NAME);
     expect(source).not.toContain('nutritrack-v2');
   });

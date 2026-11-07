@@ -1,0 +1,257 @@
+{
+  "syntheticFixture": true,
+  "fdcId": 9900001,
+  "description": "Apples, raw, with skin, synthetic test item",
+  "dataType": "Foundation",
+  "publicationDate": "2020-10-30",
+  "foodNutrients": [
+    {
+      "nutrient": {
+        "id": 1008,
+        "number": "208",
+        "name": "Energy",
+        "unitName": "kcal"
+      },
+      "amount": 52
+    },
+    {
+      "nutrient": {
+        "id": 1003,
+        "number": "203",
+        "name": "Protein",
+        "unitName": "g"
+      },
+      "amount": 0.26
+    },
+    {
+      "nutrient": {
+        "id": 1004,
+        "number": "204",
+        "name": "Total lipid (fat)",
+        "unitName": "g"
+      },
+      "amount": 0.17
+    },
+    {
+      "nutrient": {
+        "id": 1005,
+        "number": "205",
+        "name": "Carbohydrate, by difference",
+        "unitName": "g"
+      },
+      "amount": 13.8
+    },
+    {
+      "nutrient": {
+        "id": 1051,
+        "number": "255",
+        "name": "Water",
+        "unitName": "g"
+      },
+      "amount": 85.6
+    },
+    {
+      "nutrient": {
+        "id": 1079,
+        "number": "291",
+        "name": "Fiber, total dietary",
+        "unitName": "g"
+      },
+      "amount": 2.4
+    },
+    {
+      "nutrient": {
+        "id": 2000,
+        "number": "269",
+        "name": "Sugars, total including NLEA",
+        "unitName": "g"
+      },
+      "amount": 10.4
+    },
+    {
+      "nutrient": {
+        "id": 1087,
+        "number": "301",
+        "name": "Calcium, Ca",
+        "unitName": "mg"
+      },
+      "amount": 6
+    },
+    {
+      "nutrient": {
+        "id": 1089,
+        "number": "303",
+        "name": "Iron, Fe",
+        "unitName": "mg"
+      },
+      "amount": 0.12
+    },
+    {
+      "nutrient": {
+        "id": 1090,
+        "number": "304",
+        "name": "Magnesium, Mg",
+        "unitName": "mg"
+      },
+      "amount": 5
+    },
+    {
+      "nutrient": {
+        "id": 1091,
+        "number": "305",
+        "name": "Phosphorus, P",
+        "unitName": "mg"
+      },
+      "amount": 11
+    },
+    {
+      "nutrient": {
+        "id": 1092,
+        "number": "306",
+        "name": "Potassium, K",
+        "unitName": "mg"
+      },
+      "amount": 107
+    },
+    {
+      "nutrient": {
+        "id": 1093,
+        "number": "307",
+        "name": "Sodium, Na",
+        "unitName": "mg"
+      },
+      "amount": 1
+    },
+    {
+      "nutrient": {
+        "id": 1095,
+        "number": "309",
+        "name": "Zinc, Zn",
+        "unitName": "mg"
+      },
+      "amount": 0.04
+    },
+    {
+      "nutrient": {
+        "id": 1162,
+        "number": "401",
+        "name": "Vitamin C, total ascorbic acid",
+        "unitName": "mg"
+      },
+      "amount": 4.6
+    },
+    {
+      "nutrient": {
+        "id": 1106,
+        "number": "320",
+        "name": "Vitamin A, RAE",
+        "unitName": "mcg"
+      },
+      "amount": 3
+    },
+    {
+      "nutrient": {
+        "id": 1109,
+        "number": "323",
+        "name": "Vitamin E (alpha-tocopherol)",
+        "unitName": "mg"
+      },
+      "amount": 0.18
+    },
+    {
+      "nutrient": {
+        "id": 1114,
+        "number": "328",
+        "name": "Vitamin D (D2 + D3)",
+        "unitName": "mcg"
+      },
+      "amount": 0
+    },
+    {
+      "nutrient": {
+        "id": 1190,
+        "number": "435",
+        "name": "Folate, DFE",
+        "unitName": "mcg"
+      },
+      "amount": 3
+    },
+    {
+      "nutrient": {
+        "id": 1258,
+        "number": "606",
+        "name": "Fatty acids, total saturated",
+        "unitName": "g"
+      },
+      "amount": 0.028
+    },
+    {
+      "nutrient": {
+        "id": 1292,
+        "number": "645",
+        "name": "Fatty acids, total monounsaturated",
+        "unitName": "g"
+      },
+      "amount": 0.007
+    },
+    {
+      "nutrient": {
+        "id": 1293,
+        "number": "646",
+        "name": "Fatty acids, total polyunsaturated",
+        "unitName": "g"
+      },
+      "amount": 0.051
+    },
+    {
+      "nutrient": {
+        "id": 1404,
+        "number": "851",
+        "name": "18:3 n-3 c,c,c (ALA)",
+        "unitName": "g"
+      },
+      "amount": 0.009
+    },
+    {
+      "nutrient": {
+        "id": 1278,
+        "number": "629",
+        "name": "20:5 n-3 (EPA)",
+        "unitName": "g"
+      },
+      "amount": 0.0
+    },
+    {
+      "nutrient": {
+        "id": 1272,
+        "number": "621",
+        "name": "22:6 n-3 (DHA)",
+        "unitName": "g"
+      },
+      "amount": 0.0
+    }
+  ],
+  "foodPortions": [
+    {
+      "id": 1001,
+      "gramWeight": 182,
+      "amount": 1,
+      "modifier": "medium (3\" dia)",
+      "measureUnit": {
+        "id": 1000,
+        "name": "medium"
+      }
+    },
+    {
+      "id": 1002,
+      "gramWeight": 125,
+      "amount": 1,
+      "modifier": "cup, sliced",
+      "measureUnit": {
+        "id": 1001,
+        "name": "cup"
+      }
+    }
+  ],
+  "_fixture": "synthetic; not nutrition data"
+}
