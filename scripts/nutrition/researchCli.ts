@@ -120,7 +120,12 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
             if (!['fdc-bulk', 'fdc-api', 'manual', 'label'].includes(source || ''))
                 throw new Error('--source required');
             const input = str('input') ? JSON.parse(await readFile(str('input')!, 'utf8')) : null;
-            result = await Promise.all(selected.map(j => service.runJob(j.jobId, { adapterId: source!.replace('-', '_'), context: { manualRecord: input, labelRecord: input } })));
+            if (input && !str('job'))
+                throw new Error('--input requires exactly one --job');
+            const ran = [];
+            for (const j of selected)
+                ran.push(await service.runJob(j.jobId, { adapterId: source!.replace('-', '_'), context: { manualRecord: input, labelRecord: input } }));
+            result = ran;
             break;
         }
         case 'retry': {
@@ -144,12 +149,14 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
         }
         case 'validate': {
             requireSelected();
-            result = await Promise.all(selected.map(async (j) => {
+            const validated = [];
+            for (const j of selected) {
                 const validation = await validateProposal(j);
                 if (flags.write)
                     await store.save({ ...j, validation, version: j.version + 1 }, { expectedVersion: j.version });
-                return { jobId: j.jobId, validation };
-            }));
+                validated.push({ jobId: j.jobId, validation });
+            }
+            result = validated;
             break;
         }
         case 'review': {
@@ -181,7 +188,10 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
         }
         case 'stage': {
             requireSelected();
-            const staged = await stageCatalog(selected);
+            const approved = selected.filter(j => j.state === 'approved');
+            if (!approved.length)
+                throw new Error('No approved jobs to stage');
+            const staged = await stageCatalog(approved);
             if (flags.write) {
                 if (!str('out'))
                     throw new Error('stage --write requires --out');

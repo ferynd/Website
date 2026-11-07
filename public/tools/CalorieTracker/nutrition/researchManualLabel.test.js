@@ -182,6 +182,69 @@ it('converts manual LOQ bounds and estimate ranges from mg into registry grams',
         expect(proposal.nutrientMeta.quality.omega6.upperBound).toBeCloseTo(0.05 * scale);
     }
 });
+it.each(['manual', 'label'])('%s cache identity includes a content hash when recordId is set', async type => {
+    const adapter = type === 'manual' ? createManualAdapter() : createLabelAdapter();
+    const record = sodium => type === 'manual'
+        ? { recordId: 'ham-v1', source: { type: 'manual' }, nutrients: { sodium: { value: sodium, unit: 'mg', status: 'measured' } } }
+        : { recordId: 'ham-v1', originalBasis: 'per_100g_edible', nutrients: { sodium } };
+    const context = sodium => ({ [type + 'Record']: record(sodium) });
+    const first = await adapter.match({}, context(100));
+    const correctedId = await adapter.match({}, context(400));
+    expect(first.sourceId).toContain('ham-v1');
+    expect(first.sourceId).toContain('sha256:');
+    expect(correctedId.sourceId).not.toBe(first.sourceId);
+    const reordered = Object.fromEntries(Object.entries(record(100)).reverse());
+    expect((await adapter.match({}, { [type + 'Record']: reordered })).sourceId).toBe(first.sourceId);
+    expect((await adapter.toSourceResult(record(100))).recordId).toBe('ham-v1');
+    const store = createMemoryResearchStore(), sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [adapter] });
+    const job = await service.enqueue({ fields: ['sodium'], target: { manifestId: 'ham', dims: { state: 'raw' } } });
+    const initial = await service.runJob(job.jobId, { adapterId: type, context: context(100) });
+    expect(initial.proposal.nutrients.sodium).toBe(100);
+    await service.review(job.jobId, { decision: 'reject', reviewer: 'r' });
+    const rerun = await service.runJob(job.jobId, { adapterId: type, context: context(400) });
+    expect(rerun.proposal.nutrients.sodium).toBe(400);
+    expect(rerun.match.sourceId).toBe(correctedId.sourceId);
+    const sourceKey = rerun.proposal.revisionDraft.fieldProvenance.sodium.sourceKey;
+    expect(rerun.proposal.revisionDraft.sources[sourceKey].recordId).toBe('ham-v1');
+});
+it('forwards manual roundingInterval and gram servingSize into normalization', async () => {
+    const result = await createManualAdapter().toSourceResult({
+        source: { type: 'manual' },
+        servingSize: 40,
+        servingSizeUnit: 'g',
+        nutrients: { protein: { value: 8, unit: 'g', status: 'measured', roundingInterval: 0.1 } },
+    });
+    expect(result.servingSize).toBe(40);
+    expect(result.originalBasis).toBe('per_serving_40g');
+    expect(result.nutrients[0].roundingInterval).toBe(0.1);
+    const proposal = normalizeSourceResult(result);
+    expect(proposal.nutrients.protein).toBeCloseTo(20);
+    expect(proposal.nutrientMeta.quality.protein.roundingInterval).toBeCloseTo(0.25);
+});
+it('clears placeholder gaps for direct observations and qualifies limits from the real status', async () => {
+    const label = await createLabelAdapter().toSourceResult({ recordId: 'snack', servingSize: 50, servingSizeUnit: 'g', nutrients: { calories: 80 } });
+    const labeled = normalizeSourceResult(label);
+    expect(labeled.nutrients.calories).toBe(160);
+    expect(labeled.nutrientMeta.quality.calories.status).toBe('label_reported');
+    expect(labeled.gaps.calories).toBeUndefined();
+    expect(labeled.nutrientMeta.quality.calories.qualifier).toBeUndefined();
+    const manual = await createManualAdapter().toSourceResult({
+        source: { type: 'manual' },
+        nutrients: {
+            omega6: { value: null, unit: 'mg', status: 'below_quantification_limit', upperBound: 50 },
+            omega3: { value: null, unit: 'g', status: 'unknown', reason: 'requires_composition' },
+        },
+    });
+    const proposal = normalizeSourceResult(manual);
+    expect(proposal.nutrients.omega6).toBeNull();
+    expect(proposal.nutrientMeta.quality.omega6.upperBound).toBeCloseTo(0.05);
+    expect(proposal.nutrientMeta.quality.omega6.status).toBe('below_quantification_limit');
+    expect(proposal.nutrientMeta.quality.omega6.qualifier).toBe('below_quantification_limit');
+    expect(proposal.gaps.omega6).toBeUndefined();
+    expect(proposal.nutrientMeta.quality.omega3.qualifier).toBe('gap:requires_composition');
+    expect(proposal.gaps.omega3).toBe('requires_composition');
+});
 it('extracts cooked and unsalted state evidence from label productName and blocks a raw target', async () => {
     const adapter = createLabelAdapter();
     const raw = { productName: 'Cooked Ham, Unsalted', originalBasis: 'per_100g_edible', nutrients: { protein: 10 } };

@@ -7,6 +7,13 @@ import { canonicalJson, sha256Hex } from '../contentHash.js';
 async function inlineRecordId(type, raw) {
     return String(raw.recordId || `${type}-sha256:${await sha256Hex(canonicalJson(raw))}`);
 }
+// The published record id can stay an explicit recordId. The cache identity
+// always includes the canonical content hash, so a corrected ham-v1 payload
+// does not reuse the first cached record.
+async function cacheRecordId(type, raw) {
+    const hash = await sha256Hex(canonicalJson(raw));
+    return raw.recordId ? `${raw.recordId}:sha256:${hash}` : `${type}-sha256:${hash}`;
+}
 export function getFdaRoundingInterval(key, value) {
     if (typeof value !== 'number' || !Number.isFinite(value))
         return undefined;
@@ -48,7 +55,7 @@ export function createManualAdapter() {
             if (context.manualRecord) {
                 return {
                     sourceAdapter: 'manual',
-                    sourceId: await inlineRecordId('manual', context.manualRecord),
+                    sourceId: await cacheRecordId('manual', context.manualRecord),
                     matchConfidence: 1.0,
                     matchType: 'exact',
                 };
@@ -102,9 +109,17 @@ export function createManualAdapter() {
                     comparatorRef,
                     derivation,
                     upperBound,
+                    ...(item.roundingInterval != null ? { roundingInterval: item.roundingInterval } : {}),
+                    ...(typeof item.reason === 'string' ? { reason: item.reason } : {}),
+                    ...(typeof item.qualifier === 'string' ? { qualifier: item.qualifier } : {}),
                 });
             }
             const checksum = 'sha256:' + (await sha256Hex(canonicalJson(raw)));
+            const explicitPer100 = raw.originalBasis === 'per_100g_edible';
+            const hasServing = Number.isFinite(raw.servingSize) && raw.servingSize > 0;
+            const originalBasis = !explicitPer100 && hasServing
+                ? `per_serving_${raw.servingSize}${raw.servingSizeUnit || ''}`
+                : 'per_100g_edible';
             const sourceRecord = {
                 ...raw.source,
                 type: raw.source.type || 'manual',
@@ -114,7 +129,7 @@ export function createManualAdapter() {
                 version: raw.version || raw.source?.version || '1',
                 publishedAt: raw.publishedAt ?? raw.source?.publishedAt,
                 accessedAt: raw.accessedAt || raw.source?.accessedAt || new Date().toISOString().slice(0, 10),
-                originalBasis: 'per_100g_edible',
+                originalBasis,
                 permittedUse: raw.permittedUse || raw.source.permittedUse || 'permitted_review',
                 checksum,
             };
@@ -123,6 +138,7 @@ export function createManualAdapter() {
                     delete sourceRecord[k];
             return {
                 type: 'manual',
+                originalBasis,
                 recordId: sourceRecord.recordId,
                 sourceRecord,
                 nutrients,
@@ -130,6 +146,8 @@ export function createManualAdapter() {
                 extractedStateWords: extractStateWords([raw.state, raw.description, raw.title, raw.productName].filter(Boolean).join(' ')),
                 ...(raw.fiberMeaning ? { fiberMeaning: raw.fiberMeaning } : {}),
                 ...(raw.carbConvention ? { carbConvention: raw.carbConvention } : {}),
+                servingSize: raw.servingSize !== undefined ? raw.servingSize : null,
+                servingSizeUnit: raw.servingSizeUnit || null,
                 checksum,
             };
         },
@@ -148,7 +166,7 @@ export function createLabelAdapter() {
             if (context.labelRecord) {
                 return {
                     sourceAdapter: 'label',
-                    sourceId: await inlineRecordId('label', context.labelRecord),
+                    sourceId: await cacheRecordId('label', context.labelRecord),
                     matchConfidence: 1.0,
                     matchType: 'exact',
                 };

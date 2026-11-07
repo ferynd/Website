@@ -7,9 +7,13 @@ import { createFileResearchStore } from './fileResearchStore';
 import { buildResearchPackets, canonicalRequestBody } from '../../public/shared/nutrition/research/researchPacket.js';
 import type { ResearchRequest } from '../../public/shared/nutrition/research/researchPacket.js';
 import { packetFixture, responseFor } from '../../public/tools/CalorieTracker/nutrition/researchPacketFixtures.js';
-import { transition, passIdFor } from '../../public/shared/nutrition/research/researchJob.js';
+import { createResearchJob, transition, passIdFor } from '../../public/shared/nutrition/research/researchJob.js';
 import type { ResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
 import { reviewContentHash } from '../../public/shared/nutrition/research/researchReview.js';
+import { emptyStagedRecord, V2_KEYS } from '../../public/shared/nutrition/nutrientRegistry.js';
+import { buildRevisionDraft } from '../../public/shared/nutrition/ingredientProfile.js';
+import { buildConversion } from '../../public/shared/nutrition/ingredientConversion.js';
+import { CURATED_CATALOG_ID } from '../../public/shared/nutrition/ingredientIds.js';
 const temp: string[] = [];
 const output = () => { };
 afterEach(async () => { await Promise.all(temp.splice(0).map(p => rm(p, { recursive: true, force: true }))); vi.unstubAllEnvs(); });
@@ -143,6 +147,82 @@ it('curated --verify-source refetches through a deterministic adapter and never 
     vi.stubEnv('FDC_API_KEY', '');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('--live');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api', '--live'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('FDC_API_KEY');
+    expect(fetch).not.toHaveBeenCalled();
+});
+it('runs and validates a multi-job batch with --write without losing the store lock', async () => {
+    const root = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
+    await researchCli(['plan', '--max', '3', '--fields', 'protein', '--write', '--store', root], { output, fetch });
+    const store = await createFileResearchStore(root);
+    const planned = (await store.list()).items;
+    expect(planned.length).toBe(3);
+    const ran = await researchCli(['run', '--source', 'fdc-bulk', '--store', root, '--write'], { output, fetch }) as ResearchJob[];
+    expect(ran).toHaveLength(3);
+    expect(ran.every(j => j.state === 'blocked')).toBe(true);
+    const validated = await researchCli(['validate', '--store', root, '--write'], { output, fetch }) as { jobId: string }[];
+    expect(validated).toHaveLength(3);
+    const saved = (await store.list()).items;
+    expect(saved).toHaveLength(3);
+    expect(saved.every(j => j.validation)).toBe(true);
+    expect(fetch).not.toHaveBeenCalled();
+});
+it('requires exactly one --job when run --input is set', async () => {
+    const root = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
+    await researchCli(['plan', '--max', '2', '--fields', 'protein', '--write', '--store', root], { output, fetch });
+    const store = await createFileResearchStore(root);
+    const jobs = (await store.list()).items;
+    expect(jobs).toHaveLength(2);
+    const input = path.join(root, 'apple.json');
+    await writeFile(input, JSON.stringify({ recordId: 'apple', originalBasis: 'per_100g_edible', nutrients: { protein: 2 } }));
+    const manual = path.join(root, 'manual.json');
+    await writeFile(manual, JSON.stringify({ recordId: 'apple', source: { type: 'manual' }, nutrients: { protein: { value: 2, unit: 'g', status: 'measured' } } }));
+    await expect(researchCli(['run', '--source', 'label', '--input', input, '--store', root, '--write'], { output, fetch })).rejects.toThrow('--input requires exactly one --job');
+    await expect(researchCli(['run', '--source', 'manual', '--input', manual, '--batch', jobs[0].parentBatchId, '--store', root], { output, fetch })).rejects.toThrow('--input requires exactly one --job');
+    expect((await store.list()).items.every(j => j.state === 'queued')).toBe(true);
+    const ran = await researchCli(['run', '--source', 'label', '--input', input, '--job', jobs[0].jobId, '--store', root, '--write'], { output, fetch }) as ResearchJob[];
+    expect(ran).toHaveLength(1);
+    expect(ran[0].proposal?.revisionDraft?.nutrients?.protein).toBe(2);
+    expect((await store.get(jobs[1].jobId))?.state).toBe('queued');
+    expect(fetch).not.toHaveBeenCalled();
+});
+async function approvedCatalogJob(manifestId: string) {
+    const staged = emptyStagedRecord();
+    for (const key of V2_KEYS) {
+        staged.values[key] = null;
+        staged.quality[key] = { status: 'unknown', qualifier: 'gap:not_reported_by_source' };
+    }
+    staged.values.protein = 0.26;
+    staged.quality.protein = { status: 'measured' };
+    staged.values.calories = 52;
+    staged.quality.calories = { status: 'measured' };
+    const draft = await buildRevisionDraft({
+        identityId: manifestId, variantId: manifestId, stagedRecord: staged,
+        basis: { kind: 'per_100g_edible', state: 'raw' },
+        fieldProvenance: { protein: { sourceKey: 'src-1' }, calories: { sourceKey: 'src-1' } },
+        sources: { 'src-1': { type: 'fdc', datasetId: 'Foundation', recordId: '9900001', title: 'Fixture', version: 'fixture', accessedAt: '2026-11-06', permittedUse: 'CC0 1.0' } },
+    });
+    const conv = await buildConversion({
+        schemaVersion: 1,
+        variantRef: { refVersion: 1, scope: 'curated', namespace: 'catalog:' + CURATED_CATALOG_ID, identityId: manifestId, variantId: manifestId, revision: 1, revisionId: manifestId + '~r1', contentHash: draft.contentHash },
+        kind: 'household', unit: 'cup', amount: 1, grams: 125, state: 'raw',
+        source: { type: 'fdc', version: 'fixture', accessedAt: '2026-11-06', permittedUse: 'CC0 1.0' },
+        confidence: 1,
+    });
+    const job = await createResearchJob({ target: { manifestId, canonicalName: 'Fixture food', category: 'fruit', kind: 'generic', dims: { state: 'raw' } }, sourceRelease: 'fixture' });
+    job.proposal = { revisionDraft: draft, conversions: [conv], gaps: { carbs: 'not_reported_by_source' } };
+    job.review = { checklistVersion: 1, decision: 'approve', reviewer: 'reviewer', reviewedAt: '2026-11-06T12:00:00Z', approvedContentHash: await reviewContentHash(job), acknowledgedWarnings: [] };
+    job.state = 'approved';
+    return job;
+}
+it('stages approved jobs and skips the others', async () => {
+    const root = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
+    await researchCli(['plan', '--max', '2', '--write', '--store', root], { output, fetch });
+    await expect(researchCli(['stage', '--store', root], { output, fetch })).rejects.toThrow('No approved jobs to stage');
+    const store = await createFileResearchStore(root);
+    const approved = await approvedCatalogJob('stage-filter-fixture');
+    await store.save(approved);
+    const staged = await researchCli(['stage', '--store', root], { output, fetch }) as { records: { identity: { category: string; kind: string }; variant: { variantId: string } }[] };
+    expect(staged.records.map(record => record.variant.variantId)).toEqual(['stage-filter-fixture']);
+    expect(staged.records[0].identity).toMatchObject({ category: 'fruit', kind: 'generic' });
     expect(fetch).not.toHaveBeenCalled();
 });
 it('private --verify-source without --source keeps reviewer attestation', async () => {

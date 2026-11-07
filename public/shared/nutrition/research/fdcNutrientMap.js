@@ -14,11 +14,13 @@ import { V2_KEYS, getNutrient, convertUnit } from '../nutrientRegistry.js';
 export const ENERGY_PREFERENCE_ORDER = Object.freeze([1008, 2048, 2047]);
 /** @type {readonly FdcNutrientMapping[]} */
 export const FDC_NUTRIENT_ENTRIES = Object.freeze([
-    // Energy (preference: 1008, then 2048, then 2047)
+    // Energy preference: 1008 (kcal, number 208), then 2048 Atwater specific
+    // (number 958), then 2047 Atwater general (number 957). Number 268 is
+    // energy in kJ (id 1062) and is not mapped to calories. Number 269 is
+    // total sugars (id 2000).
     { fdcNutrientId: 1008, nutrientNumber: '208', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy' },
-    { fdcNutrientId: 2048, nutrientNumber: '268', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy (Atwater general factors)' },
-    // USDA nutrient number 957. Number 269 is total sugars (id 2000).
-    { fdcNutrientId: 2047, nutrientNumber: '957', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy (Atwater specific factors)' },
+    { fdcNutrientId: 2048, nutrientNumber: '958', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy (Atwater Specific Factors)' },
+    { fdcNutrientId: 2047, nutrientNumber: '957', key: 'calories', sourceUnit: 'kcal', policy: 'exact', note: 'Energy (Atwater General Factors)' },
     // Macros & base components
     { fdcNutrientId: 1003, nutrientNumber: '203', key: 'protein', sourceUnit: 'g', policy: 'exact', note: 'Protein' },
     { fdcNutrientId: 1004, nutrientNumber: '204', key: 'fat', sourceUnit: 'g', policy: 'exact', note: 'Total lipid (fat)' },

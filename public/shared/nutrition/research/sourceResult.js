@@ -106,7 +106,7 @@ export function normalizeSourceResult(result, target = {}) {
         };
     }
     const byFdcId = new Map((result.nutrients || []).map(n => [n.nutrientId, n]));
-    // Energy preference: 1008, then 2048, then 2047
+    // Energy preference: 1008, then 2048 (Atwater specific), then 2047 (Atwater general).
     const n1008 = byFdcId.get(1008);
     const n2048 = byFdcId.get(2048);
     const n2047 = byFdcId.get(2047);
@@ -118,12 +118,12 @@ export function normalizeSourceResult(result, target = {}) {
     else if (n2048 && Number.isFinite(n2048.amount) && !n2048.isBelowLoq) {
         nutrients.calories = round6(n2048.amount * scale);
         quality.calories = { status: 'calculated' };
-        fieldProvenance.calories = { sourceKey, sourceNutrientId: '2048', derivation: 'atwater_general_factors' };
+        fieldProvenance.calories = { sourceKey, sourceNutrientId: '2048', derivation: 'atwater_specific_factors' };
     }
     else if (n2047 && Number.isFinite(n2047.amount) && !n2047.isBelowLoq) {
         nutrients.calories = round6(n2047.amount * scale);
         quality.calories = { status: 'calculated' };
-        fieldProvenance.calories = { sourceKey, sourceNutrientId: '2047', derivation: 'atwater_specific_factors' };
+        fieldProvenance.calories = { sourceKey, sourceNutrientId: '2047', derivation: 'atwater_general_factors' };
     }
     else {
         nutrients.calories = null;
@@ -198,7 +198,9 @@ export function normalizeSourceResult(result, target = {}) {
     for (const entry of FDC_NUTRIENT_ENTRIES) {
         if (entry.policy === 'gap') {
             const item = byFdcId.get(entry.fdcNutrientId);
-            if (item && nutrients[entry.key] == null) {
+            // A mismatch row fills a key only when that key has no status yet.
+            // An exact limit of quantification (null value, real status) must stay.
+            if (item && !quality[entry.key]?.status) {
                 nutrients[entry.key] = null;
                 quality[entry.key] = { status: 'unknown', qualifier: `gap:${entry.gapReason}` };
                 gaps[entry.key] = entry.gapReason;
@@ -258,7 +260,7 @@ export function normalizeSourceResult(result, target = {}) {
         fieldProvenance[key] = { sourceKey, sourceNutrientId: String(item.nutrientId) };
         if (key === 'calories' && !item.isBelowLoq && [2047, 2048].includes(item.nutrientId)) {
             quality[key].status = 'calculated';
-            fieldProvenance[key].derivation = item.nutrientId === 2048 ? 'atwater_general_factors' : 'atwater_specific_factors';
+            fieldProvenance[key].derivation = item.nutrientId === 2048 ? 'atwater_specific_factors' : 'atwater_general_factors';
         }
         delete gaps[key];
     }
@@ -292,9 +294,20 @@ export function normalizeSourceResult(result, target = {}) {
             return converted.value;
         };
         const value = item.amount == null ? null : convert(item.amount);
+        const reason = typeof item.reason === 'string' ? item.reason.replace(/^gap:/, '') : '';
+        const qualifier = item.qualifier
+            || (reason ? (String(item.reason).startsWith('gap:') ? item.reason : 'gap:' + reason) : '')
+            || (item.status === 'below_quantification_limit' ? 'below_quantification_limit' : '')
+            || (value === null && (!item.status || item.status === 'unknown') ? 'gap:not_reported_by_source' : '');
         nutrients[key] = value;
-        quality[key] = { status: item.status, ...(item.roundingInterval !== undefined ? { roundingInterval: convert(item.roundingInterval) } : {}), ...(item.upperBound !== undefined ? { upperBound: convert(item.upperBound) } : {}), ...(value === null ? { qualifier: 'gap:' + (item.reason || 'not_reported_by_source') } : {}) };
+        quality[key] = { status: item.status, ...(item.roundingInterval !== undefined ? { roundingInterval: convert(item.roundingInterval) } : {}), ...(item.upperBound !== undefined ? { upperBound: convert(item.upperBound) } : {}), ...(qualifier ? { qualifier } : {}) };
         fieldProvenance[key] = { sourceKey, ...(item.derivation ? { derivation: item.derivation } : {}), ...(item.comparatorRef ? { comparatorRef: item.comparatorRef } : {}), ...(item.range ? { range: { min: convert(item.range.min), max: convert(item.range.max) } } : {}) };
+        // A reported value or a real limit of quantification replaces the placeholder gap.
+        const openGap = value === null && item.status !== 'below_quantification_limit' && item.status !== 'not_applicable';
+        if (openGap)
+            gaps[key] = reason || 'not_reported_by_source';
+        else
+            delete gaps[key];
     }
     // Guarantee every key in V2_KEYS has a status and value
     for (const key of V2_KEYS) {

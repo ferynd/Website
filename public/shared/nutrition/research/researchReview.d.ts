@@ -38,6 +38,8 @@ export interface ReviewDecision {
 export interface PublishedIdentity {
     canonicalName: string | null;
     aliases: any;
+    category: string;
+    kind: string;
     dims: any;
 }
 export declare function publishedIdentityFor(job: { target?: any }): PublishedIdentity;

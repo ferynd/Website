@@ -202,6 +202,13 @@ it('refuses staging when gaps or published identity change after approval', asyn
     const cooked = await makeApprovedCuratedJob();
     cooked.target.dims = { ...cooked.target.dims, state: 'cooked' };
     await expect(stageCatalog([cooked])).rejects.toThrow('valid reviewed content hash');
+    const recategorized = await makeApprovedCuratedJob();
+    expect((await stageCatalog([recategorized])).records[0].identity).toMatchObject({ category: 'fruits-fruit-juices', kind: 'generic' });
+    recategorized.target.category = 'vegetables';
+    await expect(stageCatalog([recategorized])).rejects.toThrow('valid reviewed content hash');
+    const rekinded = await makeApprovedCuratedJob();
+    rekinded.target.kind = 'branded';
+    await expect(stageCatalog([rekinded])).rejects.toThrow('valid reviewed content hash');
     const gaps = await makeApprovedCuratedJob();
     gaps.proposal.gaps = { carbs: 'not_computed' };
     await expect(stageCatalog([gaps])).rejects.toThrow('valid reviewed content hash');

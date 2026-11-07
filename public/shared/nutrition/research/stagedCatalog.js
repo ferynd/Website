@@ -43,8 +43,8 @@ export function toCatalogRecord(job) {
     const published = publishedIdentityFor(job);
     const identity = {
         canonicalName: published.canonicalName,
-        category: job.target.category || 'other',
-        kind: job.target.kind || 'generic',
+        category: published.category,
+        kind: published.kind,
         aliases: published.aliases,
     };
     const variant = {

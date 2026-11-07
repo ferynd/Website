@@ -113,6 +113,27 @@ describe('Source Result Normalization', () => {
         expect(proposal.nutrientMeta.quality.carbs.qualifier).toBe('gap:not_requested');
     });
 });
+it('keeps an exact limit of quantification when a definition-mismatch row is also present', () => {
+    const result = {
+        type: 'fdc', recordId: 'fixture', originalBasis: 'per_100g_edible',
+        nutrients: [
+            { nutrientId: 1190, amount: null, unitName: 'mcg', isBelowLoq: true, loq: 5 },
+            { nutrientId: 1177, amount: 30, unitName: 'mcg' },
+            { nutrientId: 1106, amount: null, unitName: 'mcg', isBelowLoq: true, loq: 2 },
+            { nutrientId: 1104, amount: 500, unitName: 'IU' },
+            { nutrientId: 1404, amount: null, unitName: 'g', isBelowLoq: true, loq: 0.01 },
+            { nutrientId: 1270, amount: 0.05, unitName: 'g' },
+        ],
+    };
+    const proposal = normalizeSourceResult(result);
+    expect(proposal.nutrientMeta.quality.folate).toMatchObject({ status: 'below_quantification_limit', upperBound: 5 });
+    expect(proposal.nutrientMeta.quality.vitaminA).toMatchObject({ status: 'below_quantification_limit', upperBound: 2 });
+    expect(proposal.nutrientMeta.quality.omega3ALA).toMatchObject({ status: 'below_quantification_limit', upperBound: 0.01 });
+    for (const key of ['folate', 'vitaminA', 'omega3ALA']) {
+        expect(proposal.nutrientMeta.quality[key].qualifier).not.toBe('gap:definition_mismatch');
+        expect(proposal.gaps[key]).toBeUndefined();
+    }
+});
 it('preserves FDC per-100g basis despite a listed serving, and scales source units/LOQ safely', async () => {
     const raw = loadFixture('apple-bulk.json');
     raw.servingSize = 50;
@@ -131,7 +152,7 @@ it('preserves FDC per-100g basis despite a listed serving, and scales source uni
     expect(proposal.nutrients.calories).toBeNull();
     expect(proposal.nutrientMeta.quality.calories.upperBound).toBe(1);
 });
-it.each([[2048, 'atwater_general_factors'], [2047, 'atwater_specific_factors']])('retains calculated energy provenance for FDC %i after unit/basis normalization', (nutrientId, derivation) => {
+it.each([[2048, 'atwater_specific_factors'], [2047, 'atwater_general_factors']])('retains calculated energy provenance for FDC %i after unit/basis normalization', (nutrientId, derivation) => {
     const result = { type: 'fdc', recordId: 'fixture', originalBasis: 'per_serving', servingSize: 50, servingSizeUnit: 'g',
         nutrients: [{ nutrientId, amount: 100, unitName: 'kcal' }] };
     const normalized = normalizeSourceResult(result);

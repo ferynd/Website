@@ -52,6 +52,8 @@ export function publishedIdentityFor(job) {
     return {
         canonicalName: target.canonicalName || target.name || target.manifestId || null,
         aliases: target.aliases || [],
+        category: target.category || 'other',
+        kind: target.kind || 'generic',
         dims: target.dims || { state: 'unspecified' },
     };
 }
@@ -113,6 +115,8 @@ export async function buildReviewPacket(job) {
     mdLines.push(`### Published identity`);
     mdLines.push(`- **Canonical name:** ${identity.canonicalName || 'unknown'}`);
     mdLines.push(`- **Aliases:** ${Array.isArray(identity.aliases) && identity.aliases.length ? identity.aliases.join(', ') : 'none'}`);
+    mdLines.push(`- **Category:** ${identity.category}`);
+    mdLines.push(`- **Kind:** ${identity.kind}`);
     mdLines.push(`- **Dimensions:** ${JSON.stringify(identity.dims)}`);
     mdLines.push(``);
     mdLines.push(`### Gaps`);

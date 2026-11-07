@@ -46,10 +46,14 @@ describe('FDC Nutrient Map', () => {
         expect(byNum?.key).toBe('protein');
         expect(getFdcMapping(999999)).toBeNull();
     });
-    it('assigns USDA nutrient number 957 to Atwater-specific energy and rejects duplicate numbers', () => {
-        expect(getFdcMapping(2047).nutrientNumber).toBe('957');
+    it('maps Atwater general 2047/957 and specific 2048/958, and does not map kJ number 268 to calories', () => {
+        expect(getFdcMapping(2047)).toMatchObject({ nutrientNumber: '957', key: 'calories', note: 'Energy (Atwater General Factors)' });
+        expect(getFdcMapping(2048)).toMatchObject({ nutrientNumber: '958', key: 'calories', note: 'Energy (Atwater Specific Factors)' });
         expect(getFdcMappingByNumber('957').fdcNutrientId).toBe(2047);
+        expect(getFdcMappingByNumber('958').fdcNutrientId).toBe(2048);
         expect(getFdcMappingByNumber('957').key).toBe('calories');
+        expect(getFdcMappingByNumber('268')).toBeNull();
+        expect(getFdcMapping(1062)).toBeNull();
         expect(getFdcMapping(2000).nutrientNumber).toBe('269');
         expect(getFdcMappingByNumber('269').key).toBe('sugarsTotal');
         expect(validateFdcNutrientMappings()).toEqual([]);

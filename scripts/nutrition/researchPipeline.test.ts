@@ -76,6 +76,31 @@ it('rejects public paths including symlink aliases before creating files', async
     await symlink(path.resolve('public'), path.join(root, 'alias'));
     await expect(createFileResearchStore(path.join(root, 'alias', 'nested'))).rejects.toThrow('outside public');
 });
+it('aggregates every pass for a manifest id and keeps an approved profile beside a later blocked pass', () => {
+    const entry = (id: string) => ({ id, name: id, category: 'fruit', kind: 'generic', state: 'raw', priority: 1, sourceStrategy: 'usda-first', status: 'queued' as const });
+    const job = (id: string, state: 'approved' | 'blocked', quality: Record<string, { status: string; qualifier?: string }>) => ({
+        scope: 'curated' as const,
+        state,
+        target: { manifestId: id, targetKind: 'catalog' as const, dims: { state: 'raw' as const } },
+        attempts: [{ attemptId: 'a', adapter: 'manual', outcome: state === 'blocked' ? 'blocked' as const : 'success' as const, timestamp: '2026-11-06' }],
+        requests: [],
+        blocked: state === 'blocked' ? { code: 'match_not_found', needs: 'iodine source' } : null,
+        proposal: { revisionDraft: { nutrientMeta: { quality } } },
+    });
+    const approved = job('apple', 'approved', { protein: { status: 'measured' }, iodine: { status: 'unknown', qualifier: 'gap:not_reported_by_source' } });
+    const later = job('apple', 'blocked', { protein: { status: 'unknown', qualifier: 'gap:not_requested' }, iodine: { status: 'unknown', qualifier: 'gap:not_reported_by_source' } });
+    const pear = job('pear', 'blocked', { protein: { status: 'unknown', qualifier: 'gap:not_reported_by_source' } });
+    const report = coverageReport([entry('apple'), entry('pear')], [approved, later, pear] as unknown as ResearchJob[]);
+    expect(report.json.groups.all.approved).toBe(1);
+    expect(report.json.groups.all.blocked).toBe(1);
+    expect(report.json.groups.all.remaining).toBe(1);
+    expect(report.json.blocked.map(row => row.id)).toEqual(['pear']);
+    expect(report.json.nutrients.protein.measured).toBe(1);
+    expect(report.json.nutrients.protein.unknown).toBe(1);
+    expect(report.json.nutrients.iodine.unknown).toBe(1);
+    expect(report.markdown).toContain('1/2 approved');
+    expect(report.markdown).not.toContain('apple: match_not_found');
+});
 it('serializes concurrent writers with CAS and never reports private jobs in public coverage', async () => {
     const root = await dir(), store = await createFileResearchStore(root), j = await createResearchJob({ target: { manifestId: 'synthetic' } });
     await store.save(j);

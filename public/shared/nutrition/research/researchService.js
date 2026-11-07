@@ -39,6 +39,23 @@ function sameRange(left, right) {
     const range = value => value == null ? null : { min: value.min, max: value.max };
     return canonicalJson(range(left)) === canonicalJson(range(right));
 }
+function citesSource(conversion, sourceId) {
+    return Array.isArray(conversion?.sourceIds) && conversion.sourceIds.includes(sourceId);
+}
+/** Gap text published with a verified observation. A real measurement or limit of quantification clears the gap. */
+function gapFromWrittenObservation(quality, value) {
+    if (!quality)
+        return 'not_reported_by_source';
+    if (quality.status === 'below_quantification_limit' || quality.status === 'not_applicable')
+        return null;
+    if (value != null && quality.status !== 'unknown')
+        return null;
+    if (typeof quality.qualifier === 'string' && quality.qualifier.startsWith('gap:'))
+        return quality.qualifier.slice(4);
+    if (quality.status === 'unknown' || value == null)
+        return 'not_reported_by_source';
+    return null;
+}
 export function createResearchService({ store, sourceCache, adapters = [], now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)), random = () => Math.random(), retry: retryConfig = { maxAttempts: 3, baseMs: 1000, maxMs: 30000 }, } = {}) {
     const adapterMap = new Map();
     for (const a of adapters) {
@@ -539,7 +556,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         // Packet weights describe one unit. FDC portions may describe several;
         // compare grams per unit and ranges, and refuse unexpressed portion qualifiers.
         for (const c of job.proposal.assistantResult.conversions) {
-            if (!c.sourceIds.includes(sourceId)) continue;
+            if (!citesSource(c, sourceId)) continue;
             const portions = normalized.conversions.filter(p => p.unit === c.unit && p.state === c.state && !p.unitQualifier);
             if (!portions.length || portions.some(p => !Number.isFinite(p.grams / p.amount) || Math.abs(p.grams / p.amount - c.grams) > 1e-6 || !sameRange(p.range, c.range)))
                 await mismatch('Source conversion mismatch: ' + c.unit);
@@ -552,6 +569,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         // and replace each cited field with the deterministic observation before hashing.
         const stagedRecord = revisionToStagedRecord(draft);
         const fieldProvenance = { ...draft.fieldProvenance };
+        proposal.gaps = { ...(proposal.gaps || {}) };
         for (const [key] of cited) {
             stagedRecord.values[key] = normalized.nutrients[key] ?? null;
             stagedRecord.quality[key] = { ...(normalized.nutrientMeta.quality[key] || { status: 'unknown' }) };
@@ -565,6 +583,11 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
                 ...(from.confidence !== undefined ? { confidence: from.confidence } : {}),
                 ...(from.range ? { range: from.range } : {}),
             };
+            const gap = gapFromWrittenObservation(stagedRecord.quality[key], stagedRecord.values[key]);
+            if (gap)
+                proposal.gaps[key] = gap;
+            else
+                delete proposal.gaps[key];
         }
         proposal.revisionDraft = { ...draft, ...await buildRevisionDraft({
             identityId: draft.identityId, variantId: draft.variantId,
@@ -574,7 +597,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         proposal.conversions = await Promise.all(proposal.conversions.map((c, i) => {
             const { conversionId, ...input } = c;
             const citedConversion = proposal.assistantResult.conversions[i];
-            const citedHere = citedConversion?.sourceIds?.[0] === sourceId;
+            const citedHere = citesSource(citedConversion, sourceId);
             const portion = citedHere
                 ? normalized.conversions.find(p => p.unit === citedConversion.unit && p.state === citedConversion.state && !p.unitQualifier && sameRange(p.range, citedConversion.range) && Number.isFinite(p.grams / p.amount) && Math.abs(p.grams / p.amount - citedConversion.grams) <= 1e-6)
                 : null;
@@ -587,6 +610,8 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             });
         }));
         proposal.diff = buildRevisionDiff(job.target.baseRevision || null, proposal.revisionDraft, proposal.conversions);
+        // Re-check food state from the deterministic record, not the assistant's claim.
+        proposal.extractedStateWords = [...(normalized.extractedStateWords || [])];
         proposal.sourceVerification[sourceId] = { status: 'verified', method: 'deterministic_refetch', verifiedAt: new Date(now()).toISOString() };
         const updated = { ...job, proposal, validation: await validateProposal({ ...job, proposal }), version: job.version + 1 };
         await store.save(updated, { expectedVersion: job.version });
