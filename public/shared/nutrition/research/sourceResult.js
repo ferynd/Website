@@ -264,7 +264,12 @@ export function normalizeSourceResult(result, target = {}) {
         }
         delete gaps[key];
     }
-    setFdc('calories', [n1008, n2048, n2047].find(n => n && (n.amount !== null || n.isBelowLoq)), 'kcal');
+    // Preference order is 1008, 2048, then 2047. A below-LOQ row is only
+    // the energy value when none of those ids has a finite quantified amount.
+    const quantifiedEnergy = item => item && Number.isFinite(item.amount) && !item.isBelowLoq;
+    const energy = [n1008, n2048, n2047].find(quantifiedEnergy)
+        || [n1008, n2048, n2047].find(item => item && item.isBelowLoq);
+    setFdc('calories', energy, 'kcal');
     setFdc('carbs', byFdcId.get(1005), 'g');
     setFdc('fiberTotal', byFdcId.get(1079), 'g');
     setFdc('fiber', byFdcId.get(1079), 'g');

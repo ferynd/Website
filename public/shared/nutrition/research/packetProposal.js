@@ -36,11 +36,21 @@ export async function packetProposal(job, result) {
         stagedRecord.values[key] = n.value;
         stagedRecord.quality[key] = { status: n.status, ...(n.qualifier ? { qualifier: n.qualifier } : {}), ...(n.roundingInterval !== undefined ? { roundingInterval: n.roundingInterval } : {}), ...(n.upperBound !== undefined ? { upperBound: n.upperBound } : {}) };
         if (n.value === null) {
-            gaps[key] = result.unresolved.find(u => u.field === key)?.reason || n.status;
-            stagedRecord.quality[key].qualifier = n.qualifier || 'gap:' + gaps[key];
+            // A limit or not-applicable status is not a gap reason. The direct
+            // adapter drops those gaps; a packet must not invent one from the status.
+            const closedStatus = n.status === 'below_quantification_limit' || n.status === 'not_applicable';
+            if (closedStatus) {
+                delete gaps[key];
+            }
+            else {
+                gaps[key] = result.unresolved.find(u => u.field === key)?.reason || n.status;
+                stagedRecord.quality[key].qualifier = n.qualifier || 'gap:' + gaps[key];
+            }
         }
         if (n.sourceIds.length)
             fieldProvenance[key] = { sourceKey: assistantSourceKeys[n.sourceIds[0]], ...(n.derivation ? { derivation: n.derivation } : {}), ...(n.comparator ? { comparatorRef: JSON.stringify(n.comparator) } : {}), ...(n.range ? { range: n.range } : {}), ...(n.confidence !== undefined ? { confidence: n.confidence } : {}) };
+        else
+            delete fieldProvenance[key];
     }
     const identityId = job.target.identityId || job.target.manifestId, variantId = job.target.variantId || job.target.manifestId;
     const revisionDraft = await buildRevisionDraft({ identityId, variantId, stagedRecord, sources, fieldProvenance, basis: { kind: 'per_100g_edible', state: job.target.dims.state }, basedOn: job.target.baseRef || null, base: base || null });

@@ -176,7 +176,7 @@ it('requires exactly one --job when run --input is set', async () => {
     const manual = path.join(root, 'manual.json');
     await writeFile(manual, JSON.stringify({ recordId: 'apple', source: { type: 'manual' }, nutrients: { protein: { value: 2, unit: 'g', status: 'measured' } } }));
     await expect(researchCli(['run', '--source', 'label', '--input', input, '--store', root, '--write'], { output, fetch })).rejects.toThrow('--input requires exactly one --job');
-    await expect(researchCli(['run', '--source', 'manual', '--input', manual, '--batch', jobs[0].parentBatchId, '--store', root], { output, fetch })).rejects.toThrow('--input requires exactly one --job');
+    await expect(researchCli(['run', '--source', 'manual', '--input', manual, '--batch', jobs[0].parentBatchId ?? '', '--store', root], { output, fetch })).rejects.toThrow('--input requires exactly one --job');
     expect((await store.list()).items.every(j => j.state === 'queued')).toBe(true);
     const ran = await researchCli(['run', '--source', 'label', '--input', input, '--job', jobs[0].jobId, '--store', root, '--write'], { output, fetch }) as ResearchJob[];
     expect(ran).toHaveLength(1);
@@ -201,7 +201,6 @@ async function approvedCatalogJob(manifestId: string) {
         sources: { 'src-1': { type: 'fdc', datasetId: 'Foundation', recordId: '9900001', title: 'Fixture', version: 'fixture', accessedAt: '2026-11-06', permittedUse: 'CC0 1.0' } },
     });
     const conv = await buildConversion({
-        schemaVersion: 1,
         variantRef: { refVersion: 1, scope: 'curated', namespace: 'catalog:' + CURATED_CATALOG_ID, identityId: manifestId, variantId: manifestId, revision: 1, revisionId: manifestId + '~r1', contentHash: draft.contentHash },
         kind: 'household', unit: 'cup', amount: 1, grams: 125, state: 'raw',
         source: { type: 'fdc', version: 'fixture', accessedAt: '2026-11-06', permittedUse: 'CC0 1.0' },
@@ -223,6 +222,19 @@ it('stages approved jobs and skips the others', async () => {
     const staged = await researchCli(['stage', '--store', root], { output, fetch }) as { records: { identity: { category: string; kind: string }; variant: { variantId: string } }[] };
     expect(staged.records.map(record => record.variant.variantId)).toEqual(['stage-filter-fixture']);
     expect(staged.records[0].identity).toMatchObject({ category: 'fruit', kind: 'generic' });
+    expect(fetch).not.toHaveBeenCalled();
+});
+it('refuses stage --write into a non-empty --out', async () => {
+    const root = await dir(), out = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
+    await writeFile(path.join(out, 'manifest.json'), '{}\n');
+    const store = await createFileResearchStore(root);
+    await store.save(await approvedCatalogJob('stage-out-fixture'));
+    await expect(researchCli(['stage', '--store', root, '--write', '--out', out], { output, fetch })).rejects.toThrow('non-empty --out');
+    expect(await readFile(path.join(out, 'manifest.json'), 'utf8')).toBe('{}\n');
+    const fresh = await dir();
+    await researchCli(['stage', '--store', root, '--write', '--out', fresh], { output, fetch });
+    expect(await readdir(fresh)).toContain('manifest.json');
+    await expect(researchCli(['stage', '--store', root, '--write', '--out', fresh], { output, fetch })).rejects.toThrow('non-empty --out');
     expect(fetch).not.toHaveBeenCalled();
 });
 it('private --verify-source without --source keeps reviewer attestation', async () => {

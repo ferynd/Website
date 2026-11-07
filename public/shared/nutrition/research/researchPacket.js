@@ -252,7 +252,8 @@ export async function validateResearchResponse(input, { request, jobs, now = Dat
             const converted = convertUnit(key, n.value === null ? 1 : n.value, n.unit);
             if (converted.error)
                 fail(np + '.unit', 'unconvertible unit or numeric text');
-            sourceIds(n.sourceIds, np + '.sourceIds', n.value !== null);
+            const citedNull = n.status === 'below_quantification_limit' || n.status === 'not_applicable';
+            sourceIds(n.sourceIds, np + '.sourceIds', n.value !== null || citedNull);
             if (n.value !== null) {
                 num(n.value, np + '.value');
                 if (checkPer100g(key, converted.value) === 'reject')

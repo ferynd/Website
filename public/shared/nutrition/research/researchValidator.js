@@ -3,6 +3,19 @@ import { checkPer100g } from '../nutrientRegistry.js';
 import { validateRevision, verifyRevisionHash } from '../ingredientProfile.js';
 import { validateConversion } from '../ingredientConversion.js';
 export const VALIDATOR_VERSION = 1;
+/** Per-source words win when present so a later verification cannot hide an earlier one. */
+function collectedStateWords(proposal) {
+    const bySource = proposal?.stateWordsBySource;
+    if (bySource && typeof bySource === 'object' && !Array.isArray(bySource)) {
+        const lists = Object.values(bySource).filter(Array.isArray);
+        if (lists.length)
+            return lists.flat();
+    }
+    return proposal?.extractedStateWords || [];
+}
+function needsCuratedClaimProvenance(entry) {
+    return entry?.status === 'not_applicable' || entry?.status === 'below_quantification_limit' || entry?.upperBound != null;
+}
 export async function validateProposal(job, { base = null } = {}) {
     const errors = [];
     const warnings = [];
@@ -48,6 +61,28 @@ export async function validateProposal(job, { base = null } = {}) {
             if (!p?.comparatorRef || !p.derivation || !p.range)
                 errors.push(`Estimate requires comparator, transfer reason/derivation and range: ${key}`);
         }
+    // An upper bound or not-applicable claim is evidence. Curated output cannot
+    // publish it without a source, and an assistant claim must name a verified one.
+    if (job.scope === 'curated') {
+        const assistantNutrients = job.proposal?.assistantResult?.nutrients;
+        const verification = job.proposal?.sourceVerification;
+        const assistantKeys = job.proposal?.assistantSourceKeys || {};
+        const sourceIdFor = sourceKey => Object.entries(assistantKeys).find(([, key]) => key === sourceKey)?.[0];
+        for (const key of V2_KEYS) {
+            const entry = quality[key];
+            if (!needsCuratedClaimProvenance(entry))
+                continue;
+            const sourceKey = draft.fieldProvenance?.[key]?.sourceKey;
+            const sourced = Boolean(sourceKey && draft.sources?.[sourceKey]);
+            if (!sourced)
+                errors.push(`Curated field ${key} requires provenance for ${entry.status}`);
+            if (assistantNutrients && Object.prototype.hasOwnProperty.call(assistantNutrients, key)) {
+                const sourceId = sourced ? sourceIdFor(sourceKey) : undefined;
+                if (!sourceId || verification?.[sourceId]?.status !== 'verified')
+                    errors.push(`Curated field ${key} requires verified provenance`);
+            }
+        }
+    }
     // 4. Per 100g scientific bounds check
     for (const key of V2_KEYS) {
         const val = draft.nutrients?.[key];
@@ -64,7 +99,7 @@ export async function validateProposal(job, { base = null } = {}) {
     // 5. State conflicts (raw vs cooked, drained vs undrained, fortified vs plain)
     const targetDims = job.target?.dims || {};
     const targetState = String(targetDims.state || '').toLowerCase();
-    const extractedWords = new Set((job.proposal?.extractedStateWords || []).map(w => String(w).toLowerCase()));
+    const extractedWords = new Set(collectedStateWords(job.proposal).map(w => String(w).toLowerCase()));
     const isTargetRaw = targetState === 'raw' || targetState.includes('raw');
     const isTargetCooked = targetState === 'cooked' ||
         targetState.includes('cooked') ||
@@ -93,6 +128,12 @@ export async function validateProposal(job, { base = null } = {}) {
     }
     if (targetDims.fortification === 'unfortified' && extractedWords.has('fortified')) {
         errors.push('Explicit conflict: target is unfortified but source is fortified');
+    }
+    if (targetDims.salt === 'unsalted' && extractedWords.has('salted')) {
+        errors.push('Explicit conflict: target is unsalted but source is salted');
+    }
+    if (targetDims.salt === 'salted' && extractedWords.has('unsalted')) {
+        errors.push('Explicit conflict: target is salted but source is unsalted');
     }
     // 6. FDC adapter used on compound-reference entry
     if (job.target?.sourceStrategy === 'compound-reference') {

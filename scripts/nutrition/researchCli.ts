@@ -1,4 +1,4 @@
-import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createMemoryResearchStore, createMemorySourceCache } from '../../public/shared/nutrition/research/memoryResearchStore.js';
@@ -197,6 +197,10 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
                     throw new Error('stage --write requires --out');
                 const out = await assertLocalPath(str('out')!);
                 await mkdir(out, { recursive: true });
+                // A second batch must not replace manifest.json and leave the
+                // earlier shards on disk but unlisted. Use a fresh directory.
+                if ((await readdir(out)).length)
+                    throw new Error('stage --write refuses a non-empty --out');
                 for (const [name, data] of Object.entries({ ...staged.files, 'manifest.json': staged.manifest })) {
                     const file = path.join(out, name);
                     await mkdir(path.dirname(file), { recursive: true });

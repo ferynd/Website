@@ -1,7 +1,10 @@
 import { publishedIdentityFor, reviewContentHash } from './researchReview.js';
 import { validateProposal } from './researchValidator.js';
 import { buildCatalogShards } from '../ingredientCatalog.js';
-const PRIVATE_DATA = /private|restricted|confidential|blob:|data:|\/users\//i;
+const REVIEWER_HANDLE = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
+// Names such as "Private Selection" are not private data. Licenses still are.
+const SECRET_TEXT = /\brestricted\b|\bconfidential\b|\bblob:|\bdata:|\/users\/|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const SECRET_LICENSE = /\bprivate\b|\brestricted\b|\bconfidential\b/i;
 function hasPrivatePayload(value) {
     if (!value || typeof value !== 'object')
         return false;
@@ -14,6 +17,38 @@ function hasPrivatePayload(value) {
             return true;
     }
     return false;
+}
+function asStrings(value) {
+    if (typeof value === 'string')
+        return [value];
+    if (Array.isArray(value))
+        return value.flatMap(asStrings);
+    return [];
+}
+function sourceLeaks(source) {
+    if (!source || typeof source !== 'object')
+        return false;
+    if (typeof source.permittedUse === 'string' && SECRET_LICENSE.test(source.permittedUse))
+        return true;
+    return [source.title, source.url, source.recordId].some(text => typeof text === 'string' && SECRET_TEXT.test(text));
+}
+function hasPrivateMaterial(record) {
+    if (hasPrivatePayload(record))
+        return true;
+    const published = [
+        ...asStrings(record.identity?.canonicalName),
+        ...asStrings(record.identity?.aliases),
+        ...asStrings(Object.values(record.research?.gaps || {})),
+    ];
+    if (published.some(text => SECRET_TEXT.test(text)))
+        return true;
+    if (asStrings(record.research?.licenses).some(text => SECRET_LICENSE.test(text)))
+        return true;
+    for (const revision of record.revisions || []) {
+        if (Object.values(revision.sources || {}).some(sourceLeaks))
+            return true;
+    }
+    return (record.conversions || []).some(conversion => sourceLeaks(conversion?.source));
 }
 export function toCatalogRecord(job) {
     if (!job || typeof job !== 'object') {
@@ -67,12 +102,16 @@ export function toCatalogRecord(job) {
             .map(s => s.permittedUse)
             .filter(Boolean)),
     ];
+    const rawReviewer = typeof job.review?.reviewer === 'string' ? job.review.reviewer.trim() : '';
+    if (rawReviewer && !REVIEWER_HANDLE.test(rawReviewer))
+        throw new TypeError('Curated staging requires a reviewer handle');
+    const reviewer = rawReviewer || 'unknown';
     const research = {
         jobIds: [job.jobId],
         passIds: job.passId ? [job.passId] : [],
         gaps: job.proposal?.gaps || {},
         licenses,
-        reviewer: job.review?.reviewer || 'unknown',
+        reviewer,
         checklistVersion: job.review?.checklistVersion || 1,
     };
     const record = {
@@ -82,7 +121,7 @@ export function toCatalogRecord(job) {
         conversions,
         research,
     };
-    if (hasPrivatePayload(record) || PRIVATE_DATA.test(JSON.stringify(record)))
+    if (hasPrivateMaterial(record))
         throw new TypeError('Curated staging refuses private data');
     return record;
 }

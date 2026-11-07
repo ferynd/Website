@@ -213,6 +213,23 @@ it('refuses staging when gaps or published identity change after approval', asyn
     gaps.proposal.gaps = { carbs: 'not_computed' };
     await expect(stageCatalog([gaps])).rejects.toThrow('valid reviewed content hash');
 });
+it('allows a private brand name and refuses an email reviewer or leaked contact', async () => {
+    const brand = await makeApprovedCuratedJob({ canonicalName: 'Private Selection apple' });
+    brand.target.aliases = ['Private Selection'];
+    brand.review.approvedContentHash = await reviewContentHash(brand);
+    const staged = await stageCatalog([brand]);
+    expect(staged.records[0].identity.canonicalName).toBe('Private Selection apple');
+    expect(staged.records[0].identity.aliases).toEqual(['Private Selection']);
+    expect(staged.records[0].research.reviewer).toBe('James');
+    const emailed = await makeApprovedCuratedJob();
+    emailed.review.reviewer = 'pat@example.com';
+    emailed.review.approvedContentHash = await reviewContentHash(emailed);
+    await expect(stageCatalog([emailed])).rejects.toThrow('reviewer handle');
+    const leaked = await makeApprovedCuratedJob();
+    leaked.proposal.gaps = { iodine: 'ask pat@example.com' };
+    leaked.review.approvedContentHash = await reviewContentHash(leaked);
+    await expect(stageCatalog([leaked])).rejects.toThrow('refuses private');
+});
 it('refuses private text anywhere in the staged record even when the review hash matches', async () => {
     for (const mutate of [
         job => { job.proposal.gaps = { iodine: 'see /users/hidden confidential note' }; },

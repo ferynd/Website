@@ -152,6 +152,37 @@ it('preserves FDC per-100g basis despite a listed serving, and scales source uni
     expect(proposal.nutrients.calories).toBeNull();
     expect(proposal.nutrientMeta.quality.calories.upperBound).toBe(1);
 });
+it('uses a below-LOQ energy row only when no quantified energy value exists', () => {
+    const base = { type: 'fdc', recordId: 'fixture', originalBasis: 'per_100g_edible' };
+    const preferred = normalizeSourceResult({ ...base, nutrients: [
+        { nutrientId: 1008, amount: 0, unitName: 'kcal', isBelowLoq: true, loq: 1 },
+        { nutrientId: 2048, amount: 52, unitName: 'kcal' },
+    ] });
+    expect(preferred.nutrients.calories).toBe(52);
+    expect(preferred.nutrientMeta.quality.calories.status).toBe('calculated');
+    expect(preferred.fieldProvenance.calories.sourceNutrientId).toBe('2048');
+    expect(preferred.gaps.calories).toBeUndefined();
+    const atwater = normalizeSourceResult({ ...base, nutrients: [
+        { nutrientId: 1008, amount: null, unitName: 'kcal', isBelowLoq: true, loq: 1 },
+        { nutrientId: 2048, amount: 180, unitName: 'kcal' },
+    ] });
+    expect(atwater.nutrients.calories).toBe(180);
+    expect(atwater.fieldProvenance.calories.sourceNutrientId).toBe('2048');
+    const general = normalizeSourceResult({ ...base, nutrients: [
+        { nutrientId: 1008, amount: 0, unitName: 'kcal', isBelowLoq: true, loq: 1 },
+        { nutrientId: 2048, amount: null, unitName: 'kcal', isBelowLoq: true, loq: 3 },
+        { nutrientId: 2047, amount: 180, unitName: 'kcal' },
+    ] });
+    expect(general.nutrients.calories).toBe(180);
+    expect(general.fieldProvenance.calories).toMatchObject({ sourceNutrientId: '2047', derivation: 'atwater_general_factors' });
+    const onlyLoq = normalizeSourceResult({ ...base, nutrients: [
+        { nutrientId: 1008, amount: 0, unitName: 'kcal', isBelowLoq: true, loq: 1 },
+        { nutrientId: 2047, amount: null, unitName: 'kcal', isBelowLoq: true, loq: 2 },
+    ] });
+    expect(onlyLoq.nutrients.calories).toBeNull();
+    expect(onlyLoq.nutrientMeta.quality.calories).toMatchObject({ status: 'below_quantification_limit', upperBound: 1 });
+    expect(onlyLoq.fieldProvenance.calories.sourceNutrientId).toBe('1008');
+});
 it.each([[2048, 'atwater_specific_factors'], [2047, 'atwater_general_factors']])('retains calculated energy provenance for FDC %i after unit/basis normalization', (nutrientId, derivation) => {
     const result = { type: 'fdc', recordId: 'fixture', originalBasis: 'per_serving', servingSize: 50, servingSizeUnit: 'g',
         nutrients: [{ nutrientId, amount: 100, unitName: 'kcal' }] };

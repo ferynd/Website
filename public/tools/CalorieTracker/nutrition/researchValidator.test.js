@@ -3,6 +3,7 @@ import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRe
 import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
 import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
 import { validateProposal } from '../../../shared/nutrition/research/researchValidator.js';
+import { extractStateWords } from '../../../shared/nutrition/research/fdcFood.js';
 async function makeValidJob({ state = 'raw', sourceStrategy = 'usda-foundation-first', kind = 'produce', scope = 'curated', ownerUid, sourceType = 'fdc', values = {}, qualities = {}, provenance = {}, sources = {}, extractedStateWords = ['raw'], hasConcentrationFormula = false, } = {}) {
     const staged = emptyStagedRecord();
     for (const k of V2_KEYS) {
@@ -205,8 +206,75 @@ it.each(['unknown', 'below_quantification_limit', 'not_applicable'])('allows a n
     const job = await makeValidJob({
         values: { fat: null },
         qualities: { fat: status === 'below_quantification_limit' ? { status, upperBound: 0.05 } : { status, qualifier: 'gap:not_reported_by_source' } },
+        provenance: status === 'unknown' ? {} : { fat: { sourceKey: 'src-1' } },
     });
-    expect((await validateProposal(job)).errors.some(error => error.includes('observational status'))).toBe(false);
+    const validation = await validateProposal(job);
+    expect(validation.errors.some(error => error.includes('observational status'))).toBe(false);
+    expect(validation.errors.some(error => error.includes('provenance'))).toBe(false);
+});
+it('rejects unsalted versus salted the way it rejects drained and fortified', async () => {
+    const salted = extractStateWords('Lentils, mature seeds, cooked, boiled, with salt');
+    expect(salted).toEqual(expect.arrayContaining(['cooked', 'boiled', 'salted']));
+    expect(salted).not.toContain('unsalted');
+    const job = await makeValidJob({
+        state: 'boiled',
+        values: { sodium: 400 },
+        qualities: { sodium: { status: 'measured' } },
+        provenance: { sodium: { sourceKey: 'src-1' } },
+        extractedStateWords: salted,
+    });
+    job.target.dims.salt = 'unsalted';
+    job.target.dims.drained = 'drained';
+    const outcome = await validateProposal(job);
+    expect(outcome.isValid).toBe(false);
+    expect(outcome.errors).toContain('Explicit conflict: target is unsalted but source is salted');
+    const unsalted = extractStateWords('Lentils, mature seeds, cooked, boiled, without salt');
+    expect(unsalted).not.toContain('salted');
+    const matching = await makeValidJob({
+        state: 'boiled',
+        values: { sodium: 400 },
+        qualities: { sodium: { status: 'measured' } },
+        provenance: { sodium: { sourceKey: 'src-1' } },
+        extractedStateWords: unsalted,
+    });
+    matching.target.dims.salt = 'unsalted';
+    matching.target.dims.drained = 'drained';
+    expect((await validateProposal(matching)).errors.some(error => error.includes('salt'))).toBe(false);
+    const reverse = await makeValidJob({
+        state: 'boiled',
+        extractedStateWords: unsalted,
+    });
+    reverse.target.dims.salt = 'salted';
+    const reverseOutcome = await validateProposal(reverse);
+    expect(reverseOutcome.isValid).toBe(false);
+    expect(reverseOutcome.errors).toContain('Explicit conflict: target is salted but source is unsalted');
+});
+it('checks the union of per-source state words', async () => {
+    const job = await makeValidJob({ state: 'raw', extractedStateWords: ['raw'] });
+    job.proposal.stateWordsBySource = { a: ['raw'], b: ['cooked'] };
+    const outcome = await validateProposal(job);
+    expect(outcome.isValid).toBe(false);
+    expect(outcome.errors).toContain('Explicit conflict: target is raw but source is cooked/prepared');
+});
+it('requires curated provenance for an upper bound or not-applicable status', async () => {
+    const loq = await makeValidJob({
+        values: { sodium: null },
+        qualities: { sodium: { status: 'below_quantification_limit', upperBound: 0.001 } },
+    });
+    const missing = await validateProposal(loq);
+    expect(missing.isValid).toBe(false);
+    expect(missing.errors).toContain('Curated field sodium requires provenance for below_quantification_limit');
+    const sourced = await makeValidJob({
+        values: { sodium: null },
+        qualities: { sodium: { status: 'below_quantification_limit', upperBound: 0.001 } },
+        provenance: { sodium: { sourceKey: 'src-1' } },
+    });
+    expect((await validateProposal(sourced)).errors.some(error => error.includes('provenance'))).toBe(false);
+    const notApplicable = await makeValidJob({
+        values: { alcohol: null },
+        qualities: { alcohol: { status: 'not_applicable' } },
+    });
+    expect((await validateProposal(notApplicable)).errors).toContain('Curated field alcohol requires provenance for not_applicable');
 });
 it.each(['accessedAt', 'publishedAt'])('rejects invalid source %s dates before approval', async field => {
     for (const date of ['', 'not-a-date', '2026-13-01']) {

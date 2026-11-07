@@ -282,7 +282,12 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
                 return job;
             }
             if (sourceResult.existingRevision) {
-                job = { ...job, version: job.version + 1, proposal: { revisionDraft: sourceResult.existingRevision, reused: true, conversions: [] }, checkpoint: { step: 'curated_reused' } };
+                // needs_review, not matched: a matched proposal is never run again,
+                // so a reused profile would be stuck before anyone could review it.
+                job = transition(job, 'needs_review', {
+                    proposal: { revisionDraft: sourceResult.existingRevision, reused: true, conversions: [] },
+                    checkpoint: { step: 'curated_reused' },
+                });
                 await store.save(job, { expectedVersion: job.version - 1 });
                 return job;
             }
@@ -565,18 +570,17 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         const sourceKey = proposal.assistantSourceKeys[sourceId];
         proposal.revisionDraft.sources[sourceKey] = normalized.sourceRecord;
         const draft = proposal.revisionDraft;
-        // Keep the assistant source key so the rewritten source stays attached,
-        // and replace each cited field with the deterministic observation before hashing.
         const stagedRecord = revisionToStagedRecord(draft);
         const fieldProvenance = { ...draft.fieldProvenance };
         proposal.gaps = { ...(proposal.gaps || {}) };
+        // The verified source stays on its assistant key. Cited fields point at
+        // that key, not at whichever source was listed first.
         for (const [key] of cited) {
             stagedRecord.values[key] = normalized.nutrients[key] ?? null;
             stagedRecord.quality[key] = { ...(normalized.nutrientMeta.quality[key] || { status: 'unknown' }) };
             const from = normalized.fieldProvenance[key] || {};
-            const keptKey = fieldProvenance[key]?.sourceKey || sourceKey;
             fieldProvenance[key] = {
-                sourceKey: keptKey,
+                sourceKey,
                 ...(from.sourceNutrientId ? { sourceNutrientId: from.sourceNutrientId } : {}),
                 ...(from.derivation ? { derivation: from.derivation } : {}),
                 ...(from.comparatorRef ? { comparatorRef: from.comparatorRef } : {}),
@@ -610,8 +614,23 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             });
         }));
         proposal.diff = buildRevisionDiff(job.target.baseRevision || null, proposal.revisionDraft, proposal.conversions);
-        // Re-check food state from the deterministic record, not the assistant's claim.
-        proposal.extractedStateWords = [...(normalized.extractedStateWords || [])];
+        // Keep each verified source's state words and validate their union.
+        // Replacing the list with the latest record hid an earlier conflict.
+        proposal.stateWordsBySource = {
+            ...(proposal.stateWordsBySource || {}),
+            [sourceId]: [...(normalized.extractedStateWords || [])],
+        };
+        const seenWords = new Set();
+        proposal.extractedStateWords = [];
+        for (const words of Object.values(proposal.stateWordsBySource)) {
+            for (const word of words || []) {
+                const normalizedWord = String(word).toLowerCase();
+                if (!normalizedWord || seenWords.has(normalizedWord))
+                    continue;
+                seenWords.add(normalizedWord);
+                proposal.extractedStateWords.push(normalizedWord);
+            }
+        }
         proposal.sourceVerification[sourceId] = { status: 'verified', method: 'deterministic_refetch', verifiedAt: new Date(now()).toISOString() };
         const updated = { ...job, proposal, validation: await validateProposal({ ...job, proposal }), version: job.version + 1 };
         await store.save(updated, { expectedVersion: job.version });

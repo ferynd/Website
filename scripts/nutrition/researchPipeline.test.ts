@@ -9,6 +9,7 @@ import { readPinnedBulk, indexBulk, createFdcBulkAdapter } from './fdcBulkReader
 import { createFileResearchStore, createFileSourceCache, assertLocalPath } from './fileResearchStore';
 import { createMemorySourceCache } from '../../public/shared/nutrition/research/memoryResearchStore.js';
 import { createResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
+import type { ResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
 import { coverageReport } from './coverageReport';
 const temp: string[] = [];
 afterEach(async () => { await Promise.all(temp.splice(0).map(p => rm(p, { recursive: true, force: true }))); vi.unstubAllGlobals(); });
