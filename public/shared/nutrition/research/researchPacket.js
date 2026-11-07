@@ -4,6 +4,8 @@ import { canonicalJson, contentHashOf } from '../contentHash.js';
 import { NUTRIENT_REGISTRY_VERSION, NUTRIENT_STATUSES, getNutrient, convertUnit, checkPer100g } from '../nutrientRegistry.js';
 import { parseFormWords, formWordsFor } from '../variantVocabulary.js';
 import { requestedFields } from './profileFields.js';
+// Source ids become published revision.sources keys, so keep them opaque (no emails or paths).
+const SOURCE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 export const PACKET_LIMITS = Object.freeze({ allFieldTargets: 8, fieldLimitedTargets: 25, fieldThreshold: 10, requestBytes: 200000, responseBytes: 1000000, ttlMs: 7 * 86400000 });
 export const RESEARCH_RULES = Object.freeze([
     'Cite every source; never invent IDs or URLs.',
@@ -214,6 +216,8 @@ export async function validateResearchResponse(input, { request, jobs, now = Dat
             obj(s, sp, ['sourceId', 'type', 'title', 'url', 'recordId', 'version', 'publishedAt', 'accessedAt'], ['sourceId', 'type', 'title', 'url', 'accessedAt']);
             for (const k of ['sourceId', 'title', 'accessedAt'])
                 str(s[k], sp + '.' + k);
+            if (typeof s.sourceId === 'string' && !SOURCE_ID.test(s.sourceId))
+                fail(sp + '.sourceId', 'sourceId must be a short opaque id');
             if (!Number.isFinite(Date.parse(s.accessedAt)))
                 fail(sp + '.accessedAt', 'invalid date');
             for (const k of ['recordId', 'version', 'publishedAt'])

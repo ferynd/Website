@@ -194,7 +194,7 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
             const approved = selected.filter(j => j.state === 'approved');
             if (!approved.length)
                 throw new Error('No approved jobs to stage');
-            const staged = await stageCatalog(approved);
+            const staged = await stageCatalog(approved, { matches });
             if (flags.write) {
                 if (!str('out'))
                     throw new Error('stage --write requires --out');

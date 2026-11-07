@@ -1,9 +1,9 @@
-import { publishedIdentityFor, reviewContentHash } from './researchReview.js';
+import { assertCuratedMatchTable, publishedIdentityFor, reviewContentHash } from './researchReview.js';
 import { validateProposal } from './researchValidator.js';
 import { buildCatalogShards } from '../ingredientCatalog.js';
 const REVIEWER_HANDLE = /^[A-Za-z][A-Za-z0-9._-]{0,63}$/;
 // Names such as "Private Selection" are not private data. Licenses still are.
-const SECRET_TEXT = /\brestricted\b|\bconfidential\b|\bblob:|\bdata:|\/users\/|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const SECRET_TEXT = /\brestricted\b|\bconfidential\b|\bblob:|\bdata:|\bfile:|\/users\/|\\users\\|\/home\/|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const SECRET_LICENSE = /\bprivate\b|\brestricted\b|\bconfidential\b/i;
 function hasPrivatePayload(value) {
     if (!value || typeof value !== 'object')
@@ -25,8 +25,16 @@ function collectStrings(value, out) {
     }
     if (!value || typeof value !== 'object')
         return;
-    for (const child of Array.isArray(value) ? value : Object.values(value))
+    if (Array.isArray(value)) {
+        for (const child of value)
+            collectStrings(child, out);
+        return;
+    }
+    // Keys are published too (for example revision.sources ids), so scan them with the values.
+    for (const [key, child] of Object.entries(value)) {
+        out.push(key);
         collectStrings(child, out);
+    }
 }
 function licenseTexts(record) {
     const texts = [];
@@ -129,11 +137,13 @@ export function toCatalogRecord(job) {
         throw new TypeError('Curated staging refuses private data');
     return record;
 }
-export async function stageCatalog(jobs) {
+export async function stageCatalog(jobs, { matches = [] } = {}) {
     if (!Array.isArray(jobs)) {
         throw new TypeError('stageCatalog requires an array of approved jobs');
     }
     for (const job of jobs) {
+        // Staging is the last choke point, so it re-checks the reviewed match table itself.
+        assertCuratedMatchTable(job, matches);
         toCatalogRecord(job);
         const validation = await validateProposal(job);
         if (!validation.isValid || job.review?.approvedContentHash !== await reviewContentHash(job))

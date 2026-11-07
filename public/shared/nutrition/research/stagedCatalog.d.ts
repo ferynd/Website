@@ -1,3 +1,4 @@
+import type { MatchTableRef } from './researchReview.js';
 import type { ResearchJob } from './researchJob';
 export interface CatalogRecord {
     identity: {
@@ -26,7 +27,7 @@ export interface CatalogRecord {
     };
 }
 export declare function toCatalogRecord(job: ResearchJob): CatalogRecord;
-export declare function stageCatalog(jobs: ResearchJob[]): Promise<{
+export declare function stageCatalog(jobs: ResearchJob[], options?: { matches?: MatchTableRef[] }): Promise<{
     manifest: any;
     files: Record<string, any>;
     records: CatalogRecord[];

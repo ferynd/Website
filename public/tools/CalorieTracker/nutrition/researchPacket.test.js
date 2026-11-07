@@ -671,3 +671,13 @@ it('shows a verified FDC description beside the curated target and requires a ma
     await expect(rejecting.verifySource(job.jobId, 's1', 'fdc_bulk', { matches: [{ manifestId: job.target.manifestId, fdcId: '171000', description: 'Lentils, raw' }] })).rejects.toThrow('match table');
     expect((await again.store.get(job.jobId)).proposal.sourceVerification.s1.status).toBe('unverified');
 });
+it('rejects source ids that are not short opaque ids, because they become published source keys', async () => {
+    for (const sourceId of ['pat@example.com', '/users/pat/notes', 'C:\\Users\\pat', '']) {
+        const f = await packetFixture();
+        f.response.results[0].sources.push({ sourceId, type: 'literature', title: 'Conversion note', url: 'https://example.org/note', accessedAt: '2026-11-06' });
+        await expect(f.service.acceptResponse(f.response)).rejects.toThrow(/sourceId/);
+    }
+    const ok = await packetFixture();
+    ok.response.results[0].sources.push({ sourceId: 'fdc-2_cup.v1', type: 'literature', title: 'Conversion note', url: 'https://example.org/note', accessedAt: '2026-11-06' });
+    await expect(ok.service.acceptResponse(ok.response)).resolves.toBeTruthy();
+});

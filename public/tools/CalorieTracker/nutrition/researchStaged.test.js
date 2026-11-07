@@ -282,3 +282,49 @@ it('refuses private text anywhere in the staged record even when the review hash
         await expect(stageCatalog([job])).rejects.toThrow('refuses private');
     }
 });
+it('scans object keys, so a private source key is refused even when its values are public', async () => {
+    const job = await makeApprovedCuratedJob();
+    const draft = job.proposal.revisionDraft;
+    const sources = { ...draft.sources, 'req-1:pat@example.com': { ...draft.sources['src-1'] } };
+    job.proposal.revisionDraft = await buildRevisionDraft({
+        identityId: draft.identityId,
+        variantId: draft.variantId,
+        basis: draft.basis,
+        stagedRecord: revisionToStagedRecord(draft),
+        fieldProvenance: draft.fieldProvenance,
+        sources,
+    });
+    expect(Object.keys(job.proposal.revisionDraft.sources)).toContain('req-1:pat@example.com');
+    job.review.approvedContentHash = await reviewContentHash(job);
+    await expect(stageCatalog([job])).rejects.toThrow('refuses private');
+});
+it.each(['C:\\Users\\pat\\notes.txt', '/home/pat/notes.txt', 'file:///tmp/notes.txt'])('refuses local path text %s in a qualifier', async (text) => {
+    const job = await makeApprovedCuratedJob();
+    const staged = revisionToStagedRecord(job.proposal.revisionDraft);
+    staged.quality.iodine = { status: 'unknown', qualifier: text };
+    const draft = job.proposal.revisionDraft;
+    job.proposal.revisionDraft = await buildRevisionDraft({
+        identityId: draft.identityId,
+        variantId: draft.variantId,
+        basis: draft.basis,
+        stagedRecord: staged,
+        fieldProvenance: draft.fieldProvenance,
+        sources: draft.sources,
+    });
+    job.proposal.gaps = { ...(job.proposal.gaps || {}), iodine: 'not_reported_by_source' };
+    job.review.approvedContentHash = await reviewContentHash(job);
+    await expect(stageCatalog([job])).rejects.toThrow('refuses private');
+});
+it('re-checks the match table at staging, even when an API caller skipped it during verification', async () => {
+    const job = {
+        jobId: 'j1', state: 'approved', scope: 'curated', target: { manifestId: 'lentils-raw' },
+        proposal: {
+            assistantResult: {}, assistantSourceKeys: { s1: 'req:s1' },
+            revisionDraft: { sources: { 'req:s1': { type: 'fdc', recordId: '9900002', title: 'Chickpeas, raw' } } },
+            sourceVerification: { s1: { status: 'verified', method: 'deterministic_refetch' } },
+        },
+    };
+    await expect(stageCatalog([job], { matches: [{ manifestId: 'lentils-raw', fdcId: '171000', description: 'Lentils, raw' }] })).rejects.toThrow('match table');
+    const approved = await makeApprovedCuratedJob();
+    await expect(stageCatalog([approved], { matches: [{ manifestId: 'other-food', fdcId: '1', description: 'Other' }] })).resolves.toBeTruthy();
+});
