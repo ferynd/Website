@@ -18,37 +18,38 @@ function hasPrivatePayload(value) {
     }
     return false;
 }
-function asStrings(value) {
-    if (typeof value === 'string')
-        return [value];
-    if (Array.isArray(value))
-        return value.flatMap(asStrings);
-    return [];
+function collectStrings(value, out) {
+    if (typeof value === 'string') {
+        out.push(value);
+        return;
+    }
+    if (!value || typeof value !== 'object')
+        return;
+    for (const child of Array.isArray(value) ? value : Object.values(value))
+        collectStrings(child, out);
 }
-function sourceLeaks(source) {
-    if (!source || typeof source !== 'object')
-        return false;
-    if (typeof source.permittedUse === 'string' && SECRET_LICENSE.test(source.permittedUse))
-        return true;
-    return [source.title, source.url, source.recordId].some(text => typeof text === 'string' && SECRET_TEXT.test(text));
+function licenseTexts(record) {
+    const texts = [];
+    collectStrings(record.research?.licenses, texts);
+    for (const revision of record.revisions || [])
+        for (const source of Object.values(revision.sources || {}))
+            if (source && typeof source.permittedUse === 'string')
+                texts.push(source.permittedUse);
+    for (const conversion of record.conversions || [])
+        if (typeof conversion?.source?.permittedUse === 'string')
+            texts.push(conversion.source.permittedUse);
+    return texts;
 }
 function hasPrivateMaterial(record) {
     if (hasPrivatePayload(record))
         return true;
-    const published = [
-        ...asStrings(record.identity?.canonicalName),
-        ...asStrings(record.identity?.aliases),
-        ...asStrings(Object.values(record.research?.gaps || {})),
-    ];
-    if (published.some(text => SECRET_TEXT.test(text)))
+    const texts = [];
+    collectStrings(record, texts);
+    // Free text uses the targeted patterns only. The bare word private stays a license check,
+    // so a brand such as Private Selection can be published.
+    if (texts.some(text => SECRET_TEXT.test(text)))
         return true;
-    if (asStrings(record.research?.licenses).some(text => SECRET_LICENSE.test(text)))
-        return true;
-    for (const revision of record.revisions || []) {
-        if (Object.values(revision.sources || {}).some(sourceLeaks))
-            return true;
-    }
-    return (record.conversions || []).some(conversion => sourceLeaks(conversion?.source));
+    return licenseTexts(record).some(text => SECRET_LICENSE.test(text));
 }
 export function toCatalogRecord(job) {
     if (!job || typeof job !== 'object') {
@@ -62,8 +63,11 @@ export function toCatalogRecord(job) {
     }
     if (job.ownerUid || job.target?.ownerUid)
         throw new TypeError('Curated staging refuses private data');
-    if (job.proposal?.assistantResult && job.proposal.assistantResult.sources.some(s => job.proposal.sourceVerification?.[s.sourceId]?.status !== 'verified'))
-        throw new TypeError('Verified sources required');
+    if (job.proposal?.assistantResult && job.proposal.assistantResult.sources.some(s => {
+        const verification = job.proposal.sourceVerification?.[s.sourceId];
+        return verification?.status !== 'verified' || verification?.method !== 'deterministic_refetch';
+    }))
+        throw new TypeError('Curated staging requires deterministic refetch');
     const draft = job.proposal?.revisionDraft;
     if (!draft) {
         throw new Error(`Job ${job.jobId} is missing revisionDraft`);

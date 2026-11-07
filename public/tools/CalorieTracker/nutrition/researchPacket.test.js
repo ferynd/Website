@@ -28,8 +28,7 @@ it('starts assistant values unverified and gates curated/private approval', asyn
         const decision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: await reviewContentHash(j), acknowledgedWarnings: j.validation.warnings };
         await expect(f.service.review(j.jobId, decision)).rejects.toThrow(scope === 'curated' ? 'unresolved permittedUse' : 'attestation');
         if (scope === 'curated') {
-            await f.service.attestSource(j.jobId, 's1', 'reviewer');
-            await expect(f.service.review(j.jobId, decision)).rejects.toThrow('unresolved permittedUse');
+            await expect(f.service.attestSource(j.jobId, 's1', 'reviewer')).rejects.toThrow('deterministic refetch');
             const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }], permittedUse: 'CC0 fixture' }) }] });
             const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
             decision.approvedContentHash = await reviewContentHash(verified);
@@ -120,9 +119,8 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     response.results[0].conversions = [{ unit: 'cup', grams: 125, state: 'raw', sourceIds: ['s1'], confidence: 1 }];
     const [j] = await f.service.acceptResponse(response);
     const decision = { decision: 'approve', reviewer: 'r', approvedContentHash: await reviewContentHash(j) };
-    await f.service.attestSource(j.jobId, 's1', 'r');
     await expect(f.service.review(j.jobId, decision)).rejects.toThrow('unresolved permittedUse');
-    await expect(stageCatalog([{ ...j, state: 'approved', proposal: { ...j.proposal, sourceVerification: { s1: { status: 'verified' } } }, review: { approvedContentHash: decision.approvedContentHash } }])).rejects.toThrow('valid reviewed content hash');
+    await expect(stageCatalog([{ ...j, state: 'approved', proposal: { ...j.proposal, sourceVerification: { s1: { status: 'verified', method: 'deterministic_refetch' } } }, review: { approvedContentHash: decision.approvedContentHash } }])).rejects.toThrow('valid reviewed content hash');
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', release: 'fixture-v2', permittedUse: 'CC0 fixture', nutrients: [], portions: [{ kind: 'household', unit: 'cup', amount: 2, grams: 250 }] }) }] });
     const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
     const draft = verified.proposal.revisionDraft, conv = verified.proposal.conversions[0];
@@ -223,7 +221,7 @@ it('bounds request and response bytes and never copies meal composition or unsel
     await expect(f.service.acceptResponse(f.response, { limits: { responseBytes: 50 } })).rejects.toThrow('byte limit');
 });
 it('source attestation is tied to a specific source and cannot inject values into review', async () => {
-    const f = await packetFixture();
+    const f = await packetFixture({ scope: 'private' });
     const [j] = await f.service.acceptResponse(f.response);
     await expect(f.service.attestSource(j.jobId, 'unknown', 'r')).rejects.toThrow('Specific source');
     const before = j.proposal.revisionDraft.contentHash;
@@ -565,4 +563,111 @@ it('keeps state words from every verified source and conflicts on their union', 
     expect(both.proposal.stateWordsBySource).toEqual({ s2: ['cooked'], s1: ['raw'] });
     expect(both.proposal.extractedStateWords).toEqual(expect.arrayContaining(['raw', 'cooked']));
     expect(both.validation.errors).toContain('Explicit conflict: target is raw but source is cooked/prepared');
+});
+it('conflicts a raw-only verified source with a cooked target even after a cooked source is verified', async () => {
+    const f = await packetFixture({ fields: ['protein', 'sodium'] });
+    const stored = await f.store.get(f.job.jobId);
+    await f.store.save({ ...stored, target: { ...stored.target, dims: { state: 'cooked' } }, version: stored.version + 1 }, { expectedVersion: stored.version });
+    const result = f.response.results[0];
+    result.sources[0].recordId = '9900002';
+    result.sources.push({ sourceId: 's2', type: 'fdc', title: 'Raw fixture', url: 'https://example.test/raw', recordId: '9900001', version: 'fixture-v1', accessedAt: '2026-11-06' });
+    result.identityMatch.state = 'cooked';
+    result.nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    result.nutrients.sodium = { value: 50, unit: 'mg', status: 'measured', sourceIds: ['s2'] };
+    result.unresolved = [];
+    const [accepted] = await f.service.acceptResponse(f.response);
+    const foods = {
+        '9900002': { type: 'fdc', recordId: '9900002', description: 'Lentils, cooked', extractedStateWords: ['cooked'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] },
+        '9900001': { type: 'fdc', recordId: '9900001', description: 'Lentils, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1093, amount: 50, unitName: 'mg' }] },
+    };
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async (id) => foods[id], toSourceResult: async (raw) => raw }] });
+    const rawFirst = await service.verifySource(accepted.jobId, 's2', 'fdc_bulk');
+    expect(rawFirst.proposal.stateWordsBySource.s2).toEqual(['raw']);
+    expect(rawFirst.validation.errors).toContain('Explicit conflict: target is cooked but source is raw');
+    const both = await service.verifySource(accepted.jobId, 's1', 'fdc_bulk');
+    expect(both.proposal.stateWordsBySource).toEqual({ s2: ['raw'], s1: ['cooked'] });
+    expect(both.validation.errors).toContain('Explicit conflict: target is cooked but source is raw');
+});
+it('refuses curated attestation after a failed refetch and blocks approval', async () => {
+    const f = await packetFixture();
+    f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    f.response.results[0].unresolved = [];
+    const [j] = await f.service.acceptResponse(f.response);
+    const nutrients = [{ nutrientId: 1003, amount: 2, unitName: 'g' }];
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', permittedUse: 'CC0 fixture', nutrients }) }] });
+    const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
+    expect(verified.proposal.sourceVerification.s1).toMatchObject({ status: 'verified', method: 'deterministic_refetch' });
+    nutrients[0].amount = 3;
+    await expect(service.verifySource(j.jobId, 's1', 'fdc_bulk')).rejects.toThrow('mismatch');
+    const mismatched = await f.store.get(j.jobId);
+    expect(mismatched.proposal.sourceVerification.s1.status).toBe('unverified');
+    expect(mismatched.proposal.revisionDraft.sources[mismatched.proposal.assistantSourceKeys.s1].permittedUse).toBe('CC0 fixture');
+    await expect(service.attestSource(j.jobId, 's1', 'reviewer')).rejects.toThrow('deterministic refetch');
+    expect((await f.store.get(j.jobId)).proposal.sourceVerification.s1.status).toBe('unverified');
+    const validation = await validateProposal(mismatched);
+    const decision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: await reviewContentHash(mismatched), acknowledgedWarnings: validation.warnings };
+    await expect(service.review(j.jobId, decision)).rejects.toThrow('deterministic refetch');
+    const bypass = await f.store.get(j.jobId);
+    bypass.proposal.sourceVerification.s1 = { status: 'verified', method: 'reviewer_attestation', reviewer: 'reviewer' };
+    bypass.version += 1;
+    await f.store.save(bypass);
+    const bypassValidation = await validateProposal(bypass);
+    const bypassDecision = { decision: 'approve', reviewer: 'reviewer', approvedContentHash: await reviewContentHash(bypass), acknowledgedWarnings: bypassValidation.warnings };
+    await expect(service.review(j.jobId, bypassDecision)).rejects.toThrow('deterministic refetch');
+    await expect(stageCatalog([{ ...bypass, state: 'approved', review: { reviewer: 'reviewer', checklistVersion: 1, approvedContentHash: bypassDecision.approvedContentHash } }])).rejects.toThrow('deterministic refetch');
+});
+it('verifySource reports a missing assistant result instead of crashing', async () => {
+    const { createMemoryResearchStore, createMemorySourceCache } = await import('../../../shared/nutrition/research/memoryResearchStore.js');
+    const store = createMemoryResearchStore();
+    const sourceCache = createMemorySourceCache();
+    const service = createResearchService({ store, sourceCache, adapters: [{
+        id: 'fdc_bulk',
+        async match() { return { sourceAdapter: 'fdc_bulk', sourceId: '9900001', sourceRelease: 'fixture' }; },
+        async fetch() { return { fdcId: 9900001, description: 'Synthetic apple', foodNutrients: [] }; },
+        async toSourceResult(raw) {
+            const { parseFdcFood } = await import('../../../shared/nutrition/research/fdcFood.js');
+            return parseFdcFood(raw, { release: 'fixture' });
+        },
+    }] });
+    const job = await service.enqueue({ target: { manifestId: 'synthetic-apple', dims: { state: 'raw' } } });
+    const reviewed = await service.runJob(job.jobId);
+    expect(reviewed.state).toBe('needs_review');
+    expect(reviewed.proposal.assistantResult).toBeUndefined();
+    const sourceId = Object.keys(reviewed.proposal.revisionDraft.sources)[0];
+    expect(reviewed.proposal.revisionDraft.sources[sourceId].type).toBe('fdc');
+    await expect(service.verifySource(reviewed.jobId, sourceId, 'fdc_bulk')).rejects.toThrow('Deterministic FDC verification required');
+});
+it('shows a verified FDC description beside the curated target and requires a match-table record', async () => {
+    const f = await packetFixture();
+    const stored = await f.store.get(f.job.jobId);
+    await f.store.save({ ...stored, target: { ...stored.target, canonicalName: 'Lentils, raw' }, version: stored.version + 1 }, { expectedVersion: stored.version });
+    const result = f.response.results[0];
+    result.sources[0].recordId = '9900002';
+    result.identityMatch = { description: 'Lentils, raw', state: 'raw', conflict: false, notes: '' };
+    result.nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    result.unresolved = [];
+    const [accepted] = await f.service.acceptResponse(f.response);
+    const chickpeas = { type: 'fdc', recordId: '9900002', description: 'Chickpeas, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] };
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => chickpeas }] });
+    const verified = await service.verifySource(accepted.jobId, 's1', 'fdc_bulk');
+    expect(verified.proposal.sourceVerification.s1.status).toBe('verified');
+    const packet = await buildReviewPacket(verified);
+    expect(packet.markdown).toContain('Lentils, raw');
+    expect(packet.markdown).toContain('Chickpeas, raw');
+    expect(packet.markdown).toContain('**Identity mismatch:** yes');
+    expect(packet.json.identityMismatch).toBe(true);
+    expect(packet.json.verifiedFdc).toEqual([{ sourceId: 's1', recordId: '9900002', description: 'Chickpeas, raw' }]);
+    const manifestId = verified.target.manifestId;
+    await expect(buildReviewPacket(verified, { matches: [{ manifestId, fdcId: '171000', description: 'Lentils, raw' }] })).rejects.toThrow('match table');
+    const same = await buildReviewPacket(verified, { matches: [{ manifestId, fdcId: '9900002', description: 'Chickpeas, raw' }] });
+    expect(same.json.identityMismatch).toBe(true);
+    expect(same.markdown).toContain('Chickpeas, raw');
+    const again = await packetFixture();
+    again.response.results[0].sources[0].recordId = '9900002';
+    again.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    again.response.results[0].unresolved = [];
+    const [job] = await again.service.acceptResponse(again.response);
+    const rejecting = createResearchService({ store: again.store, sourceCache: again.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => chickpeas }] });
+    await expect(rejecting.verifySource(job.jobId, 's1', 'fdc_bulk', { matches: [{ manifestId: job.target.manifestId, fdcId: '171000', description: 'Lentils, raw' }] })).rejects.toThrow('match table');
+    expect((await again.store.get(job.jobId)).proposal.sourceVerification.s1.status).toBe('unverified');
 });

@@ -256,6 +256,18 @@ it('checks the union of per-source state words', async () => {
     expect(outcome.isValid).toBe(false);
     expect(outcome.errors).toContain('Explicit conflict: target is raw but source is cooked/prepared');
 });
+it('conflicts a raw-only source with a cooked target even when another source is cooked', async () => {
+    const cookedTarget = await makeValidJob({ state: 'cooked', extractedStateWords: ['cooked'] });
+    cookedTarget.proposal.stateWordsBySource = { protein: ['cooked'], sodium: ['raw'] };
+    const cookedOutcome = await validateProposal(cookedTarget);
+    expect(cookedOutcome.isValid).toBe(false);
+    expect(cookedOutcome.errors).toContain('Explicit conflict: target is cooked but source is raw');
+    const rawTarget = await makeValidJob({ state: 'raw', extractedStateWords: ['raw'] });
+    rawTarget.proposal.stateWordsBySource = { protein: ['raw'], sodium: ['cooked'] };
+    const rawOutcome = await validateProposal(rawTarget);
+    expect(rawOutcome.isValid).toBe(false);
+    expect(rawOutcome.errors).toContain('Explicit conflict: target is raw but source is cooked/prepared');
+});
 it('requires curated provenance for an upper bound or not-applicable status', async () => {
     const loq = await makeValidJob({
         values: { sodium: null },

@@ -3,15 +3,49 @@ import { checkPer100g } from '../nutrientRegistry.js';
 import { validateRevision, verifyRevisionHash } from '../ingredientProfile.js';
 import { validateConversion } from '../ingredientConversion.js';
 export const VALIDATOR_VERSION = 1;
-/** Per-source words win when present so a later verification cannot hide an earlier one. */
-function collectedStateWords(proposal) {
+const COOKED_STATE_WORDS = ['cooked', 'boiled', 'roasted', 'baked', 'fried', 'pan-fried', 'grilled', 'braised'];
+/** Per-source lists win when present. Each list is judged alone so one cooked source cannot hide a raw one. */
+function stateWordLists(proposal) {
     const bySource = proposal?.stateWordsBySource;
     if (bySource && typeof bySource === 'object' && !Array.isArray(bySource)) {
         const lists = Object.values(bySource).filter(Array.isArray);
         if (lists.length)
-            return lists.flat();
+            return lists;
     }
-    return proposal?.extractedStateWords || [];
+    return [proposal?.extractedStateWords || []];
+}
+function stateConflictErrors(words, targetDims) {
+    const errors = [];
+    const extractedWords = new Set((words || []).map(w => String(w).toLowerCase()));
+    const targetState = String(targetDims.state || '').toLowerCase();
+    const isTargetRaw = targetState === 'raw' || targetState.includes('raw');
+    const isTargetCooked = targetState === 'cooked' ||
+        targetState.includes('cooked') ||
+        targetState.includes('boiled') ||
+        targetState.includes('roasted') ||
+        targetState.includes('baked') ||
+        targetState.includes('fried') ||
+        targetState.includes('grilled') ||
+        targetState.includes('braised');
+    const sourceHasCooked = COOKED_STATE_WORDS.some(w => extractedWords.has(w));
+    const sourceHasRaw = extractedWords.has('raw');
+    if (isTargetRaw && sourceHasCooked)
+        errors.push('Explicit conflict: target is raw but source is cooked/prepared');
+    if (isTargetCooked && sourceHasRaw && !sourceHasCooked)
+        errors.push('Explicit conflict: target is cooked but source is raw');
+    if (targetDims.drained === 'drained' && extractedWords.has('undrained'))
+        errors.push('Explicit conflict: target is drained but source is undrained');
+    if (targetDims.drained === 'undrained' && extractedWords.has('drained'))
+        errors.push('Explicit conflict: target is undrained but source is drained');
+    if (targetDims.fortification === 'fortified' && extractedWords.has('unfortified'))
+        errors.push('Explicit conflict: target is fortified but source is unfortified');
+    if (targetDims.fortification === 'unfortified' && extractedWords.has('fortified'))
+        errors.push('Explicit conflict: target is unfortified but source is fortified');
+    if (targetDims.salt === 'unsalted' && extractedWords.has('salted'))
+        errors.push('Explicit conflict: target is unsalted but source is salted');
+    if (targetDims.salt === 'salted' && extractedWords.has('unsalted'))
+        errors.push('Explicit conflict: target is salted but source is unsalted');
+    return errors;
 }
 function needsCuratedClaimProvenance(entry) {
     return entry?.status === 'not_applicable' || entry?.status === 'below_quantification_limit' || entry?.upperBound != null;
@@ -96,44 +130,19 @@ export async function validateProposal(job, { base = null } = {}) {
             }
         }
     }
-    // 5. State conflicts (raw vs cooked, drained vs undrained, fortified vs plain)
+    // 5. State conflicts (raw vs cooked, drained vs undrained, fortified vs plain).
+    // Check each verified source on its own. A union would let a cooked source
+    // hide a raw-only source on a cooked target, and the reverse.
     const targetDims = job.target?.dims || {};
     const targetState = String(targetDims.state || '').toLowerCase();
-    const extractedWords = new Set(collectedStateWords(job.proposal).map(w => String(w).toLowerCase()));
-    const isTargetRaw = targetState === 'raw' || targetState.includes('raw');
-    const isTargetCooked = targetState === 'cooked' ||
-        targetState.includes('cooked') ||
-        targetState.includes('boiled') ||
-        targetState.includes('roasted') ||
-        targetState.includes('baked') ||
-        targetState.includes('fried') ||
-        targetState.includes('grilled') ||
-        targetState.includes('braised');
-    const sourceHasCooked = ['cooked', 'boiled', 'roasted', 'baked', 'fried', 'pan-fried', 'grilled', 'braised'].some(w => extractedWords.has(w));
-    const sourceHasRaw = extractedWords.has('raw');
-    if (isTargetRaw && sourceHasCooked) {
-        errors.push('Explicit conflict: target is raw but source is cooked/prepared');
-    }
-    if (isTargetCooked && sourceHasRaw && !sourceHasCooked) {
-        errors.push('Explicit conflict: target is cooked but source is raw');
-    }
-    if (targetDims.drained === 'drained' && extractedWords.has('undrained')) {
-        errors.push('Explicit conflict: target is drained but source is undrained');
-    }
-    if (targetDims.drained === 'undrained' && extractedWords.has('drained')) {
-        errors.push('Explicit conflict: target is undrained but source is drained');
-    }
-    if (targetDims.fortification === 'fortified' && extractedWords.has('unfortified')) {
-        errors.push('Explicit conflict: target is fortified but source is unfortified');
-    }
-    if (targetDims.fortification === 'unfortified' && extractedWords.has('fortified')) {
-        errors.push('Explicit conflict: target is unfortified but source is fortified');
-    }
-    if (targetDims.salt === 'unsalted' && extractedWords.has('salted')) {
-        errors.push('Explicit conflict: target is unsalted but source is salted');
-    }
-    if (targetDims.salt === 'salted' && extractedWords.has('unsalted')) {
-        errors.push('Explicit conflict: target is salted but source is unsalted');
+    const seenConflicts = new Set();
+    for (const words of stateWordLists(job.proposal)) {
+        for (const error of stateConflictErrors(words, targetDims)) {
+            if (seenConflicts.has(error))
+                continue;
+            seenConflicts.add(error);
+            errors.push(error);
+        }
     }
     // 6. FDC adapter used on compound-reference entry
     if (job.target?.sourceStrategy === 'compound-reference') {

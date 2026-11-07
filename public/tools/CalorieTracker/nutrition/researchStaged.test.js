@@ -2,7 +2,7 @@ import { reviewContentHash } from '../../../shared/nutrition/research/researchRe
 import { CURATED_CATALOG_ID } from '../../../shared/nutrition/ingredientIds.js';
 import { it, expect, describe } from 'vitest';
 import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
-import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
+import { buildRevisionDraft, revisionToStagedRecord } from '../../../shared/nutrition/ingredientProfile.js';
 import { buildConversion } from '../../../shared/nutrition/ingredientConversion.js';
 import { createCuratedCatalogSource } from '../../../shared/nutrition/ingredientCatalog.js';
 import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
@@ -229,6 +229,46 @@ it('allows a private brand name and refuses an email reviewer or leaked contact'
     leaked.proposal.gaps = { iodine: 'ask pat@example.com' };
     leaked.review.approvedContentHash = await reviewContentHash(leaked);
     await expect(stageCatalog([leaked])).rejects.toThrow('refuses private');
+});
+it('refuses a nutrient qualifier that is the only private leak', async () => {
+    const job = await makeApprovedCuratedJob();
+    const staged = revisionToStagedRecord(job.proposal.revisionDraft);
+    staged.quality.iodine = { status: 'unknown', qualifier: 'ask pat@example.com' };
+    const draft = job.proposal.revisionDraft;
+    job.proposal.revisionDraft = await buildRevisionDraft({
+        identityId: draft.identityId,
+        variantId: draft.variantId,
+        basis: draft.basis,
+        stagedRecord: staged,
+        fieldProvenance: draft.fieldProvenance,
+        sources: draft.sources,
+    });
+    job.proposal.gaps = { ...(job.proposal.gaps || {}), iodine: 'not_reported_by_source' };
+    expect(job.proposal.revisionDraft.nutrientMeta.quality.iodine).toEqual({ status: 'unknown', qualifier: 'ask pat@example.com' });
+    expect(job.proposal.revisionDraft.fieldProvenance.iodine).toBeUndefined();
+    expect(JSON.stringify(job.proposal.gaps)).not.toContain('pat@example.com');
+    expect(JSON.stringify(job.proposal.revisionDraft.sources)).not.toContain('pat@example.com');
+    job.review.approvedContentHash = await reviewContentHash(job);
+    await expect(stageCatalog([job])).rejects.toThrow('refuses private');
+});
+it.each(['derivation', 'comparatorRef', 'version', 'datasetId', 'originalBasis'])('refuses private text in %s', async (field) => {
+    const job = await makeApprovedCuratedJob();
+    const draft = job.proposal.revisionDraft;
+    if (field === 'derivation' || field === 'comparatorRef')
+        draft.fieldProvenance.protein = { ...draft.fieldProvenance.protein, [field]: 'ask pat@example.com' };
+    else
+        draft.sources['src-1'] = { ...draft.sources['src-1'], [field]: 'ask pat@example.com' };
+    const staged = revisionToStagedRecord(draft);
+    job.proposal.revisionDraft = await buildRevisionDraft({
+        identityId: draft.identityId,
+        variantId: draft.variantId,
+        basis: draft.basis,
+        stagedRecord: staged,
+        fieldProvenance: draft.fieldProvenance,
+        sources: draft.sources,
+    });
+    job.review.approvedContentHash = await reviewContentHash(job);
+    await expect(stageCatalog([job])).rejects.toThrow('refuses private');
 });
 it('refuses private text anywhere in the staged record even when the review hash matches', async () => {
     for (const mutate of [

@@ -7,7 +7,7 @@ import { parentBatchIdFor, passIdFor } from '../../public/shared/nutrition/resea
 import { buildResearchPackets, canonicalRequestBody, copyableResearchPacket } from '../../public/shared/nutrition/research/researchPacket.js';
 import { createManualAdapter, createLabelAdapter } from '../../public/shared/nutrition/research/manualAdapters.js';
 import { validateProposal } from '../../public/shared/nutrition/research/researchValidator.js';
-import { buildReviewPacket } from '../../public/shared/nutrition/research/researchReview.js';
+import { assertCuratedMatchTable, buildReviewPacket } from '../../public/shared/nutrition/research/researchReview.js';
 import { stageCatalog } from '../../public/shared/nutrition/research/stagedCatalog.js';
 import type { ResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
 import type { ResearchJobStore, SourceCache, ResearchAdapter, FetchResearchAdapter } from '../../public/shared/nutrition/research/researchPorts.js';
@@ -176,14 +176,17 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
                         if (release !== pin.release) throw new Error('--release must match the dataset pin');
                         await indexBulk(str('file')!, pin, cache);
                     }
-                    result = await service.verifySource(job.jobId, str('verify-source')!, source.replace('-', '_'));
+                    result = await service.verifySource(job.jobId, str('verify-source')!, source.replace('-', '_'), { matches });
                 }
                 break;
             }
-            if (str('decide'))
+            if (str('decide')) {
+                if (str('decide') === 'approve')
+                    assertCuratedMatchTable(job, matches);
                 result = await service.review(job.jobId, { decision: str('decide') as 'approve' | 'reject' | 'block', reviewer: str('reviewer') || '', approvedContentHash: str('hash'), acknowledgedWarnings: str('ack')?.split('|') || [], attestation: flags.attest === true });
+            }
             else
-                result = await buildReviewPacket(job);
+                result = await buildReviewPacket(job, { matches });
             break;
         }
         case 'stage': {

@@ -9,7 +9,7 @@ import { CURATED_CATALOG_ID } from '../ingredientIds.js';
 import { PermanentSourceError } from './fdcFood.js';
 import { applyStagedConventions, normalizeSourceResult } from './sourceResult.js';
 import { validateProposal } from './researchValidator.js';
-import { buildRevisionDiff, applyReviewDecision } from './researchReview.js';
+import { buildRevisionDiff, applyReviewDecision, verifiedRecordMatchesTable } from './researchReview.js';
 import { jobKeyV1, createResearchJob, transition, passIdFor } from './researchJob.js';
 function citedObservation({ value, status, upperBound, roundingInterval, qualifier, derivation }) {
     const observation = { value: value ?? null, status: status ?? null };
@@ -535,6 +535,8 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         const job = await store.get(jobId);
         if (job?.state !== 'needs_review' || !job.proposal?.sourceVerification?.[sourceId] || !reviewer?.trim())
             throw new TypeError('Specific source and reviewer required');
+        if (job.scope === 'curated')
+            throw new TypeError('Curated sources require deterministic refetch');
         const proposal = structuredClone(job.proposal);
         proposal.sourceVerification[sourceId] = { status: 'verified', method: 'reviewer_attestation', reviewer, verifiedAt: new Date(now()).toISOString() };
         const updated = { ...job, proposal, version: job.version + 1 };
@@ -543,7 +545,7 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
     }
     async function verifySource(jobId, sourceId, adapterId, context = {}) {
         const job = await store.get(jobId), source = job?.proposal?.revisionDraft?.sources?.[job.proposal.assistantSourceKeys?.[sourceId] || sourceId], adapter = adapterMap.get(adapterId);
-        if (job?.state !== 'needs_review' || source?.type !== 'fdc' || !source.recordId || !adapter || !['fdc_bulk', 'fdc_api'].includes(adapter.id))
+        if (job?.state !== 'needs_review' || !job.proposal?.assistantResult || source?.type !== 'fdc' || !source.recordId || !adapter || !['fdc_bulk', 'fdc_api'].includes(adapter.id))
             throw new TypeError('Deterministic FDC verification required');
         async function mismatch(message) {
             const proposal = structuredClone(job.proposal);
@@ -551,7 +553,10 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             await store.save({ ...job, proposal, version: job.version + 1 }, { expectedVersion: job.version });
             throw new TypeError(message);
         }
-        const raw = await adapter.fetch(source.recordId, context), result = await adapter.toSourceResult(raw, context), normalized = normalizeSourceResult(result, job.target);
+        const matches = Array.isArray(context.matches) ? context.matches : [];
+        const adapterContext = { ...context };
+        delete adapterContext.matches;
+        const raw = await adapter.fetch(source.recordId, adapterContext), result = await adapter.toSourceResult(raw, adapterContext), normalized = normalizeSourceResult(result, job.target);
         if (String(result.recordId) !== source.recordId)
             await mismatch('Source record changed');
         const cited = Object.entries(job.proposal.assistantResult.nutrients).filter(([, n]) => n.sourceIds.includes(sourceId));
@@ -566,6 +571,12 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             if (!portions.length || portions.some(p => !Number.isFinite(p.grams / p.amount) || Math.abs(p.grams / p.amount - c.grams) > 1e-6 || !sameRange(p.range, c.range)))
                 await mismatch('Source conversion mismatch: ' + c.unit);
         }
+        const verifiedRecord = {
+            recordId: String(result.recordId || source.recordId || ''),
+            description: String(result.description || result.title || normalized.sourceRecord?.title || '').trim(),
+        };
+        if (job.scope === 'curated' && !verifiedRecordMatchesTable(job.target?.manifestId, verifiedRecord, matches))
+            await mismatch('Verified FDC record must equal the match table entry');
         const proposal = structuredClone(job.proposal);
         const sourceKey = proposal.assistantSourceKeys[sourceId];
         proposal.revisionDraft.sources[sourceKey] = normalized.sourceRecord;
@@ -614,8 +625,8 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             });
         }));
         proposal.diff = buildRevisionDiff(job.target.baseRevision || null, proposal.revisionDraft, proposal.conversions);
-        // Keep each verified source's state words and validate their union.
-        // Replacing the list with the latest record hid an earlier conflict.
+        // Keep each verified source's state words and validate that source on its own.
+        // A flattened union let a cooked source hide a raw-only conflict.
         proposal.stateWordsBySource = {
             ...(proposal.stateWordsBySource || {}),
             [sourceId]: [...(normalized.extractedStateWords || [])],
