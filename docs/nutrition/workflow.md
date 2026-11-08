@@ -4,7 +4,7 @@ Status: target design for CalorieTracker #59 onward. Current behavior is recorde
 
 External assistants interpret; the tracker imports, matches, resolves, calculates, fits, reviews, and saves. Photos, recipes, labels, and meal descriptions go to an external assistant (ChatGPT, Claude, Grok, Codex, or James's bots), which returns a structured ingredient list per the [assistant contracts](assistant-contracts.md). The site is the authoritative ingredient database, quantity fitter, nutrition calculator, and store. Importing a completed 24-field ChatGPT estimate remains supported as a secondary path.
 
-Local code and CLI entry points: [shared research pipeline](research-pipeline.md). Live source pins and publication remain approval-gated under #62 Part B.
+Local code and CLI entry points: [shared research pipeline](research-pipeline.md) and [ingredient-list import](ingredient-import.md). Live source pins and publication remain approval-gated under #62 Part B. The import modules validate and match; they do not calculate, fit, research, or save.
 
 ## Contents
 

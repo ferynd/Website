@@ -1,6 +1,6 @@
 # Assistant contracts
 
-Status: target contract for CalorieTracker #62 (research packets) and #67 (ingredient-list import). Nothing on the site emits or parses these formats yet. Shipped behavior is recorded in [README](README.md); tasks and release gates live in [the active backlog](../../backlogs/calorie-tracker.md).
+Status: research request/response v1 is implemented by the [shared research pipeline](research-pipeline.md) (#62). Ingredient-list import v1, the human paste format, and the copyable assistant instructions are implemented by [ingredient-list import](ingredient-import.md) (#67). The Import workspace UI has not shipped. Shipped behavior is recorded in [README](README.md); tasks and release gates live in [the active backlog](../../backlogs/calorie-tracker.md).
 
 ## Contents
 
