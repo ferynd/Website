@@ -142,7 +142,6 @@ export function parseIngredientPaste(text) {
                 continue;
             }
             mode = 'ingredients';
-            const lineErrors = errors.length;
             const parts = ingredient[2].split('|').map(part => part.trim());
             if (parts.length < 4 || parts.length > 5) { fail(errors, row, 1, 'expected name, form, amount, and basis'); continue; }
             const [name, form, amountText, basis, extras] = parts;
@@ -181,12 +180,6 @@ export function parseIngredientPaste(text) {
             const item = { lineId: id, name, quantity: { ...quantity, basis }, number };
             if (Object.keys(variant).length) item.variant = variant;
             if (kind) item.kind = kind;
-            if (errors.length === lineErrors && amount && ['measured', 'label', 'recipe_stated', 'estimated'].includes(basis)) {
-                let rendered = '';
-                try { rendered = formatIngredientLine(item, number); }
-                catch { rendered = ''; }
-                if (rendered !== line.trim()) fail(errors, row, line.indexOf('|') + 1 || 1, 'paste separators would change the ingredient fields');
-            }
             ingredients.push(item);
             continue;
         }

@@ -159,10 +159,9 @@ describe('ingredient-list import v1', () => {
         expect(back.ok, JSON.stringify(back.errors)).toBe(true);
         expect(back.list.ingredients[0].variant.brand.product).toBe('size=large');
         expect(renderIngredientPaste(back.list).text).toBe(pasted.text);
-        const ambiguous = parseIngredientPaste('NUTRITION-INGREDIENTS v1\nTitle: Soup\nKind: single_portion\nServings: 1\n1. a|cooked | 10 g | estimated\nEND\n');
-        expect(ambiguous.ok).toBe(false);
-        expect(ambiguous.list).toBeUndefined();
-        expect(ambiguous.errors.some(error => error.line === 5 && /separators/.test(error.message))).toBe(true);
+        const synonym = parseIngredientPaste('NUTRITION-INGREDIENTS v1\nTitle: Soup\nKind: single_portion\nServings: 1\n1. rice | uncooked | 10g | estimated\nEND\n');
+        expect(synonym.ok, JSON.stringify(synonym.errors)).toBe(true);
+        expect(synonym.list.ingredients[0]).toMatchObject({ name: 'rice', variant: { state: 'raw' }, quantity: { g: 10, basis: 'estimated' } });
     });
 
     it('caps fact source URLs at the contract text limit of 300 characters', () => {
