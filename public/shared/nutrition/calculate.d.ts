@@ -1,0 +1,10 @@
+export const CALCULATION_VERSION: 1;
+export const FIBER_WEIGHT_VERSION: 1;
+export const ADJUSTED_CARB_VERSION: 1;
+export const FODMAP_EQUIVALENT_VERSION: 1;
+export const RESISTANT_STARCH_COEFFICIENT: number;
+export const FIBER_CATEGORY_COEFFICIENTS: Readonly<Record<string, number>>;
+export const FIBER_SUBTYPE_COEFFICIENTS: Readonly<Record<string, number>>;
+export const POLYOL_COUNTED_FRACTIONS: Readonly<Record<string, number>>;
+export function scalePerBasis(quantityGrams: number, amountPerBasis: number | null, basisGrams: number): number | null;
+export function calculateMeal(input?: { lines?: any[]; carbConvention?: string }): any;

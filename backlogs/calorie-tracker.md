@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, and #62 are archived. Critical path: **#67 → #64 Part A → #66 → #70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
+Dependency order: #59, #61 Part A, #62, and #67 are archived. Critical path: **#64 Part A → #66 → #70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -64,19 +64,10 @@ Dependency order: #59, #61 Part A, and #62 are archived. Critical path: **#67 �
   - **Checks:** dry-run reports, source-license review, root/tracker suites for any config change.
   - **Migration/deploy:** **Requires James's explicit approval** to provision or use live credentials (for example an FDC API key) and to publish staged data to production.
 
-### #67: Import assistant-prepared ingredient lists
-
-- [p] **Implement the ingredient-list import contract, parser, and reconciliation as pure code.** Depends: #61 Part A (merged), plus the merged #62 vocabulary slice only.
-  > pushed — ingredient-list v1 JSON and paste parser, frozen import with corrections, saved-meal/recipe/legacy adapters, and #61 reconcile; Codex P2 findings on 1288a25 fixed at ad7f6c4; no calculation, research, network, or writes; checks: tracker 1086, root 2013, API 43, lint, next build, ci:contract, ci:docs; commit: ad7f6c4; PR: #190
-  - **Surfaces:** ingredient-list v1 JSON validator and human paste-format parser per the [contract](../docs/nutrition/assistant-contracts.md#ingredient-list-import-v1); `ImportDraft` with a separate user-correction layer; input adapters for saved meals, saved recipes, Recipe Standardizer recipes, and legacy paste; a reconcile module (#61 `matchIngredient`, variant compatibility, confirmed-alias proposals); a versioned assistant-instructions module that is the source of truth for the "Copy assistant instructions" text.
-  - **Accept:** strict validation with errors by JSON path or paste line/column; newer `schemaVersion` rejected with "site update required"; unknown keys rejected except `extensions`; no images or base64. Known facts without real provenance are rejected; serving facts without an applicable basis are stored unapplied; line-level facts become research evidence. Quantity units convert only through #61 conversion records; nutrient units through the registry. Exact compatible matches reuse the stored profile revision without research; underspecified/ambiguous matches are listed for confirmation; raw/cooked or drained/undrained conflicts never auto-resolve. Imports are never mutated. Zero model calls.
-  - **Overlap:** absorbs Recipe Standardizer P7's input side (a recipe → ingredient-list v1 converter); do not build a second route there. Direct diary logging P6 remains separate.
-  - **Checks:** contract fixtures (including the documented examples) validated against the code module; paste → JSON → paste round trips and refusal to render JSON outside the paste subset as paste; malformed, oversize, cyclic-compound, contradictory-constraint, and fact-provenance rejection tests; reconcile tests for exact/underspecified/conflict; zero-model assertions; root/tracker suites.
-  - **Migration/deploy:** none. Legacy ChatGPT paste remains supported alongside the structured import.
-
 ### #64 Part A: Build the shared full-nutrient calculation module
 
-- [ ] **Calculate every registry nutrient deterministically with status, coverage, and uncertainty.** Depends: #61 Part A (merged).
+- [p] **Calculate every registry nutrient deterministically with status, coverage, and uncertainty.** Depends: #61 Part A (merged).
+  > pushed — shared calculate.js scales every stored nutrient, keeps unknown distinct from zero, and computes weighted fiber, adjusted carbs, and FODMAP equivalents; recipe scaling uses scalePerBasis; no fitting or saving; checks: tracker 1092, root 2014, API 43, lint, build, ci:contract, ci:docs; commit: bbab4e9; PR: #191
   - **Surfaces:** a pure calculation module in `public/shared/nutrition/` used by both tools; Recipe Standardizer `nutritionCalc` delegates to it.
   - **Accept:** per-100-g scaling over every registry nutrient; statuses kept through aggregation (reported, calculated, estimated, unknown; unknown never zero); coverage per nutrient by grams and by ingredient; interval uncertainty from quantity and value ranges; compound, nested, and yield handling with each component counted once; versioned derived metrics (weighted fiber, adjusted carbs, FODMAP equivalents) computed here. Runs offline from the #61 cache. Deterministic: same inputs give the same result.
   - **Checks:** golden scaling cases, unknown propagation, nested/compound non-duplication, yield, derived-metric conventions, `nutritionCalc` parity; root/tracker suites.

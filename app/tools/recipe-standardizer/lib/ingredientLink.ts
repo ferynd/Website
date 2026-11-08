@@ -1,3 +1,4 @@
+import { scalePerBasis } from '@/public/shared/nutrition/calculate.js';
 import { INGREDIENT_STORE_WRITES_ENABLED } from '@/public/shared/nutrition/capabilities.js';
 import { IngredientWritesDisabledError, type ResolvedIngredientProfile } from '@/public/shared/nutrition/ingredientStore.js';
 import { refCacheKey, sameRef, type IngredientProfileRef } from '@/public/shared/nutrition/ingredientRefs.js';
@@ -21,6 +22,5 @@ export function profileContribution(result: ResolvedIngredientProfile | undefine
     const value = result.revision.nutrients[key];
     if (typeof value !== 'number' || !Number.isFinite(value) || value < 0)
         return null;
-    const contribution = grams / 100 * value;
-    return Number.isFinite(contribution) ? contribution : null;
+    return scalePerBasis(grams, value, 100);
 }
