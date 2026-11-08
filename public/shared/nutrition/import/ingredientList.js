@@ -43,27 +43,43 @@ const bytes = value => new TextEncoder().encode(value).length;
 const plain = value => !!value && typeof value === 'object' && !Array.isArray(value);
 const num = value => typeof value === 'number' && Number.isFinite(value);
 const gram = value => num(value) && value >= 0 && value <= IMPORT_LIMITS.grams;
+const MAX_NESTING = 32;
 const freeze = value => {
-    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return value;
-    for (const child of Object.values(value)) freeze(child);
-    return Object.freeze(value);
+    const seen = [];
+    const stack = [value];
+    while (stack.length) {
+        const current = stack.pop();
+        if (!current || typeof current !== 'object' || Object.isFrozen(current) || seen.includes(current)) continue;
+        seen.push(current);
+        for (const child of Object.values(current)) stack.push(child);
+    }
+    for (const item of seen) Object.freeze(item);
+    return value;
 };
 const word = value => typeof value === 'string' ? value.normalize('NFKC').trim().toLowerCase().replace(/[\s_]+/g, '-') : '';
 
-function rejectPayload(value, path, fail) {
-    if (typeof value === 'string') {
-        if (FORBIDDEN.test(value)) fail(path, 'images and base64 are not accepted');
-        return;
-    }
-    if (Array.isArray(value)) {
-        value.forEach((item, index) => rejectPayload(item, `${path}[${index}]`, fail));
-        return;
-    }
-    if (!plain(value)) return;
-    for (const [key, item] of Object.entries(value)) {
-        if (key === '__proto__' || key === 'constructor' || key === 'prototype' || FORBIDDEN.test(key) || /^(?:image|images|photo|photos|attachment|attachments|dataUri|dataUrl)$/i.test(key))
-            fail(`${path}.${key}`, 'images and base64 are not accepted');
-        rejectPayload(item, `${path}.${key}`, fail);
+function rejectPayload(root, fail) {
+    const stack = [{ value: root, path: '$', depth: 1 }];
+    while (stack.length) {
+        const { value, path, depth } = stack.pop();
+        if (depth > MAX_NESTING) {
+            fail(path, 'nesting exceeds the limit');
+            return;
+        }
+        if (typeof value === 'string') {
+            if (FORBIDDEN.test(value)) fail(path, 'images and base64 are not accepted');
+            continue;
+        }
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => stack.push({ value: item, path: `${path}[${index}]`, depth: depth + 1 }));
+            continue;
+        }
+        if (!plain(value)) continue;
+        for (const [key, item] of Object.entries(value)) {
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype' || FORBIDDEN.test(key) || /^(?:image|images|photo|photos|attachment|attachments|dataUri|dataUrl)$/i.test(key))
+                fail(`${path}.${key}`, 'images and base64 are not accepted');
+            stack.push({ value: item, path: `${path}.${key}`, depth: depth + 1 });
+        }
     }
 }
 
@@ -97,6 +113,7 @@ function textValue(value, path, max, fail, required = false) {
 }
 
 function vocabToken(value, names, kind) {
+    if (typeof value === 'string' && names.includes(value.normalize('NFKC').trim())) return value.normalize('NFKC').trim();
     const token = word(value);
     if (!token) return null;
     if (token === 'unspecified' || names.includes(token)) return token;
@@ -223,7 +240,7 @@ function factUse(fact) {
     if (fact.appliesTo?.scope === 'serving') {
         const servings = fact.basis?.servings;
         const weight = fact.basis?.servingWeight?.g;
-        return (num(servings) && servings > 0) || num(weight) ? 'fit_target' : 'unapplied';
+        return (num(servings) && servings > 0) || (num(weight) && weight > 0) ? 'fit_target' : 'unapplied';
     }
     return 'fit_target';
 }
@@ -288,7 +305,8 @@ function checkConstraints(lines, constraints, fail, warn) {
         if (constraint.type === 'tail_max_percent') {
             const tops = lines.filter(line => !line.parentLineId);
             const fraction = constraint.maxPercent / 100;
-            if (tops.every(line => point(line) != null) && rows.every(line => fixedLine(line, constraints) && point(line) != null)) {
+            const fixedTotal = tops.every(line => fixedLine(line, constraints) && point(line) != null) && rows.every(line => fixedLine(line, constraints) && point(line) != null);
+            if (fixedTotal) {
                 const total = tops.reduce((sum, line) => sum + point(line), 0);
                 for (const line of rows) {
                     if (point(line) > total * fraction) fail(path, `fixed lines already violate tail percent: ${line.lineId}`);
@@ -309,9 +327,11 @@ function extractJson(text) {
         try { return { value: JSON.parse(trimmed) }; }
         catch { return { error: 'strict JSON required' }; }
     }
-    const fences = [...trimmed.matchAll(/```(?:json)?[ \t]*\r?\n([\s\S]*?)```/gi)];
+    const fences = [...trimmed.matchAll(/```([^\n`]*)\n([\s\S]*?)```/g)];
     if (fences.length !== 1) return { error: 'exactly one fenced JSON block required' };
-    try { return { value: JSON.parse(fences[0][1].trim()) }; }
+    const label = fences[0][1].trim().toLowerCase();
+    if (label && label !== 'json') return { error: 'exactly one fenced JSON block required' };
+    try { return { value: JSON.parse(fences[0][2].trim()) }; }
     catch { return { error: 'fenced block is not strict JSON' }; }
 }
 
@@ -332,16 +352,27 @@ export function validateIngredientList(input) {
         input = extracted.value;
     }
     if (!plain(input)) return { ok: false, errors: [{ path: '$', message: 'expected object' }], warnings };
-    if (bytes(JSON.stringify(input)) > IMPORT_LIMITS.bytes) return { ok: false, errors: [{ path: '$', message: 'import exceeds the size limit' }], warnings };
-    const source = structuredClone(input);
-    rejectPayload(source, '$', fail);
+    let encoded;
+    try { encoded = JSON.stringify(input); }
+    catch (error) {
+        if (error instanceof RangeError) return { ok: false, errors: [{ path: '$', message: 'nesting exceeds the limit' }], warnings };
+        throw error;
+    }
+    if (bytes(encoded) > IMPORT_LIMITS.bytes) return { ok: false, errors: [{ path: '$', message: 'import exceeds the size limit' }], warnings };
+    let source;
+    try { source = structuredClone(input); }
+    catch (error) {
+        if (error instanceof RangeError) return { ok: false, errors: [{ path: '$', message: 'nesting exceeds the limit' }], warnings };
+        throw error;
+    }
+    rejectPayload(source, fail);
     if (typeof source.schemaVersion === 'number' && source.schemaVersion > IMPORT_SCHEMA_VERSION)
         return { ok: false, errors: [{ path: '$.schemaVersion', message: 'site update required' }], warnings };
     if (source.schemaVersion !== IMPORT_SCHEMA_VERSION) fail('$.schemaVersion', 'unsupported schemaVersion');
     if (source.kind !== INGREDIENT_LIST_KIND) fail('$.kind', 'expected nutrition.ingredientList');
     allow(source, '$', ['kind', 'schemaVersion', 'registryVersion', 'producer', 'inputs', 'meal', 'ingredients', 'knownFacts', 'constraints', 'assumptions', 'overallConfidence', 'extensions'], fail);
     if (source.extensions != null && !plain(source.extensions)) fail('$.extensions', 'expected object');
-    if (errors.some(error => error.message === 'images and base64 are not accepted' || error.path === '$.schemaVersion'))
+    if (errors.some(error => error.message === 'images and base64 are not accepted' || error.message === 'nesting exceeds the limit' || error.path === '$.schemaVersion'))
         return { ok: false, errors, warnings };
 
     const list = { kind: INGREDIENT_LIST_KIND, schemaVersion: IMPORT_SCHEMA_VERSION };
@@ -638,7 +669,7 @@ export function fitTargets(list) {
 }
 
 export function researchEvidence(list) {
-    return (list?.knownFacts ?? []).filter(fact => factUse(fact) === 'research_evidence').map(fact => ({ factId: fact.factId, lineId: fact.appliesTo.lineId, nutrients: fact.nutrients, provenance: fact.provenance, source: fact.source ?? null }));
+    return (list?.knownFacts ?? []).filter(fact => factUse(fact) === 'research_evidence').map(fact => ({ factId: fact.factId, lineId: fact.appliesTo.lineId, nutrients: fact.nutrients, provenance: fact.provenance, source: fact.source ?? null, basis: fact.basis ?? {} }));
 }
 
 /** Convert a null-gram quantity only through #61 conversion records. Does not mutate the line. */
@@ -649,6 +680,8 @@ export function resolveLineQuantity(line, conversions = []) {
     const state = line.variant?.state || 'unspecified';
     const result = toGrams(quantity.original?.amount, quantity.original?.unit, '', conversions, state);
     if (result.error || !Number.isFinite(result.grams)) return { quantity: { ...quantity }, error: result.error || 'missing_conversion', converted: false };
+    if ((quantity.gMin != null && result.grams < quantity.gMin) || (quantity.gMax != null && result.grams > quantity.gMax))
+        return { quantity: { ...quantity }, error: 'conversion_conflict', converted: false };
     return { quantity: { ...quantity, g: result.grams }, conversionId: result.conversionId, converted: true };
 }
 

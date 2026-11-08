@@ -5,6 +5,11 @@ import { IMPORT_LIMITS, validateIngredientList } from './ingredientList.js';
 export const PASTE_HEADER = 'NUTRITION-INGREDIENTS v1';
 const bytes = value => new TextEncoder().encode(value).length;
 const formatNum = value => Number.isInteger(value) ? String(value) : String(value);
+const PASTE_UNIT = /^[A-Za-z][A-Za-z-]*$/;
+const pasteUnit = quantity => {
+    const unit = quantity?.original?.unit;
+    return typeof unit === 'string' && unit !== 'g' && !PASTE_UNIT.test(unit);
+};
 
 function fail(errors, line, column, message) {
     errors.push({ path: `paste:${line}:${column}`, line, column, message });
@@ -328,6 +333,7 @@ function jsonOnly(list) {
         if (quantity.original?.unit === 'g' && quantity.original.amount !== quantity.g) mark(`$.ingredients[${index}].quantity.original`);
         if (quantity.original?.text && quantity.original.text !== `${formatNum(quantity.original.amount)} ${quantity.original.unit}`)
             mark(`$.ingredients[${index}].quantity.original.text`);
+        if (pasteUnit(quantity)) mark(`$.ingredients[${index}].quantity.original.unit`);
         try { formWordsFor(line.variant || {}); }
         catch { mark(`$.ingredients[${index}].variant`); }
     }
@@ -359,6 +365,7 @@ function jsonOnly(list) {
         if (!quantity) continue;
         if ((quantity.gMin == null) !== (quantity.gMax == null) || (quantity.g == null && (quantity.gMin != null || quantity.gMax != null))) mark(`$.meal.${key}`);
         if (quantity.original?.unit === 'g' && quantity.original.amount !== quantity.g) mark(`$.meal.${key}.original`);
+        if (pasteUnit(quantity)) mark(`$.meal.${key}.original.unit`);
     }
     return reasons;
 }

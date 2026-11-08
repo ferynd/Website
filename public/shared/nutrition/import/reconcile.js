@@ -65,6 +65,10 @@ export async function reconcileImport(draft, ports = {}) {
                 lines.push(row(stored.lineId, line.name, 'conflict', { compatibility, candidates: [{ ref: pinned, variantId: pinned.variantId ?? null, canonicalName: line.name, compatibility, score: 1 }] }));
                 continue;
             }
+            if (compatibility === 'underspecified') {
+                lines.push(row(stored.lineId, line.name, 'underspecified', { compatibility, candidates: [{ ref: pinned, variantId: pinned.variantId ?? null, canonicalName: line.name, compatibility, score: 1 }] }));
+                continue;
+            }
         }
         const matched = await matchIngredient({ name: line.name, dims }, { privateSearch, curatedSearch, confirmedRefs: [] });
         lines.push(classify(stored.lineId, line.name, dims, matched));

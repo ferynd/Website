@@ -51,7 +51,6 @@ export function fromRecipeStandardizerRecipe(recipe, meta = {}) {
         return { ok: false, errors: [{ path: '$.meal', message: 'recipe needs a title and a positive serving count' }] };
     const used = new Set();
     const lines = [];
-    const assumptions = [];
     const lineRefs = {};
     const errors = [];
     ingredients.forEach((item, index) => {
@@ -71,17 +70,14 @@ export function fromRecipeStandardizerRecipe(recipe, meta = {}) {
             errors.push({ path: `$.ingredients[${index}].quantity`, message: 'invalid gram quantity' });
             return;
         }
-        lines.push({ lineId, name, quantity });
-        for (const note of [item.prepNote, item.substitutionNotes]) {
-            const noteText = clean(note);
-            if (!noteText) continue;
-            if (noteText.length > IMPORT_LIMITS.text) {
-                errors.push({ path: `$.ingredients[${index}].notes`, message: 'note exceeds 300 characters' });
-                continue;
-            }
-            const id = `a${assumptions.length + 1}`;
-            assumptions.push({ id, text: noteText, appliesTo: [lineId] });
+        const line = { lineId, name, quantity };
+        const notes = [item.prepNote, item.substitutionNotes].map(clean).filter(Boolean);
+        if (notes.length) {
+            const note = notes.join(' ');
+            if (note.length > IMPORT_LIMITS.text) errors.push({ path: `$.ingredients[${index}].notes`, message: 'note exceeds 300 characters' });
+            else line.notes = note;
         }
+        lines.push(line);
         if (item.nutritionLink?.ingredientRef) lineRefs[lineId] = structuredClone(item.nutritionLink.ingredientRef);
     });
     if (errors.length) return { ok: false, errors };
@@ -90,7 +86,7 @@ export function fromRecipeStandardizerRecipe(recipe, meta = {}) {
         meal.finalWeight = { g: recipe.yield.actualFinalWeightG, basis: 'measured' };
     else if (typeof recipe.yield?.estimatedFinalWeightG === 'number' && recipe.yield.estimatedFinalWeightG > 0)
         meal.finalWeight = { g: recipe.yield.estimatedFinalWeightG, basis: 'estimated' };
-    const list = { kind: 'nutrition.ingredientList', schemaVersion: 1, meal, ingredients: lines, ...(assumptions.length ? { assumptions } : {}) };
+    const list = { kind: 'nutrition.ingredientList', schemaVersion: 1, meal, ingredients: lines };
     const draft = createImportDraft(list, { kind: 'recipe_standardizer', recipeId: meta.savedId ?? recipe.id ?? null, lineRefs, modelCalls: 0 });
     return draft.ok ? draft : draft;
 }

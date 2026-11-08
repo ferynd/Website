@@ -178,6 +178,75 @@ describe('ingredient-list import v1', () => {
         expect(validateIngredientList(list).errors.some(error => error.message === 'expected an https URL')).toBe(true);
     });
 
+    it('closes the Codex import findings without dropping valid data', async () => {
+        const base = subset(example);
+        const fluid = structuredClone(base);
+        fluid.ingredients[0] = { ...fluid.ingredients[0], quantity: { g: 30, basis: 'estimated', original: { amount: 2, unit: 'fl oz', text: '2 fl oz' } } };
+        const fluidPaste = renderIngredientPaste(fluid);
+        expect(fluidPaste).toMatchObject({ ok: false, reason: 'json-only' });
+        expect(fluidPaste.text).toBeUndefined();
+        expect(fluid.ingredients[0].quantity.original.unit).toBe('fl oz');
+        const draft = importIngredientList(base).draft;
+        expect(applyLineCorrection(draft, 'rice', { quantity: { gMin: NaN } }).ok).toBe(false);
+        const zeroWeight = structuredClone(base);
+        zeroWeight.knownFacts[0] = { ...zeroWeight.knownFacts[0], basis: { servingWeight: { g: 0, basis: 'label' } } };
+        expect(validateIngredientList(zeroWeight).factUses.menu).toBe('unapplied');
+        const fenced = `note\n\`\`\`json\n${JSON.stringify(base)}\n\`\`\`\n\`\`\`text\nalso\n\`\`\``;
+        expect(validateIngredientList(fenced).errors[0].message).toContain('exactly one fenced');
+        const plain = structuredClone(base);
+        plain.ingredients[2] = { ...plain.ingredients[2], variant: { state: 'canned', drained: 'not_applicable' } };
+        const plainResult = validateIngredientList(plain);
+        expect(plainResult.ok, JSON.stringify(plainResult.errors)).toBe(true);
+        expect(plainResult.list.ingredients[2].variant.drained).toBe('not_applicable');
+        const tail = validateIngredientList({
+            kind: 'nutrition.ingredientList', schemaVersion: 1,
+            meal: { title: 'Spice', kind: 'single_portion', servings: { count: 1 } },
+            ingredients: [
+                { lineId: 'main', name: 'rice', quantity: { g: 100, gMin: 100, gMax: 200, basis: 'estimated' } },
+                { lineId: 'spice', name: 'salt', quantity: { g: 3, basis: 'measured' } },
+            ],
+            constraints: [{ type: 'tail_max_percent', lineIds: ['spice'], maxPercent: 2 }],
+        });
+        expect(tail.ok, JSON.stringify(tail.errors)).toBe(true);
+        const fixedTail = validateIngredientList({
+            kind: 'nutrition.ingredientList', schemaVersion: 1,
+            meal: { title: 'Spice', kind: 'single_portion', servings: { count: 1 } },
+            ingredients: [
+                { lineId: 'main', name: 'rice', quantity: { g: 100, basis: 'measured' } },
+                { lineId: 'spice', name: 'salt', quantity: { g: 30, basis: 'measured' } },
+            ],
+            constraints: [{ type: 'tail_max_percent', lineIds: ['spice'], maxPercent: 2 }],
+        });
+        expect(fixedTail.ok).toBe(false);
+        const labeled = structuredClone(base);
+        labeled.knownFacts.push({ factId: 'label', provenance: 'user_stated', appliesTo: { scope: 'line', lineId: 'beans' }, basis: { servings: 1 }, nutrients: { calories: { value: 100, unit: 'kcal' } } });
+        const labeledResult = validateIngredientList(labeled);
+        expect(researchEvidence(labeledResult.list)).toEqual([expect.objectContaining({ factId: 'label', lineId: 'beans', basis: { servings: 1 } })]);
+        let nested = { note: 'x' };
+        for (let depth = 0; depth < 40; depth += 1) nested = { child: nested };
+        expect(() => validateIngredientList({ ...base, extensions: nested })).not.toThrow();
+        expect(validateIngredientList({ ...base, extensions: nested }).errors[0].message).toBe('nesting exceeds the limit');
+        const { ref } = await fixture();
+        const wide = await buildConversion({ variantRef: ref, kind: 'density', unit: 'mL', amount: 1, gramsPerMl: 1, state: 'raw', source: { type: 'manual' }, confidence: 1 });
+        const resolved = resolveLineQuantity({ variant: { state: 'raw' }, quantity: { g: null, gMin: 10, gMax: 20, basis: 'estimated', original: { amount: 100, unit: 'mL', text: '100 mL' } } }, [wide]);
+        expect(resolved).toMatchObject({ converted: false, error: 'conversion_conflict' });
+        expect(resolved.quantity.g).toBeNull();
+        const bare = structuredClone(base);
+        bare.ingredients[0] = { ...bare.ingredients[0], variant: {} };
+        const pinned = await reconcileImport(importIngredientList(bare).draft, {
+            lineRefs: { rice: ref }, refDims: { rice: { state: 'cooked' } },
+            privateSearch: async () => ({ items: [] }), curatedSearch: async () => ({ items: [] }),
+        });
+        expect(pinned.lines.find(line => line.lineId === 'rice')).toMatchObject({ outcome: 'underspecified', needsResearch: false, candidates: [expect.objectContaining({ ref })] });
+        const many = fromRecipeStandardizerRecipe({
+            name: 'Big', servings: { baselineServings: 1 },
+            ingredients: Array.from({ length: 31 }, (_, index) => ({ id: `i${index}`, displayName: `item ${index}`, quantityG: 1, prepNote: 'chop' })),
+        });
+        expect(many.ok, JSON.stringify(many.errors)).toBe(true);
+        expect(many.draft.import.assumptions).toBeUndefined();
+        expect(many.draft.import.ingredients.every(line => line.notes === 'chop')).toBe(true);
+    });
+
     it('keeps corrections off the frozen import', () => {
         const draft = importIngredientList(subset(example)).draft;
         const corrected = applyLineCorrection(draft, 'rice', { quantity: { basis: 'estimated' } }).draft;
@@ -238,6 +307,8 @@ describe('ingredient-list import v1', () => {
         expect(recipe.ok, JSON.stringify(recipe.errors)).toBe(true);
         expect(recipe.draft.import.knownFacts).toBeUndefined();
         expect(recipe.draft.import.ingredients[0].quantity).toEqual({ g: 300, basis: 'recipe_stated' });
+        expect(recipe.draft.import.ingredients[0].notes).toBe('sifted');
+        expect(recipe.draft.import.assumptions).toBeUndefined();
         expect(recipe.draft.import.ingredients[1].quantity.g).toBeNull();
         expect(recipe.draft.source.lineRefs['ing-flour'].variantId).toBe('pv-flour');
         expect(JSON.stringify(recipe.draft.import)).not.toContain('calories');

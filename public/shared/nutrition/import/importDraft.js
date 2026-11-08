@@ -12,7 +12,7 @@ function quantityError(quantity) {
     if (quantity.g !== null && (typeof quantity.g !== 'number' || !Number.isFinite(quantity.g) || quantity.g < 0 || quantity.g > IMPORT_LIMITS.grams))
         return 'invalid grams';
     for (const bound of ['gMin', 'gMax']) {
-        if (quantity[bound] != null && (typeof quantity[bound] !== 'number' || quantity[bound] < 0 || quantity[bound] > IMPORT_LIMITS.grams))
+        if (quantity[bound] != null && (!Number.isFinite(quantity[bound]) || quantity[bound] < 0 || quantity[bound] > IMPORT_LIMITS.grams))
             return 'invalid gram bound';
     }
     if (quantity.gMin != null && quantity.g != null && quantity.gMin > quantity.g) return 'expected gMin ≤ g ≤ gMax';
