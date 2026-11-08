@@ -67,7 +67,10 @@ describe('missing ingredient resolution', () => {
         expect(review.rows[0].text).toContain('white rice');
         expect(review.fit.available).toBe(false);
         const substituted = chooseExisting(buildResolution({ lines, matches }), 'salsa', { mode: 'substitute', ref: { identityId: 'pi-salsa', variantId: 'pv-salsa' }, nutrients: { calories: { value: 10, status: 'measured' } } }).state;
-        expect(reviewResolution(substituted, recalculateResolution(substituted).calculation).rows[1].basis).toBe('estimated');
+        const substituteReview = reviewResolution(substituted, recalculateResolution(substituted).calculation);
+        expect(substituteReview.rows[1].basis).toBe('estimated');
+        expect(substituteReview.rows[1].text).toContain('estimated');
+        expect(substituteReview.rows[1].text).not.toContain('measured');
         expect(substituted.items[1].selectedRef.variantId).toBe('pv-salsa');
         expect(manualEntry(state, 'missing', {}).error).toBe('unknown_line');
         const bounded = reviewResolution(state, { nutrients: { calories: { value: 4 } } }, [{ factId: 'cap', provenance: 'user_stated', appliesTo: { scope: 'meal' }, basis: {}, nutrients: { calories: { value: 5, unit: 'kcal', qualifier: 'less_than' } } }]);
@@ -103,6 +106,12 @@ describe('missing ingredient resolution', () => {
         expect(fieldPacket.pendingJobs[0].target.identityId).toBe('synthetic-identity');
         expect(fieldPacket.pendingJobs[0].target.baseRevision.nutrients.calories).toBe(40);
         expect(fieldPacket.pendingJobs[0].target.baseRef.variantId).toBe('synthetic-variant');
+        expect(fieldPacket.pendingJobs[0].target.dims.state).toBe('raw');
+        const { packetProposal } = await import('../../../shared/nutrition/research/packetProposal.js');
+        const { responseFor } = await import('./researchPacketFixtures.js');
+        const proposed = await packetProposal({ ...fieldPacket.pendingJobs[0], scope: 'private' }, responseFor(fieldPacket.packets[0]).results[0]);
+        expect(proposed.revisionDraft.basis.state).toBe('raw');
+        expect(proposed.revisionDraft.nutrients.calories).toBe(40);
         expect(fieldPacket.pendingJobs[0].state).toBe('awaiting_response');
         expect(fieldPacket.pendingJobs[0].pendingRequest.status).toBe('pending');
         expect(review.modelCalls).toBe(0);

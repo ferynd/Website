@@ -1,4 +1,6 @@
 import { calculateMeal } from './calculate.js';
+import { normalizeVariantDims } from './ingredientVariants.js';
+import { formWordsFor } from './variantVocabulary.js';
 import { fitTargets } from './import/ingredientList.js';
 import { verifyRevisionHash } from './ingredientProfile.js';
 import { PACKET_LIMITS, copyableResearchPacket, buildResearchPackets } from './research/researchPacket.js';
@@ -93,6 +95,7 @@ export async function researchPacket(state, lineIds, { override = false, ownerUi
     const jobs = [];
     for (const item of selected.filter(row => !row.resolved)) {
         const line = state.lines.find(row => row.lineId === item.lineId);
+        const dims = jobDims(line, item.baseRevision);
         const fields = item.missingFields.length ? item.missingFields : '*';
         const ref = item.match?.ref || null;
         if (ref) {
@@ -107,7 +110,7 @@ export async function researchPacket(state, lineIds, { override = false, ownerUi
         jobs.push({
             state: 'queued', jobId, requestedFields: fields,
             attempts: item.officialAttempts.length ? item.officialAttempts : [{ adapter: 'override', release: 'user', outcome: 'skipped' }],
-            target: { dims: line?.variant || {}, canonicalName: item.name, category: 'other', kind: line?.kind || 'generic', aliases: [], knownObservations: {}, identityId, variantId, ...(ref ? { baseRef: ref, baseRevision: item.baseRevision } : {}) },
+            target: { dims, canonicalName: item.name, category: 'other', kind: line?.kind || 'generic', aliases: [], knownObservations: {}, identityId, variantId, ...(ref ? { baseRef: ref, baseRevision: item.baseRevision } : {}) },
         });
     }
     if (!jobs.length) return { ok: false, error: 'nothing_unresolved', state };
@@ -119,6 +122,18 @@ export async function researchPacket(state, lineIds, { override = false, ownerUi
     });
     const copyTexts = requests.map(copyableResearchPacket);
     return { ok: true, state: { ...state, modelCalls: 0, pendingJobs, pendingRequests: requests }, packets: requests, pendingJobs, copyText: copyTexts.length === 1 ? copyTexts[0] : null, copyTexts, modelCalls: 0 };
+}
+
+function jobDims(line, revision) {
+    const raw = line?.variant || {};
+    const dims = normalizeVariantDims(raw);
+    const pinned = !raw.state && typeof revision?.basis?.state === 'string' ? revision.basis.state : null;
+    if (!pinned) return dims;
+    try {
+        formWordsFor({ ...dims, state: pinned });
+        dims.state = pinned;
+    } catch { /* a free-text stored state still leaves a renderable unspecified form */ }
+    return dims;
 }
 
 function itemPurpose(items) {
@@ -167,16 +182,17 @@ function scaleFactValue(value, fact, state) {
 export function reviewResolution(state, calculation, facts = []) {
     const rows = state.lines.map(line => {
         const item = state.items.find(row => row.lineId === line.lineId);
+        const basis = item?.estimate ? 'estimated' : (line.quantityBasis || 'estimated');
         return {
             lineId: line.lineId,
             name: String(line.name || ''),
-            basis: item?.estimate ? 'estimated' : (line.quantityBasis || 'estimated'),
+            basis,
             grams: line.grams,
             gMin: line.gMin ?? null,
             gMax: line.gMax ?? null,
             source: item?.source || null,
             kind: item?.kind || 'resolved',
-            text: `${line.name || 'ingredient'}: ${line.grams} g ${line.quantityBasis || ''}`.trim(),
+            text: `${line.name || 'ingredient'}: ${line.grams} g ${basis}`.trim(),
         };
     });
     const comparisons = facts.filter(fact => fact.appliesTo?.scope !== 'line' && (fact.appliesTo?.scope === 'serving' || fitTargets({ knownFacts: [fact] }).length)).map(fact => {
