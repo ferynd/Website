@@ -67,7 +67,7 @@ Dependency order: #59, #61 Part A, #62, and #67 are archived. Critical path: **#
 ### #64 Part A: Build the shared full-nutrient calculation module
 
 - [p] **Calculate every registry nutrient deterministically with status, coverage, and uncertainty.** Depends: #61 Part A (merged).
-  > in progress — shared `calculate.js`; recipe scaling delegates to `scalePerBasis`; no fitting or saving
+  > pushed — shared calculate.js scales every stored nutrient, keeps unknown distinct from zero, and computes weighted fiber, adjusted carbs, and FODMAP equivalents; recipe scaling uses scalePerBasis; no fitting or saving; checks: tracker 1092, root 2014, API 43, lint, build, ci:contract, ci:docs; commit: bbab4e9; PR: #191
   - **Surfaces:** a pure calculation module in `public/shared/nutrition/` used by both tools; Recipe Standardizer `nutritionCalc` delegates to it.
   - **Accept:** per-100-g scaling over every registry nutrient; statuses kept through aggregation (reported, calculated, estimated, unknown; unknown never zero); coverage per nutrient by grams and by ingredient; interval uncertainty from quantity and value ranges; compound, nested, and yield handling with each component counted once; versioned derived metrics (weighted fiber, adjusted carbs, FODMAP equivalents) computed here. Runs offline from the #61 cache. Deterministic: same inputs give the same result.
   - **Checks:** golden scaling cases, unknown propagation, nested/compound non-duplication, yield, derived-metric conventions, `nutritionCalc` parity; root/tracker suites.
