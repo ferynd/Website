@@ -1,3 +1,4 @@
+import { scalePerBasis } from '@/public/shared/nutrition/calculate.js';
 import {profileContribution,type ProfilesState} from './ingredientLink';
 /* ------------------------------------------------------------ */
 /* CONFIGURATION: nutrition calculation bounds                    */
@@ -270,8 +271,8 @@ export const computeBaseContributions = (
       contributions[key] = null;
       continue;
     }
-    const contribution = (grams * value) / gramsPerUnit;
-    if (!Number.isFinite(contribution)) return null;
+    const contribution = scalePerBasis(grams, value, gramsPerUnit);
+    if (contribution === null) return null;
     contributions[key] = contribution;
   }
   return contributions;
@@ -435,8 +436,7 @@ export const calculateRecipeNutrition = ({ recipe, foods, scale, profiles }: Nut
           row[key] = null;
           continue;
         }
-        const contribution = (grams * value) / gramsPerUnit;
-        row[key] = Number.isFinite(contribution) ? contribution : null;
+        row[key] = scalePerBasis(grams, value, gramsPerUnit);
       }
       detailRows.push(row);
     }

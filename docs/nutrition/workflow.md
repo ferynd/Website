@@ -224,7 +224,7 @@ Retain source-reported meal nutrients as observed facts. Show derived estimates 
 
 ## Deterministic calculations
 
-For an ingredient amount `q` grams with a profile per 100 g, nutrient contribution is `q / 100 × profile value`. Missing profile values contribute unknown coverage, not measured zero. Scale ingredient contributions before summing. Keep full internal precision and round only at the display/export boundary.
+For an ingredient amount `q` grams with a profile per 100 g, nutrient contribution is `q / 100 × profile value`. The shared implementation is [calculate.js](../../public/shared/nutrition/calculate.js). Missing profile values contribute unknown coverage, not measured zero. Scale ingredient contributions before summing. Keep full internal precision and round only at the display/export boundary. Weighted fiber is computed per ingredient and then summed. Meal status is estimated if any counted input is estimated, otherwise calculated, otherwise reported. Unknown stays null.
 
 Use source energy as its own observation. A 4/4/9 macro estimate is a diagnostic, not an unconditional equality: source methods, fiber, polyols, allulose, alcohol, and organic acids can affect the relationship [S1, S4]. Do not add fat, fatty-acid, sugar, or fiber subfields to their parent totals. Fatty-acid sums need not equal total lipid exactly [S1].
 
