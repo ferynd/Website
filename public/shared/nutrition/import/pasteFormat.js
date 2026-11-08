@@ -142,6 +142,7 @@ export function parseIngredientPaste(text) {
                 continue;
             }
             mode = 'ingredients';
+            const lineErrors = errors.length;
             const parts = ingredient[2].split('|').map(part => part.trim());
             if (parts.length < 4 || parts.length > 5) { fail(errors, row, 1, 'expected name, form, amount, and basis'); continue; }
             const [name, form, amountText, basis, extras] = parts;
@@ -180,6 +181,12 @@ export function parseIngredientPaste(text) {
             const item = { lineId: id, name, quantity: { ...quantity, basis }, number };
             if (Object.keys(variant).length) item.variant = variant;
             if (kind) item.kind = kind;
+            if (errors.length === lineErrors && amount && ['measured', 'label', 'recipe_stated', 'estimated'].includes(basis)) {
+                let rendered = '';
+                try { rendered = formatIngredientLine(item, number); }
+                catch { rendered = ''; }
+                if (rendered !== line.trim()) fail(errors, row, line.indexOf('|') + 1 || 1, 'paste separators would change the ingredient fields');
+            }
             ingredients.push(item);
             continue;
         }
@@ -316,7 +323,13 @@ function jsonOnly(list) {
     if (list.overallConfidence?.note) mark('$.overallConfidence.note');
     for (const [index, line] of list.ingredients.entries()) {
         for (const key of ['role', 'confidence', 'order', 'notes', 'assumptionIds']) if (line[key] != null) mark(`$.ingredients[${index}].${key}`);
-        if (line.name?.includes(' | ')) mark(`$.ingredients[${index}].name`);
+        if (line.name?.includes('|')) mark(`$.ingredients[${index}].name`);
+        for (const key of ['fortificationDetail', 'ediblePortion']) {
+            if (typeof line.variant?.[key] === 'string' && /[;|]/.test(line.variant[key])) mark(`$.ingredients[${index}].variant.${key}`);
+        }
+        for (const key of ['brand', 'product', 'gtin', 'market', 'labelDate', 'formulationNote']) {
+            if (typeof line.variant?.brand?.[key] === 'string' && /[;|]/.test(line.variant.brand[key])) mark(`$.ingredients[${index}].variant.brand.${key}`);
+        }
         const quantity = line.quantity ?? {};
         if ((quantity.gMin == null) !== (quantity.gMax == null) || (quantity.g == null && (quantity.gMin != null || quantity.gMax != null))) mark(`$.ingredients[${index}].quantity`);
         if (quantity.original?.unit === 'g' && quantity.original.amount !== quantity.g) mark(`$.ingredients[${index}].quantity.original`);
@@ -357,6 +370,23 @@ function jsonOnly(list) {
     return reasons;
 }
 
+function formatIngredientLine(line, number) {
+    const form = formWordsFor(line.variant || {}).join(', ');
+    const formText = form ? ` | ${form} | ` : ' | | ';
+    const extras = [];
+    if (line.lineId !== defaultLineId(number)) extras.push(`id=${line.lineId}`);
+    if (line.kind && line.kind !== 'generic') extras.push(`kind=${line.kind}`);
+    const variant = line.variant || {};
+    for (const key of ['fortificationDetail', 'fatPercent', 'leanPercent', 'ediblePortion']) {
+        if (variant[key] != null) extras.push(`${key}=${variant[key]}`);
+    }
+    for (const key of ['brand', 'product', 'gtin', 'market', 'labelDate', 'formulationNote']) {
+        if (variant.brand?.[key]) extras.push(`${key}=${variant.brand[key]}`);
+    }
+    const tail = extras.length ? ` | ${extras.join('; ')}` : '';
+    return `${number}. ${line.name}${formText}${amountText(line.quantity)} | ${line.quantity.basis}${tail}`;
+}
+
 /** Render canonical paste, or refuse when the list uses a JSON-only field. */
 export function renderIngredientPaste(list) {
     const validated = validateIngredientList(list);
@@ -372,23 +402,7 @@ export function renderIngredientPaste(list) {
         if (source.meal[key]) lines.push(`${label}: ${amountText(source.meal[key])} | ${source.meal[key].basis}`);
     }
     if (source.overallConfidence) lines.push(`Confidence: ${source.overallConfidence.level}`);
-    source.ingredients.forEach(line => {
-        const number = numbers.get(line.lineId);
-        const form = formWordsFor(line.variant || {}).join(', ');
-        const formText = form ? ` | ${form} | ` : ' | | ';
-        const extras = [];
-        if (line.lineId !== defaultLineId(number)) extras.push(`id=${line.lineId}`);
-        if (line.kind && line.kind !== 'generic') extras.push(`kind=${line.kind}`);
-        const variant = line.variant || {};
-        for (const key of ['fortificationDetail', 'fatPercent', 'leanPercent', 'ediblePortion']) {
-            if (variant[key] != null) extras.push(`${key}=${variant[key]}`);
-        }
-        for (const key of ['brand', 'product', 'gtin', 'market', 'labelDate', 'formulationNote']) {
-            if (variant.brand?.[key]) extras.push(`${key}=${variant.brand[key]}`);
-        }
-        const tail = extras.length ? ` | ${extras.join('; ')}` : '';
-        lines.push(`${number}. ${line.name}${formText}${amountText(line.quantity)} | ${line.quantity.basis}${tail}`);
-    });
+    source.ingredients.forEach(line => lines.push(formatIngredientLine(line, numbers.get(line.lineId))));
     (source.knownFacts ?? []).forEach((fact, index) => {
         let basis = 'per meal';
         if (fact.appliesTo.scope === 'serving') {

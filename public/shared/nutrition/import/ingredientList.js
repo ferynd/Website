@@ -493,6 +493,7 @@ export function validateIngredientList(input) {
                 const titleText = textValue(raw.source.title, `${path}.source.title`, IMPORT_LIMITS.text, fail, true);
                 const market = textValue(raw.source.market, `${path}.source.market`, IMPORT_LIMITS.text, fail, true);
                 if (typeof raw.source.url !== 'string' || !raw.source.url.startsWith('https://') || /\s/.test(raw.source.url)) fail(`${path}.source.url`, 'expected an https URL');
+                else if (raw.source.url.length > IMPORT_LIMITS.text) fail(`${path}.source.url`, `text exceeds ${IMPORT_LIMITS.text} characters`);
                 if (typeof raw.source.capturedAt !== 'string' || !DATE_RE.test(raw.source.capturedAt)) fail(`${path}.source.capturedAt`, 'expected an ISO date');
                 if (titleText && market) factSource = { title: titleText, url: raw.source.url, capturedAt: raw.source.capturedAt, market };
             }

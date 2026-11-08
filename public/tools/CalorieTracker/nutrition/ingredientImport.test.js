@@ -137,6 +137,48 @@ describe('ingredient-list import v1', () => {
         expect(validateIngredientList(energy).list.knownFacts[0].nutrients.calories.unit).toBe('kcal');
     });
 
+    it('preserves paste round trips or refuses separators that would split fields', () => {
+        const base = subset(example);
+        const named = structuredClone(base);
+        named.ingredients[0] = { ...named.ingredients[0], name: 'chili|beans' };
+        const refusedName = renderIngredientPaste(named);
+        expect(refusedName).toMatchObject({ ok: false, reason: 'json-only' });
+        expect(refusedName.text).toBeUndefined();
+        expect(named.ingredients[0].name).toBe('chili|beans');
+        const semicolon = structuredClone(base);
+        semicolon.ingredients[0] = { ...semicolon.ingredients[0], variant: { brand: { brand: 'acme;west' } } };
+        const refusedExtra = renderIngredientPaste(semicolon);
+        expect(refusedExtra).toMatchObject({ ok: false, reason: 'json-only' });
+        expect(refusedExtra.text).toBeUndefined();
+        expect(semicolon.ingredients[0].variant.brand.brand).toBe('acme;west');
+        const equals = structuredClone(base);
+        equals.ingredients[0] = { ...equals.ingredients[0], variant: { brand: { product: 'size=large' } } };
+        const pasted = renderIngredientPaste(equals);
+        expect(pasted.ok, JSON.stringify(pasted)).toBe(true);
+        const back = parseIngredientPaste(pasted.text);
+        expect(back.ok, JSON.stringify(back.errors)).toBe(true);
+        expect(back.list.ingredients[0].variant.brand.product).toBe('size=large');
+        expect(renderIngredientPaste(back.list).text).toBe(pasted.text);
+        const ambiguous = parseIngredientPaste('NUTRITION-INGREDIENTS v1\nTitle: Soup\nKind: single_portion\nServings: 1\n1. a|cooked | 10 g | estimated\nEND\n');
+        expect(ambiguous.ok).toBe(false);
+        expect(ambiguous.list).toBeUndefined();
+        expect(ambiguous.errors.some(error => error.line === 5 && /separators/.test(error.message))).toBe(true);
+    });
+
+    it('caps fact source URLs at the contract text limit of 300 characters', () => {
+        const list = subset(example);
+        const prefix = 'https://example.com/';
+        list.knownFacts[0].source.url = prefix + 'a'.repeat(300 - prefix.length);
+        expect(list.knownFacts[0].source.url).toHaveLength(300);
+        expect(validateIngredientList(list).ok).toBe(true);
+        list.knownFacts[0].source.url += 'b';
+        const over = validateIngredientList(list);
+        expect(over.ok).toBe(false);
+        expect(over.errors).toEqual(expect.arrayContaining([expect.objectContaining({ path: '$.knownFacts[0].source.url', message: 'text exceeds 300 characters' })]));
+        list.knownFacts[0].source.url = `http://example.com/${'c'.repeat(300)}`;
+        expect(validateIngredientList(list).errors.some(error => error.message === 'expected an https URL')).toBe(true);
+    });
+
     it('keeps corrections off the frozen import', () => {
         const draft = importIngredientList(subset(example)).draft;
         const corrected = applyLineCorrection(draft, 'rice', { quantity: { basis: 'estimated' } }).draft;
