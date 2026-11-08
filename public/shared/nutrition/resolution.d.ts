@@ -1,0 +1,11 @@
+export const RESOLUTION_CAPABILITIES: Readonly<{ fitPanel: false; libraryDeepLink: false; directAiRoute: false }>;
+export function buildResolution(input?: { lines?: any[]; matches?: any[]; nutrientsByLine?: Record<string, any> }): any;
+export function chooseExisting(state: any, lineId: string, choice: any): any;
+export function lookupOfficial(state: any, lineId: string, attempt: any): any;
+export function researchPacket(state: any, lineIds: string[], options?: { override?: boolean; ownerUid?: string; namespace?: string }): Promise<any>;
+export function manualEntry(state: any, lineId: string, nutrients: any): any;
+export function saveIncomplete(state: any): any;
+export function cancelResolution(state: any): any;
+export function resolutionLines(state: any): any[];
+export function recalculateResolution(state: any, options?: any): any;
+export function reviewResolution(state: any, calculation: any, facts?: any[]): any;

@@ -272,7 +272,7 @@ Show an editable list: ingredient, exact form, grams, measured/estimated badge, 
 
 ### Missing-data dialog
 
-List all missing/ambiguous ingredients and fields in one review. Offer, in ladder order:
+The shared ladder is [resolution.js](../../public/shared/nutrition/resolution.js). It does not fit quantities or call a model. List all missing/ambiguous ingredients and fields in one review. Offer, in ladder order:
 
 - **Choose existing:** search aliases, approved alternatives, verified variants, and user overrides; explicit substitute selection is recorded as an estimate. Confirming an ambiguous match can create a private confirmed alias so the next import matches exactly.
 - **Look up selected:** run official-source lookup (#62) for the selected identities or fields. Show progress, result quality, and a review step before persistence. Reuse any approved records if another tab populated them first.

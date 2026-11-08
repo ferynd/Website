@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, and #67 are archived. Critical path: **#64 Part A → #66 → #70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
+Dependency order: #59, #61 Part A, #62, #64 Part A, and #67 are archived. Critical path: **#66 → #70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -64,18 +64,10 @@ Dependency order: #59, #61 Part A, #62, and #67 are archived. Critical path: **#
   - **Checks:** dry-run reports, source-license review, root/tracker suites for any config change.
   - **Migration/deploy:** **Requires James's explicit approval** to provision or use live credentials (for example an FDC API key) and to publish staged data to production.
 
-### #64 Part A: Build the shared full-nutrient calculation module
-
-- [p] **Calculate every registry nutrient deterministically with status, coverage, and uncertainty.** Depends: #61 Part A (merged).
-  > pushed — shared calculate.js scales every stored nutrient, keeps unknown distinct from zero, and computes weighted fiber, adjusted carbs, and FODMAP equivalents; recipe scaling uses scalePerBasis; no fitting or saving; checks: tracker 1092, root 2014, API 43, lint, build, ci:contract, ci:docs; commit: bbab4e9; PR: #191
-  - **Surfaces:** a pure calculation module in `public/shared/nutrition/` used by both tools; Recipe Standardizer `nutritionCalc` delegates to it.
-  - **Accept:** per-100-g scaling over every registry nutrient; statuses kept through aggregation (reported, calculated, estimated, unknown; unknown never zero); coverage per nutrient by grams and by ingredient; interval uncertainty from quantity and value ranges; compound, nested, and yield handling with each component counted once; versioned derived metrics (weighted fiber, adjusted carbs, FODMAP equivalents) computed here. Runs offline from the #61 cache. Deterministic: same inputs give the same result.
-  - **Checks:** golden scaling cases, unknown propagation, nested/compound non-duplication, yield, derived-metric conventions, `nutritionCalc` parity; root/tracker suites.
-  - **Migration/deploy:** none.
-
 ### #66: Build missing-ingredient and nutrition review screens
 
-- [ ] **Make database reuse and the missing-ingredient ladder clear in both tools.** Depends: #62, #64 Part A, #67; #65 only for the fit panel (capability-gated). #69 deep links are capability-gated.
+- [p] **Make database reuse and the missing-ingredient ladder clear in both tools.** Depends: #62, #64 Part A, #67; #65 only for the fit panel (capability-gated). #69 deep links are capability-gated.
+  > in progress — shared resolution ladder and review model; fit panel and library links stay off
   - **Surfaces:** shared resolution and review components used by the tracker (#70) and Recipe Standardizer: missing-data dialog, ingredient/quantity review, nutrition panel, staging, mobile detail views. Ingredient-level editing opens #69 views when available rather than reimplementing them.
   - **Accept:** batched missing/ambiguous ingredients and field gaps, with missing profiles distinct from missing fields. The ladder: existing alias, approved alternative, or recorded substitute (marked estimate); official lookup (#62 job); then the optional #71 route if enabled and within budget, or a **batch research packet** (copy once, paste once) through #62; manual entry; incomplete draft; cancel. Packets are offered after a recorded official-source attempt left fields unresolved (or an explicit user override). Research review uses #62's review packet. After any resolution, the meal recalculates automatically without re-running resolved research. Retry/cancel clear; no ingredient disappears. Review shows known-versus-calculated values with rounding intervals, measured vs estimated quantities with ranges, coverage and important uncertainties, source/quality per ingredient and per nutrient, and #65 flags when available; quantities stay editable. Matched inputs calculate without models.
   - **Checks:** each choice, packet copy/paste round trip, recalculation after resolve, offline/error/retry, repeat ingredients, accessibility/mobile and both-tool round trips; tracker/root suites, lint/build.
