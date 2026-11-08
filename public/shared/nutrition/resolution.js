@@ -1,6 +1,7 @@
 import { calculateMeal } from './calculate.js';
 import { fitTargets } from './import/ingredientList.js';
-import { copyableResearchPacket, buildResearchPackets } from './research/researchPacket.js';
+import { verifyRevisionHash } from './ingredientProfile.js';
+import { PACKET_LIMITS, copyableResearchPacket, buildResearchPackets } from './research/researchPacket.js';
 import { jobIdFor, jobKeyV1 } from './research/researchJob.js';
 import { PROFILE_FIELDS } from './research/profileFields.js';
 
@@ -13,7 +14,11 @@ export const RESOLUTION_CAPABILITIES = Object.freeze({
 const LADDER = Object.freeze(['choose_existing', 'lookup_official', 'research_packet', 'manual_entry', 'incomplete_draft', 'cancel']);
 
 function missingFields(nutrients = {}) {
-    return PROFILE_FIELDS.filter(key => nutrients[key] == null || nutrients[key].value == null);
+    return PROFILE_FIELDS.filter(key => {
+        const item = nutrients[key];
+        if (item?.status === 'not_applicable') return false;
+        return item == null || item.value == null;
+    });
 }
 
 function classify(line, match, nutrients) {
@@ -24,7 +29,7 @@ function classify(line, match, nutrients) {
 }
 
 /** One row per line. Missing profiles are not listed as missing fields. */
-export function buildResolution({ lines = [], matches = [], nutrientsByLine = {} } = {}) {
+export function buildResolution({ lines = [], matches = [], nutrientsByLine = {}, revisionsByLine = {}, servings = null, totalGrams = null } = {}) {
     const seen = new Set();
     const items = [];
     for (const line of lines) {
@@ -44,9 +49,11 @@ export function buildResolution({ lines = [], matches = [], nutrientsByLine = {}
             estimate: false,
             nutrients,
             source: gap.kind === 'resolved' ? 'library' : null,
+            baseRevision: revisionsByLine[line.lineId] || null,
         });
     }
-    return { schemaVersion: 1, items, lines, capabilities: RESOLUTION_CAPABILITIES, ladder: LADDER, modelCalls: 0, cancelled: false, committed: false };
+    const grams = Number.isFinite(totalGrams) ? totalGrams : (lines.every(line => Number.isFinite(line.grams)) && lines.length ? lines.reduce((sum, line) => sum + line.grams, 0) : null);
+    return { schemaVersion: 1, items, lines, servings, totalGrams: grams, capabilities: RESOLUTION_CAPABILITIES, ladder: LADDER, modelCalls: 0, cancelled: false, committed: false };
 }
 
 function replace(state, lineId, patch) {
@@ -57,7 +64,8 @@ export function chooseExisting(state, lineId, choice) {
     const item = state.items.find(row => row.lineId === lineId);
     if (!item) return { ok: false, error: 'unknown_line', state };
     const estimate = choice.mode === 'substitute';
-    return { ok: true, state: replace(state, lineId, { kind: 'resolved', resolved: true, missingFields: [], estimate, source: estimate ? 'substitute' : 'alias', nutrients: choice.nutrients || item.nutrients, aliasProposal: choice.aliasProposal || null }) };
+    const ref = choice.ref || null;
+    return { ok: true, state: replace(state, lineId, { kind: 'resolved', resolved: true, missingFields: [], estimate, source: estimate ? 'substitute' : 'alias', nutrients: choice.nutrients || item.nutrients, selectedRef: ref, aliasProposal: choice.aliasProposal || null, match: ref ? { ...(item.match || {}), ref, outcome: 'confirmed_by_user' } : item.match }) };
 }
 
 export function lookupOfficial(state, lineId, attempt) {
@@ -86,16 +94,31 @@ export async function researchPacket(state, lineIds, { override = false, ownerUi
     for (const item of selected.filter(row => !row.resolved)) {
         const line = state.lines.find(row => row.lineId === item.lineId);
         const fields = item.missingFields.length ? item.missingFields : '*';
-        const jobId = await jobIdFor(jobKeyV1({ targetKind: 'private', fields, sourceRelease: 'resolution', target: { ownerUid, namespace, identityId: `line-${item.lineId}`, variantId: `line-${item.lineId}` } }));
+        const ref = item.match?.ref || null;
+        if (ref) {
+            const revision = item.baseRevision;
+            const aligned = revision && revision.contentHash === ref.contentHash && revision.revision === ref.revision && revision.variantId === ref.variantId && revision.identityId === ref.identityId;
+            if (!revision) return { ok: false, error: 'base_revision_required', lineId: item.lineId, state };
+            if (!aligned || !await verifyRevisionHash(revision)) return { ok: false, error: 'invalid_base_revision', lineId: item.lineId, state };
+        }
+        const identityId = ref?.identityId || `line-${item.lineId}`;
+        const variantId = ref?.variantId || `line-${item.lineId}`;
+        const jobId = await jobIdFor(jobKeyV1({ targetKind: 'private', fields, sourceRelease: 'resolution', target: { ownerUid, namespace, identityId, variantId } }));
         jobs.push({
             state: 'queued', jobId, requestedFields: fields,
             attempts: item.officialAttempts.length ? item.officialAttempts : [{ adapter: 'override', release: 'user', outcome: 'skipped' }],
-            target: { dims: line?.variant || {}, canonicalName: item.name, category: 'other', kind: line?.kind || 'generic', aliases: [], knownObservations: {} },
+            target: { dims: line?.variant || {}, canonicalName: item.name, category: 'other', kind: line?.kind || 'generic', aliases: [], knownObservations: {}, identityId, variantId, ...(ref ? { baseRef: ref, baseRevision: item.baseRevision } : {}) },
         });
     }
     if (!jobs.length) return { ok: false, error: 'nothing_unresolved', state };
-    const requests = await buildResearchPackets(jobs, { purpose: itemPurpose(selected) });
-    return { ok: true, state: { ...state, modelCalls: 0 }, packets: requests, copyText: requests.map(copyableResearchPacket).join('\n\n'), modelCalls: 0 };
+    const requests = await buildResearchPackets(jobs, { purpose: itemPurpose(selected), singleBatch: true });
+    const expiresAt = new Date(Date.now() + PACKET_LIMITS.ttlMs).toISOString();
+    const pendingJobs = jobs.map(job => {
+        const request = requests.find(item => item.targets.some(target => target.targetId === job.jobId));
+        return { ...job, state: 'awaiting_response', pendingRequest: { requestId: request.requestId, requestDigest: request.requestDigest, status: 'pending', expiresAt, baseRef: job.target.baseRef || null } };
+    });
+    const copyTexts = requests.map(copyableResearchPacket);
+    return { ok: true, state: { ...state, modelCalls: 0, pendingJobs, pendingRequests: requests }, packets: requests, pendingJobs, copyText: copyTexts.length === 1 ? copyTexts[0] : null, copyTexts, modelCalls: 0 };
 }
 
 function itemPurpose(items) {
@@ -103,6 +126,7 @@ function itemPurpose(items) {
 }
 
 export function manualEntry(state, lineId, nutrients) {
+    if (!state.items.some(item => item.lineId === lineId)) return { ok: false, error: 'unknown_line', state };
     return { ok: true, state: replace(state, lineId, { kind: 'resolved', resolved: true, missingFields: [], estimate: false, source: 'manual', nutrients }) };
 }
 
@@ -126,13 +150,27 @@ export function recalculateResolution(state, options = {}) {
     return { calculation: calculateMeal({ ...options, lines: resolutionLines(state) }), modelCalls: 0, researchedLineIds: state.items.filter(item => item.source === 'packet').map(item => item.lineId) };
 }
 
+function scaleFactValue(value, fact, state) {
+    if (!Number.isFinite(value)) return null;
+    if (fact.appliesTo?.scope !== 'serving') return value;
+    const mealServings = state.servings;
+    const factServings = fact.basis?.servings;
+    if (Number.isFinite(mealServings) && mealServings > 0 && Number.isFinite(factServings) && factServings > 0)
+        return value * (mealServings / factServings);
+    const weight = fact.basis?.servingWeight?.g;
+    const total = state.totalGrams;
+    if (Number.isFinite(total) && total > 0 && Number.isFinite(weight) && weight > 0)
+        return value * (total / weight);
+    return null;
+}
+
 export function reviewResolution(state, calculation, facts = []) {
     const rows = state.lines.map(line => {
         const item = state.items.find(row => row.lineId === line.lineId);
         return {
             lineId: line.lineId,
             name: String(line.name || ''),
-            basis: line.quantityBasis || 'estimated',
+            basis: item?.estimate ? 'estimated' : (line.quantityBasis || 'estimated'),
             grams: line.grams,
             gMin: line.gMin ?? null,
             gMax: line.gMax ?? null,
@@ -141,10 +179,16 @@ export function reviewResolution(state, calculation, facts = []) {
             text: `${line.name || 'ingredient'}: ${line.grams} g ${line.quantityBasis || ''}`.trim(),
         };
     });
-    const comparisons = fitTargets({ knownFacts: facts }).map(fact => {
+    const comparisons = facts.filter(fact => fact.appliesTo?.scope !== 'line' && (fact.appliesTo?.scope === 'serving' || fitTargets({ knownFacts: [fact] }).length)).map(fact => {
         const rows = Object.entries(fact.nutrients || {}).map(([key, observed]) => {
-            const calculated = calculation?.nutrients?.[key];
-            return { key, known: observed.value, unit: observed.unit, rounding: observed.rounding || null, calculated: calculated?.value ?? null, difference: calculated?.value == null ? null : calculated.value - observed.value };
+            const calculated = calculation?.nutrients?.[key]?.value ?? null;
+            const known = scaleFactValue(observed.value, fact, state);
+            const note = fact.appliesTo?.scope === 'serving' && known == null ? 'basis_not_comparable' : null;
+            if (observed.qualifier === 'less_than')
+                return { key, known, unit: observed.unit, qualifier: 'less_than', calculated, consistent: calculated == null || known == null ? null : calculated <= known, difference: null, ...(note ? { note } : {}) };
+            if (observed.rounding && observed.rounding !== 'exact')
+                return { key, known, unit: observed.unit, rounding: observed.rounding, calculated, comparison: 'interval', difference: null, ...(note ? { note } : {}) };
+            return { key, known, unit: observed.unit, rounding: observed.rounding || null, calculated, difference: calculated == null || known == null ? null : calculated - known, ...(note ? { note } : {}) };
         });
         return { factId: fact.factId, rows };
     });

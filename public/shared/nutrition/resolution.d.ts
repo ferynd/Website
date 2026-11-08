@@ -1,5 +1,5 @@
 export const RESOLUTION_CAPABILITIES: Readonly<{ fitPanel: false; libraryDeepLink: false; directAiRoute: false }>;
-export function buildResolution(input?: { lines?: any[]; matches?: any[]; nutrientsByLine?: Record<string, any> }): any;
+export function buildResolution(input?: { lines?: any[]; matches?: any[]; nutrientsByLine?: Record<string, any>; revisionsByLine?: Record<string, any>; servings?: number | null; totalGrams?: number | null }): any;
 export function chooseExisting(state: any, lineId: string, choice: any): any;
 export function lookupOfficial(state: any, lineId: string, attempt: any): any;
 export function researchPacket(state: any, lineIds: string[], options?: { override?: boolean; ownerUid?: string; namespace?: string }): Promise<any>;
