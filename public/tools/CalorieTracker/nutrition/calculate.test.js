@@ -63,6 +63,9 @@ describe('shared meal calculation', () => {
         }] });
         expect(both.nutrients.fiberWeightedLegacy.value).toBe(7);
         expect(calculateMeal({ lines: [{ lineId: 'plain', grams: 100, nutrients: { fiberTotal: nutrient(10) } }] }).nutrients.fiberWeightedLegacy.value).toBeNull();
+        expect(calculateMeal({ lines: [{ lineId: 'est', grams: 100, quantityBasis: 'estimated', fiberCategory: 'oats', nutrients: { fiberTotal: nutrient(10) } }] }).nutrients.fiberWeightedLegacy.status).toBe('estimated');
+        expect(calculateMeal({ lines: [{ lineId: 'src', grams: 100, fiberCategory: 'fruit', nutrients: { fiberTotal: nutrient(10, 'estimated_from_comparable') } }] }).nutrients.fiberWeightedLegacy.status).toBe('estimated');
+        expect(category.nutrients.fiberWeightedLegacy.status).toBe('calculated');
         expect(RESISTANT_STARCH_COEFFICIENT).toBe(0.55);
     });
 
@@ -78,5 +81,10 @@ describe('shared meal calculation', () => {
         const negative = calculateMeal({ carbConvention: 'includes_fiber', lines: [{ lineId: 'a', grams: 100, nutrients: { carbs: nutrient(1), fiberTotal: nutrient(5), allulose: nutrient(0), ...polyols } }] });
         expect(negative.adjustedCarbs.value).toBeNull();
         expect(negative.adjustedCarbs.negative).toBe(true);
+        const remainder = calculateMeal({ carbConvention: 'excludes_fiber', lines: [{ lineId: 'a', grams: 100, nutrients: {
+            carbs: nutrient(20), allulose: nutrient(0), ...polyols, erythritol: nutrient(2),
+            sugarAlcoholsTotal: nutrient(10),
+        } }] });
+        expect(remainder.adjustedCarbs).toMatchObject({ value: null, incomplete: true });
     });
 });

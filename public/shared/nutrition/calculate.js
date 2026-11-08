@@ -55,28 +55,32 @@ function rollup(parts) {
 }
 
 function weightedFiber(line, grams) {
+    const quantityEstimated = line.quantityBasis === 'estimated';
     const components = line.fiberComponents;
     if (Array.isArray(components) && components.length) {
         let value = 0;
         let low = 0;
         let high = 0;
+        let estimated = quantityEstimated;
         for (const component of components) {
             const coefficient = FIBER_SUBTYPE_COEFFICIENTS[component.kind];
             if (coefficient == null || !Number.isFinite(component.gramsPer100g) || component.gramsPer100g < 0) return null;
+            if (component.status === 'estimated_from_comparable') estimated = true;
             value += scalePerBasis(grams.g, component.gramsPer100g, 100) * coefficient;
             low += scalePerBasis(grams.gMin, component.low ?? component.gramsPer100g, 100) * coefficient;
             high += scalePerBasis(grams.gMax, component.high ?? component.gramsPer100g, 100) * coefficient;
         }
-        return { value, low, high, coefficient: 'subtype', status: 'calculated' };
+        return { value, low, high, coefficient: 'subtype', status: estimated ? 'estimated' : 'calculated' };
     }
     const coefficient = FIBER_CATEGORY_COEFFICIENTS[line.fiberCategory];
     const total = observation(line, 'fiberTotal');
     if (coefficient == null || !total) return null;
+    const estimated = quantityEstimated || total.status === 'estimated_from_comparable';
     return {
         value: scalePerBasis(grams.g, total.value, 100) * coefficient,
         low: scalePerBasis(grams.gMin, total.low, 100) * coefficient,
         high: scalePerBasis(grams.gMax, total.high, 100) * coefficient,
-        coefficient, status: 'calculated',
+        coefficient, status: estimated ? 'estimated' : 'calculated',
     };
 }
 
@@ -103,8 +107,11 @@ function adjustedCarbs(nutrients, convention) {
         low -= (1 - fraction) * (polyol.high ?? polyol.value);
         high -= (1 - fraction) * (polyol.low ?? polyol.value);
     }
-    if (nutrients.sugarAlcoholsTotal?.value != null && Object.keys(POLYOL_COUNTED_FRACTIONS).every(key => nutrients[key]?.value == null))
-        return { value: null, status: 'unknown', incomplete: true };
+    if (nutrients.sugarAlcoholsTotal?.value != null) {
+        const identified = Object.keys(POLYOL_COUNTED_FRACTIONS).reduce((sum, key) => sum + nutrients[key].value, 0);
+        if (nutrients.sugarAlcoholsTotal.value - identified > 1e-6)
+            return { value: null, status: 'unknown', incomplete: true };
+    }
     if (value < 0 || low < 0) return { value: null, status: 'unknown', incomplete: true, negative: true };
     return { value, low, high, status: carbs.status === 'estimated' ? 'estimated' : 'calculated', incomplete: false };
 }
@@ -171,7 +178,7 @@ export function calculateMeal(input = {}) {
         value: fiberParts.length ? fiberParts.reduce((sum, part) => sum + part.value, 0) : null,
         low: fiberParts.length ? fiberParts.reduce((sum, part) => sum + part.low, 0) : null,
         high: fiberParts.length ? fiberParts.reduce((sum, part) => sum + part.high, 0) : null,
-        status: fiberParts.length ? 'calculated' : 'unknown',
+        status: fiberParts.some(part => part.status === 'estimated') ? 'estimated' : fiberParts.length ? 'calculated' : 'unknown',
         version: FIBER_WEIGHT_VERSION,
         coverage: { ingredientsKnown: fiberParts.length, ingredientsTotal: lines.length },
     };
