@@ -1,0 +1,52 @@
+export const IMPORT_SCHEMA_VERSION: 1;
+export const INGREDIENT_LIST_KIND: string;
+export const MODEL_CALLS: 0;
+export const IMPORT_LIMITS: Readonly<{
+    bytes: number;
+    ingredients: number;
+    facts: number;
+    constraints: number;
+    assumptions: number;
+    inputs: number;
+    nutrients: number;
+    text: number;
+    title: number;
+    name: number;
+    originalText: number;
+    statement: number;
+    grams: number;
+}>;
+export const ASSISTANTS: readonly string[];
+export const INPUT_KINDS: readonly string[];
+export const MEAL_KINDS: readonly string[];
+export const LINE_KINDS: readonly string[];
+export const QUANTITY_BASES: readonly string[];
+export const ROLES: readonly string[];
+export const CONFIDENCE: readonly string[];
+export const PROVENANCES: readonly string[];
+export const OFFICIAL_PROVENANCES: readonly string[];
+export const ROUNDING: readonly string[];
+export const QUALIFIERS: readonly string[];
+export interface ImportIssue {
+    path: string;
+    message: string;
+    line?: number;
+    column?: number;
+    code?: string;
+    level?: string;
+    factId?: string;
+    lineId?: string;
+}
+export function validateIngredientList(input: unknown): {
+    ok: boolean;
+    list?: any;
+    errors?: ImportIssue[];
+    warnings: ImportIssue[];
+    factUses?: Readonly<Record<string, string>>;
+};
+export function compoundGroups(list: { ingredients?: any[] }): Array<{ parentLineId: string; childLineIds: string[] }>;
+export function isFreeQuantity(line: any, constraints?: any[]): boolean;
+export function fitTargets(list: { knownFacts?: any[] }): any[];
+export function researchEvidence(list: { knownFacts?: any[] }): any[];
+export function resolveLineQuantity(line: any, conversions?: any[]): { quantity?: any; conversionId?: string | null; converted: boolean; error?: string };
+export function normalizeMatchDims(variant?: any): any;

@@ -77,6 +77,11 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Implement the versioned registry and quality-aware imports/exports, readers first.**
   > Resolved: shared nutrient registry, anchored parser, quality/null handling, fingerprint compatibility, v1-identical writes with v2 overwrite protection, recipe readers/detail, `nutritrack-v3`, and a built/unrun census; checks: baseline acceptance reverified in #61 tracker (664/19) and root (1947/99) suites, registry/parsing/golden/fingerprint tests; prior PR acceptance records lint/build/contract/docs and rules passes; merged: 326a748 (PR #185); residual risk: v2 food/day writes remain disabled and production census/backup/enablement/deploy remain open as #60 Part B. No historical rewrite or production data action was required for Part A.
 
+## #62 — shared research pipeline
+
+- [x] **Implement one research pipeline for bulk population, library research, and meal gaps.**
+  > Resolved: shared state/preparation vocabulary plus research request/response v1, two-phase adapters, `awaiting_response`, verification, owner-scoped IndexedDB, curated/manual/label/FDC adapters with no live use, staging, coverage, and dry-run `packet`/`import-packet`; checks recorded on the PRs: tracker, root, API, lint, build, ci:contract, ci:docs, unchanged rules, empty curated manifest; merged: ffe83a6 (PR #188) and 91e10ad (PR #189); residual risk: live pins, credentials, and curated publication remain #62 Part B and require explicit approval. Both write flags stay false and the curated manifest stays at zero profiles. See [research-pipeline.md](../docs/nutrition/research-pipeline.md).
+
 ## #61 Part A — ingredient identities, revisions, and conversions
 
 - [x] **Implement ingredient identities, variants, sources, and revisions (Part A).**

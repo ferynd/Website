@@ -25,14 +25,15 @@ External assistants (ChatGPT, Claude, Grok, Codex, or James's bots) interpret ph
 
 ## Verified current state
 
-Baseline: `main` `3843254` (#61 Part A / PR #186), inspected 2026-11-06.
+Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 - Tracker: shared v2 nutrient registry/readers and anchored detail parsing are merged. Food/day writes still use the 24-key v1 shape while `NUTRIENT_V2_WRITES_ENABLED` is false; name-slug food IDs and diary snapshots remain.
 - #61 Part A is merged: versioned identities, variants, revisions, conversions, `matchIngredient`, an empty curated catalog, and an owner-scoped IndexedDB profile cache. `INGREDIENT_STORE_WRITES_ENABLED` is false and the ingredient rules are repository source, not deployed. `VariantDims.state`/`preparation` are free text; only drained/salt/fortification have enums.
 - Recipe Standardizer: confirmed links, gram bases, revision fingerprints, manual per-100-g research import (24 numeric keys, `MAX_INTAKE_ITEMS = 100`), totals, and create/update export transactions already exist. Extend them.
 - Exported foods flatten composition and zero-fill gaps after partial-coverage confirmation. Their recipe back-reference does not make the saved tracker food an ingredient recipe.
 - Data remains under `default-app-id`; source-namespace migration stays owned by F-141. Production records and authenticated sessions have not been inspected for this plan.
-- There is no ingredient-list import, research pipeline, Import workspace, Ingredient Library tab, or nutrition AI route. Existing `app/api` routes do not serve nutrition. The tracker service worker's same-origin caching risk for any future private API route is owned by #71, the only item that adds one.
+- #62 is merged: shared state/preparation vocabulary (`VOCABULARY_VERSION = 1`), research request/response v1, two-phase adapters, verification, an owner-scoped IndexedDB job store, and the dry-run CLI. No live source, key, catalog population, or production write is enabled. `fiberWeightedLegacy` stays a #64 calculation and is not a stored or requested profile field.
+- Ingredient-list import is the active #67 item: shared pure modules validate ingredient-list v1 and the paste format, keep corrections off the frozen import, adapt saved meals/recipes and legacy paste, and reconcile through #61. There is still no Import workspace, Ingredient Library tab, calculation module, or nutrition AI route. Existing `app/api` routes do not serve nutrition. The tracker service worker's same-origin caching risk for any future private API route is owned by #71, the only item that adds one.
 
 ## Invariants
 
@@ -53,26 +54,7 @@ Baseline: `main` `3843254` (#61 Part A / PR #186), inspected 2026-11-06.
 
 ## Active items
 
-Dependency order: #59 and #61 Part A are archived. Critical path: **#62 → #67 → #64 Part A → #66 → #70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #62 ships its shared state/preparation vocabulary module as a separate first PR slice; #67 may start in parallel with the rest of #62 once that slice merges. #69 may run in parallel with #65 once #66 exists.
-
-### #62: Build the shared research pipeline (deterministic sources + research packets)
-
-- [p] **Implement one research pipeline for bulk population, library research, and meal gaps.** Depends: #60 Part A, #61 Part A (both merged). No Part B is needed; #62 performs no production writes.
-  > pushed — vocabulary slice merged: ffe83a6, PR #188; research pipeline (packets request/response v1, two-phase adapters, `awaiting_response`, verification, owner-scoped IndexedDB job store, curated/manual/label/FDC bulk+API adapters with no live use, staging, coverage, dry-run CLI incl. `packet`/`import-packet`) on working/calorie-tracker-62-research-pipeline, PR #189 (under review); checks: tracker 1074, root 2012, API 43, lint, build, ci:contract, ci:docs, unchanged rules, empty curated manifest, diff check. No live sources, keys, rules, or production writes. See [pipeline handoff](../docs/nutrition/research-pipeline.md).
-  - **Surfaces:** shared research modules under `public/shared/nutrition/` (job, adapters, validator, review, packet), a shared state/preparation vocabulary module (first PR slice, merged before the rest of #62), `scripts/nutrition/` CLI, [contract](../docs/nutrition/assistant-contracts.md).
-  - **Accept:**
-    - One job/validator/review path for bulk population, Ingredient Library research (#69), and missing-ingredient research (#66). Single-item jobs use the same adapters with a one-ID batch.
-    - Deterministic adapters: curated, manual, label, and FDC bulk/API from the CLI, pinned, with no live use without approval. Exact match table; normalized units/definitions and unit conversions; field gaps; license metadata.
-    - Research request/response v1 per the [contract](../docs/nutrition/assistant-contracts.md#research-request-v1): batchable and chunked under configurable packet limits; rejects wrong-request and stale responses (expired, cancelled, already answered, or a target's profile revision or registry version changed since issue), unrequested fields, and changed known observations. Requests use the contract's canonical body and digest; the job store records each `requestId` with one pass ID.
-    - Two-phase adapters (`prepareRequest`/`acceptResponse`) reusable by #71, and an `awaiting_response` job state (expiry or cancel returns to `queued`).
-    - Idempotent job keys (catalog: manifest ID; non-catalog: namespace/owner + stable ingredient/variant identity; plus requested fields + source release), so a matched or approved target is never researched again.
-    - Explicit unknowns, with no zero unless there is evidence. Estimates need a comparator, transfer reason, and range. Assistant-sourced values start unverified; curated approval requires verified sources, private approval accepts reviewer attestation.
-    - A shared state/preparation vocabulary used by the manifest reader, #67's parser, and packet targets (one vocabulary, not two). `fiberWeightedLegacy` is computed by #64, not stored as a profile field; it is excluded from profile field-status coverage and from `requestedFields` (including `"*"`).
-    - Curated staging refuses private data. Approved private jobs produce a revision draft for the ingredient store, still gated by `INGREDIENT_STORE_WRITES_ENABLED`.
-    - An owner-scoped IndexedDB job store, cleared on sign-out and owner change like the profile cache. CLI `packet` and `import-packet` commands run the same code as the in-app flow.
-  - **Cost optimization:** deterministic sources first; source responses cached by dataset release/checksum; model-assisted research limited to residual fields and run as bounded, resumable packet batches per the [playbook](../docs/nutrition/population-playbook.md#cost-optimized-research).
-  - **Checks:** source fixtures, malformed data, retry/idempotency, unknown/LOQ, concentrated additives, raw/cooked mismatches; packet round trips including an identical canonical body and `requestDigest` from CLI and app for the same jobs; deterministic chunking of mixed all-field/field-limited job sets; rejection of stale responses, unrequested fields, and changed known observations; chunk-size bounds; resume from `awaiting_response`; root/tracker suites.
-  - **Migration/deploy:** none. No routes, rules, or live sources. Live pins, keys, and publishing are #62 Part B.
+Dependency order: #59, #61 Part A, and #62 are archived. Critical path: **#67 → #64 Part A → #66 → #70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -84,7 +66,8 @@ Dependency order: #59 and #61 Part A are archived. Critical path: **#62 → #67 
 
 ### #67: Import assistant-prepared ingredient lists
 
-- [ ] **Implement the ingredient-list import contract, parser, and reconciliation as pure code.** Depends: #61 Part A (merged), plus the merged #62 vocabulary slice only.
+- [p] **Implement the ingredient-list import contract, parser, and reconciliation as pure code.** Depends: #61 Part A (merged), plus the merged #62 vocabulary slice only.
+  > pushed — ingredient-list v1 JSON and paste parser, frozen import with corrections, saved-meal/recipe/legacy adapters, and #61 reconcile; Codex P2 findings on 1288a25 fixed at ad7f6c4; no calculation, research, network, or writes; checks: tracker 1086, root 2013, API 43, lint, next build, ci:contract, ci:docs; commit: ad7f6c4; PR: #190
   - **Surfaces:** ingredient-list v1 JSON validator and human paste-format parser per the [contract](../docs/nutrition/assistant-contracts.md#ingredient-list-import-v1); `ImportDraft` with a separate user-correction layer; input adapters for saved meals, saved recipes, Recipe Standardizer recipes, and legacy paste; a reconcile module (#61 `matchIngredient`, variant compatibility, confirmed-alias proposals); a versioned assistant-instructions module that is the source of truth for the "Copy assistant instructions" text.
   - **Accept:** strict validation with errors by JSON path or paste line/column; newer `schemaVersion` rejected with "site update required"; unknown keys rejected except `extensions`; no images or base64. Known facts without real provenance are rejected; serving facts without an applicable basis are stored unapplied; line-level facts become research evidence. Quantity units convert only through #61 conversion records; nutrient units through the registry. Exact compatible matches reuse the stored profile revision without research; underspecified/ambiguous matches are listed for confirmation; raw/cooked or drained/undrained conflicts never auto-resolve. Imports are never mutated. Zero model calls.
   - **Overlap:** absorbs Recipe Standardizer P7's input side (a recipe → ingredient-list v1 converter); do not build a second route there. Direct diary logging P6 remains separate.
@@ -193,9 +176,9 @@ Cost decision (2026-11-05, James): do not spend metered API money for routine fo
 
 Architecture decision (2026-11-06, James): external-assistant ingredient import is primary. External assistants interpret photos, recipes, labels, and descriptions and return a structured ingredient list; the site imports, matches, researches missing profiles, calculates, fits, reviews, and saves. #67 becomes the ingredient-list import contract and #70 the Import workspace; research packets move into #62 as one adapter of the shared pipeline used by bulk population and in-app research; on-site vision/OCR and any direct provider route are deferred to #71, which is never a prerequisite.
 
-Open design questions (resolve in the owning item; none blocks #62):
+Resolved for #67 (2026-11-08): `schemaVersion` gates acceptance. A newer version returns "site update required" and is not guessed. `instructionsVersion` is producer provenance only and is not a schema gate. Prose may wrap exactly one fenced JSON block; any other fence count is rejected. State and preparation come from `variantVocabulary.js`. `confirmMatch` records an explicit choice. A raw/cooked or drained/undrained conflict is not selected unless the caller passes `acknowledgeConflict`. That override is labeled and writes nothing. Bulk confirmation and curated-versus-private alias storage stay with #66/#69/#61 Part B.
 
-- #67: `schemaVersion` vs `instructionsVersion` compatibility; one fenced JSON block policy; state/preparation vocabulary contents (owned by #62's first slice); confirmation UX for underspecified matches, bulk confirmation, and curated vs private aliases.
+Open design questions (resolve in the owning item; none blocks #67):
 - #64 Part A: status aggregation, interval propagation, uncertainty ranking; weighted fiber per ingredient (recommended) vs per meal.
 - #64 Part B: diary v2 detail via a private meal-version record referenced by a v1 diary projection (recommended) vs waiting for #60 Part B; applying facts to portions consumed and raw vs cooked basis.
 - #65: dependency-free bounded least-squares/LP design, residual weights from rounding intervals, non-uniqueness detection, yield, tie-breaking, and weighting `user_stated` facts.
