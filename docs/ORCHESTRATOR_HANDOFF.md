@@ -83,6 +83,7 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 15:04 | #69 ingredient library | #196 | `e40f5bbd43d46dc480621fbeb02a0d3691943db3` | PR opened. Private writes and affected meals stay off. | Independent review of the branch head, then green CI. |
 | 2026-11-09 15:41 | #69 ingredient library | #196 | `497f94194d38e649c8c03325c200d24ed31b2f6b` | Merged to main. | Stop. #68 and the Part B items need James's approval. Do not start them. |
 | 2026-11-09 15:52 | #69 archive correction | #197 | `f26027543e3bc72e0c4580f7de12353ede410d0c` | Codex finding addressed. Search and review are archived. Private add, edit, and save stay open as #69 Part B. | Do not start #69 Part B. It needs the #61 Part B write approval. |
+| 2026-11-09 16:34 | Nutrition requirements review | | `7158db2c6349f00ac7d7d3db4a1d3477eaaba899` | Docs plan opened. James approved only the read-only census, which the parent is running. No code and no production query in this change. | Independent review of the PR head, then green CI. Do not start phase 2 until this plan is merged. |
 
 ## Logins and setup
 
