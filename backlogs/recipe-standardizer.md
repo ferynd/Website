@@ -70,7 +70,7 @@ Core P0–P5 remains a manual ChatGPT paste-back workflow; no site AI API calls.
 
 - This unimplemented scope is consolidated into [CalorieTracker #62](calorie-tracker-completed.md#62--shared-research-pipeline) and [#67](calorie-tracker-completed.md#67--ingredient-list-import), following the ingredient-database request of 2026-11-05 and the external-assistant architecture decision of 2026-11-06. Do not open a duplicate enrichment workstream here or treat P7 as completed.
 - Keep the existing manual P2 path working throughout. Its successor is the #62 research packet: [research request v1](../docs/nutrition/assistant-contracts.md#research-request-v1) replaces the 24-key `nutritionIntake` prompt. Recipes convert to ingredient-list v1 (#67) for the #70 Import workspace. Any direct AI provider route is the optional, deferred CalorieTracker #71, off unless James enables it.
-- Recipe Standardizer consumes the same ingredient profiles, calculation/solver modules, research pipeline, and resolution components as the tracker (CalorieTracker #61, #62, #64-#67). Ingredient editing and research open the shared [Ingredient Library](calorie-tracker.md#69-add-the-ingredient-library-tab) views; do not add a recipe-side copy of these data models or workflows.
+- Recipe Standardizer consumes the same ingredient profiles, calculation/solver modules, research pipeline, and resolution components as the tracker (CalorieTracker #61, #62, #64-#67). Ingredient editing and research open the shared [Ingredient Library](calorie-tracker-completed.md#69--ingredient-library) views; do not add a recipe-side copy of these data models or workflows.
 
 ### P8 — Persist ingredient checklist ticks (optional UX)
 

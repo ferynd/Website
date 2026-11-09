@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, and #70 are archived. Critical path: **#69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #69, and #70 are archived. No ungated critical-path item remains. #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last and approval-gated. #71 is deferred and off the critical path.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -63,16 +63,6 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, and #70 are a
   - **Accept:** a real FDC release is pinned by checksum; any live key stays server-side or CLI-only and never reaches the repository or client; staged curated data contains no private inputs and publishes only after review.
   - **Checks:** dry-run reports, source-license review, root/tracker suites for any config change.
   - **Migration/deploy:** **Requires James's explicit approval** to provision or use live credentials (for example an FDC API key) and to publish staged data to production.
-
-### #69: Add the Ingredient Library tab
-
-- [p] **Give the tracker a dedicated tab for managing shared ingredient profiles.** Depends: #61 (Part B for writes), #62, #66 (shared review components). Research actions go through #62 jobs and packets. Not a prerequisite for the primary import flow.
-  > pushed — shared library search and review; private writes and affected meals stay off; checks: tracker 1105, root 2015, lint, build, ci:contract, ci:docs; commit: e40f5bb; PR: #196
-  - **Surfaces:** new tracker tab and mobile layout, shared profile/conversion/research-job services from #61/#62, local cache, Recipe Standardizer link editor entry point.
-  - **Accept:** search (indexed, paginated, alias- and variant-aware); add and edit private profiles as new revisions with source and basis; review identity, variants, per-field status/provenance, missing nutrient fields, unit conversions, and revision history; import a label, manual facts, or a reviewed research result; research selected ingredients or selected missing fields via #62 jobs (official sources, then research packets). Missing-field and missing-conversion lists are distinct and filterable. Edits never change curated/public records or other users' data and never rewrite saved diary snapshots. Research results stay staged until reviewed. Recipe Standardizer opens the same library views; it builds no second editor.
-  - **Affected meals (deferred):** an "affected recipes/meals" view requires ingredient-graph references from #64 Part B. Ship #69 without that view and enable it as a capability-gated follow-on.
-  - **Checks:** tracker suite; root suite for shared modules; search/pagination, revision-on-edit, override precedence, conversion validation, staged-research review/cancel, offline read from cache, accessibility/mobile; lint/build if React surfaces change; rules tests if rules change.
-  - **Migration/deploy:** reads curated data and writes only owner-private profiles under #61 rules. Curated/public catalog writes stay in reviewed #63 batches. **Requires James's explicit approval** for any rules change or production data write enabled by this item.
 
 ### #60 Part B: Enable nutrient v2 food/day writes
 

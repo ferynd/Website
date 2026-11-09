@@ -82,6 +82,11 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Calculate every registry nutrient deterministically.**
   > Resolved: shared calculate.js scales stored nutrients, keeps unknown distinct from zero, and computes weighted fiber, adjusted carbs, and FODMAP equivalents; recipe scaling uses scalePerBasis; checks: tracker 1092, root 2014, API 43, lint, build, and all 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: df864e1 (PR #191); residual risk: fitting and snapshot saving remain #65 and #64 Part B. No production write.
 
+## #69 — Ingredient Library
+
+- [x] **Add the tracker Ingredient Library tab.**
+  > Resolved: shared library search and review; private writes and affected meals stayed off; Codex comments were answered before the recorded head; checks recorded on the PR: tracker 1105, root 2015, lint, build, and 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: 497f941 (PR #196); residual risk: an override variant with no identity is not discovered by private search without a new index. No production write.
+
 ## #65 — quantity fitting
 
 - [x] **Fit estimated grams to eligible known facts.**
