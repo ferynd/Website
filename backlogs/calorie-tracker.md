@@ -63,7 +63,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. The first selectable item is #72. #69 Part B and #64 Part B wait on #72, #73, and #74. #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. #72 is in progress on this branch. #69 Part B and #64 Part B wait on #72, #73, and #74. #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -140,7 +140,8 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
 
 ### #72: Model yield without scaling nutrients by water
 
-- [ ] **Separate raw weight, cooked weight, water, fat, and retention.** Depends: #64 Part A and #65. No production approval.
+- [p] **Separate raw weight, cooked weight, water, fat, and retention.** Depends: #64 Part A and #65. No production approval.
+  > in progress — roasted meat, boiled pasta, baking, sauce, and mixed-dish regressions
   - **Surfaces:** `fitWorkspace()`, `calculate.js`, and `fit.js`.
   - **Accept:** a finished serving weight is not an exact sum of raw ingredient grams. Water loss or gain does not scale nutrients. Fat absorbed or discarded and retention factors are explicit and are not applied twice. `yieldRetention` above 1 is not silently dropped. Regression tests cover roasted meat, boiled pasta, baking, sauces, and a mixed dish.
   - **Checks:** tracker suite for `calculate.js`, `fit.js`, and `importWorkspace.js`.

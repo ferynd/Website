@@ -112,4 +112,28 @@ describe('import workspace', () => {
         await onIngredientAuthChange('alice', 'alice', async () => {}, async () => {}, () => clearWorkspaceDraft(store));
         expect(readWorkspaceDraft('alice', store).ownerUid).toBe('alice');
     });
+
+    it('does not fit raw grams to finished weight or scale them by water loss', () => {
+        const workspace = {
+            ownerUid: 'owner-a',
+            draft: {
+                corrections: { lines: {} },
+                import: {
+                    ingredients: [{ lineId: 'oil', name: 'oil', kind: 'generic', quantity: { basis: 'estimated', g: 10, gMin: 0, gMax: 100 } }],
+                    meal: { yield: { rawTotal: { g: 20 }, cookedTotal: { g: 10 } }, servingWeight: { g: 10 } },
+                    constraints: [],
+                    knownFacts: [{ factId: 'menu', provenance: 'user_stated', appliesTo: { scope: 'meal' }, basis: {}, nutrients: { calories: { value: 90, unit: 'kcal' } } }],
+                },
+            },
+            resolution: {
+                lines: [{ lineId: 'oil', grams: 10 }],
+                items: [{ lineId: 'oil', nutrients: { calories: { value: 900, status: 'measured' } } }],
+            },
+        };
+        const fitted = fitWorkspace(workspace);
+        expect(fitted.ok).toBe(true);
+        expect(fitted.workspace.fit.quantities[0].grams).toBeCloseTo(10, 5);
+        expect(fitted.workspace.calculation.nutrients.calories.value).toBeCloseTo(90, 5);
+        expect(fitted.workspace.calculation.mass.cookedG).toBe(10);
+    });
 });

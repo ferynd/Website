@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compoundGroups } from '../../../shared/nutrition/import/ingredientList.js';
-import { calculateMeal, scalePerBasis, RESISTANT_STARCH_COEFFICIENT } from '../../../shared/nutrition/calculate.js';
+import { calculateMeal, nutrientBasis, scalePerBasis, RESISTANT_STARCH_COEFFICIENT } from '../../../shared/nutrition/calculate.js';
 
 const nutrient = (value, status = 'measured', extra = {}) => ({ value, status, ...extra });
 const zeros = (keys) => Object.fromEntries(keys.map(key => [key, nutrient(0)]));
@@ -86,5 +86,57 @@ describe('shared meal calculation', () => {
             sugarAlcoholsTotal: nutrient(10),
         } }] });
         expect(remainder.adjustedCarbs).toMatchObject({ value: null, incomplete: true });
+    });
+
+    it('keeps roasted-meat nutrients when water is lost', () => {
+        const meat = { lineId: 'roast', grams: 200, waterDeltaG: -50, nutrients: { calories: nutrient(200) } };
+        const result = calculateMeal({ lines: [meat] });
+        expect(result.nutrients.calories.value).toBe(400);
+        expect(result.mass).toMatchObject({ rawG: 200, cookedG: 150, waterDeltaG: -50 });
+        expect(result.countedLineIds).toEqual(['roast']);
+    });
+
+    it('keeps boiled-pasta nutrients when water is gained', () => {
+        const pasta = { lineId: 'pasta', grams: 100, yieldRetention: 2, nutrients: { calories: nutrient(350) } };
+        const result = calculateMeal({ lines: [pasta] });
+        expect(nutrientBasis(pasta).g).toBe(100);
+        expect(result.nutrients.calories.value).toBe(350);
+        expect(result.mass.cookedG).toBe(200);
+        expect(result.countedLineIds).toEqual(['pasta']);
+    });
+
+    it('keeps baking nutrients when dough loses water', () => {
+        const dough = { lineId: 'dough', grams: 500, waterDeltaG: -50, nutrients: { calories: nutrient(250) } };
+        const result = calculateMeal({ lines: [dough] });
+        expect(result.nutrients.calories.value).toBe(1250);
+        expect(result.mass).toMatchObject({ rawG: 500, cookedG: 450, waterDeltaG: -50 });
+    });
+
+    it('discards sauce fat once and does not copy it onto another line', () => {
+        const result = calculateMeal({ lines: [
+            { lineId: 'oil', grams: 30, fatDiscardedG: 15, nutrients: { calories: nutrient(900) } },
+            { lineId: 'tomato', grams: 100, fatAbsorbedG: 15, nutrients: { calories: nutrient(20) } },
+        ] });
+        expect(result.nutrients.calories.value).toBe(135 + 20);
+        expect(result.mass.fatDiscardedG).toBe(15);
+        expect(result.mass.fatAbsorbedG).toBe(15);
+        expect(result.mass.cookedG).toBe(15 + 100);
+        const external = calculateMeal({ lines: [
+            { lineId: 'potato', grams: 100, fatAbsorbedG: 10, fatAbsorbedExternal: true, nutrients: { calories: nutrient(80) } },
+        ] });
+        expect(external.nutrients.calories.value).toBe(80);
+        expect(external.mass.cookedG).toBe(110);
+    });
+
+    it('counts a mixed dish once and does not scale it by water or serving weight', () => {
+        const result = calculateMeal({ lines: [
+            { lineId: 'burger', grams: 400, nutrients: { calories: nutrient(300) } },
+            { lineId: 'patty', parentLineId: 'burger', grams: 150, waterDeltaG: -30, nutrients: { calories: nutrient(250) } },
+            { lineId: 'bun', parentLineId: 'burger', grams: 80, nutrients: { calories: nutrient(270) } },
+            { lineId: 'cheese', parentLineId: 'burger', grams: 20, yieldRetention: 1, nutrients: { calories: nutrient(350) } },
+        ] });
+        expect(result.countedLineIds).toEqual(['patty', 'bun', 'cheese']);
+        expect(result.nutrients.calories.value).toBe(375 + 216 + 70);
+        expect(result.mass).toMatchObject({ rawG: 250, cookedG: 220, waterDeltaG: -30 });
     });
 });

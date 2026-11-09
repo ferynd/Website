@@ -114,6 +114,10 @@ function resolutionLines(draft) {
             kind: line.kind,
             parentLineId: line.parentLineId,
             yieldRetention: line.yieldRetention,
+            waterDeltaG: line.waterDeltaG,
+            fatAbsorbedG: line.fatAbsorbedG,
+            fatDiscardedG: line.fatDiscardedG,
+            fatAbsorbedExternal: line.fatAbsorbedExternal,
             order: line.order,
             fiberCategory: line.fiberCategory,
             fiberComponents: line.fiberComponents,
@@ -291,6 +295,10 @@ export function fitWorkspace(workspace) {
             nutrients: item?.nutrients || {},
             parentLineId: line.parentLineId,
             yieldRetention: line.yieldRetention,
+            waterDeltaG: line.waterDeltaG,
+            fatAbsorbedG: line.fatAbsorbedG,
+            fatDiscardedG: line.fatDiscardedG,
+            fatAbsorbedExternal: line.fatAbsorbedExternal,
             order: line.order,
             fiberCategory: line.fiberCategory,
             fiberComponents: line.fiberComponents,
@@ -298,17 +306,6 @@ export function fitWorkspace(workspace) {
     });
     const meal = workspace.draft.import.meal || {};
     const constraints = [...(workspace.draft.import.constraints || [])];
-    const weightTarget = meal.servingWeight?.g ?? meal.yield?.rawTotal?.g;
-    if (Number.isFinite(weightTarget) && weightTarget > 0) {
-        const ids = lines.filter(line => !line.parentLineId).map(line => line.lineId);
-        constraints.push({ type: 'sum', lineIds: ids, gMin: weightTarget, gMax: weightTarget });
-    }
-    const raw = meal.yield?.rawTotal?.g;
-    const cooked = meal.yield?.cookedTotal?.g;
-    if (Number.isFinite(raw) && raw > 0 && Number.isFinite(cooked) && cooked > 0 && cooked <= raw) {
-        for (const line of lines)
-            if (line.yieldRetention == null) line.yieldRetention = cooked / raw;
-    }
     const fit = fitQuantities({ lines, constraints, facts, servings: meal.servings?.count ?? meal.servings ?? null });
     let resolution = workspace.resolution;
     let calculation = workspace.calculation;

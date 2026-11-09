@@ -1,7 +1,7 @@
 import { calculateMeal } from './calculate.js';
 
 /** Deterministic quantity fit. Profiles, known facts, and fixed grams stay put. */
-export const FIT_VERSION = 1;
+export const FIT_VERSION = 2;
 const DEVIATION_WEIGHT = 1e-8;
 const CONSTRAINT_WEIGHT = 1e6;
 const GRAM_EPSILON = 0.05;
@@ -91,7 +91,9 @@ function nutrientComplete(lines, key) {
 
 function slopeOf(line, key) {
     if (!finite(line.nutrients?.[key]?.value)) return null;
-    const retention = line.yieldRetention == null ? 1 : line.yieldRetention;
+    const stated = line.yieldRetention == null ? 1 : line.yieldRetention;
+    if (!finite(stated) || stated < 0) return null;
+    const retention = stated > 1 ? 1 : stated;
     return retention * line.nutrients[key].value / 100;
 }
 
