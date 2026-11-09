@@ -82,6 +82,7 @@
       <div class="tab-bar-wrap">
         <nav class="tab-bar" role="tablist" aria-label="App sections">
           <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today"     tabindex="0">Today</button>
+          <button id="tab-btn-import"    class="tab-btn"        data-tab="import"    role="tab" aria-selected="false" aria-controls="tab-import"    tabindex="-1">Import</button>
           <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients" tabindex="-1">Nutrients</button>
           <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy"    tabindex="-1">Energy</button>
           <button id="tab-btn-corrections" class="tab-btn"      data-tab="corrections" role="tab" aria-selected="false" aria-controls="tab-corrections" tabindex="-1">Corrections</button>
@@ -98,6 +99,36 @@
     <!-- ══════════════════════════════════════════════════
          TODAY TAB
          ══════════════════════════════════════════════════ -->
+    <div id="tab-import" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-import">
+      <h2 class="text-xl font-bold mb-2 text-secondary">Import ingredient list</h2>
+      <p id="import-capability" class="text-xs text-muted mb-2"></p>
+      <p id="import-stages" class="text-xs text-muted mb-3"></p>
+      <label for="import-kind" class="block text-sm font-medium text-primary mb-1">Input</label>
+      <select id="import-kind" class="mb-3">
+        <option value="ingredient_list">Ingredient list (JSON or paste)</option>
+        <option value="legacy_paste">Legacy nutrition paste</option>
+        <option value="saved_meal">Saved meal JSON</option>
+        <option value="saved_recipe">Saved recipe JSON</option>
+      </select>
+      <label for="import-text" class="block text-sm font-medium text-primary mb-1">Ingredient list</label>
+      <textarea id="import-text" rows="8" placeholder="Paste an assistant ingredient list, or switch the input for a legacy paste or saved meal."></textarea>
+      <div class="flex gap-2 flex-wrap mt-2 mb-3">
+        <button type="button" id="import-run" class="btn btn-primary btn-sm">Import</button>
+        <button type="button" id="import-instructions" class="btn btn-secondary btn-sm">Copy assistant instructions</button>
+        <button type="button" id="import-match" class="btn btn-secondary btn-sm">Match</button>
+        <button type="button" id="import-lookup" class="btn btn-secondary btn-sm">Record official miss</button>
+        <button type="button" id="import-packet" class="btn btn-secondary btn-sm">Copy research packet</button>
+        <button type="button" id="import-review" class="btn btn-secondary btn-sm">Calculate and review</button>
+        <button type="button" id="import-export" class="btn btn-secondary btn-sm">Copy export</button>
+        <button type="button" id="import-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+      </div>
+      <p id="import-stage" class="text-sm mb-2" aria-live="polite"></p>
+      <p id="import-message" class="text-sm mb-2" role="status"></p>
+      <div id="import-output" class="text-sm mb-3"></div>
+      <label for="import-copy" class="block text-sm font-medium text-primary mb-1">Copy</label>
+      <textarea id="import-copy" rows="6" readonly></textarea>
+    </div>
+
     <div id="tab-today" class="tab-panel" role="tabpanel" aria-labelledby="tab-btn-today">
       <div class="today-layout">
 

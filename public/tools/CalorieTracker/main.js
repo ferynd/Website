@@ -1,5 +1,6 @@
 import {clearResearchJobs} from '../../shared/nutrition/research/indexedDbResearchStore.js';
 import {clearProfileCache} from '../../shared/nutrition/profileCache.js';
+import {clearWorkspaceDraft} from '../../shared/nutrition/importWorkspaceDraft.js';
 import {onIngredientAuthChange} from './services/ingredientSession.js';
 /**
  * @file main.js
@@ -530,6 +531,7 @@ export async function handleLogout() {
   try {
     try { await clearResearchJobs(); } catch { /* Research storage cleanup must not block logout. */ }
     try { await clearProfileCache(); } catch { /* Cache cleanup must not block logout. */ }
+    try { await clearWorkspaceDraft(); } catch { /* Draft cleanup must not block logout. */ }
     await authFunctions.logout();
 
     // Reset state

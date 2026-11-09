@@ -2,7 +2,7 @@
 
 [Overview](README.md) · [Workflow](workflow.md) · [Assistant contract](assistant-contracts.md#ingredient-list-import-v1) · [Research pipeline](research-pipeline.md)
 
-Shared modules under [public/shared/nutrition/import](../../public/shared/nutrition/import/) validate assistant-prepared ingredient lists and reconcile them with #61 profiles. They do not calculate nutrients, fit quantities, research missing foods, render the Import workspace, or write Firestore. Those remain #64, #65, #62/#66, #70, and the approval-gated Part B items. Both write flags stay false. No photo, OCR, or paid API path is added.
+Shared modules under [public/shared/nutrition/import](../../public/shared/nutrition/import/) validate assistant-prepared ingredient lists and reconcile them with #61 profiles. They do not calculate nutrients, fit quantities, research missing foods, or write Firestore. The tracker Import workspace (`importWorkspace.js`, #70) calls these modules plus #66 resolution and #64 calculation. Quantity fitting and production saving stay off. Both write flags stay false. No photo, OCR, or paid API path is added.
 
 | Module | Responsibility |
 | --- | --- |

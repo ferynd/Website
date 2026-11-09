@@ -4,6 +4,7 @@
  */
 
 import { state } from '../state/store.js';
+import { wireImportWorkspace } from '../ui/importWorkspace.js';
 import {
   ensureDateInput, loadUserData, loadDailyFoodItems,
   getCurrentDailyEntry, persistExerciseSession, updateExerciseSessionsList,
@@ -54,6 +55,7 @@ export function wire() {
     wireFoodDatabaseEvents();
     wireExportEvents();
     wireTabs();
+    wireImportWorkspace(() => state.userId);
     wireExerciseSessionModal();
     wireVacationQuickButtons();
 
