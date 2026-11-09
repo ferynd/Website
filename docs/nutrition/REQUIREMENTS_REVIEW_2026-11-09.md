@@ -29,7 +29,7 @@ James approved only the read-only #60 Part B census and backup. The parent is ru
 | One registry, profile store, and calculation module | (1) | `public/shared/nutrition/nutrientRegistry.js`, `ingredientStore.js`, and `calculate.js`. Recipe Standardizer imports the same registry. |
 | Saving a meal does not auto-log it | (1) for both current paths | `saveWorkspace()` exports or refuses. It does not write a diary entry. Legacy `saveFoodItemToDatabase()` tells the user the food is ready to add; `staging/parser.js` adds to today's log only from a separate staged action. |
 | Flat saved foods stay compatible | (1) while v2 writes are off | Food writes stay the 24-number v1 shape. A v1 writer refuses a document whose `nutrientSchemaVersion` is 2 or higher (`food/save.js`, `nutrition/nutrientRecord.js`). |
-| Lossless conversion count of existing flat foods | (4) | Not measured. #77 may read a census export the parent already produced. It must not query production and must not rewrite foods. |
+| Lossless conversion count of existing flat foods | (4) | Not measured. #77 may read a foods-only extract the parent supplies, kept outside the checkout. The committed result is aggregate counts only. It must not query production, commit names or values, or rewrite foods. |
 
 **Implemented / tested / deployed / populated:** coexistence and the no-auto-log save split are implemented and covered by `nutrition/importWorkspace.test.js` (`committed: false`) plus the existing food-save tests. Rules and write flags are not deployed. Nothing is populated.
 
@@ -41,7 +41,7 @@ James approved only the read-only #60 Part B census and backup. The parent is ru
 | Save testing uses an isolated Firebase test project | (3) | No test-project runbook or suite exists. #61 Part B still describes production smoke, which is a different approval. Phase 3 owns the isolated project. |
 | No silent edits to existing foods or diary | (1) for the beta path | The workspace never calls the food or diary writers. |
 | A global nutrient flag must not expose legacy flows to incompatible writes | (2) and (4) | `NUTRIENT_V2_WRITES_ENABLED` is one compile-time switch for food and day shape. Turning it on would change legacy saves. Do not flip it for the beta. Meal snapshots belong in the #64 Part B collection. Legacy food and diary documents stay v1. |
-| Old clients and cached PWAs cannot overwrite or drop new fields | (1) for v2 food documents that do not exist yet; (2) for the cache-name plan | v1 writers skip `nutrientSchemaVersion >= 2`. The repository cache is already `nutritrack-v5` while writes are off (`sw.js`, `capabilities.js`). This PR updates the #61 runbook so the write-enable PR must pick a new cache name after v5. #75 keeps the compatibility note. |
+| Old clients and cached PWAs cannot overwrite or drop new fields | (1) for saved foods only; (2) for diary and the cache-name plan | Food save and saved-food CSV import refuse a document whose `nutrientSchemaVersion` is 2 or higher. `saveDailyEntry()` and `saveDailyEntrySnapshot()` replace the day with `setDoc` and do not read its schema, so a cached page can erase newer diary fields. That diary guard is unfinished #60 Part B work. Do not treat it as done. The repository cache is already `nutritrack-v5` while writes are off. This PR updates the #61 runbook so the write-enable PR must pick a new cache name after v5. #75 keeps the compatibility note. Whether production already contains v2-shaped documents is unknown until the parent's census. Current repository code does not write them while the flag is false. |
 | Clear failure, and the user can abandon to the old flow | (2) | `cancelWorkspace()` keeps `committed: false`. The Import screen does not yet say that failure leaves Today unchanged, and the tab is not labeled Beta. #78. |
 
 **Implemented / tested:** write flags false, cancel does not commit, v1 refuses a newer food schema. **Deployed:** flags and rules are not deployed as enabled writers. **Populated:** no.
@@ -130,7 +130,7 @@ Class **(3)** and **(4)**. #62 Part B and #63 stay gated. New items **#76** (dry
 
 A dry-run that uses pinned local fixtures and writes a report is safe. A live USDA or manufacturer pull is #62 Part B and is not approved. Importing the result into the curated catalog is #63 and is not approved. Subscription residual research stays the default; metered APIs stay at $0. The pilot report must include matches, coverage, uncertainty, unresolved fields, validation failures, and the production writes it would make. It must not perform those writes.
 
-#77 estimates how many existing flat foods could convert without loss. It reads a census export supplied by the parent. It does not query production and does not rewrite foods.
+#77 estimates how many existing flat foods could convert without loss. It reads a foods-only extract supplied by the parent, kept outside the checkout. The committed result is aggregate counts only. It does not query production, does not commit names or nutrient values, and does not rewrite foods.
 
 **Implemented:** the queue and the playbook. **Tested:** catalog JSON checks from #59. **Deployed:** no live source. **Populated:** no.
 
@@ -147,7 +147,7 @@ Class **(1)** for the registry and calculator definitions. Copy-block placement 
 | FODMAP | lactose, fructans, GOS, optional excess fructose, plus calculated milk equivalents and scoops |
 | Status | `measured`, `label_reported`, `calculated`, `estimated_from_comparable`, `below_quantification_limit`, `unknown`, `not_applicable`, `legacy_unclassified`. Null is unknown, not zero. |
 
-Recipe Standardizer imports the same registry. **Tested:** `calculate.test.js` covers weighted fiber, adjusted carbs, and unknown-not-zero. **Deployed / populated:** no stored v2 foods and no catalog values.
+Recipe Standardizer imports the same registry. **Tested:** `calculate.test.js` covers weighted fiber, adjusted carbs, and unknown-not-zero. **Deployed:** not claimed. **Populated:** the curated catalog has no profiles. Current repository code does not write v2 food documents while `NUTRIENT_V2_WRITES_ENABLED` is false. Whether production already holds v2-shaped documents is unknown until the parent's census.
 
 ## (7) Phases
 
@@ -155,8 +155,8 @@ Adopted as the backlog order. Phase 1 is the parent's job. This PR does not star
 
 1. **Census and backup.** Approved read-only #60 Part B. Parent-run. Agents do not run it.
 2. **Technical corrections and branch work, production writes still off.** #72, #73, #74 lookup honesty, #75, #78, then #69 Part B and #64 Part B behind the existing false flags and emulator or fixture tests.
-3. **Beta validation** in an isolated Firebase test project. Not production.
-4. **Priority-1 dry-run pilot** (#76) on pinned local fixtures, plus the flat-food report (#77) from a supplied export.
+3. **Beta validation** (#79) in an isolated Firebase test project. Not production. #68 depends on its recorded result. #79 is an active blocked item so phase 3 cannot be skipped by taking the next unchecked production gate.
+4. **Priority-1 dry-run pilot** (#76) on pinned local fixtures, plus the aggregate flat-food report (#77) from a foods-only extract.
 5. **Controlled enablement**, one gate at a time, each with its own backup and rollback: #62 Part B, named #63 waves, #61 Part B, and only then a writer flag if legacy saves stay on v1. #60's global v2 food/day flag stays off unless a later approval shows legacy flows cannot see an incompatible write.
 6. **#68 acceptance** after those gates and a #63 gap report.
 7. **#71** stays deferred. Building the route still needs approval.
@@ -182,6 +182,6 @@ No production approval is required for:
 5. **#78** — rename the tab to Ingredient Import (Beta), and make failure and abandon copy say that Today is unchanged.
 6. **#69 Part B and #64 Part B** — implement in branches with both write flags false and with emulator or fixture tests. Do not deploy rules or point tests at production.
 7. **#76** — dry-run report from pinned local fixtures only.
-8. **#77** — conversion estimate from a census file the parent supplies. Do not query production.
+8. **#77** — aggregate conversion counts from a foods-only extract the parent supplies. Do not query production or commit private rows.
 
 Still blocked on a further approval: live FDC or manufacturer pulls, catalog import, rules deploy, flipping either write flag, production meal or profile saves, production smoke, and #71.
