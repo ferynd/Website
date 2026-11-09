@@ -15,13 +15,13 @@ External assistants (ChatGPT, Claude, Grok, Codex, or James's bots) interpret ph
 ## Parameters
 
 - **Branch/PR:** one focused branch/PR per item or bounded #63 population batch from current `main`; `working/calorie-tracker-<ID>-<topic>` where possible.
-- **Commit scope:** `calorie-tracker`; stable IDs `#N`; next unused ID: **#72**. Population batches use `#63-<wave>-<sequence>`; never reuse IDs.
+- **Commit scope:** `calorie-tracker`; stable IDs `#N`; next unused ID: **#79**. Population batches use `#63-<wave>-<sequence>`; never reuse IDs.
 - **Archive:** `backlogs/calorie-tracker-completed.md`.
 - **Checks:** tracker behavior: `cd public/tools/CalorieTracker && npm test`; recipe/shared logic: root `npm test`; React pages/shared config: `npm run lint` and `npm run build`; auth/rules/data-model changes: relevant tests plus `npm run test:rules`.
 - **Docs/data-only:** validate JSON (including contract examples), unique IDs, links/anchors, dispatch, cross-file contracts, and source-of-truth consistency. No app tests required.
 - **Release:** follow [Firebase release](../docs/firebase-release.md) for rules/private-data changes. Record actual deployment/manual evidence. No historical rewrite or namespace cutover is bundled into this feature.
 - **Approval gate:** steps marked **Requires James's explicit approval** (Firestore rules deploys, production or private-data writes/migrations, live catalog population imports, provisioning or enabling live credentials such as FDC keys, and enabling the optional direct AI provider route (#71) or raising its $0 spend cap) wait for that approval, recorded in the item note or PR. Code, tests, fixtures, emulator runs, dry-run reports, and staged review artifacts may proceed without it. No approval is implied by this backlog.
-- **Contract:** [overview](../docs/nutrition/README.md), [workflow](../docs/nutrition/workflow.md), [assistant contracts](../docs/nutrition/assistant-contracts.md), [population playbook](../docs/nutrition/population-playbook.md), [catalog](../docs/nutrition/ingredient-catalog.json).
+- **Contract:** [overview](../docs/nutrition/README.md), [workflow](../docs/nutrition/workflow.md), [assistant contracts](../docs/nutrition/assistant-contracts.md), [population playbook](../docs/nutrition/population-playbook.md), [catalog](../docs/nutrition/ingredient-catalog.json), [2026-11-09 requirements review](../docs/nutrition/REQUIREMENTS_REVIEW_2026-11-09.md).
 
 ## Verified current state
 
@@ -33,7 +33,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 - Exported foods flatten composition and zero-fill gaps after partial-coverage confirmation. Their recipe back-reference does not make the saved tracker food an ingredient recipe.
 - Data remains under `default-app-id`; source-namespace migration stays owned by F-141. Production records and authenticated sessions have not been inspected for this plan.
 - #62 is merged: shared state/preparation vocabulary (`VOCABULARY_VERSION = 1`), research request/response v1, two-phase adapters, verification, an owner-scoped IndexedDB job store, and the dry-run CLI. No live source, key, catalog population, or production write is enabled. `fiberWeightedLegacy` stays a #64 calculation and is not a stored or requested profile field.
-- Ingredient-list import is the active #67 item: shared pure modules validate ingredient-list v1 and the paste format, keep corrections off the frozen import, adapt saved meals/recipes and legacy paste, and reconcile through #61. There is still no Import workspace, Ingredient Library tab, calculation module, or nutrition AI route. Existing `app/api` routes do not serve nutrition. The tracker service worker's same-origin caching risk for any future private API route is owned by #71, the only item that adds one.
+- As of `497f941`: #64 Part A calculation, #65 fitting, #66 resolution, #67 import, #70 Import workspace, and the #69 search/review Library tab are on `main`. Both write flags are false. The repository service worker is `nutritrack-v5`. The curated catalog has 0 profiles. The 1,114-entry queue is all `queued` (253 priority 1). There is no nutrition API route. #71 still owns any future private API cache risk. Do not describe this code as a rules deploy, a write enablement, or a populated catalog.
 
 ## Invariants
 
@@ -52,9 +52,18 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 - The legacy paste parser stays supported; structured ingredient-level data is the primary interface.
 - Keep private meals/profiles owner-authorized; public reference data contains no private inputs.
 
+## Release phases (James, 2026-11-09)
+
+1. Read-only census and backup (#60 Part B). Approved. The parent runs it. Agents do not query or export production.
+2. Technical corrections and branch implementations with both write flags false: #72, #73, #74 lookup honesty, #75, #78, then #69 Part B and #64 Part B using emulator or fixture tests.
+3. Beta validation in an isolated Firebase test project. Not production.
+4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the flat-food conversion report (#77) from a supplied census export.
+5. Controlled enablement, one gate at a time, each with backup and rollback. Live FDC, catalog import, rules, and writer flags stay unapproved. Do not flip `NUTRIENT_V2_WRITES_ENABLED` for the beta; legacy food and diary writes stay v1.
+6. #68 acceptance after those gates and a #63 gap report. #71 stays deferred.
+
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice are archived. No ungated critical-path item remains. #60 Part B, #61 Part B, #69 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last and approval-gated. #71 is deferred and off the critical path.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice are archived. The next unblocked work is phase 2 above. #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, and #68 stay approval-gated. #71 is deferred.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -67,6 +76,7 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
 ### #60 Part B: Enable nutrient v2 food/day writes
 
 - [ ] **Complete the approval-gated nutrient storage rollout.** Depends: #60 Part A (merged `326a748`, PR #185). Gate for v2 detail in diary snapshots.
+  > blocked — James approved only the read-only census and backup on 2026-11-09. The parent is running that against production. Agents must not run it. Enabling `NUTRIENT_V2_WRITES_ENABLED` and any writer deploy remain unapproved. A global v2 flag must not change legacy food or diary writes; beta detail belongs on #64 Part B snapshots.
   - **Surfaces:** [Firebase release](../docs/firebase-release.md), read-only census/backup, food/day shape flag, deployment and compatibility verification.
   - **Accept:** perform the separately approved census and backup, deploy readers before writers, verify cached/PWA clients cannot erase v2 fields, then enable the food/day shape flag in a separate reviewed release. Preserve all historical logs and fingerprint compatibility.
   - **Checks:** the release runbook, tracker/root/rules suites and lint/build; record actual manual/deployment evidence.
@@ -82,18 +92,18 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
 
 ### #69 Part B: Save private library profiles
 
-- [ ] **Add, edit, and save owner-private ingredient profiles.** Depends: #61 Part B and the search/review library merged in #196 (`497f941`). Do not start without James's explicit approval.
-  - **Surfaces:** library add/edit actions and `commitLibraryEdit`. The merged tab searches, reviews, and stages research only. `commitLibraryEdit()` returns `writes_disabled` while `INGREDIENT_STORE_WRITES_ENABLED` is false.
-  - **Accept:** add and edit private profiles as new revisions with source and basis; import a label, manual facts, or a reviewed research result into a saved revision. Saved edits never change curated or public records, never change another user's data, and never rewrite saved diary snapshots. Research results stay staged until reviewed. Affected meals stay deferred until #64 Part B.
-  - **Checks:** tracker and root suites; revision-on-edit, override precedence, and staged-research save or cancel. Rules tests if rules change.
-  - **Migration/deploy:** **Requires James's explicit approval** together with the #61 Part B write enablement. `INGREDIENT_STORE_WRITES_ENABLED` stays false until then.
+- [ ] **Add, edit, and save owner-private ingredient profiles.** Depends: #61 Part B for a production save, and the search/review library merged in #196 (`497f941`). Branch code and emulator tests may proceed with the write flag false. Do not deploy rules or write production.
+  - **Surfaces:** library add/edit actions, `commitLibraryEdit`, and `researchLibraryFields`. The merged tab searches, reviews, and stages research only. The research button passes the name and owner, not the selected ref, revision, and field list. `commitLibraryEdit()` returns `writes_disabled`.
+  - **Accept:** add a private profile; an edit creates the next revision; import a label or manual verified values; review and save a research result without dropping per-field source, unit, status, uncertainty, confidence, comparator, derivation, source version, or retrieval date; choose specific missing fields and pass that ref, revision, and field list into the research request; show evidence and revision history; private overrides replace the owner's view; curated records stay immutable. Saved edits never change another user's data and never rewrite saved diary snapshots. Affected meals stay deferred until #64 Part B.
+  - **Checks:** tracker and root suites; revision-on-edit, override precedence, field selection, and staged-research save or cancel. Rules tests if rules change. Emulator only until #61 Part B is approved.
+  - **Migration/deploy:** production save **requires James's explicit approval** together with #61 Part B. `INGREDIENT_STORE_WRITES_ENABLED` stays false until then.
 
 ### #64 Part B: Save ingredient graphs with reproducible meal snapshots
 
-- [ ] **Persist meal/recipe versions and connect them to saved foods and diary entries.** Depends: #64 Part A, #61 Part B; #60 Part B for detail fields.
+- [ ] **Persist meal/recipe versions and connect them to saved foods and diary entries.** Depends: #64 Part A, #61 Part B for a production save, and #72 for yield. Legacy food and diary documents stay v1; do not wait on flipping `NUTRIENT_V2_WRITES_ENABLED`. Branch code may proceed with both write flags false.
   - **Surfaces:** meal and recipe version records, recipe link/export/save, tracker food/diary services, storage/rules, import/export.
-  - **Accept:** save as reusable recipe, food item, and/or diary entry. Casserole/burger share applicable profile revisions with different quantities; nested recipes are acyclic and counted once. Save ingredient identities pinned to profile revision and hash, quantities with basis and ranges, known facts separate from calculated values, sources, assumptions, fit parameters, import provenance, and the complete nutrition snapshot. Create new approved profiles once; reuse existing IDs. Saved recipes rescale instantly without research or models. Diary entries hold a `mealRef` and a frozen snapshot; newer profile data only shows a "new data available" notice with explicit recalculation. Expose ingredient→meal references for #69's affected-meals view. Retry/concurrency/failure preserves integrity. Flat foods still load.
-  - **Checks:** tracker/root/rules suites; reuse/version/deletion/conflict/export, immutable-history, offline-recalculation, and partial-save tests; lint/build for views.
+  - **Accept:** save as reusable recipe, food item, and/or diary entry. Saving a meal does not add it to the diary; diary add is a separate explicit action. Casserole/burger share applicable profile revisions with different quantities; nested recipes are acyclic and counted once. Save ingredient identities pinned to profile revision and hash, quantities with units, bases, and ranges, known facts separate from calculated values, preparation and yield assumptions from #72, sources, assumptions, fit parameters, import provenance, calculation and fit versions, and the complete nutrition snapshot. Create new approved profiles once; reuse existing IDs. Re-portioning a saved meal uses ordinary code and no AI call. Diary entries hold a `mealRef` and a frozen snapshot; newer profile data only shows a "new data available" notice with explicit recalculation. Expose ingredient→meal references for #69's affected-meals view. Transaction failure, retry, dedupe, concurrent edits, and an interrupted save leave a visible result and no partial diary write. Flat foods still load.
+  - **Checks:** tracker/root/rules suites; reuse/version/deletion/conflict/export, immutable-history, offline-recalculation, partial-save, retry, dedupe, concurrent-edit, and interrupted-save tests; lint/build for views.
   - **Diary ownership:** tracker-owned logging with references/snapshots; no recipe-side whole-day writer or implicit P6. Test another tab editing the day between recipe export and tracker logging.
   - **Migration/deploy:** additive schema, legacy adapters, verified export/import round trips. No automatic reconstruction of old meals from totals. Offline saves are queued or fail visibly; success is reported only after commit. **Requires James's explicit approval** for any rules deploy or production schema change.
 
@@ -109,7 +119,7 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
 
 ### #68: Verify accuracy, reuse, migration, and release
 
-- [ ] **Complete staged rollout and operating documentation.** Depends: #60 Part B, #61 Part B, #62, #62 Part B, an explicit #63 gap report, #64 Part A, #64 Part B, #65, #66, #67, #69, and #70. #71 is not required.
+- [ ] **Complete staged rollout and operating documentation.** Depends: #60 Part B writer decision, #61 Part B, #62, #62 Part B, an explicit #63 gap report, #64 Part A, #64 Part B, #65, #66, #67, the #69 search/review slice, #69 Part B for private saves, #70, #72, #73, and #74. #71 is not required. The read-only census does not by itself satisfy this item.
   - **Surfaces:** both tools, rules/migration, source refresh, backup/recovery, help, project prompts, and assistant instructions.
   - **Accept:** exercise bowls, pasta, soups, baking, cocktails, and burger/casserole reuse through the #70 Import workspace with assistant-prepared lists and through Recipe Standardizer; research-packet round trips; zero re-research of matched ingredients; compare exact recipes with withheld totals; distinguish source data from uncertain portions. Verify diary immutability, versioned refresh, zero AI for repeats and matched inputs, offline calculation, packet import honesty, and every missing-data choice. Publish capabilities and coverage.
   - **Checks:** relevant complete suites, recorded signed-in production smoke, migration count/hash checks, restore/retry exercise, source-license review.
@@ -123,6 +133,62 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
   - **Checks:** flag-off default (no provider calls), auth including anonymous rejection, rate-limit, cancellation, $0-cap and concurrent budget-reservation tests, service-worker network-only test, `npm run test:api`; update `SECURITY.md` and `ARCHITECTURE.md` when built.
   - **Migration/deploy:** **Requires James's explicit approval** to build or enable the route, provision a key, raise the $0 cap, or deploy any Storage rules it needs.
 
+### #72: Model yield without scaling nutrients by water
+
+- [ ] **Separate raw weight, cooked weight, water, fat, and retention.** Depends: #64 Part A and #65. No production approval.
+  - **Surfaces:** `fitWorkspace()`, `calculate.js`, and `fit.js`.
+  - **Accept:** a finished serving weight is not an exact sum of raw ingredient grams. Water loss or gain does not scale nutrients. Fat absorbed or discarded and retention factors are explicit and are not applied twice. `yieldRetention` above 1 is not silently dropped. Regression tests cover roasted meat, boiled pasta, baking, sauces, and a mixed dish.
+  - **Checks:** tracker suite for `calculate.js`, `fit.js`, and `importWorkspace.js`.
+  - **Migration/deploy:** none. Flags stay false.
+
+### #73: Keep research evidence on the applied draft
+
+- [ ] **Stop dropping provenance when a research response is applied.** Depends: #62 and #70. Saving the revision stays #69 Part B.
+  - **Surfaces:** `applyResearchResponse()` and `packetProposal.js`.
+  - **Accept:** the applied draft keeps per-field sources, values, units, status, uncertainty, confidence, comparators, derivations, source versions, retrieval dates, and explicit unknowns. A null stays unknown. The workspace still does not write a profile while the write flag is false.
+  - **Checks:** tracker suite around `importWorkspace.test.js` and the research packet tests.
+  - **Migration/deploy:** none.
+
+### #74: Make official lookup status honest
+
+- [ ] **Record an official result only after a lookup runs.** Depends: #62 and #66. A live USDA or manufacturer call stays #62 Part B.
+  - **Surfaces:** `lookupWorkspace()`, `lookupOfficial()`, and `researchLibraryFields()`.
+  - **Accept:** curated or private match, then official lookup, then a research packet, then manual entry or an explicit incomplete draft. If live sources are disabled, the state says the lookup was not performed. It does not say `not_found`. When live sources are later enabled, lookup is deterministic and uses the pinned release. Resolved fields are not sent for research again.
+  - **Checks:** tracker suite for the workspace and resolution ladder.
+  - **Migration/deploy:** no live call and no credential in this item.
+
+### #75: Correct nutrition docs and cached-client compatibility
+
+- [ ] **Finish the compatibility notes that this review does not close.** Depends: none. The false `nutritrack-v4` current-cache sentences and the "calculation has not shipped" overview are corrected with the 2026-11-09 review.
+  - **Surfaces:** nutrition docs, tracker README, and `docs/nutrition/ingredient-store-release.md`.
+  - **Accept:** docs distinguish implemented, tested, deployed, and populated. They do not call a merged calculator a populated catalog or a deployed ruleset. The write-enable cache bump is a new name after `nutritrack-v5`. Legacy v1 writers and cached PWAs are described as unable to drop future v2 fields.
+  - **Checks:** `npm run ci:docs`.
+  - **Migration/deploy:** docs only.
+
+### #76: Dry-run the priority-1 population pilot
+
+- [ ] **Report a priority-1 pilot without importing it.** Depends: #62, #72, #73, and #74. Live retrieval stays #62 Part B. Catalog import stays #63.
+  - **Surfaces:** pinned local fixtures, the 253 priority-1 ids in `docs/nutrition/ingredient-catalog.json`, and a written report.
+  - **Accept:** the report counts matches, coverage, uncertainty, unresolved fields, validation failures, and the production changes a later import would make. It performs none of those changes. Basis is per 100 g edible form, with raw, cooked, drained, fortified, and branded records kept apart. Unknown stays explicit. Estimates carry a comparator, rationale, and range. Subscription assistants remain the residual path. Metered APIs stay at $0.
+  - **Checks:** validator and the report's reconciliation against the 253 ids. App tests only if code changes.
+  - **Migration/deploy:** no live pull and no catalog write. **Requires James's explicit approval** before any live FDC or manufacturer request, even for a dry-run that leaves the repository.
+
+### #77: Estimate lossless conversion of flat saved foods
+
+- [ ] **Count flat foods that can convert without loss or invention.** Depends: a census export supplied by the parent. Not a production query.
+  - **Surfaces:** a local export only. No food or diary writer.
+  - **Accept:** report how many existing flat saved foods can convert without losing a stored value and without inventing a zero or a gram basis. Foods that cannot convert stay listed as unchanged. No document is rewritten.
+  - **Checks:** the report reconciles to the supplied export's counts.
+  - **Migration/deploy:** none. Agents do not run the production census.
+
+### #78: Label the beta import tab and keep diary add explicit
+
+- [ ] **Make the new flow obviously separate from Today.** Depends: #70. No production approval.
+  - **Surfaces:** `public/tools/CalorieTracker/index.html` Import tab and `ui/importWorkspace.js`.
+  - **Accept:** the tab label is `Ingredient Import (Beta)`. Library stays its own tab. Both keep using the shared registry, profile store, and calculation module. A failed or abandoned import says that existing foods and the diary were not changed, and the user can return to Today. Saving a meal still does not log it.
+  - **Checks:** tracker suite. Lint is not required unless the React app changes; the tracker page is static.
+  - **Migration/deploy:** none. The worker deploy that follows a later merge must still leave both write flags false.
+
 ## Decisions and dependencies
 
 No product decision blocks #62. Defaults: custom weighted fiber under details, standard fiber for standard comparisons, versioned snapshots, and a manual zero-API path. The recipe rollout retains its priority. Production access, missing brand labels, and provider setup are dependencies of later jobs, not blockers for this plan.
@@ -135,9 +201,11 @@ Architecture decision (2026-11-06, James): external-assistant ingredient import 
 
 Resolved for #67 (2026-11-08): `schemaVersion` gates acceptance. A newer version returns "site update required" and is not guessed. `instructionsVersion` is producer provenance only and is not a schema gate. Prose may wrap exactly one fenced JSON block; any other fence count is rejected. State and preparation come from `variantVocabulary.js`. `confirmMatch` records an explicit choice. A raw/cooked or drained/undrained conflict is not selected unless the caller passes `acknowledgeConflict`. That override is labeled and writes nothing. Bulk confirmation and curated-versus-private alias storage stay with #66/#69/#61 Part B.
 
+James, 2026-11-09: keep Today and the ingredient beta side by side permanently. The beta tab is Ingredient Import (Beta). Saving a meal does not log it. Do not flip the global nutrient write flag to expose legacy foods or diary entries to v2 writes. Beta saves, when later approved, use meal snapshots. Finished serving weight is not a raw-ingredient sum, and water loss does not scale nutrients. Official `not_found` requires a lookup that ran. Population stays a dry-run until a later import approval. The read-only census and backup are the only new production approval, and the parent runs them.
+
 Open design questions (resolve in the owning item; none blocks #67):
 - #64 Part A: status aggregation, interval propagation, uncertainty ranking; weighted fiber per ingredient (recommended) vs per meal.
-- #64 Part B: diary v2 detail via a private meal-version record referenced by a v1 diary projection (recommended) vs waiting for #60 Part B; applying facts to portions consumed and raw vs cooked basis.
-- #65: dependency-free bounded least-squares/LP design, residual weights from rounding intervals, non-uniqueness detection, yield, tie-breaking, and weighting `user_stated` facts.
+- #64 Part B: the v1 diary projection is selected. Remaining detail is how facts apply to the portion eaten, owned by #64 Part B and #72.
+- #65: residual weights, non-uniqueness, tie-breaking, and weighting `user_stated` facts. Yield is now #72, not a single cooked/raw ratio.
 - #62: in-app jobs live in IndexedDB and are lost on sign-out; packets must be self-contained enough to re-attach, or a Firestore job store needs its own rules and approval.
 - #71: where the budget lives, how the UI learns route/budget state, and per-packet cost estimates.

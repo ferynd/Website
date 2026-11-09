@@ -10,7 +10,7 @@ Prerequisites/residual risk: production index behavior is unverified by the emul
 
 Preconditions:
 - Part A is merged.
-- The production web deployment serves the readers: the deployed build of the merge SHA contains `parseNutritionLink` with `ingredientRef`, and `nutritrack-v4`.
+- The production web deployment serves the readers: the deployed build of the merge SHA contains `parseNutritionLink` with `ingredientRef`. The repository cache is already `nutritrack-v5` with writes off. Confirm the live worker's cache name before B5; do not assume a merge was a rules or data deploy.
 - Readers are live before writers.
 
 **B1. Read-only inspection** (Firebase CLI login, or trusted ADC; never paste tokens):
@@ -37,7 +37,7 @@ Preconditions:
   - Remove the fixtures afterwards with Admin SDK cleanup under ADC, because the rules deny client deletes.
 
 **B5. Enable writes (approval 3):**
-- A separate small PR sets `INGREDIENT_STORE_WRITES_ENABLED = true` and bumps `NUTRITRACK_CACHE_NAME`/SW to `nutritrack-v5`.
+- A separate small PR sets `INGREDIENT_STORE_WRITES_ENABLED = true` and bumps `NUTRITRACK_CACHE_NAME` and the service worker to a new name after `nutritrack-v5`. v5 is already the repository cache while writes are off, so reusing v5 would leave cached clients on the old writer.
 - Merge it, verify the deployed bundle SHA, and confirm the Settings line reads `ingredient store v1 (writes on)`.
 
 **Live data copy/backfill: none.**

@@ -22,12 +22,12 @@ Living stage file for a takeover. Muse, or any later orchestrator, reads this be
 
 These need James's explicit approval. Report the blocker instead of bypassing it.
 
-- #63 live food-data pulls or bulk population
+- #63 live food-data pulls or bulk population, including a live FDC call made only to draft a dry-run
 - Paid API enablement
-- Production Firestore writes
+- Production Firestore writes, queries, and exports. The 2026-11-09 exception is the read-only #60 census and backup, which James approved and the parent runs. Other agents do not run it.
 - Flipping `INGREDIENT_STORE_WRITES_ENABLED` or `NUTRIENT_V2_WRITES_ENABLED`
 - Firestore rules, index, or Auth deploys
-- Part B of #60, #61, and #64
+- Production enablement for #61 Part B and #64 Part B. Branch code with the write flags left false is allowed. The census exception does not approve #60's writer flag.
 
 ## Nutrition architecture
 
@@ -37,22 +37,23 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 15:41 CT. Verify heads before relying on this section.
+As of 2026-11-09 16:29 CT. Verify heads before relying on this section.
 
-Merged on `main` (`497f941`): #185 through #196. Latest merges are #195 (#65 fitting, `8122694`) and #196 (#69 Ingredient Library, `497f941`).
+Merged on `main` (`497f941`): #185 through #196. PR #197 records that #69's private add, edit, and save stay open. The parent merges #197. This plan follows that correction.
 
-No ungated nutrition slice remains. The merged #69 slice is search, review, and staged research. Private add, edit, and save stay open as #69 Part B. Do not start #68, #69 Part B, or the other Part B / #63 / #71 items until James approves the gates below.
+James approved only the read-only #60 census and backup. The parent is running it. Do not query or export production. Do not treat that approval as permission to flip a write flag.
 
-Approvals required, in dependency order:
+The plan is [the 2026-11-09 requirements review](nutrition/REQUIREMENTS_REVIEW_2026-11-09.md). Next code, after this docs PR, keeps both write flags false:
 
-- **#60 Part B:** production census and backup, then enabling `NUTRIENT_V2_WRITES_ENABLED`, then deployment. The flag stays false.
-- **#61 Part B:** three separate approvals: Firestore rules deploy, live smoke with throwaway accounts, and enabling `INGREDIENT_STORE_WRITES_ENABLED`. The flag stays false.
-- **#69 Part B:** private profile add, edit, and save. It waits on #61 Part B and the same write-flag approval. `commitLibraryEdit()` stays `writes_disabled`. Affected meals stay deferred until #64 Part B.
-- **#62 Part B:** provision or use a live FDC credential, and publish staged curated data. No live food pull until then.
-- **#63:** approval before each live catalog import, and before any paid API batch. A #63 gap report is required before #68. Subscription residual research does not need a spend approval; importing those results still needs the catalog-import approval.
-- **#64 Part B:** rules deploy or production schema change. It also waits on #61 Part B. Saving stays gated.
-- **#68:** production smoke, migrations, and each enablement step. It also waits on every item above plus the already merged #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice.
-- **#71:** deferred. Approval is required to build or enable the route, provision a key, raise the $0 cap, or deploy Storage rules.
+1. #72 yield, water, fat, and retention.
+2. #73 research evidence on the applied draft.
+3. #74 honest lookup status, with no live call.
+4. #75 remaining doc compatibility notes.
+5. #78 beta tab label and explicit abandon copy.
+6. #69 Part B and #64 Part B in branches, emulator or fixtures only.
+7. #76 local-fixture dry-run report, and #77 only from a census file the parent supplies.
+
+Still unapproved: live FDC, catalog import, rules deploys, either write flag, production saves, #68 production smoke, and #71. Do not flip `NUTRIENT_V2_WRITES_ENABLED` to carry beta detail. Legacy food and diary writes stay v1.
 
 Ignore docs PRs #159 and #166.
 
