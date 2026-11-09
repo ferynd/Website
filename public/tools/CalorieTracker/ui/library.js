@@ -40,15 +40,18 @@ export function wireLibrary(getUid) {
             row(node, `${item.canonicalName || item.name || item.lineId} · ${item.scope || 'review'} · ${item.variantId || ''}`);
             if (item.missingFields) row(node, `Missing fields: ${item.missingFields.length}`);
             if (item.missingConversions) row(node, `Missing conversions: ${item.missingConversions.join(', ') || 'none'}`);
+            if (item.revision) row(node, `Revision: ${item.revision}`);
+            if (item.provenance) row(node, `Provenance: ${Object.keys(item.provenance).length}`);
+            if (item.conversions) row(node, `Conversions: ${item.conversions.length}`);
         }
     };
     let packetState = null;
     const runSearch = async (nextCursor) => {
-        const list = await sources();
         if (nextCursor && !Object.values(nextCursor).some(Boolean)) {
             text(document.getElementById('library-message'), 'No more results');
             return;
         }
+        const list = await sources();
         let found;
         try {
             found = await searchLibrary({ query: document.getElementById('library-query')?.value || '', sources: list, pageSize: 25, cursor: nextCursor });
@@ -83,13 +86,14 @@ export function wireLibrary(getUid) {
             } finally { store.close(); }
         } catch { /* Review still reports the gap when the profile cannot be read. */ }
         const review = reviewLibraryProfile({ revision, conversions, scope: item.scope || 'curated', ownerUid: item.ref?.ownerUid || null, viewerUid: getUid() });
-        rows = [{ name: item.canonicalName || item.variantId, scope: item.scope, ...review }];
-        render(rows);
+        rows = rows.map(row => row === item ? { ...row, ...review, conversions } : row);
+        render(rows.filter(row => row.ref || row.missingFields));
     });
     document.getElementById('library-research')?.addEventListener('click', async () => {
         const uid = getUid();
         if (!uid) { text(document.getElementById('library-message'), 'Sign in to research a private profile.'); return; }
-        const name = document.getElementById('library-query')?.value || 'ingredient';
+        const selected = rows.find(row => row.ref);
+        const name = selected?.canonicalName || document.getElementById('library-query')?.value || 'ingredient';
         const packet = await researchLibraryFields({ name, ownerUid: uid });
         packetState = packet.state || null;
         const box = document.getElementById('library-copy');
@@ -100,6 +104,8 @@ export function wireLibrary(getUid) {
         if (!packetState) { text(document.getElementById('library-message'), 'Copy a research packet before applying a response.'); return; }
         const { applyResearchResponse } = await import('../../../shared/nutrition/importWorkspace.js');
         const applied = await applyResearchResponse({ resolution: packetState }, document.getElementById('library-response')?.value || '');
-        text(document.getElementById('library-message'), applied.ok ? 'Response staged for review. It is not saved.' : (applied.error || 'invalid response'));
+        if (applied.ok) packetState = applied.workspace.resolution;
+        const staged = applied.workspace?.resolution?.items?.flatMap(item => Object.keys(item.nutrients || {})) || [];
+        text(document.getElementById('library-message'), applied.ok ? `Response staged for review (${staged.join(', ') || 'no nutrient keys'}). It is not saved.` : (applied.error || 'invalid response'));
     });
 }

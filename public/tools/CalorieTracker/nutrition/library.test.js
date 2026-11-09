@@ -46,10 +46,9 @@ describe('ingredient library', () => {
         expect(stageLibraryEdit({ scope: 'curated', ownerUid: 'a', viewerUid: 'a', base: { revision: 1 } }).error).toBe('curated_read_only');
         expect(stageLibraryEdit({ scope: 'private', ownerUid: 'a', viewerUid: 'b' }).error).toBe('owner_mismatch');
         const staged = stageLibraryEdit({ scope: 'private', ownerUid: 'a', viewerUid: 'a', base: { revision: 2, nutrients: { calories: 100 }, contentHash: 'sha256:ab' }, patch: { nutrients: { protein: 3 }, source: { type: 'manual' } } });
-        expect(staged.draft.revision).toBe(3);
-        expect(staged.draft.revisionId).toBe('profile~r3');
-        expect(staged.draft.contentHash).toBeUndefined();
-        expect(staged.draft.nutrients).toMatchObject({ calories: 100, protein: 3 });
+        expect(staged.draft.nextRevision).toBe(3);
+        expect(staged.draft.pendingNutrients).toMatchObject({ protein: 3 });
+        expect(staged.readyForSave).toBe(false);
         expect(staged.diaryUntouched).toBe(true);
         expect(staged.writes).toBe(false);
         expect(commitLibraryEdit()).toMatchObject({ ok: false, error: 'writes_disabled', committed: false });

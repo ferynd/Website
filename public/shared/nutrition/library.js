@@ -57,7 +57,7 @@ export function reviewLibraryProfile({ revision = null, conversions = [], scope 
     const nutrients = revision?.nutrients || {};
     const quality = revision?.nutrientMeta?.quality || {};
     const missingFields = PROFILE_FIELDS.filter(key => quality[key]?.status === 'not_applicable' ? false : nutrients[key] == null);
-    const missingConversions = conversions.some(item => item?.kind === 'household' || item?.unit === 'cup') ? [] : ['household'];
+    const missingConversions = conversions.some(item => item?.kind === 'household') ? [] : ['household'];
     return {
         ok: true,
         missingFields,
@@ -82,30 +82,20 @@ export function filterLibraryGaps(rows = [], kind = 'all') {
 export function stageLibraryEdit({ scope = 'private', ownerUid, viewerUid, base = null, patch = {} } = {}) {
     if (scope !== 'private') return { ok: false, error: 'curated_read_only', writes: false, diaryUntouched: true };
     if (!viewerUid || viewerUid !== ownerUid) return { ok: false, error: 'owner_mismatch', writes: false, diaryUntouched: true };
-    const nutrients = { ...(base?.nutrients || {}), ...(patch.nutrients || {}) };
-    const revision = (base?.revision || 0) + 1;
-    const variantId = base?.variantId || patch.variantId || 'profile';
-    const { contentHash: _oldHash, revisionId: _oldRevisionId, ...rest } = base || {};
-    const quality = { ...(base?.nutrientMeta?.quality || {}) };
-    for (const key of Object.keys(patch.nutrients || {}))
-        if (!quality[key]) quality[key] = { status: 'measured' };
     return {
         ok: true,
         writes: false,
         staged: true,
         committed: false,
+        readyForSave: false,
         diaryUntouched: true,
         draft: {
-            ...rest,
             ownerUid,
-            variantId,
-            nutrients,
-            nutrientMeta: { ...(base?.nutrientMeta || {}), quality },
-            revision,
-            revisionId: `${variantId}~r${revision}`,
-            supersedes: base?.revision ? { revision: base.revision, ...(base.revisionId ? { revisionId: base.revisionId } : {}), ...(base.contentHash ? { contentHash: base.contentHash } : {}) } : null,
-            source: patch.source || base?.sources || null,
-            basis: patch.basis || base?.basis || { kind: 'per_100g_edible', state: 'unspecified' },
+            baseRevision: base?.revision || null,
+            baseRevisionId: base?.revisionId || null,
+            nextRevision: (base?.revision || 0) + 1,
+            pendingNutrients: patch.nutrients || {},
+            pendingSource: patch.source || null,
         },
     };
 }
