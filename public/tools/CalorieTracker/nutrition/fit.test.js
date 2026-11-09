@@ -63,6 +63,22 @@ describe('quantity fitting', () => {
             facts: [fact(calories(100))],
         });
         expect(uneven.flags.nonUnique).toBe(true);
+        const lighterFirst = fitQuantities({
+            lines: [
+                { lineId: 'rice', grams: 20, gMin: 0, gMax: 200, basis: 'estimated', nutrients: calories(130) },
+                { lineId: 'oil', grams: 10, gMin: 0, gMax: 200, basis: 'estimated', nutrients: calories(884) },
+            ],
+            facts: [fact(calories(100))],
+        });
+        expect(lighterFirst.flags.nonUnique).toBe(true);
+        const protein = fitQuantities({
+            lines: [
+                { lineId: 'a', grams: 50, gMin: 0, gMax: 200, basis: 'estimated', nutrients: { calories: { value: 100, status: 'measured' }, protein: { value: 10, status: 'measured' } } },
+                { lineId: 'b', grams: 50, gMin: 0, gMax: 200, basis: 'estimated', nutrients: { calories: { value: 400, status: 'measured' }, protein: { value: 10, status: 'measured' } } },
+            ],
+            facts: [fact({ protein: { value: 10, unit: 'g' } })],
+        });
+        expect(protein.flags.nonUnique).toBe(true);
         expect(uneven.calculation.nutrients.calories.value).toBeCloseTo(100, 0);
         const partial = fitQuantities({
             lines: [

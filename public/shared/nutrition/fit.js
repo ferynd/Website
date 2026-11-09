@@ -345,23 +345,32 @@ export function fitQuantities({ lines = [], constraints = [], facts = [], servin
     for (let i = 0; i < free.length && !nonUnique; i++) {
         for (let j = i + 1; j < free.length; j++) {
             const keys = [...new Set([...Object.keys(free[i].nutrients || {}), ...Object.keys(free[j].nutrients || {})])];
-            const key = keys.find(item => slopeOf(free[i], item) && slopeOf(free[j], item));
-            if (!key) continue;
-            const trial = new Map(chosen);
-            const left = free[i].lineId;
-            const right = free[j].lineId;
-            const shift = 10;
-            const nextLeft = clamp(chosen.get(left) + shift, bounds.get(left));
-            const used = nextLeft - chosen.get(left);
-            const nextRight = clamp(chosen.get(right) - used * slopeOf(free[i], key) / slopeOf(free[j], key), bounds.get(right));
-            if (Math.abs(used) < 5 || Math.abs(nextRight - chosen.get(right)) < 5) continue;
-            trial.set(left, nextLeft);
-            trial.set(right, nextRight);
-            const trialLoss = lossAt(lines, trial, facts, servings, starts, constraints);
-            if (Math.abs(trialLoss - chosenLoss) <= Math.max(1e-3, chosenLoss * 0.05) && constraintLoss(lines, trial, constraints).violations.length === 0) {
-                nonUnique = true;
-                break;
+            let found = false;
+            for (const key of keys) {
+                const pairs = [[free[i], free[j]], [free[j], free[i]]];
+                for (const [mover, other] of pairs) {
+                    const moverSlope = slopeOf(mover, key);
+                    const otherSlope = slopeOf(other, key);
+                    if (!moverSlope || !otherSlope) continue;
+                    const room = Math.min(10, bounds.get(mover.lineId).max - chosen.get(mover.lineId));
+                    if (room < 0.5) continue;
+                    const nextMover = chosen.get(mover.lineId) + room;
+                    const nextOther = chosen.get(other.lineId) - room * moverSlope / otherSlope;
+                    if (nextOther < bounds.get(other.lineId).min - 1e-9 || nextOther > bounds.get(other.lineId).max + 1e-9) continue;
+                    if (Math.abs(nextOther - chosen.get(other.lineId)) < 0.5) continue;
+                    const trial = new Map(chosen);
+                    trial.set(mover.lineId, nextMover);
+                    trial.set(other.lineId, nextOther);
+                    const trialLoss = lossAt(lines, trial, facts, servings, starts, constraints);
+                    if (Math.abs(trialLoss - chosenLoss) <= Math.max(1e-3, chosenLoss * 0.05) && constraintLoss(lines, trial, constraints).violations.length === 0) {
+                        nonUnique = true;
+                        found = true;
+                        break;
+                    }
+                }
+                if (found) break;
             }
+            if (found) break;
         }
     }
     const constraint = constraintLoss(lines, chosen, constraints);
