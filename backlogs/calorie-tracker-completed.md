@@ -77,6 +77,11 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Implement the versioned registry and quality-aware imports/exports, readers first.**
   > Resolved: shared nutrient registry, anchored parser, quality/null handling, fingerprint compatibility, v1-identical writes with v2 overwrite protection, recipe readers/detail, `nutritrack-v3`, and a built/unrun census; checks: baseline acceptance reverified in #61 tracker (664/19) and root (1947/99) suites, registry/parsing/golden/fingerprint tests; prior PR acceptance records lint/build/contract/docs and rules passes; merged: 326a748 (PR #185); residual risk: v2 food/day writes remain disabled and production census/backup/enablement/deploy remain open as #60 Part B. No historical rewrite or production data action was required for Part A.
 
+## #64 Part A — full nutrient calculation
+
+- [x] **Calculate every registry nutrient deterministically.**
+  > Resolved: shared calculate.js scales stored nutrients, keeps unknown distinct from zero, and computes weighted fiber, adjusted carbs, and FODMAP equivalents; recipe scaling uses scalePerBasis; checks: tracker 1092, root 2014, API 43, lint, build, and all 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: df864e1 (PR #191); residual risk: fitting and snapshot saving remain #65 and #64 Part B. No production write.
+
 ## #67 — ingredient-list import
 
 - [x] **Import assistant-prepared ingredient lists.**

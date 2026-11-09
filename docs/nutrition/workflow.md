@@ -272,11 +272,11 @@ Show an editable list: ingredient, exact form, grams, measured/estimated badge, 
 
 ### Missing-data dialog
 
-List all missing/ambiguous ingredients and fields in one review. Offer, in ladder order:
+The shared ladder is [resolution.js](../../public/shared/nutrition/resolution.js). It does not fit quantities or call a model. List all missing/ambiguous ingredients and fields in one review. Offer, in ladder order:
 
 - **Choose existing:** search aliases, approved alternatives, verified variants, and user overrides; explicit substitute selection is recorded as an estimate. Confirming an ambiguous match can create a private confirmed alias so the next import matches exactly.
 - **Look up selected:** run official-source lookup (#62) for the selected identities or fields. Show progress, result quality, and a review step before persistence. Reuse any approved records if another tab populated them first.
-- **Research packet:** available after a recorded official-source attempt left the selected identity or fields unresolved (or an explicit user override of that gate). One click copies a text-only research request ([v1](assistant-contracts.md#research-request-v1)) covering all selected unresolved ingredients and fields; one paste loads the response, which is validated, reviewed, and imported through the same #62 job, validator, and review steps as bulk population. **Optional:** the #71 direct route sends the same request only when enabled and within its configured budget. Cited sources must be verified before curated approval; unverified output stays labeled.
+- **Research packet:** available after a recorded official-source attempt left the selected identity or fields unresolved (or an explicit user override of that gate). One click copies one text-only research request ([v1](assistant-contracts.md#research-request-v1)) covering the selected unresolved ingredients and fields, including a mix of missing profiles and field gaps. The issued jobs stay on the resolution state as `awaiting_response` so the pasted response validates through the same #62 validator and review steps as bulk population. A field gap pins the matched profile revision and extends it; it does not open a new identity. A missing revision document blocks that packet instead of zero-filling the profile. **Optional:** the #71 direct route sends the same request only when enabled and within its configured budget. Cited sources must be verified before curated approval; unverified output stays labeled.
 - **Enter manually:** add a label or measured facts with source and basis.
 - **Save incomplete draft:** retain the recipe and unknowns, clearly excluded from claims of complete nutrition.
 - **Cancel:** return without committing the meal. Do not launch research or charge an AI request.
@@ -285,7 +285,7 @@ A failed lookup leaves the ingredient unresolved with an actionable reason. Neve
 
 ### Estimate review
 
-Next to each known label fact, show the calculated value and the difference, with its rounding interval. Show estimated versus measured quantities with plausible ranges, solver residuals, and non-unique or infeasible flags. Show the source and quality of each derived nutrient. Quantities stay editable, and edits recalculate without AI.
+Next to each known label fact, show the calculated value. An exact fact shows the point difference. A less-than fact is consistent when the calculation is at or below the bound, and a rounded label fact keeps its rounding token instead of a false point residual. Serving facts are scaled to the meal before comparison. Show estimated versus measured quantities with plausible ranges, solver residuals, and non-unique or infeasible flags. Show the source and quality of each derived nutrient. Quantities stay editable, and edits recalculate without AI.
 
 ### Nutrition and database screens
 

@@ -71,7 +71,7 @@ function packetTarget(job, includeLabelEvidence) {
         knownObservations: t.knownObservations || {}, triedSources: job.attempts.map(a => ({ adapter: a.adapter, release: a.release || 'unknown', outcome: a.outcome })),
         ...(includeLabelEvidence && t.labelEvidence ? { labelEvidence: t.labelEvidence } : {}) });
 }
-export async function buildResearchPackets(jobs, { purpose = 'profile', limits = {}, now = () => Date.now(), randomBytes = () => crypto.getRandomValues(new Uint8Array(12)), includeLabelEvidence = false } = {}) {
+export async function buildResearchPackets(jobs, { purpose = 'profile', limits = {}, now = () => Date.now(), randomBytes = () => crypto.getRandomValues(new Uint8Array(12)), includeLabelEvidence = false, singleBatch = false } = {}) {
     const bounds = { ...PACKET_LIMITS, ...limits };
     if (!['profile', 'fields', 'conversion'].includes(purpose))
         throw new TypeError('$.purpose: invalid purpose');
@@ -101,10 +101,12 @@ export async function buildResearchPackets(jobs, { purpose = 'profile', limits =
             throw new TypeError('$.targets: single target exceeds request byte limit');
         requests.push(request);
     }
-    for (const all of [true, false]) {
-        const cap = all ? bounds.allFieldTargets : bounds.fieldLimitedTargets;
+    const batches = singleBatch
+        ? [[sorted, sorted.some(full) ? bounds.allFieldTargets : bounds.fieldLimitedTargets]]
+        : [[sorted.filter(target => full(target)), bounds.allFieldTargets], [sorted.filter(target => !full(target)), bounds.fieldLimitedTargets]];
+    for (const [group, cap] of batches) {
         let chunk = [];
-        for (const target of sorted.filter(t => full(t) === all)) {
+        for (const target of group) {
             const trial = [...chunk, target];
             // Account for the exact fixed-size issue header before allocating random IDs.
             const trialSize = bytes({ ...bodyFor(trial), requestId: 'rq-' + '0'.repeat(24), requestDigest: 'sha256:' + '0'.repeat(64), createdAt: '2000-01-01T00:00:00.000Z' });
