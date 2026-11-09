@@ -82,6 +82,8 @@ describe('missing ingredient resolution', () => {
         expect(unscaled.comparisons[0].rows[0]).toMatchObject({ difference: null, note: 'basis_not_comparable' });
         const byWeight = reviewResolution(buildResolution({ lines, matches }), { nutrients: { calories: { value: 90 } } }, [{ factId: 'weight', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 80 } }, nutrients: { calories: { value: 45, unit: 'kcal' } } }]);
         expect(byWeight.comparisons[0].rows[0]).toMatchObject({ known: 90, difference: 0 });
+        const boiled = reviewResolution(buildResolution({ lines: [{ lineId: 'pasta', name: 'pasta', grams: 100, yieldRetention: 2 }] }), { nutrients: { calories: { value: 350 } } }, [{ factId: 'serve', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } }, nutrients: { calories: { value: 175, unit: 'kcal' } } }]);
+        expect(boiled.comparisons[0].rows[0]).toMatchObject({ known: 350, difference: 0 });
         const terminal = buildResolution({ lines: [lines[1]], matches: [matches[1]], nutrientsByLine: { salsa: { calories: { value: null, status: 'not_applicable' }, protein: { value: null, status: 'unknown' } } } });
         expect(terminal.items[0].missingFields).not.toContain('calories');
         expect(terminal.items[0].missingFields).toContain('protein');

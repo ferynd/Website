@@ -8,6 +8,7 @@ import {
 import { IMPORT_WORKSPACE_ENABLED } from '../../../shared/nutrition/capabilities.js';
 import { PROFILE_FIELDS } from '../../../shared/nutrition/research/profileFields.js';
 import { onIngredientAuthChange } from '../services/ingredientSession.js';
+import { renderIngredientPaste } from '../../../shared/nutrition/import/pasteFormat.js';
 
 const list = {
     kind: 'nutrition.ingredientList', schemaVersion: 1,
@@ -126,6 +127,9 @@ describe('import workspace', () => {
         });
         expect(imported.ok, JSON.stringify(imported.errors)).toBe(true);
         expect(imported.workspace.draft.import.ingredients[0].waterDeltaG).toBe(-50);
+        const paste = renderIngredientPaste({ ...imported.workspace.draft.import, meal: { ...imported.workspace.draft.import.meal, yield: undefined } });
+        expect(paste.ok).toBe(false);
+        expect(paste.reason).toBe('json-only');
         const fitted = fitWorkspace({
             ...imported.workspace,
             resolution: {

@@ -320,7 +320,7 @@ function jsonOnly(list) {
     if (list.meal?.yield) mark('$.meal.yield');
     if (list.overallConfidence?.note) mark('$.overallConfidence.note');
     for (const [index, line] of list.ingredients.entries()) {
-        for (const key of ['role', 'confidence', 'order', 'notes', 'assumptionIds']) if (line[key] != null) mark(`$.ingredients[${index}].${key}`);
+        for (const key of ['role', 'confidence', 'order', 'notes', 'assumptionIds', 'waterDeltaG', 'fatAbsorbedG', 'fatDiscardedG', 'fatAbsorbedExternal', 'yieldRetention']) if (line[key] != null) mark(`$.ingredients[${index}].${key}`);
         if (line.name?.includes('|')) mark(`$.ingredients[${index}].name`);
         for (const key of ['fortificationDetail', 'ediblePortion']) {
             if (typeof line.variant?.[key] === 'string' && /[;|]/.test(line.variant[key])) mark(`$.ingredients[${index}].variant.${key}`);

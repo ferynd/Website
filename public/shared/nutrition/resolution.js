@@ -1,4 +1,4 @@
-import { calculateMeal } from './calculate.js';
+import { calculateMeal, nutrientBasis } from './calculate.js';
 import { normalizeVariantDims } from './ingredientVariants.js';
 import { formWordsFor } from './variantVocabulary.js';
 import { fitTargets } from './import/ingredientList.js';
@@ -14,6 +14,22 @@ export const RESOLUTION_CAPABILITIES = Object.freeze({
     directAiRoute: false,
 });
 const LADDER = Object.freeze(['choose_existing', 'lookup_official', 'research_packet', 'manual_entry', 'incomplete_draft', 'cancel']);
+
+function cookedTotal(lines) {
+    const parents = new Set(lines.filter(line => line.parentLineId).map(line => line.parentLineId));
+    const seen = new Set();
+    let total = 0;
+    let any = false;
+    for (const line of lines) {
+        if (parents.has(line.lineId) || seen.has(line.lineId) || !Number.isFinite(line.grams)) continue;
+        const basis = nutrientBasis(line);
+        if (!basis) return null;
+        seen.add(line.lineId);
+        total += basis.cookedG;
+        any = true;
+    }
+    return any ? total : null;
+}
 
 function missingFields(nutrients = {}) {
     return PROFILE_FIELDS.filter(key => {
@@ -54,7 +70,7 @@ export function buildResolution({ lines = [], matches = [], nutrientsByLine = {}
             baseRevision: revisionsByLine[line.lineId] || null,
         });
     }
-    const grams = Number.isFinite(totalGrams) ? totalGrams : (lines.every(line => Number.isFinite(line.grams)) && lines.length ? lines.reduce((sum, line) => sum + line.grams, 0) : null);
+    const grams = Number.isFinite(totalGrams) ? totalGrams : cookedTotal(lines);
     return { schemaVersion: 1, items, lines, servings, totalGrams: grams, capabilities: RESOLUTION_CAPABILITIES, ladder: LADDER, modelCalls: 0, cancelled: false, committed: false };
 }
 
