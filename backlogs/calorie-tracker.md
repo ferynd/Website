@@ -15,7 +15,7 @@ External assistants (ChatGPT, Claude, Grok, Codex, or James's bots) interpret ph
 ## Parameters
 
 - **Branch/PR:** one focused branch/PR per item or bounded #63 population batch from current `main`; `working/calorie-tracker-<ID>-<topic>` where possible.
-- **Commit scope:** `calorie-tracker`; stable IDs `#N`; next unused ID: **#80**. Population batches use `#63-<wave>-<sequence>`; never reuse IDs.
+- **Commit scope:** `calorie-tracker`; stable IDs `#N`; next unused ID: **#81**. Population batches use `#63-<wave>-<sequence>`; never reuse IDs.
 - **Archive:** `backlogs/calorie-tracker-completed.md`.
 - **Checks:** tracker behavior: `cd public/tools/CalorieTracker && npm test`; recipe/shared logic: root `npm test`; React pages/shared config: `npm run lint` and `npm run build`; auth/rules/data-model changes: relevant tests plus `npm run test:rules`.
 - **Docs/data-only:** validate JSON (including contract examples), unique IDs, links/anchors, dispatch, cross-file contracts, and source-of-truth consistency. No app tests required.
@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Release phases (James, 2026-11-09)
 
-1. Read-only census and backup (#60 Part B). Approved. The parent runs it. Agents do not query or export production.
+1. Read-only census and backup (#60 Part B). The parent completed the count on 2026-11-09: 191 v1 foods, 0 v2 foods, 417 daily entries. The REST backup is not a migration copy. Writers stay off. Agents do not query production. Script bugs are #80.
 2. Technical corrections and branch implementations with both write flags false: #72, #73, #74 lookup honesty, #75, #78, then #69 Part B and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depend on #72, #73, and #74, so they are not the first selectable items.
 3. Beta validation (#79) in an isolated Firebase test project. Not production. #68 depends on a recorded #79 result.
 4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the #77 aggregate counts from a foods-only extract kept outside the checkout. No names, ids, paths, or nutrient values are committed.
@@ -77,7 +77,7 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
 ### #60 Part B: Enable nutrient v2 food/day writes
 
 - [p] **Complete the approval-gated nutrient storage rollout.** Depends: #60 Part A (merged `326a748`, PR #185). Gate for v2 detail in diary snapshots.
-  > blocked — James approved only the read-only census and backup on 2026-11-09. The parent is running that against production. Agents must not run it. Enabling `NUTRIENT_V2_WRITES_ENABLED` and any writer deploy remain unapproved. A global v2 flag must not change legacy food or diary writes; beta detail belongs on #64 Part B snapshots. Saved-food writes refuse `nutrientSchemaVersion >= 2`. `saveDailyEntry()` and `saveDailyEntrySnapshot()` replace the day with `setDoc` and do not check schema. A transactional diary guard is required before any claim that a cached client cannot drop newer diary fields. Whether production already contains v2-shaped documents is unknown until the census result.
+  > blocked — The parent finished the read-only census on 2026-11-09. Production food documents in that count are all v1 (191 foods, 0 v2). Enabling `NUTRIENT_V2_WRITES_ENABLED` and any writer deploy remain unapproved. A global v2 flag must not change legacy food or diary writes; beta detail belongs on #64 Part B snapshots. Saved-food writes refuse `nutrientSchemaVersion >= 2`. `saveDailyEntry()` and `saveDailyEntrySnapshot()` replace the day with `setDoc` and do not check schema. A transactional diary guard is required before any claim that a cached client cannot drop newer diary fields. The REST backup does not keep integer versus double. Take a fresh Admin SDK backup before any migration. Agents must not run another production census.
   - **Surfaces:** [Firebase release](../docs/firebase-release.md), read-only census/backup, food/day shape flag, deployment and compatibility verification.
   - **Accept:** perform the separately approved census and backup, deploy readers before writers, verify cached/PWA clients cannot erase v2 fields, then enable the food/day shape flag in a separate reviewed release. Preserve all historical logs and fingerprint compatibility.
   - **Checks:** the release runbook, tracker/root/rules suites and lint/build; record actual manual/deployment evidence.
@@ -202,6 +202,14 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
   - **Accept:** import, match, research, fit, calculate, review, private-profile save, and meal save are exercised in a Firebase project that is not production. Failure is visible. Abandoning the beta leaves the test diary unchanged until an explicit diary add. Legacy food and diary shapes are not given v2 writes. The log records the project id, ruleset, flags, and cleanup. Production is not contacted.
   - **Checks:** the runbook and the recorded log. Emulator evidence can prepare the runbook; it does not replace the isolated-project log.
   - **Migration/deploy:** none to production. Creating or using the isolated project waits until phase 2 has merged and James confirms which Firebase project is the sandbox.
+
+### #80: Fix the read-only census script
+
+- [ ] **Make `nutrientCensus.ts` runnable and retryable without printing private data.** Depends: none. No production run in this item.
+  - **Surfaces:** `scripts/firebase/nutrientCensus.ts` and `scripts/firebase/nutrientCensusLogic.ts`.
+  - **Accept:** authentication can use an already approved local credential path without requiring Application Default Credentials to be the only option. The output directory is created only after auth succeeds, so a failed auth does not leave a directory that `refuseUnsafeRun` treats as an existing run. `vite-node` reaches `main()`. A retry after a failed auth is not blocked by the directory the failed run created. Tests cover those three cases with fixtures. The script still prints aggregates only and still refuses to write inside the checkout.
+  - **Checks:** the census unit tests. Do not run the script against production.
+  - **Migration/deploy:** none. The 2026-11-09 REST backup remains ineligible as a migration copy.
 
 ## Decisions and dependencies
 

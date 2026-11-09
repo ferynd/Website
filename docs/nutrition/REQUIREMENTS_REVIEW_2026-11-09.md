@@ -1,8 +1,8 @@
 # Requirements review — 2026-11-09
 
-Planning record for James's nutrition direction of 2026-11-09, about 16:29 CT. This file does not enable writes, live food pulls, population, or paid APIs. It does not report a production census result.
+Planning record for James's nutrition direction of 2026-11-09, about 16:29 CT. This file does not enable writes, live food pulls, population, or paid APIs. The census section records aggregate counts only. It does not contain a backup, a user id, a document path, a food name, or a nutrient value.
 
-Code was read on `main` at `497f941` (#196). PR #197 is the docs correction that keeps private profile saves open as #69 Part B. A merge to `main` auto-deploys the Cloudflare Worker `jamesberto-website`. That is a site-code deploy. It is not a Firestore rules deploy, a write-flag change, or catalog population.
+Code was read on `main` at `497f941` (#196). PR #197 merged as `da04c70` and keeps private profile saves open as #69 Part B. A merge to `main` auto-deploys the Cloudflare Worker `jamesberto-website`. That is a site-code deploy. It is not a Firestore rules deploy, a write-flag change, or catalog population.
 
 ## Marks
 
@@ -17,7 +17,34 @@ Classes: **(1)** already satisfied, **(2)** needs code, **(3)** tracked but unfi
 
 ## Approval recorded here
 
-James approved only the read-only #60 Part B census and backup. The parent is running that on the box. Agents must not query, export, or write production Firestore for it. Enabling `NUTRIENT_V2_WRITES_ENABLED`, rules deploys, live FDC, catalog import, and every other Part B gate stay unapproved.
+James approved only the read-only #60 Part B census and backup. The parent ran it. Agents must not query, export, or write production Firestore. Enabling `NUTRIENT_V2_WRITES_ENABLED`, rules deploys, live FDC, catalog import, and every other Part B gate stay unapproved.
+
+## Production census
+
+Read-only census and backup of project `jlb-calorietracker`, 2026-11-09 about 16:32 CT. The parent ran it. The 609-document backup stays private and off-repo. These are the aggregates:
+
+| Aggregate | Count |
+| --- | --- |
+| Documents backed up | 609 |
+| Users | 1 |
+| Food documents | 191, all v1 |
+| v2 food documents | 0 |
+| Non-numeric legacy food documents | 0 |
+| Food-document id collisions | 0 |
+| Daily entries | 417 |
+| Food elements inside daily entries | 3200 |
+| Food-element collisions | 0 |
+| Largest daily entry | 8257 bytes |
+| Recipes | 1 |
+| Confirmed recipe links | 0 |
+| Recipe export refs | 0 |
+| Timestamp fields reported | 2 |
+
+The in-memory restore round-trip passed. Production food documents from this census are all v1. There are no v2-shaped food documents in that result.
+
+The backup was read through the Firestore REST API with a CLI token because the box has no Application Default Credentials. That read does not keep the Firestore integer-versus-double distinction. Take a fresh Admin SDK backup before any real migration. This REST backup is not that migration copy.
+
+`scripts/firebase/nutrientCensus.ts` still has three bugs, tracked as #80. The script requires Application Default Credentials. It creates the output directory after the existence check and before authentication, so a failed auth leaves the directory and `refuseUnsafeRun` refuses the retry. `isProcessEntry()` does not treat a `vite-node` launch as the script entry, so `main()` is skipped.
 
 ## (2) Two permanent flows, one registry
 
@@ -41,7 +68,7 @@ James approved only the read-only #60 Part B census and backup. The parent is ru
 | Save testing uses an isolated Firebase test project | (3) | No test-project runbook or suite exists. #61 Part B still describes production smoke, which is a different approval. Phase 3 owns the isolated project. |
 | No silent edits to existing foods or diary | (1) for the beta path | The workspace never calls the food or diary writers. |
 | A global nutrient flag must not expose legacy flows to incompatible writes | (2) and (4) | `NUTRIENT_V2_WRITES_ENABLED` is one compile-time switch for food and day shape. Turning it on would change legacy saves. Do not flip it for the beta. Meal snapshots belong in the #64 Part B collection. Legacy food and diary documents stay v1. |
-| Old clients and cached PWAs cannot overwrite or drop new fields | (1) for saved foods only; (2) for diary and the cache-name plan | Food save and saved-food CSV import refuse a document whose `nutrientSchemaVersion` is 2 or higher. `saveDailyEntry()` and `saveDailyEntrySnapshot()` replace the day with `setDoc` and do not read its schema, so a cached page can erase newer diary fields. That diary guard is unfinished #60 Part B work. Do not treat it as done. The repository cache is already `nutritrack-v5` while writes are off. This PR updates the #61 runbook so the write-enable PR must pick a new cache name after v5. #75 keeps the compatibility note. Whether production already contains v2-shaped documents is unknown until the parent's census. Current repository code does not write them while the flag is false. |
+| Old clients and cached PWAs cannot overwrite or drop new fields | (1) for saved foods only; (2) for diary and the cache-name plan | Food save and saved-food CSV import refuse a document whose `nutrientSchemaVersion` is 2 or higher. `saveDailyEntry()` and `saveDailyEntrySnapshot()` replace the day with `setDoc` and do not read its schema, so a cached page can erase newer diary fields. That diary guard is unfinished #60 Part B work. Do not treat it as done. The repository cache is already `nutritrack-v5` while writes are off. This PR updates the #61 runbook so the write-enable PR must pick a new cache name after v5. #75 keeps the compatibility note. The 2026-11-09 census found 0 v2 food documents and 191 v1 food documents. Current repository code does not write v2 documents while the flag is false. |
 | Clear failure, and the user can abandon to the old flow | (2) | `cancelWorkspace()` keeps `committed: false`. The Import screen does not yet say that failure leaves Today unchanged, and the tab is not labeled Beta. #78. |
 
 **Implemented / tested:** write flags false, cancel does not commit, v1 refuses a newer food schema. **Deployed:** flags and rules are not deployed as enabled writers. **Populated:** no.
@@ -147,13 +174,13 @@ Class **(1)** for the registry and calculator definitions. Copy-block placement 
 | FODMAP | lactose, fructans, GOS, optional excess fructose, plus calculated milk equivalents and scoops |
 | Status | `measured`, `label_reported`, `calculated`, `estimated_from_comparable`, `below_quantification_limit`, `unknown`, `not_applicable`, `legacy_unclassified`. Null is unknown, not zero. |
 
-Recipe Standardizer imports the same registry. **Tested:** `calculate.test.js` covers weighted fiber, adjusted carbs, and unknown-not-zero. **Deployed:** not claimed. **Populated:** the curated catalog has no profiles. Current repository code does not write v2 food documents while `NUTRIENT_V2_WRITES_ENABLED` is false. Whether production already holds v2-shaped documents is unknown until the parent's census.
+Recipe Standardizer imports the same registry. **Tested:** `calculate.test.js` covers weighted fiber, adjusted carbs, and unknown-not-zero. **Deployed:** not claimed. **Populated:** the curated catalog has no profiles. The 2026-11-09 census found 0 v2 food documents. Current repository code does not write v2 food documents while `NUTRIENT_V2_WRITES_ENABLED` is false.
 
 ## (7) Phases
 
 Adopted as the backlog order. Phase 1 is the parent's job. This PR does not start phase 2.
 
-1. **Census and backup.** Approved read-only #60 Part B. Parent-run. Agents do not run it.
+1. **Census and backup.** The parent completed the read-only count on 2026-11-09. Aggregates are above. Writers stay off. The REST backup is not a migration copy. #80 tracks the script bugs. Agents do not run another production census.
 2. **Technical corrections and branch work, production writes still off.** #72, #73, #74 lookup honesty, #75, #78, then #69 Part B and #64 Part B behind the existing false flags and emulator or fixture tests.
 3. **Beta validation** (#79) in an isolated Firebase test project. Not production. #68 depends on its recorded result. #79 is an active blocked item so phase 3 cannot be skipped by taking the next unchecked production gate.
 4. **Priority-1 dry-run pilot** (#76) on pinned local fixtures, plus #77 aggregate counts from a foods-only extract kept outside the checkout. The committed report has no document path, food name, id, or nutrient value.

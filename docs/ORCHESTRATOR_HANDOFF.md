@@ -37,11 +37,11 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 16:29 CT. Verify heads before relying on this section.
+As of 2026-11-09 17:10 CT. Verify heads before relying on this section.
 
-Merged on `main` (`497f941`): #185 through #196. PR #197 records that #69's private add, edit, and save stay open. The parent merges #197. This plan follows that correction.
+Merged on `main` (`da04c70`): #185 through #197. #197 keeps private profile saves open as #69 Part B.
 
-James approved only the read-only #60 census and backup. The parent is running it. Do not query or export production. Do not treat that approval as permission to flip a write flag.
+The parent finished the read-only census of `jlb-calorietracker` on 2026-11-09 about 16:32 CT. Aggregates: 609 documents backed up off-repo; 1 user; 191 food documents, all v1; 0 v2 food documents; 0 non-numeric legacy foods; 0 food id collisions; 417 daily entries; 3200 food elements; 0 element collisions; largest entry 8257 bytes; 1 recipe; 0 confirmed links; 0 export refs; 2 timestamp fields. The in-memory restore passed. The backup used REST and a CLI token, so integer versus double was not kept. Take a fresh Admin SDK backup before any migration. Script bugs are #80. Do not query production again. Do not treat the census as permission to flip a write flag.
 
 The plan is [the 2026-11-09 requirements review](nutrition/REQUIREMENTS_REVIEW_2026-11-09.md). Next code, after this docs PR, keeps both write flags false:
 
@@ -87,6 +87,8 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 16:45 | Nutrition requirements review | #198 | `82cc010a0e60ca86469cf7a1c011c67c9174f920` | Grok requested three factual corrections: water gain, the cache runbook tense, and the official-miss button. | Review the correction commit. |
 | 2026-11-09 16:55 | Nutrition requirements review | #198 | `1ecb59c0bbb1a8bd0127216af898bfa8b3ffac9c` | Grok approved that SHA. Codex then required a diary-guard limit, item #79, phase-2 ordering, an unknown census result, the #59–#78 range, and an aggregate-only #77 report. | Review the Codex correction commit. |
 | 2026-11-09 17:05 | Nutrition requirements review | #198 | `02095104636de273003ed52c057b773ee997b13a` | Grok asked every #77 sentence to say foods-only, outside the checkout, and no path, name, id, or nutrient value. | Review the aligned head. |
+| 2026-11-09 16:32 | #60 read-only census | | `da04c70` | Parent census of `jlb-calorietracker`. 609 docs backed up off-repo. 191 foods, all v1, 0 v2. 417 daily entries, 3200 elements, 0 collisions, largest 8257 bytes. 1 recipe, 0 confirmed links, 0 export refs. 1 user. 2 timestamp fields. In-memory restore passed. REST backup does not keep integer versus double. | Fresh Admin SDK backup before any migration. Track script bugs as #80. Do not rerun production. |
+| 2026-11-09 17:10 | #197 archive correction | #197 | `da04c70` | Merged to main. | #198 is rebased onto this main. Review the rebased head. |
 
 ## Logins and setup
 
