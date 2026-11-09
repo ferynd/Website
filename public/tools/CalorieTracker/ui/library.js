@@ -28,6 +28,7 @@ async function sources() {
 export function wireLibrary(getUid) {
     let rows = [];
     let cursor = null;
+    let selected = null;
     const output = () => document.getElementById('library-output');
     const render = (items) => {
         const node = output();
@@ -41,8 +42,16 @@ export function wireLibrary(getUid) {
             if (item.missingFields) row(node, `Missing fields: ${item.missingFields.length}`);
             if (item.missingConversions) row(node, `Missing conversions: ${item.missingConversions.join(', ') || 'none'}`);
             if (item.revision) row(node, `Revision: ${item.revision}`);
-            if (item.provenance) row(node, `Provenance: ${Object.keys(item.provenance).length}`);
-            if (item.conversions) row(node, `Conversions: ${item.conversions.length}`);
+            if (item.provenance && Object.keys(item.provenance).length) row(node, `Provenance: ${Object.entries(item.provenance).map(([key, value]) => `${key} ${value?.sourceKey || ''}`.trim()).join('; ')}`);
+            if (item.conversions?.length) row(node, `Conversions: ${item.conversions.map(conversion => [conversion.kind, conversion.unit, conversion.grams].filter(part => part != null && part !== '').join(' ')).join('; ')}`);
+            if (item.ref) {
+                const choose = document.createElement('button');
+                choose.type = 'button';
+                choose.className = 'btn btn-secondary btn-sm';
+                choose.textContent = selected === item ? `Selected ${item.canonicalName || item.variantId}` : `Select ${item.canonicalName || item.variantId}`;
+                choose.addEventListener('click', () => { selected = item; text(document.getElementById('library-message'), `Selected ${item.canonicalName || item.variantId}`); render(rows); });
+                node.append(choose);
+            }
         }
     };
     let packetState = null;
@@ -67,6 +76,7 @@ export function wireLibrary(getUid) {
             merged.set(key, item);
         }
         rows = [...merged.values()];
+        if (!nextCursor) selected = null;
         render(rows);
         text(document.getElementById('library-message'), found.errors.length ? `Search failed for ${found.errors.join(', ')}` : `${rows.length} results`);
     };
@@ -74,7 +84,7 @@ export function wireLibrary(getUid) {
     document.getElementById('library-more')?.addEventListener('click', () => runSearch(cursor));
     document.getElementById('library-filter')?.addEventListener('change', () => render(rows));
     document.getElementById('library-review')?.addEventListener('click', async () => {
-        const item = rows.find(row => row.ref);
+        const item = selected?.ref ? selected : null;
         if (!item) { text(document.getElementById('library-message'), 'Search and choose a profile first.'); return; }
         let revision = null;
         let conversions = [];
@@ -86,13 +96,14 @@ export function wireLibrary(getUid) {
             } finally { store.close(); }
         } catch { /* Review still reports the gap when the profile cannot be read. */ }
         const review = reviewLibraryProfile({ revision, conversions, scope: item.scope || 'curated', ownerUid: item.ref?.ownerUid || null, viewerUid: getUid() });
-        rows = rows.map(row => row === item ? { ...row, ...review, conversions } : row);
+        const updated = { ...item, ...review, conversions };
+        rows = rows.map(row => row === item ? updated : row);
+        selected = updated;
         render(rows.filter(row => row.ref || row.missingFields));
     });
     document.getElementById('library-research')?.addEventListener('click', async () => {
         const uid = getUid();
         if (!uid) { text(document.getElementById('library-message'), 'Sign in to research a private profile.'); return; }
-        const selected = rows.find(row => row.ref);
         const name = selected?.canonicalName || document.getElementById('library-query')?.value || 'ingredient';
         const packet = await researchLibraryFields({ name, ownerUid: uid });
         packetState = packet.state || null;
