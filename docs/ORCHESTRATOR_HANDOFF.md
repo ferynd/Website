@@ -68,7 +68,7 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 14:02 | #70 import workspace | #194 | `91241f3` | Merged to main. | Start #65 on a new branch. #69 may run in parallel later. |
 | 2026-11-09 14:02 | #65 quantity fitting | #195 | `8fecfc6d7b35dbf43e5c501444810a0632aac49f` | PR opened. Estimated grams only. | Independent review of the branch head, then green CI. |
 | 2026-11-09 15:00 | #65 quantity fitting | #195 | `8122694` | Merged to main. | Start #69 on a new branch. #68 stays gated. |
-| 2026-11-09 15:02 | #69 ingredient library |  |  | In progress. Private writes and affected meals stay off. | Open the PR, then one independent review of its head. |
+| 2026-11-09 15:04 | #69 ingredient library | #196 | `e40f5bbd43d46dc480621fbeb02a0d3691943db3` | PR opened. Private writes and affected meals stay off. | Independent review of the branch head, then green CI. |
 
 ## Logins and setup
 
