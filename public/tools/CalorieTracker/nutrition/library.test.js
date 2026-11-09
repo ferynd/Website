@@ -25,6 +25,12 @@ describe('ingredient library', () => {
         const failed = await searchLibrary({ query: 'rice', sources: [{ scope: 'curated', search: async () => { throw new Error('offline'); } }] });
         expect(failed.errors).toEqual(['curated']);
         expect(failed.items).toEqual([]);
+        const more = await searchLibrary({ query: 'rice', cursor: { curated: null, private: 'p2' }, sources: [
+            { scope: 'curated', search: async () => { throw new Error('should not rerun'); } },
+            { scope: 'private', search: async () => ({ items: [{ canonicalName: 'Rye', variantId: 'pv-rye' }], cursor: null }) },
+        ] });
+        expect(more.items.map(item => item.variantId)).toEqual(['pv-rye']);
+        expect(more.cursor).toEqual({ curated: null, private: null });
     });
 
     it('keeps missing fields distinct from missing conversions and refuses curated edits', () => {

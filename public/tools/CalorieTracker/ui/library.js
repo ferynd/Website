@@ -46,9 +46,20 @@ export function wireLibrary(getUid) {
         }
     };
     const runSearch = async (nextCursor) => {
+        if (nextCursor && !Object.values(nextCursor).some(Boolean)) {
+            text(document.getElementById('library-message'), 'No more results');
+            return;
+        }
         const found = await searchLibrary({ query: document.getElementById('library-query')?.value || '', sources: await sources(), pageSize: 25, cursor: nextCursor });
         cursor = found.cursor;
-        rows = nextCursor ? [...rows, ...found.items] : found.items;
+        const merged = new Map();
+        for (const item of [...(nextCursor ? rows : []), ...found.items]) {
+            const key = item.overrides?.variantId || item.variantId;
+            const existing = merged.get(key);
+            if (existing?.scope === 'private' && item.scope !== 'private') continue;
+            merged.set(key, item);
+        }
+        rows = [...merged.values()];
         render(rows);
         text(document.getElementById('library-message'), found.errors.length ? `Search failed for ${found.errors.join(', ')}` : `${rows.length} results`);
     };

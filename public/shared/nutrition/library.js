@@ -20,7 +20,8 @@ function pageSizeOf(pageSize) {
 /** Merge private and curated search pages. A private hit wins over the same variant. */
 export async function searchLibrary({ query = '', sources = [], pageSize = 25, cursor = null } = {}) {
     const size = pageSizeOf(pageSize);
-    const pages = await Promise.all(sources.map(async source => {
+    const active = cursor ? sources.filter(source => cursor[source.scope]) : sources;
+    const pages = await Promise.all(active.map(async source => {
         try {
             const page = await source.search(query, { pageSize: size, cursor: cursor?.[source.scope] || null });
             const raw = page?.items || [];
@@ -44,7 +45,7 @@ export async function searchLibrary({ query = '', sources = [], pageSize = 25, c
     const items = [...byVariant.values()].sort((a, b) => String(a.canonicalName || '').localeCompare(String(b.canonicalName || '')) || String(a.variantId).localeCompare(String(b.variantId)));
     return {
         items,
-        cursor: Object.fromEntries(pages.map(page => [page.scope, page.cursor])),
+        cursor: Object.fromEntries(sources.map(source => [source.scope, pages.find(page => page.scope === source.scope)?.cursor || null])),
         errors: pages.filter(page => page.error).map(page => page.scope),
         modelCalls: 0,
     };
