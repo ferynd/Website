@@ -51,7 +51,7 @@ The plan is [the 2026-11-09 requirements review](nutrition/REQUIREMENTS_REVIEW_2
 4. #75 remaining doc compatibility notes.
 5. #78 beta tab label and explicit abandon copy.
 6. #69 Part B and #64 Part B in branches, emulator or fixtures only.
-7. #76 local-fixture dry-run report, and #77 only from a census file the parent supplies.
+7. #76 local-fixture dry-run report, and #77 aggregate counts from a foods-only extract the parent keeps outside the checkout. Do not commit names, ids, paths, or nutrient values.
 
 Still unapproved: live FDC, catalog import, rules deploys, either write flag, production saves, #68 production smoke, and #71. Do not flip `NUTRIENT_V2_WRITES_ENABLED` to carry beta detail. Legacy food and diary writes stay v1.
 

@@ -57,7 +57,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 1. Read-only census and backup (#60 Part B). Approved. The parent runs it. Agents do not query or export production.
 2. Technical corrections and branch implementations with both write flags false: #72, #73, #74 lookup honesty, #75, #78, then #69 Part B and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depend on #72, #73, and #74, so they are not the first selectable items.
 3. Beta validation (#79) in an isolated Firebase test project. Not production. #68 depends on a recorded #79 result.
-4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the flat-food conversion report (#77) from a supplied census export.
+4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the #77 aggregate counts from a foods-only extract kept outside the checkout. No names, ids, paths, or nutrient values are committed.
 5. Controlled enablement, one gate at a time, each with backup and rollback. Live FDC, catalog import, rules, and writer flags stay unapproved. Do not flip `NUTRIENT_V2_WRITES_ENABLED` for the beta; legacy food and diary writes stay v1.
 6. #68 acceptance after those gates and a #63 gap report. #71 stays deferred.
 

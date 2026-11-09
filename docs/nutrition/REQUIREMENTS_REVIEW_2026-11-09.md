@@ -130,7 +130,7 @@ Class **(3)** and **(4)**. #62 Part B and #63 stay gated. New items **#76** (dry
 
 A dry-run that uses pinned local fixtures and writes a report is safe. A live USDA or manufacturer pull is #62 Part B and is not approved. Importing the result into the curated catalog is #63 and is not approved. Subscription residual research stays the default; metered APIs stay at $0. The pilot report must include matches, coverage, uncertainty, unresolved fields, validation failures, and the production writes it would make. It must not perform those writes.
 
-#77 estimates how many existing flat foods could convert without loss. It reads a foods-only extract supplied by the parent, kept outside the checkout. The committed result is aggregate counts only. It does not query production, does not commit names or nutrient values, and does not rewrite foods.
+#77 estimates how many existing flat foods could convert without loss. It reads a foods-only extract supplied by the parent, kept outside the checkout. The committed result is aggregate counts only. It does not query production, does not commit a document path, food name, id, or nutrient value, and does not rewrite foods.
 
 **Implemented:** the queue and the playbook. **Tested:** catalog JSON checks from #59. **Deployed:** no live source. **Populated:** no.
 
@@ -182,6 +182,6 @@ No production approval is required for:
 5. **#78** — rename the tab to Ingredient Import (Beta), and make failure and abandon copy say that Today is unchanged.
 6. **#69 Part B and #64 Part B** — implement in branches with both write flags false and with emulator or fixture tests. Do not deploy rules or point tests at production.
 7. **#76** — dry-run report from pinned local fixtures only.
-8. **#77** — aggregate conversion counts from a foods-only extract the parent supplies. Do not query production or commit private rows.
+8. **#77** — aggregate conversion counts from a foods-only extract the parent keeps outside the checkout. Do not query production or commit a path, name, id, or nutrient value.
 
 Still blocked on a further approval: live FDC or manufacturer pulls, catalog import, rules deploy, flipping either write flag, production meal or profile saves, production smoke, and #71.
