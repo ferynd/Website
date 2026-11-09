@@ -84,8 +84,8 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 
 ## #69 — Ingredient Library
 
-- [x] **Add the tracker Ingredient Library tab.**
-  > Resolved: shared library search and review; private writes and affected meals stayed off; Codex comments were answered before the recorded head; checks recorded on the PR: tracker 1105, root 2015, lint, build, and 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: 497f941 (PR #196); residual risk: an override variant with no identity is not discovered by private search without a new index. No production write.
+- [x] **Ship library search, review, and staged research.**
+  > Resolved for this slice only: shared search and review, distinct field and conversion gaps, and research packets that stay staged. `commitLibraryEdit()` returns `writes_disabled`. The library tab has no add or edit action. Checks recorded on the PR: tracker 1105, root 2015, lint, build, and 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: 497f941 (PR #196). Add, edit, and save of private profiles are not closed; they remain active as #69 Part B and need James's approval with #61 Part B. Affected meals stay deferred until #64 Part B. An override variant with no identity is not discovered by private search without a new index. No production write.
 
 ## #65 — quantity fitting
 

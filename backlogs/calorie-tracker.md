@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #69, and #70 are archived. No ungated critical-path item remains. #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last and approval-gated. #71 is deferred and off the critical path.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice are archived. No ungated critical-path item remains. #60 Part B, #61 Part B, #69 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last and approval-gated. #71 is deferred and off the critical path.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -79,6 +79,14 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #69, and #70 
   - **Accept:** follow the runbook's B1–B5: read-only inspection and census (0 docs), dry-run compile, rules deploy, live smoke with throwaway accounts and cleanup, then a separate PR enabling writes. Record ruleset names, SHAs, and outcomes.
   - **Checks:** the runbook, tracker/root/rules suites; recorded live smoke.
   - **Migration/deploy:** no data copy or backfill. **Requires James's explicit approval** for the rules deploy, live fixtures, and enabling writes (three separate approvals).
+
+### #69 Part B: Save private library profiles
+
+- [ ] **Add, edit, and save owner-private ingredient profiles.** Depends: #61 Part B and the search/review library merged in #196 (`497f941`). Do not start without James's explicit approval.
+  - **Surfaces:** library add/edit actions and `commitLibraryEdit`. The merged tab searches, reviews, and stages research only. `commitLibraryEdit()` returns `writes_disabled` while `INGREDIENT_STORE_WRITES_ENABLED` is false.
+  - **Accept:** add and edit private profiles as new revisions with source and basis; import a label, manual facts, or a reviewed research result into a saved revision. Saved edits never change curated or public records, never change another user's data, and never rewrite saved diary snapshots. Research results stay staged until reviewed. Affected meals stay deferred until #64 Part B.
+  - **Checks:** tracker and root suites; revision-on-edit, override precedence, and staged-research save or cancel. Rules tests if rules change.
+  - **Migration/deploy:** **Requires James's explicit approval** together with the #61 Part B write enablement. `INGREDIENT_STORE_WRITES_ENABLED` stays false until then.
 
 ### #64 Part B: Save ingredient graphs with reproducible meal snapshots
 

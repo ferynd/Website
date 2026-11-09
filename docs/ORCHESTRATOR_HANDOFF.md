@@ -41,16 +41,17 @@ As of 2026-11-09 15:41 CT. Verify heads before relying on this section.
 
 Merged on `main` (`497f941`): #185 through #196. Latest merges are #195 (#65 fitting, `8122694`) and #196 (#69 Ingredient Library, `497f941`).
 
-No ungated nutrition slice remains. Do not start #68 or the Part B / #63 / #71 items until James approves the gates below.
+No ungated nutrition slice remains. The merged #69 slice is search, review, and staged research. Private add, edit, and save stay open as #69 Part B. Do not start #68, #69 Part B, or the other Part B / #63 / #71 items until James approves the gates below.
 
 Approvals required, in dependency order:
 
 - **#60 Part B:** production census and backup, then enabling `NUTRIENT_V2_WRITES_ENABLED`, then deployment. The flag stays false.
 - **#61 Part B:** three separate approvals: Firestore rules deploy, live smoke with throwaway accounts, and enabling `INGREDIENT_STORE_WRITES_ENABLED`. The flag stays false.
+- **#69 Part B:** private profile add, edit, and save. It waits on #61 Part B and the same write-flag approval. `commitLibraryEdit()` stays `writes_disabled`. Affected meals stay deferred until #64 Part B.
 - **#62 Part B:** provision or use a live FDC credential, and publish staged curated data. No live food pull until then.
 - **#63:** approval before each live catalog import, and before any paid API batch. A #63 gap report is required before #68. Subscription residual research does not need a spend approval; importing those results still needs the catalog-import approval.
 - **#64 Part B:** rules deploy or production schema change. It also waits on #61 Part B. Saving stays gated.
-- **#68:** production smoke, migrations, and each enablement step. It also waits on every item above plus the already merged #62, #64 Part A, #65, #66, #67, #69, and #70.
+- **#68:** production smoke, migrations, and each enablement step. It also waits on every item above plus the already merged #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice.
 - **#71:** deferred. Approval is required to build or enable the route, provision a key, raise the $0 cap, or deploy Storage rules.
 
 Ignore docs PRs #159 and #166.
