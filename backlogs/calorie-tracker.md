@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #66, #67, and #70 are archived. Critical path: **#65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, and #70 are archived. Critical path: **#69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -64,18 +64,10 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #66, #67, and #70 are archiv
   - **Checks:** dry-run reports, source-license review, root/tracker suites for any config change.
   - **Migration/deploy:** **Requires James's explicit approval** to provision or use live credentials (for example an FDC API key) and to publish staged data to production.
 
-### #65: Fit ingredient quantities to known evidence
-
-- [p] **Implement deterministic constrained meal reconstruction.** Depends: #64 Part A, #67.
-  > pushed — shared fit.js moves estimated grams only; fixed quantities and profiles stay put; checks: tracker 1102, root 2015, lint, build, ci:contract, ci:docs; commit: 8fecfc6; PR: #195
-  - **Surfaces:** pure inference module shared by both tools, evidence model, quantity review data, uncertainty and known-versus-calculated outputs.
-  - **Accept:** targets are only known facts with real provenance and an applicable basis; with none, fitting is skipped and no target is invented. Free variables are `estimated` lines bounded by `[gMin, gMax]`, starting from the assistant's estimate; `measured`/`label`/`recipe_stated`/`fixed` lines never change (their ranges feed uncertainty only). Constraints: serving weights, ingredient order, ratios, ≤2 % tails, preparation states and yield, rounded nutrient intervals and stated uncertainty. Output per-nutrient known-versus-calculated differences, estimated quantities with ranges, residuals, and flags for non-unique solutions and infeasibility. Never change known facts, measured quantities, or profile nutrition; never present one fit as the unique recipe. Save algorithm version, bounds, weights, and assumptions. Deterministic, dependency-free, and offline. Corrected quantities recalculate without AI.
-  - **Checks:** [required solver cases](../docs/nutrition/workflow.md#required-solver-cases), photo-only no-fit case, withheld exact recipes, deterministic repetition, rounding/yield tests; root/tracker/UI checks as applicable.
-  - **Migration/deploy:** estimates on new/draft meals first; preserve measured recipes and history.
-
 ### #69: Add the Ingredient Library tab
 
-- [ ] **Give the tracker a dedicated tab for managing shared ingredient profiles.** Depends: #61 (Part B for writes), #62, #66 (shared review components). Research actions go through #62 jobs and packets. Not a prerequisite for the primary import flow.
+- [p] **Give the tracker a dedicated tab for managing shared ingredient profiles.** Depends: #61 (Part B for writes), #62, #66 (shared review components). Research actions go through #62 jobs and packets. Not a prerequisite for the primary import flow.
+  > in progress — shared library search and review; private writes and affected meals stay off
   - **Surfaces:** new tracker tab and mobile layout, shared profile/conversion/research-job services from #61/#62, local cache, Recipe Standardizer link editor entry point.
   - **Accept:** search (indexed, paginated, alias- and variant-aware); add and edit private profiles as new revisions with source and basis; review identity, variants, per-field status/provenance, missing nutrient fields, unit conversions, and revision history; import a label, manual facts, or a reviewed research result; research selected ingredients or selected missing fields via #62 jobs (official sources, then research packets). Missing-field and missing-conversion lists are distinct and filterable. Edits never change curated/public records or other users' data and never rewrite saved diary snapshots. Research results stay staged until reviewed. Recipe Standardizer opens the same library views; it builds no second editor.
   - **Affected meals (deferred):** an "affected recipes/meals" view requires ingredient-graph references from #64 Part B. Ship #69 without that view and enable it as a capability-gated follow-on.

@@ -1324,10 +1324,13 @@ export default function RecipeWorkspace() {
               }}
               title={PANEL_LABELS.ingredients}
               icon={PANEL_ICONS.ingredients}
-              subtitle="Workflow, shopping/pantry, and grocery views — grams first, with editing and nutrition links"
+              subtitle="Workflow, shopping/pantry, and grocery views — grams first, with editing and nutrition links. Profile review opens the tracker Ingredient Library, not a second editor."
               open={open.ingredients}
               onToggle={() => togglePanel('ingredients')}
             >
+              <p className="mb-3 text-sm text-text-2">
+                <a className="underline" href="/tools/CalorieTracker/#tab-library">Open the Ingredient Library</a>
+              </p>
               {workflow && (
                 <IngredientsView
                   key={checklistKey}
