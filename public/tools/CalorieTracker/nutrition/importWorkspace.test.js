@@ -93,7 +93,9 @@ describe('import workspace', () => {
         const imported = importWorkspaceInput(createWorkspace('owner-a').workspace, facts);
         expect(imported.ok, JSON.stringify(imported.errors)).toBe(true);
         const fitted = fitWorkspace(imported.workspace);
-        expect(fitted.workspace.fit).toMatchObject({ ran: false, facts: 1, reason: 'quantity fitting is not available' });
+        expect(fitted.workspace.fit).toMatchObject({ ran: false, available: true, facts: 1, reason: 'no numeric fit target' });
+        expect(fitted.workspace.fit.quantities[0].grams).toBe(100);
+        expect(fitted.workspace.modelCalls).toBe(0);
         expect(instructionsWorkspace().text).toContain('assistant instructions v1');
     });
 

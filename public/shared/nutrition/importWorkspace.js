@@ -8,6 +8,7 @@ import {
     buildResolution, cancelResolution, chooseExisting, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete,
 } from './resolution.js';
 import { PROFILE_FIELDS } from './research/profileFields.js';
+import { fitQuantities } from './fit.js';
 
 /** Save stays off until both Part B write flags are on. This module does not flip them. */
 export function workspaceCapabilities() {
@@ -16,7 +17,7 @@ export function workspaceCapabilities() {
         photo: false,
         barcode: false,
         ocr: false,
-        fit: false,
+        fit: true,
         libraryDeepLink: false,
         directAi: false,
         save: INGREDIENT_STORE_WRITES_ENABLED && NUTRIENT_V2_WRITES_ENABLED,
@@ -79,6 +80,20 @@ function observationsFromRevision(revision) {
     return nutrients;
 }
 
+function exportList(workspace) {
+    const fitted = new Map((workspace.fit?.quantities || []).filter(item => Number.isFinite(item.grams)).map(item => [item.lineId, item.grams]));
+    const source = workspace.draft.import;
+    return {
+        ...source,
+        ingredients: source.ingredients.map(stored => {
+            const line = effectiveLine(workspace.draft, stored.lineId);
+            const grams = fitted.get(line.lineId);
+            if (!Number.isFinite(grams)) return line;
+            return { ...line, quantity: { ...line.quantity, g: grams } };
+        }),
+    };
+}
+
 function originFor(kind) {
     if (kind === 'legacy_paste') return 'user';
     if (kind === 'saved_meal' || kind === 'saved_recipe' || kind === 'recipe_standardizer') return 'deterministic';
@@ -97,6 +112,11 @@ function resolutionLines(draft) {
             gMax: line.quantity?.gMax ?? null,
             variant: line.variant || {},
             kind: line.kind,
+            parentLineId: line.parentLineId,
+            yieldRetention: line.yieldRetention,
+            order: line.order,
+            fiberCategory: line.fiberCategory,
+            fiberComponents: line.fiberComponents,
         };
     });
 }
@@ -255,14 +275,52 @@ export function calculateWorkspace(workspace) {
     return done(workspace, { stage: 'fit', calculation: result.calculation, resolution: workspace.resolution });
 }
 
-/** #65 is off. Eligible facts are reported and not solved. */
+/** Fit estimated grams when eligible facts exist, then recalculate. Profiles and facts are not rewritten. */
 export function fitWorkspace(workspace) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const facts = fitTargets(workspace.draft.import);
-    const fit = facts.length
-        ? { available: false, ran: false, facts: facts.length, reason: 'quantity fitting is not available', modelCalls: 0 }
-        : { available: false, ran: false, facts: 0, reason: 'no eligible known facts', modelCalls: 0 };
-    return done(workspace, { stage: 'review', fit });
+    const lines = workspace.draft.import.ingredients.map(stored => {
+        const line = effectiveLine(workspace.draft, stored.lineId);
+        const item = workspace.resolution?.items?.find(row => row.lineId === line.lineId);
+        return {
+            lineId: line.lineId,
+            grams: Number.isFinite(line.quantity?.g) ? line.quantity.g : null,
+            gMin: line.quantity?.gMin,
+            gMax: line.quantity?.gMax,
+            basis: line.quantity?.basis,
+            nutrients: item?.nutrients || {},
+            parentLineId: line.parentLineId,
+            yieldRetention: line.yieldRetention,
+            order: line.order,
+            fiberCategory: line.fiberCategory,
+            fiberComponents: line.fiberComponents,
+        };
+    });
+    const meal = workspace.draft.import.meal || {};
+    const constraints = [...(workspace.draft.import.constraints || [])];
+    const weightTarget = meal.servingWeight?.g ?? meal.yield?.rawTotal?.g;
+    if (Number.isFinite(weightTarget) && weightTarget > 0) {
+        const ids = lines.filter(line => !line.parentLineId).map(line => line.lineId);
+        constraints.push({ type: 'sum', lineIds: ids, gMin: weightTarget, gMax: weightTarget });
+    }
+    const raw = meal.yield?.rawTotal?.g;
+    const cooked = meal.yield?.cookedTotal?.g;
+    if (Number.isFinite(raw) && raw > 0 && Number.isFinite(cooked) && cooked > 0 && cooked <= raw) {
+        for (const line of lines)
+            if (line.yieldRetention == null) line.yieldRetention = cooked / raw;
+    }
+    const fit = fitQuantities({ lines, constraints, facts, servings: meal.servings?.count ?? meal.servings ?? null });
+    let resolution = workspace.resolution;
+    let calculation = workspace.calculation;
+    if (fit.ran && resolution) {
+        const fitted = new Map(fit.quantities.map(item => [item.lineId, item.grams]));
+        resolution = { ...resolution, lines: resolution.lines.map(line => {
+            const grams = fitted.get(line.lineId);
+            return Number.isFinite(grams) ? { ...line, grams } : line;
+        }), modelCalls: 0 };
+        calculation = recalculateResolution(resolution).calculation;
+    }
+    return done(workspace, { stage: 'review', fit: { ...fit, facts: facts.length }, resolution, calculation });
 }
 
 export function reviewWorkspace(workspace) {
@@ -281,8 +339,9 @@ export function instructionsWorkspace() {
 export function saveWorkspace(workspace) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const caps = workspaceCapabilities();
-    const rendered = renderIngredientPaste(workspace.draft.import);
-    const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(workspace.draft.import, null, 2) };
+    const list = exportList(workspace);
+    const rendered = renderIngredientPaste(list);
+    const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(list, null, 2) };
     if (!caps.save) {
         return done(workspace, { stage: 'save', exportCopy, committed: false, save: { available: false, reason: 'export only until ingredient and nutrient writes are approved' } });
     }

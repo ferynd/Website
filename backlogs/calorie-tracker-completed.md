@@ -82,6 +82,11 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Calculate every registry nutrient deterministically.**
   > Resolved: shared calculate.js scales stored nutrients, keeps unknown distinct from zero, and computes weighted fiber, adjusted carbs, and FODMAP equivalents; recipe scaling uses scalePerBasis; checks: tracker 1092, root 2014, API 43, lint, build, and all 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: df864e1 (PR #191); residual risk: fitting and snapshot saving remain #65 and #64 Part B. No production write.
 
+## #70 — tracker Import workspace
+
+- [x] **Orchestrate import, match, resolve, calculate, and review in the tracker.**
+  > Resolved: the Import tab reuses #61 matching, #62 packets, #64 calculation, #66 resolution, and #67 parsing; Codex findings on the first heads were fixed before merge; fitting was still off in that PR; checks recorded on the PR: tracker 1098, root 2015, API 43, lint, build, and 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: 91241f3 (PR #194); residual risk: official lookup does not contact a food database, and localStorage drafts are not an access-control boundary. Production saving stayed off.
+
 ## #66 — missing-ingredient resolution
 
 - [x] **Make database reuse and the missing-ingredient ladder clear.**
