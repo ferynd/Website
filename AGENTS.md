@@ -2,6 +2,8 @@
 
 Canonical instruction entry point for Claude Code, Codex, GitHub Copilot, and other coding agents working in this repository.
 
+An orchestrator taking over mid-task reads [docs/ORCHESTRATOR_HANDOFF.md](docs/ORCHESTRATOR_HANDOFF.md) before the loading order below and updates that file's Stage log at each milestone.
+
 ## Context loading order
 
 1. Read `AGENTS.md` first.
