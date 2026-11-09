@@ -37,13 +37,13 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 14:02 CT. Verify heads before relying on this section.
+As of 2026-11-09 15:02 CT. Verify heads before relying on this section.
 
-Merged on `main` (`91241f3`): #185, #186, #187, #188, #189 (#62, `91e10ad`), #190 (#67 import, `f3ff0c7`), #191 (#64 Part A calculation, `df864e1`), #192 (#66 resolution, `848d3ac`), #193 (orchestrator handoff, `4aaf892`), and #194 (#70 Import workspace, `91241f3`).
+Merged on `main` (`8122694`): #185 through #195, including #194 (#70 Import workspace, `91241f3`) and #195 (#65 fitting, `8122694`).
 
-Open: #65 quantity fitting is the active item. #69 library may run in parallel and is not in this change. Production saving and #63 stay gated.
+Open: #69 Ingredient Library is the active item. Private profile writes, affected meals, and #68 end-to-end stay gated.
 
-Next after #65: #69 library, then #68 end-to-end. Ignore docs PRs #159 and #166.
+Next after #69: #68 end-to-end. Ignore docs PRs #159 and #166.
 
 ## Taking over
 
@@ -67,6 +67,8 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 13:54 | #70 import workspace | #194 | `5b216ba5ed8b8c8c580f43255e8430e30ae42c8a` | Codex findings addressed in this commit. | Independent review of the branch head, then green CI. |
 | 2026-11-09 14:02 | #70 import workspace | #194 | `91241f3` | Merged to main. | Start #65 on a new branch. #69 may run in parallel later. |
 | 2026-11-09 14:02 | #65 quantity fitting | #195 | `8fecfc6d7b35dbf43e5c501444810a0632aac49f` | PR opened. Estimated grams only. | Independent review of the branch head, then green CI. |
+| 2026-11-09 15:00 | #65 quantity fitting | #195 | `8122694` | Merged to main. | Start #69 on a new branch. #68 stays gated. |
+| 2026-11-09 15:04 | #69 ingredient library | #196 | `e40f5bbd43d46dc480621fbeb02a0d3691943db3` | PR opened. Private writes and affected meals stay off. | Independent review of the branch head, then green CI. |
 
 ## Logins and setup
 

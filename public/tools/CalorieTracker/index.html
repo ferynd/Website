@@ -83,6 +83,7 @@
         <nav class="tab-bar" role="tablist" aria-label="App sections">
           <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today"     tabindex="0">Today</button>
           <button id="tab-btn-import"    class="tab-btn"        data-tab="import"    role="tab" aria-selected="false" aria-controls="tab-import"    tabindex="-1">Import</button>
+          <button id="tab-btn-library"   class="tab-btn"        data-tab="library"   role="tab" aria-selected="false" aria-controls="tab-library"   tabindex="-1">Library</button>
           <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients" tabindex="-1">Nutrients</button>
           <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy"    tabindex="-1">Energy</button>
           <button id="tab-btn-corrections" class="tab-btn"      data-tab="corrections" role="tab" aria-selected="false" aria-controls="tab-corrections" tabindex="-1">Corrections</button>
@@ -99,6 +100,32 @@
     <!-- ══════════════════════════════════════════════════
          TODAY TAB
          ══════════════════════════════════════════════════ -->
+    <div id="tab-library" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-library">
+      <h2 class="text-xl font-bold mb-2 text-secondary">Ingredient Library</h2>
+      <p id="library-capability" class="text-xs text-muted mb-2"></p>
+      <label for="library-query" class="block text-sm font-medium text-primary mb-1">Search</label>
+      <input id="library-query" class="mb-2" type="search" placeholder="Name or alias">
+      <label for="library-filter" class="block text-sm font-medium text-primary mb-1">Show</label>
+      <select id="library-filter" class="mb-2">
+        <option value="all">All</option>
+        <option value="fields">Missing fields</option>
+        <option value="conversions">Missing conversions</option>
+      </select>
+      <div class="flex gap-2 flex-wrap mt-2 mb-3">
+        <button type="button" id="library-search" class="btn btn-primary btn-sm">Search</button>
+        <button type="button" id="library-more" class="btn btn-secondary btn-sm">More</button>
+        <button type="button" id="library-review" class="btn btn-secondary btn-sm">Review gaps</button>
+        <button type="button" id="library-research" class="btn btn-secondary btn-sm">Copy research packet</button>
+        <button type="button" id="library-apply" class="btn btn-secondary btn-sm">Apply research response</button>
+      </div>
+      <p id="library-message" class="text-sm mb-2" role="status"></p>
+      <div id="library-output" class="text-sm mb-3"></div>
+      <label for="library-response" class="block text-sm font-medium text-primary mb-1">Research response</label>
+      <textarea id="library-response" rows="4" placeholder="Paste one research response JSON here."></textarea>
+      <label for="library-copy" class="block text-sm font-medium text-primary mb-1">Copy</label>
+      <textarea id="library-copy" rows="6" readonly></textarea>
+    </div>
+
     <div id="tab-import" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-import">
       <h2 class="text-xl font-bold mb-2 text-secondary">Import ingredient list</h2>
       <p id="import-capability" class="text-xs text-muted mb-2"></p>
