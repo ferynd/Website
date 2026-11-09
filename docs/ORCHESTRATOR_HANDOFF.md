@@ -37,13 +37,24 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 15:02 CT. Verify heads before relying on this section.
+As of 2026-11-09 15:41 CT. Verify heads before relying on this section.
 
-Merged on `main` (`8122694`): #185 through #195, including #194 (#70 Import workspace, `91241f3`) and #195 (#65 fitting, `8122694`).
+Merged on `main` (`497f941`): #185 through #196. Latest merges are #195 (#65 fitting, `8122694`) and #196 (#69 Ingredient Library, `497f941`).
 
-Open: #69 Ingredient Library is the active item. Private profile writes, affected meals, and #68 end-to-end stay gated.
+No ungated nutrition slice remains. The merged #69 slice is search, review, and staged research. Private add, edit, and save stay open as #69 Part B. Do not start #68, #69 Part B, or the other Part B / #63 / #71 items until James approves the gates below.
 
-Next after #69: #68 end-to-end. Ignore docs PRs #159 and #166.
+Approvals required, in dependency order:
+
+- **#60 Part B:** production census and backup, then enabling `NUTRIENT_V2_WRITES_ENABLED`, then deployment. The flag stays false.
+- **#61 Part B:** three separate approvals: Firestore rules deploy, live smoke with throwaway accounts, and enabling `INGREDIENT_STORE_WRITES_ENABLED`. The flag stays false.
+- **#69 Part B:** private profile add, edit, and save. It waits on #61 Part B and the same write-flag approval. `commitLibraryEdit()` stays `writes_disabled`. Affected meals stay deferred until #64 Part B.
+- **#62 Part B:** provision or use a live FDC credential, and publish staged curated data. No live food pull until then.
+- **#63:** approval before each live catalog import, and before any paid API batch. A #63 gap report is required before #68. Subscription residual research does not need a spend approval; importing those results still needs the catalog-import approval.
+- **#64 Part B:** rules deploy or production schema change. It also waits on #61 Part B. Saving stays gated.
+- **#68:** production smoke, migrations, and each enablement step. It also waits on every item above plus the already merged #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice.
+- **#71:** deferred. Approval is required to build or enable the route, provision a key, raise the $0 cap, or deploy Storage rules.
+
+Ignore docs PRs #159 and #166.
 
 ## Taking over
 
@@ -69,6 +80,8 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 14:02 | #65 quantity fitting | #195 | `8fecfc6d7b35dbf43e5c501444810a0632aac49f` | PR opened. Estimated grams only. | Independent review of the branch head, then green CI. |
 | 2026-11-09 15:00 | #65 quantity fitting | #195 | `8122694` | Merged to main. | Start #69 on a new branch. #68 stays gated. |
 | 2026-11-09 15:04 | #69 ingredient library | #196 | `e40f5bbd43d46dc480621fbeb02a0d3691943db3` | PR opened. Private writes and affected meals stay off. | Independent review of the branch head, then green CI. |
+| 2026-11-09 15:41 | #69 ingredient library | #196 | `497f94194d38e649c8c03325c200d24ed31b2f6b` | Merged to main. | Stop. #68 and the Part B items need James's approval. Do not start them. |
+| 2026-11-09 15:52 | #69 archive correction | #197 | `f26027543e3bc72e0c4580f7de12353ede410d0c` | Codex finding addressed. Search and review are archived. Private add, edit, and save stay open as #69 Part B. | Do not start #69 Part B. It needs the #61 Part B write approval. |
 
 ## Logins and setup
 
