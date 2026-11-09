@@ -304,7 +304,7 @@ _“Log meals, track full nutrition, monitor energy trends, and auto-generate ta
 
 This is a full-featured nutrition tracker built as a static client-side app (plain JS/HTML, no React). It lives in **public/tools/CalorieTracker/** and is accessed at `/tools/CalorieTracker/index.html`. Firebase Auth and Firestore provide persistent, per-user storage across sessions and devices.
 
-**Ingredient expansion:** [CalorieTracker #59-#78](backlogs/calorie-tracker.md) and the [2026-11-09 requirements review](docs/nutrition/REQUIREMENTS_REVIEW_2026-11-09.md). The tracker has an Import workspace and a Library tab. Calculation and fitting are implemented. Both write flags are false, the curated catalog has no nutrition profiles, and the [ingredient catalog](docs/nutrition/ingredient-catalog.json) is still a research queue. A code merge is not a populated catalog or a rules deploy. The legacy Today flow below remains the production logging path.
+**Ingredient expansion:** [CalorieTracker #59-#80](backlogs/calorie-tracker.md) and the [2026-11-09 requirements review](docs/nutrition/REQUIREMENTS_REVIEW_2026-11-09.md). The tracker has an Import workspace and a Library tab. Calculation and fitting are implemented. Both write flags are false, the curated catalog has no nutrition profiles, and the [ingredient catalog](docs/nutrition/ingredient-catalog.json) is still a research queue. A code merge is not a populated catalog or a rules deploy. The legacy Today flow below remains the production logging path.
 
 #### Tab structure
 

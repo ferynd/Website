@@ -181,7 +181,7 @@ Recipe Standardizer imports the same registry. **Tested:** `calculate.test.js` c
 Adopted as the backlog order. Phase 1 is the parent's job. This PR does not start phase 2.
 
 1. **Census and backup.** The parent completed the read-only count on 2026-11-09. Aggregates are above. Writers stay off. The REST backup is not a migration copy. #80 tracks the script bugs. Agents do not run another production census.
-2. **Technical corrections and branch work, production writes still off.** #72, #73, #74 lookup honesty, #75, #78, then #69 Part B and #64 Part B behind the existing false flags and emulator or fixture tests.
+2. **Technical corrections and branch work, production writes still off.** #72, #73, #74 lookup honesty, #78, then #75, then #69 Part B and #64 Part B behind the existing false flags and emulator or fixture tests.
 3. **Beta validation** (#79) in an isolated Firebase test project. Not production. #68 depends on its recorded result. #79 is an active blocked item so phase 3 cannot be skipped by taking the next unchecked production gate.
 4. **Priority-1 dry-run pilot** (#76) on pinned local fixtures, plus #77 aggregate counts from a foods-only extract kept outside the checkout. The committed report has no document path, food name, id, or nutrient value.
 5. **Controlled enablement**, one gate at a time, each with its own backup and rollback: #62 Part B, named #63 waves, #61 Part B, and only then a writer flag if legacy saves stay on v1. #60's global v2 food/day flag stays off unless a later approval shows legacy flows cannot see an incompatible write.
@@ -205,8 +205,8 @@ No production approval is required for:
 1. **#72** — yield, water, fat, and retention model, with the five regression cases. Pure calculation.
 2. **#73** — keep research evidence on the applied draft. Do not enable `commitLibraryEdit()`.
 3. **#74** — stop recording `not_found` when no lookup ran. Leave the live adapter disabled.
-4. **#75** — remaining compatibility notes. The false cache and "not shipped" sentences are corrected in this PR.
-5. **#78** — rename the tab to Ingredient Import (Beta), and make failure and abandon copy say that Today is unchanged.
+4. **#78** — rename the tab to Ingredient Import (Beta), and make failure and abandon copy say that Today is unchanged.
+5. **#75** — remaining compatibility notes. The false cache and "not shipped" sentences are corrected in this PR.
 6. **#69 Part B and #64 Part B** — implement in branches with both write flags false and with emulator or fixture tests. Do not deploy rules or point tests at production.
 7. **#76** — dry-run report from pinned local fixtures only.
 8. **#77** — aggregate conversion counts from a foods-only extract the parent keeps outside the checkout. Do not query production or commit a path, name, id, or nutrient value.

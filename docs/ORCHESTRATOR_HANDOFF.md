@@ -48,8 +48,8 @@ The plan is [the 2026-11-09 requirements review](nutrition/REQUIREMENTS_REVIEW_2
 1. #72 yield, water, fat, and retention.
 2. #73 research evidence on the applied draft.
 3. #74 honest lookup status, with no live call.
-4. #75 remaining doc compatibility notes.
-5. #78 beta tab label and explicit abandon copy.
+4. #78 beta tab label and explicit abandon copy.
+5. #75 remaining doc compatibility notes.
 6. #69 Part B and #64 Part B in branches, emulator or fixtures only.
 7. #76 local-fixture dry-run report, and #77 aggregate counts from a foods-only extract the parent keeps outside the checkout. Do not commit names, ids, paths, or nutrient values.
 
