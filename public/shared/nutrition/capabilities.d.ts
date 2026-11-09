@@ -1,5 +1,6 @@
 export const NUTRIENT_V2_WRITES_ENABLED: false;
 export const INGREDIENT_STORE_WRITES_ENABLED: false;
+export const IMPORT_WORKSPACE_ENABLED: true;
 export const INGREDIENT_STORE_SCHEMA_VERSION: 1;
 export const NUTRITRACK_CACHE_NAME: 'nutritrack-v5';
 export function resolveNutrientWriteVersion(): 1 | 2;
@@ -9,5 +10,6 @@ export const NUTRITION_CAPABILITIES: {
   readVersions: readonly [1, 2];
   readonly writeVersion: 1 | 2;
   textLabelsV2: true;
+  importWorkspace: true;
   cacheName: string;
 };

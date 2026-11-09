@@ -37,13 +37,13 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 13:01 CT. Verify heads before relying on this section.
+As of 2026-11-09 13:28 CT. Verify heads before relying on this section.
 
-Merged on `main` (`df864e1`): #185, #186, #187, #188, #189 (#62, `91e10ad`), #190 (#67 import, `f3ff0c7`), #191 (#64 Part A calculation, `df864e1`).
+Merged on `main` (`848d3ac`): #185, #186, #187, #188, #189 (#62, `91e10ad`), #190 (#67 import, `f3ff0c7`), #191 (#64 Part A calculation, `df864e1`), #192 (#66 resolution, `848d3ac`), and #193 (orchestrator handoff, `4aaf892`).
 
-Open: [PR #192](https://github.com/ferynd/Website/pull/192), the #66 missing-ingredient resolution ladder, at head `b090f36d63e11e06ed42372b74f9b7f507767952`. Grok re-review approved that exact SHA (`bc-726ee1d0-99e9-593c-843d-91fc5fe2896f`) and all 10 checks were green. It is ready to merge after a fresh check that the head is still that SHA.
+Open: #70 tracker Import workspace is the active item. It reuses the merged modules and does not enable fitting or production saving.
 
-Next order: #70 import workspace, then #65 fitting, then #69 library, then #68 end-to-end. #63 stays gated. Ignore docs PRs #159 and #166.
+Next order after #70: #65 fitting, then #69 library, then #68 end-to-end. #63 stays gated. Ignore docs PRs #159 and #166.
 
 ## Taking over
 
@@ -62,6 +62,9 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | --- | --- | --- | --- | --- | --- |
 | 2026-11-09 13:01 | #66 resolution | #192 | `b090f36d63e11e06ed42372b74f9b7f507767952` | Review clean. Grok approved this SHA. 10 checks green. | Parent verifies the head is unchanged, then squash-merges. |
 | 2026-11-09 13:04 | Orchestrator handoff | #193 | `d05fb9bd30bdcf057f428c1953549c209d918518` | PR opened. Docs only. | Independent review of the branch head, then green CI. |
+| 2026-11-09 13:28 | #66 resolution | #192 | `848d3ac81636194bbdb74ac7d64be1f80dd1e9ea` | Merged to main. | Start #70 on a new branch. Do not reopen #192. |
+| 2026-11-09 13:30 | #70 import workspace | #194 | `d6e405625fdc791c23acc43408cd2ac240f41c36` | PR opened. Fit and production save stay off. | Independent review of the branch head, then green CI. |
+| 2026-11-09 13:54 | #70 import workspace | #194 | `5b216ba5ed8b8c8c580f43255e8430e30ae42c8a` | Codex findings addressed in this commit. | Independent review of the branch head, then green CI. |
 
 ## Logins and setup
 

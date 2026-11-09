@@ -41,6 +41,7 @@ const APP_SHELL = [
   './ui/nutrientHelpers.js',
   './ui/nutrientDetail.js',
   './ui/dateRange.js',
+  './ui/importWorkspace.js',
   './utils/time.js',
   './utils/ui.js',
   './nutrition/nutrientRecord.js',
@@ -61,6 +62,19 @@ const APP_SHELL = [
   '/shared/nutrition/research/indexedDbResearchStore.js',
   '/shared/nutrition/research/researchJob.js',
   '/shared/nutrition/research/profileFields.js',
+  '/shared/nutrition/research/researchPacket.js',
+  '/shared/nutrition/importWorkspace.js',
+  '/shared/nutrition/importWorkspaceDraft.js',
+  '/shared/nutrition/resolution.js',
+  '/shared/nutrition/calculate.js',
+  '/shared/nutrition/variantVocabulary.js',
+  '/shared/nutrition/import/index.js',
+  '/shared/nutrition/import/ingredientList.js',
+  '/shared/nutrition/import/pasteFormat.js',
+  '/shared/nutrition/import/importDraft.js',
+  '/shared/nutrition/import/inputAdapters.js',
+  '/shared/nutrition/import/reconcile.js',
+  '/shared/nutrition/import/assistantInstructions.js',
 ];
 
 const EXTERNAL_RUNTIME = [

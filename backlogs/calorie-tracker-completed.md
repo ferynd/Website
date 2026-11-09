@@ -82,6 +82,11 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Calculate every registry nutrient deterministically.**
   > Resolved: shared calculate.js scales stored nutrients, keeps unknown distinct from zero, and computes weighted fiber, adjusted carbs, and FODMAP equivalents; recipe scaling uses scalePerBasis; checks: tracker 1092, root 2014, API 43, lint, build, and all 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: df864e1 (PR #191); residual risk: fitting and snapshot saving remain #65 and #64 Part B. No production write.
 
+## #66 — missing-ingredient resolution
+
+- [x] **Make database reuse and the missing-ingredient ladder clear.**
+  > Resolved: shared resolution ladder batches missing profiles separately from missing fields, pins field gaps to the matched revision, and builds one #62 packet; fit panel and library links stay off; checks recorded on the PR: tracker 1095, root 2015, API 43, lint, build, and all 10 GitHub CI checks; one Grok 4.7 review approved the final head; merged: 848d3ac (PR #192); residual risk: the tracker screen that hosts the ladder is #70, and production profile writes remain Part B. No production write.
+
 ## #67 — ingredient-list import
 
 - [x] **Import assistant-prepared ingredient lists.**

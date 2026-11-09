@@ -633,7 +633,7 @@ export function calculateMicronutrientMetrics(dateStr) {
 // TAB MANAGEMENT
 // =========================
 
-const VALID_TABS = ['today', 'nutrients', 'energy', 'corrections', 'profile', 'settings'];
+const VALID_TABS = ['today', 'import', 'nutrients', 'energy', 'corrections', 'profile', 'settings'];
 
 function applyTabButtonState(activeTab) {
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -685,7 +685,7 @@ export function initializeTabs() {
 
 /**
  * Activate a tab, update URL hash, persist to localStorage, and render content.
- * @param {string} name - Tab name (today|nutrients|energy|profile|settings)
+ * @param {string} name - Tab name (today|import|nutrients|energy|profile|settings)
  */
 export function activateTab(name) {
   try {

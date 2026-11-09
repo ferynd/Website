@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, and #67 are archived. Critical path: **#66 → #70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #66, and #67 are archived. Critical path: **#70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -64,18 +64,10 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, and #67 are archived. Critic
   - **Checks:** dry-run reports, source-license review, root/tracker suites for any config change.
   - **Migration/deploy:** **Requires James's explicit approval** to provision or use live credentials (for example an FDC API key) and to publish staged data to production.
 
-### #66: Build missing-ingredient and nutrition review screens
-
-- [p] **Make database reuse and the missing-ingredient ladder clear in both tools.** Depends: #62, #64 Part A, #67; #65 only for the fit panel (capability-gated). #69 deep links are capability-gated.
-  > pushed — shared resolution ladder batches missing profiles separately from missing fields and builds one #62 packet for unresolved lines; field gaps pin the matched revision; fit panel and library links stay off; checks: tracker 1095, root 2015, API 43, lint, build, ci:contract, ci:docs; commit: e59cd5d; PR: #192
-  - **Surfaces:** shared resolution and review components used by the tracker (#70) and Recipe Standardizer: missing-data dialog, ingredient/quantity review, nutrition panel, staging, mobile detail views. Ingredient-level editing opens #69 views when available rather than reimplementing them.
-  - **Accept:** batched missing/ambiguous ingredients and field gaps, with missing profiles distinct from missing fields. The ladder: existing alias, approved alternative, or recorded substitute (marked estimate); official lookup (#62 job); then the optional #71 route if enabled and within budget, or a **batch research packet** (copy once, paste once) through #62; manual entry; incomplete draft; cancel. Packets are offered after a recorded official-source attempt left fields unresolved (or an explicit user override). Research review uses #62's review packet. After any resolution, the meal recalculates automatically without re-running resolved research. Retry/cancel clear; no ingredient disappears. Review shows known-versus-calculated values with rounding intervals, measured vs estimated quantities with ranges, coverage and important uncertainties, source/quality per ingredient and per nutrient, and #65 flags when available; quantities stay editable. Matched inputs calculate without models.
-  - **Checks:** each choice, packet copy/paste round trip, recalculation after resolve, offline/error/retry, repeat ingredients, accessibility/mobile and both-tool round trips; tracker/root suites, lint/build.
-  - **Migration/deploy:** capability-aware flow; verify signed-in use with the same account in both tools and record outcomes.
-
 ### #70: Build the tracker's Import workspace
 
-- [ ] **Orchestrate paste → validate → match → resolve → calculate → [fit] → review → save in the tracker.** Depends: #67, #66, #64 Part A; #65 for the fit stage (capability-gated); #64 Part B for saving (capability-gated).
+- [p] **Orchestrate paste → validate → match → resolve → calculate → [fit] → review → save in the tracker.** Depends: #67, #66, #64 Part A; #65 for the fit stage (capability-gated); #64 Part B for saving (capability-gated).
+  > pushed — tracker Import tab reuses #61/#62/#64/#66/#67; fit and production save stay off; checks: tracker 1098, root 2015, API 43, lint, build, ci:contract, ci:docs; commit: 5b216ba; PR: #194
   - **Surfaces:** tracker primary "Import ingredient list" entry, stage navigation and draft state, "Copy assistant instructions," offline/capability indicators, legacy paste entry as a secondary option.
   - **Accept:** one entry point accepts ingredient-list JSON or paste, a saved meal or recipe, or legacy paste; no photo, barcode, or OCR input. Stages run in order and are resumable per the [workflow](../docs/nutrition/workflow.md#staged-meal-analysis). Each value shows whether it came from deterministic data, the user, or an assistant. With matched ingredients the whole flow uses zero model calls. Fitting runs only when eligible known facts exist. Until #61 Part B and #64 Part B are released, the workspace runs through review and offers export/copy only. Matching and calculation work offline from the #61 cache; packet copy works offline. Drafts are keyed to the authenticated owner, cleared on sign-out or account switch, and never shown across users. Cancel prevents the meal/diary commit; research jobs or approved profiles already created are preserved and reported accurately.
   - **Checks:** tracker suite; end-to-end fixtures for assistant-prepared lists (with and without known facts), saved meals, recipes, and legacy paste; packet round trip through resolve; zero-model assertions for matched inputs; zero re-research of matched lines; draft resume/cancel with owner scoping; legacy paste parity; accessibility/mobile; root suite and lint/build where shared or React code changes.
