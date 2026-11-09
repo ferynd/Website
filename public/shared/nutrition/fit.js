@@ -2,7 +2,7 @@ import { calculateMeal } from './calculate.js';
 
 /** Deterministic quantity fit. Profiles, known facts, and fixed grams stay put. */
 export const FIT_VERSION = 1;
-const DEVIATION_WEIGHT = 1e-4;
+const DEVIATION_WEIGHT = 1e-8;
 const CONSTRAINT_WEIGHT = 1e6;
 const GRAM_EPSILON = 0.05;
 
@@ -82,11 +82,23 @@ function nutrientTargets(facts, lines, grams, mealServings) {
     return { targets, notes };
 }
 
+function nutrientComplete(lines, key) {
+    const parents = parentsOf(lines);
+    return lines.filter(line => !parents.has(line.lineId)).every(line => finite(line.nutrients?.[key]?.value));
+}
+
+function slopeOf(line, key) {
+    if (!finite(line.nutrients?.[key]?.value)) return null;
+    const retention = line.yieldRetention == null ? 1 : line.yieldRetention;
+    return retention * line.nutrients[key].value / 100;
+}
+
 function smoothLoss(lines, grams, facts, mealServings, starts) {
     const calculated = calculateMeal({ lines: mealLines(lines, grams) });
     const { targets } = nutrientTargets(facts, lines, grams, mealServings);
     let loss = 0;
     for (const target of targets) {
+        if (!nutrientComplete(lines, target.key)) continue;
         const value = calculated.nutrients?.[target.key]?.value;
         if (value == null) continue;
         if (target.kind === 'less_than') {
@@ -192,8 +204,47 @@ function lossAt(lines, grams, facts, mealServings, starts, constraints) {
     return smoothLoss(lines, grams, facts, mealServings, starts) + CONSTRAINT_WEIGHT * constraintLoss(lines, grams, constraints).loss;
 }
 
+function smoothPoint(lines, grams, line, bound, facts, mealServings, starts) {
+    const x0 = grams.get(line.lineId);
+    const start = starts.get(line.lineId);
+    const scaleStart = Math.max(Math.abs(start), 1);
+    const deviation = DEVIATION_WEIGHT / (scaleStart ** 2);
+    let numerator = deviation * start;
+    let denominator = deviation;
+    const calculated = calculateMeal({ lines: mealLines(lines, grams) });
+    const project = [];
+    for (const fact of facts) {
+        for (const [key, observed] of Object.entries(fact.nutrients || {})) {
+            if (!nutrientComplete(lines, key)) continue;
+            const slope = slopeOf(line, key);
+            if (slope == null) continue;
+            const known = scaleKnown(observed.value, fact, totalGrams(lines, grams), mealServings);
+            if (known == null) continue;
+            const base = (calculated.nutrients?.[key]?.value ?? 0) - slope * x0;
+            if (observed.qualifier === 'less_than') {
+                project.push({ slope, limit: known, base, kind: 'less_than' });
+                continue;
+            }
+            if (observed.rounding && observed.rounding !== 'exact' && !finite(observed.roundingInterval)) continue;
+            const scale = Math.max(Math.abs(known), 1);
+            numerator += slope * (known - base) / (scale ** 2);
+            denominator += (slope ** 2) / (scale ** 2);
+        }
+    }
+    let next = denominator > 0 ? numerator / denominator : start;
+    next = clamp(next, bound);
+    for (const item of project) {
+        if (item.slope === 0) continue;
+        if (item.slope * next + item.base > item.limit + 1e-9)
+            next = clamp((item.limit - item.base) / item.slope, bound);
+    }
+    return next;
+}
+
 function searchVariable(lines, grams, line, bound, facts, mealServings, starts, constraints) {
-    const samples = 33;
+    grams.set(line.lineId, smoothPoint(lines, grams, line, bound, facts, mealServings, starts));
+    if (constraintLoss(lines, grams, constraints).loss <= 0) return;
+    const samples = 65;
     let best = grams.get(line.lineId);
     let bestLoss = Infinity;
     for (let step = 0; step < samples; step++) {
@@ -239,7 +290,7 @@ function residuals(lines, grams, facts, mealServings) {
     for (const fact of facts) {
         for (const [key, observed] of Object.entries(fact.nutrients || {})) {
             const target = targetFor(fact, key, observed, totalGrams(lines, grams), mealServings);
-            const value = calculated.nutrients?.[key]?.value ?? null;
+            const value = nutrientComplete(lines, key) ? (calculated.nutrients?.[key]?.value ?? null) : null;
             if (!target.usable) {
                 rows.push({ factId: fact.factId, key, known: observed.value, calculated: value, difference: null, reason: target.reason, rounding: target.rounding || null });
                 continue;
@@ -293,12 +344,17 @@ export function fitQuantities({ lines = [], constraints = [], facts = [], servin
     let nonUnique = false;
     for (let i = 0; i < free.length && !nonUnique; i++) {
         for (let j = i + 1; j < free.length; j++) {
+            const keys = [...new Set([...Object.keys(free[i].nutrients || {}), ...Object.keys(free[j].nutrients || {})])];
+            const key = keys.find(item => slopeOf(free[i], item) && slopeOf(free[j], item));
+            if (!key) continue;
             const trial = new Map(chosen);
             const left = free[i].lineId;
             const right = free[j].lineId;
-            const nextLeft = clamp(chosen.get(left) + 10, bounds.get(left));
-            const nextRight = clamp(chosen.get(right) - 10, bounds.get(right));
-            if (Math.abs(nextLeft - chosen.get(left)) < 5 || Math.abs(nextRight - chosen.get(right)) < 5) continue;
+            const shift = 10;
+            const nextLeft = clamp(chosen.get(left) + shift, bounds.get(left));
+            const used = nextLeft - chosen.get(left);
+            const nextRight = clamp(chosen.get(right) - used * slopeOf(free[i], key) / slopeOf(free[j], key), bounds.get(right));
+            if (Math.abs(used) < 5 || Math.abs(nextRight - chosen.get(right)) < 5) continue;
             trial.set(left, nextLeft);
             trial.set(right, nextRight);
             const trialLoss = lossAt(lines, trial, facts, servings, starts, constraints);

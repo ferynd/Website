@@ -98,6 +98,11 @@ function resolutionLines(draft) {
             gMax: line.quantity?.gMax ?? null,
             variant: line.variant || {},
             kind: line.kind,
+            parentLineId: line.parentLineId,
+            yieldRetention: line.yieldRetention,
+            order: line.order,
+            fiberCategory: line.fiberCategory,
+            fiberComponents: line.fiberComponents,
         };
     });
 }
@@ -268,7 +273,7 @@ export function fitWorkspace(workspace) {
             grams: line.quantity?.g ?? 0,
             gMin: line.quantity?.gMin,
             gMax: line.quantity?.gMax,
-            basis: item?.estimate ? 'estimated' : line.quantity?.basis,
+            basis: line.quantity?.basis,
             nutrients: item?.nutrients || {},
             parentLineId: line.parentLineId,
             yieldRetention: line.yieldRetention,

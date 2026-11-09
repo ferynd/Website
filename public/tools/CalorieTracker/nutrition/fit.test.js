@@ -55,6 +55,24 @@ describe('quantity fitting', () => {
         expect(ambiguous.flags.nonUnique).toBe(true);
         expect(ambiguous.flags.unique).toBe(false);
         expect(ambiguous.quantities.map(item => item.grams).reduce((sum, value) => sum + value, 0)).toBeCloseTo(100, 0);
+        const uneven = fitQuantities({
+            lines: [
+                { lineId: 'a', grams: 50, gMin: 0, gMax: 200, basis: 'estimated', nutrients: calories(100) },
+                { lineId: 'b', grams: 25, gMin: 0, gMax: 200, basis: 'estimated', nutrients: calories(200) },
+            ],
+            facts: [fact(calories(100))],
+        });
+        expect(uneven.flags.nonUnique).toBe(true);
+        expect(uneven.calculation.nutrients.calories.value).toBeCloseTo(100, 0);
+        const partial = fitQuantities({
+            lines: [
+                { lineId: 'rice', grams: 100, gMin: 0, gMax: 300, basis: 'estimated', nutrients: { calories: { value: 100, status: 'measured' }, protein: { value: 2.7, status: 'measured' } } },
+                { lineId: 'oil', grams: 10, gMin: 0, gMax: 40, basis: 'estimated', nutrients: calories(900) },
+            ],
+            facts: [fact({ protein: { value: 10, unit: 'g' } })],
+        });
+        expect(partial.reason).toBe('no numeric fit target');
+        expect(partial.quantities.find(item => item.lineId === 'rice').grams).toBe(100);
         const rounded = fitQuantities({
             lines: [{ lineId: 'rice', grams: 100, gMin: 0, gMax: 400, basis: 'estimated', nutrients: calories(100) }],
             facts: [fact({ calories: { value: 180, unit: 'kcal', rounding: 'fda_label' } })],
