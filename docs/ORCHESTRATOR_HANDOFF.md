@@ -86,6 +86,7 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 16:34 | Nutrition requirements review | #198 | `7158db2c6349f00ac7d7d3db4a1d3477eaaba899` | Docs plan opened. James approved only the read-only census, which the parent is running. No code and no production query in this change. | Independent review of the PR head, then green CI. Do not start phase 2 until this plan is merged. |
 | 2026-11-09 16:45 | Nutrition requirements review | #198 | `82cc010a0e60ca86469cf7a1c011c67c9174f920` | Grok requested three factual corrections: water gain, the cache runbook tense, and the official-miss button. | Review the correction commit. |
 | 2026-11-09 16:55 | Nutrition requirements review | #198 | `1ecb59c0bbb1a8bd0127216af898bfa8b3ffac9c` | Grok approved that SHA. Codex then required a diary-guard limit, item #79, phase-2 ordering, an unknown census result, the #59–#78 range, and an aggregate-only #77 report. | Review the Codex correction commit. |
+| 2026-11-09 17:05 | Nutrition requirements review | #198 | `02095104636de273003ed52c057b773ee997b13a` | Grok asked every #77 sentence to say foods-only, outside the checkout, and no path, name, id, or nutrient value. | Review the aligned head. |
 
 ## Logins and setup
 

@@ -29,7 +29,7 @@ James approved only the read-only #60 Part B census and backup. The parent is ru
 | One registry, profile store, and calculation module | (1) | `public/shared/nutrition/nutrientRegistry.js`, `ingredientStore.js`, and `calculate.js`. Recipe Standardizer imports the same registry. |
 | Saving a meal does not auto-log it | (1) for both current paths | `saveWorkspace()` exports or refuses. It does not write a diary entry. Legacy `saveFoodItemToDatabase()` tells the user the food is ready to add; `staging/parser.js` adds to today's log only from a separate staged action. |
 | Flat saved foods stay compatible | (1) while v2 writes are off | Food writes stay the 24-number v1 shape. A v1 writer refuses a document whose `nutrientSchemaVersion` is 2 or higher (`food/save.js`, `nutrition/nutrientRecord.js`). |
-| Lossless conversion count of existing flat foods | (4) | Not measured. #77 may read a foods-only extract the parent supplies, kept outside the checkout. The committed result is aggregate counts only. It must not query production, commit names or values, or rewrite foods. |
+| Lossless conversion count of existing flat foods | (4) | Not measured. #77 may read a foods-only extract the parent keeps outside the checkout. The committed result is aggregate counts only. It must not query production, commit a document path, food name, id, or nutrient value, or rewrite foods. |
 
 **Implemented / tested / deployed / populated:** coexistence and the no-auto-log save split are implemented and covered by `nutrition/importWorkspace.test.js` (`committed: false`) plus the existing food-save tests. Rules and write flags are not deployed. Nothing is populated.
 
@@ -156,7 +156,7 @@ Adopted as the backlog order. Phase 1 is the parent's job. This PR does not star
 1. **Census and backup.** Approved read-only #60 Part B. Parent-run. Agents do not run it.
 2. **Technical corrections and branch work, production writes still off.** #72, #73, #74 lookup honesty, #75, #78, then #69 Part B and #64 Part B behind the existing false flags and emulator or fixture tests.
 3. **Beta validation** (#79) in an isolated Firebase test project. Not production. #68 depends on its recorded result. #79 is an active blocked item so phase 3 cannot be skipped by taking the next unchecked production gate.
-4. **Priority-1 dry-run pilot** (#76) on pinned local fixtures, plus the aggregate flat-food report (#77) from a foods-only extract.
+4. **Priority-1 dry-run pilot** (#76) on pinned local fixtures, plus #77 aggregate counts from a foods-only extract kept outside the checkout. The committed report has no document path, food name, id, or nutrient value.
 5. **Controlled enablement**, one gate at a time, each with its own backup and rollback: #62 Part B, named #63 waves, #61 Part B, and only then a writer flag if legacy saves stay on v1. #60's global v2 food/day flag stays off unless a later approval shows legacy flows cannot see an incompatible write.
 6. **#68 acceptance** after those gates and a #63 gap report.
 7. **#71** stays deferred. Building the route still needs approval.
