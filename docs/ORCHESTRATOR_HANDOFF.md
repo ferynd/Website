@@ -37,15 +37,17 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 17:10 CT. Verify heads before relying on this section.
+As of 2026-11-09 17:45 CT. Verify heads before relying on this section.
 
-Merged on `main` (`da04c70`): #185 through #197. #197 keeps private profile saves open as #69 Part B.
+Merged on `main` (`3b74f76`): #185 through #198, including #196 (#69 search and review), #197, and #198. #69 private add, edit, and save stay #69 Part B.
+
+Muse holds orchestration until Friday, November 13, 2026, 3:11 PM CT. The parent orchestrator resumes after that.
 
 The parent finished the read-only census of `jlb-calorietracker` on 2026-11-09 about 16:32 CT. Aggregates: 609 documents backed up off-repo; 1 user; 191 food documents, all v1; 0 v2 food documents; 0 non-numeric legacy foods; 0 food id collisions; 417 daily entries; 3200 food elements; 0 element collisions; largest entry 8257 bytes; 1 recipe; 0 confirmed links; 0 export refs; 2 timestamp fields. The in-memory restore passed. The backup used REST and a CLI token, so integer versus double was not kept. Take a fresh Admin SDK backup before any migration. Script bugs are #80. Do not query production again. Do not treat the census as permission to flip a write flag.
 
-The plan is [the 2026-11-09 requirements review](nutrition/REQUIREMENTS_REVIEW_2026-11-09.md). Next code, after this docs PR, keeps both write flags false:
+The plan is [the 2026-11-09 requirements review](nutrition/REQUIREMENTS_REVIEW_2026-11-09.md). #72 is PR #199 and is in review. Next code, with both write flags false:
 
-1. #72 yield, water, fat, and retention.
+1. #72 yield, water, fat, and retention. In review on #199. Do not start a second copy.
 2. #73 research evidence on the applied draft.
 3. #74 honest lookup status, with no live call.
 4. #78 beta tab label and explicit abandon copy.
@@ -89,6 +91,7 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 17:05 | Nutrition requirements review | #198 | `02095104636de273003ed52c057b773ee997b13a` | Grok asked every #77 sentence to say foods-only, outside the checkout, and no path, name, id, or nutrient value. | Review the aligned head. |
 | 2026-11-09 16:32 | #60 read-only census | | `da04c70` | Parent census of `jlb-calorietracker`. 609 docs backed up off-repo. 191 foods, all v1, 0 v2. 417 daily entries, 3200 elements, 0 collisions, largest 8257 bytes. 1 recipe, 0 confirmed links, 0 export refs. 1 user. 2 timestamp fields. In-memory restore passed. REST backup does not keep integer versus double. | Fresh Admin SDK backup before any migration. Track script bugs as #80. Do not rerun production. |
 | 2026-11-09 17:10 | #197 archive correction | #197 | `da04c70` | Merged to main. | #198 is rebased onto this main. Review the rebased head. |
+| 2026-11-09 17:45 | Handoff to Muse | #198 / #199 | `3b74f76` | `main` is `3b74f76`: #196 (#69 search and review), #197, and #198 are merged. #60 Part B read-only census and backup are done; aggregates are in the requirements review. #199 (#72) is rebased here; its code commit is `cd2969e`. It is in review and CI. Next safe order: #73, #74, #78, #75, then #69 Part B and #64 Part B in the emulator only, #76 as a local-fixture dry-run, and #77 aggregate counts run by the orchestrator locally. Production writes, flags, rules, live pulls, catalog import, #68, and #71 stay gated. | Muse holds orchestration until Fri Nov 13, 2026, 3:11 PM CT. Do not merge #199 until its reviewed head is unchanged and CI is green. |
 
 ## Logins and setup
 

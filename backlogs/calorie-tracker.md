@@ -141,7 +141,7 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
 ### #72: Model yield without scaling nutrients by water
 
 - [p] **Separate raw weight, cooked weight, water, fat, and retention.** Depends: #64 Part A and #65. No production approval.
-  > in progress — roasted meat, boiled pasta, baking, sauce, and mixed-dish regressions
+  > pushed — water does not scale nutrients; raw total still constrains the sum; serving facts use cooked mass; checks: tracker 1112; commit: cd2969e; PR: #199
   - **Surfaces:** `fitWorkspace()`, `calculate.js`, and `fit.js`.
   - **Accept:** a finished serving weight is not an exact sum of raw ingredient grams. Water loss or gain does not scale nutrients. Fat absorbed or discarded and retention factors are explicit and are not applied twice. `yieldRetention` above 1 is not silently dropped. Regression tests cover roasted meat, boiled pasta, baking, sauces, and a mixed dish.
   - **Checks:** tracker suite for `calculate.js`, `fit.js`, and `importWorkspace.js`.
