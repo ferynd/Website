@@ -3,7 +3,7 @@ import { INGREDIENT_STORE_WRITES_ENABLED } from '../../../shared/nutrition/capab
 import { commitLibraryEdit, filterLibraryGaps, researchLibraryFields, reviewLibraryProfile, searchLibrary, stageLibraryEdit } from '../../../shared/nutrition/library.js';
 
 const rice = { canonicalName: 'Rice', variantId: 'pv-rice', aliases: [{ text: 'white rice' }], ref: { variantId: 'pv-rice', scope: 'curated' } };
-const override = { canonicalName: 'Rice', variantId: 'pv-rice', aliases: [{ text: 'my rice' }], ref: { variantId: 'pv-rice', scope: 'private' } };
+const override = { canonicalName: 'Rice', variantId: 'ov-rice', aliases: [{ text: 'my rice' }], overrides: { catalogId: 'nutrition-curated', variantId: 'pv-rice' }, ref: { variantId: 'ov-rice', scope: 'private' } };
 
 describe('ingredient library', () => {
     it('searches aliases, prefers a private override, and pages deterministically', async () => {
@@ -15,12 +15,13 @@ describe('ingredient library', () => {
                 { scope: 'private', search: async () => ({ items: [override], cursor: null }) },
             ],
         });
-        expect(first.items.map(item => item.variantId)).toEqual(['pv-oats', 'pv-rice']);
+        expect(first.items.map(item => item.variantId)).toEqual(['pv-oats', 'ov-rice']);
         expect(first.items[1].scope).toBe('private');
         expect(first.items[1].aliases[0].text).toBe('my rice');
         expect(first.cursor.curated).toBe('c2');
         const page = await searchLibrary({ query: 'rice', pageSize: 1, sources: [{ scope: 'curated', search: async () => ({ items: [rice, { canonicalName: 'Oats', variantId: 'pv-oats' }], cursor: 'c2' }) }] });
-        expect(page.items.map(item => item.canonicalName)).toEqual(['Oats']);
+        expect(page.items.map(item => item.canonicalName)).toEqual(['Rice']);
+        expect(page.cursor.curated).toBeNull();
         const failed = await searchLibrary({ query: 'rice', sources: [{ scope: 'curated', search: async () => { throw new Error('offline'); } }] });
         expect(failed.errors).toEqual(['curated']);
         expect(failed.items).toEqual([]);

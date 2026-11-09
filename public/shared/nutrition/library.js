@@ -23,7 +23,8 @@ export async function searchLibrary({ query = '', sources = [], pageSize = 25, c
     const pages = await Promise.all(sources.map(async source => {
         try {
             const page = await source.search(query, { pageSize: size, cursor: cursor?.[source.scope] || null });
-            return { scope: source.scope, items: page?.items || [], cursor: page?.cursor || null, error: null };
+            const raw = page?.items || [];
+            return { scope: source.scope, items: raw.slice(0, size), cursor: raw.length > size ? null : (page?.cursor || null), error: null };
         } catch {
             return { scope: source.scope, items: [], cursor: null, error: 'search_failed' };
         }
@@ -33,11 +34,14 @@ export async function searchLibrary({ query = '', sources = [], pageSize = 25, c
         for (const item of page.items) {
             const id = item.variantId || item.ref?.variantId;
             if (!id) continue;
-            const existing = byVariant.get(id);
-            if (!existing || page.scope === 'private') byVariant.set(id, { ...item, scope: page.scope, variantId: id });
+            const curatedId = page.scope === 'private' ? item.overrides?.variantId || item.ref?.overrides?.variantId : null;
+            const key = curatedId || id;
+            const existing = byVariant.get(key);
+            if (existing?.scope === 'private' && page.scope !== 'private') continue;
+            byVariant.set(key, { ...item, scope: page.scope, variantId: id });
         }
     }
-    const items = [...byVariant.values()].sort((a, b) => String(a.canonicalName || '').localeCompare(String(b.canonicalName || '')) || String(a.variantId).localeCompare(String(b.variantId))).slice(0, size);
+    const items = [...byVariant.values()].sort((a, b) => String(a.canonicalName || '').localeCompare(String(b.canonicalName || '')) || String(a.variantId).localeCompare(String(b.variantId)));
     return {
         items,
         cursor: Object.fromEntries(pages.map(page => [page.scope, page.cursor])),

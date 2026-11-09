@@ -30,6 +30,7 @@ async function sources() {
 /** Tracker library tab. Values are text. Profile writes stay off. */
 export function wireLibrary(getUid) {
     let rows = [];
+    let cursor = null;
     const output = () => document.getElementById('library-output');
     const render = (items) => {
         const node = output();
@@ -44,12 +45,15 @@ export function wireLibrary(getUid) {
             if (item.missingConversions) row(node, `Missing conversions: ${item.missingConversions.join(', ') || 'none'}`);
         }
     };
-    document.getElementById('library-search')?.addEventListener('click', async () => {
-        const found = await searchLibrary({ query: document.getElementById('library-query')?.value || '', sources: await sources(), pageSize: 25 });
-        rows = found.items;
+    const runSearch = async (nextCursor) => {
+        const found = await searchLibrary({ query: document.getElementById('library-query')?.value || '', sources: await sources(), pageSize: 25, cursor: nextCursor });
+        cursor = found.cursor;
+        rows = nextCursor ? [...rows, ...found.items] : found.items;
         render(rows);
-        text(document.getElementById('library-message'), found.errors.length ? `Search failed for ${found.errors.join(', ')}` : `${found.items.length} results`);
-    });
+        text(document.getElementById('library-message'), found.errors.length ? `Search failed for ${found.errors.join(', ')}` : `${rows.length} results`);
+    };
+    document.getElementById('library-search')?.addEventListener('click', () => runSearch(null));
+    document.getElementById('library-more')?.addEventListener('click', () => runSearch(cursor));
     document.getElementById('library-filter')?.addEventListener('change', () => render(rows));
     document.getElementById('library-review')?.addEventListener('click', () => {
         const review = reviewLibraryProfile({ revision: null, conversions: [], scope: 'curated' });

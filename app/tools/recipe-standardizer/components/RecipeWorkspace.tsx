@@ -1329,7 +1329,7 @@ export default function RecipeWorkspace() {
               onToggle={() => togglePanel('ingredients')}
             >
               <p className="mb-3 text-sm text-text-2">
-                <a className="underline" href="/tools/CalorieTracker/#tab-library">Open the Ingredient Library</a>
+                <a className="underline" href="/tools/CalorieTracker/index.html#tab-library">Open the Ingredient Library</a>
               </p>
               {workflow && (
                 <IngredientsView
