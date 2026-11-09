@@ -54,10 +54,17 @@ function show(workspace) {
             output.append(button);
         }
     }
-    if (workspace.fit?.reason) {
+    if (workspace.fit?.flags || workspace.fit?.reason) {
         const fit = document.createElement('p');
-        fit.textContent = workspace.fit.reason;
+        const flags = workspace.fit.flags;
+        fit.textContent = workspace.fit.reason || `Fit ${flags?.infeasible ? 'infeasible' : 'feasible'}${flags?.nonUnique ? ', more than one quantity set fits' : ''}`;
         output.append(fit);
+    }
+    for (const quantity of workspace.fit?.quantities || []) {
+        if (!quantity.changed) continue;
+        const row = document.createElement('p');
+        row.textContent = `${quantity.lineId}: ${quantity.grams} g estimated`;
+        output.append(row);
     }
     if (workspace.save?.reason) {
         const save = document.createElement('p');

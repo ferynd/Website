@@ -80,6 +80,20 @@ function observationsFromRevision(revision) {
     return nutrients;
 }
 
+function exportList(workspace) {
+    const fitted = new Map((workspace.fit?.quantities || []).filter(item => Number.isFinite(item.grams)).map(item => [item.lineId, item.grams]));
+    const source = workspace.draft.import;
+    return {
+        ...source,
+        ingredients: source.ingredients.map(stored => {
+            const line = effectiveLine(workspace.draft, stored.lineId);
+            const grams = fitted.get(line.lineId);
+            if (!Number.isFinite(grams)) return line;
+            return { ...line, quantity: { ...line.quantity, g: grams } };
+        }),
+    };
+}
+
 function originFor(kind) {
     if (kind === 'legacy_paste') return 'user';
     if (kind === 'saved_meal' || kind === 'saved_recipe' || kind === 'recipe_standardizer') return 'deterministic';
@@ -270,7 +284,7 @@ export function fitWorkspace(workspace) {
         const item = workspace.resolution?.items?.find(row => row.lineId === line.lineId);
         return {
             lineId: line.lineId,
-            grams: line.quantity?.g ?? 0,
+            grams: Number.isFinite(line.quantity?.g) ? line.quantity.g : null,
             gMin: line.quantity?.gMin,
             gMax: line.quantity?.gMax,
             basis: line.quantity?.basis,
@@ -282,12 +296,28 @@ export function fitWorkspace(workspace) {
             fiberComponents: line.fiberComponents,
         };
     });
-    const fit = fitQuantities({ lines, constraints: workspace.draft.import.constraints || [], facts, servings: workspace.draft.import.meal?.servings?.count ?? workspace.draft.import.meal?.servings ?? null });
+    const meal = workspace.draft.import.meal || {};
+    const constraints = [...(workspace.draft.import.constraints || [])];
+    const weightTarget = meal.servingWeight?.g ?? meal.yield?.rawTotal?.g;
+    if (Number.isFinite(weightTarget) && weightTarget > 0) {
+        const ids = lines.filter(line => !line.parentLineId).map(line => line.lineId);
+        constraints.push({ type: 'sum', lineIds: ids, gMin: weightTarget, gMax: weightTarget });
+    }
+    const raw = meal.yield?.rawTotal?.g;
+    const cooked = meal.yield?.cookedTotal?.g;
+    if (Number.isFinite(raw) && raw > 0 && Number.isFinite(cooked) && cooked > 0 && cooked <= raw) {
+        for (const line of lines)
+            if (line.yieldRetention == null) line.yieldRetention = cooked / raw;
+    }
+    const fit = fitQuantities({ lines, constraints, facts, servings: meal.servings?.count ?? meal.servings ?? null });
     let resolution = workspace.resolution;
     let calculation = workspace.calculation;
     if (fit.ran && resolution) {
         const fitted = new Map(fit.quantities.map(item => [item.lineId, item.grams]));
-        resolution = { ...resolution, lines: resolution.lines.map(line => fitted.has(line.lineId) ? { ...line, grams: fitted.get(line.lineId) } : line), modelCalls: 0 };
+        resolution = { ...resolution, lines: resolution.lines.map(line => {
+            const grams = fitted.get(line.lineId);
+            return Number.isFinite(grams) ? { ...line, grams } : line;
+        }), modelCalls: 0 };
         calculation = recalculateResolution(resolution).calculation;
     }
     return done(workspace, { stage: 'review', fit: { ...fit, facts: facts.length }, resolution, calculation });
@@ -309,7 +339,7 @@ export function instructionsWorkspace() {
 export function saveWorkspace(workspace) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const caps = workspaceCapabilities();
-    const rendered = renderIngredientPaste(workspace.draft.import);
+    const rendered = renderIngredientPaste(exportList(workspace));
     const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(workspace.draft.import, null, 2) };
     if (!caps.save) {
         return done(workspace, { stage: 'save', exportCopy, committed: false, save: { available: false, reason: 'export only until ingredient and nutrient writes are approved' } });

@@ -156,5 +156,30 @@ describe('quantity fitting', () => {
         expect(nested.quantities.find(item => item.lineId === 'tomato').grams).toBeCloseTo(50, 0);
         expect(nested.calculation.nutrients.calories.value).toBeCloseTo(25, 0);
         expect(nested.modelCalls).toBe(0);
+        const unknown = fitQuantities({
+            lines: [{ lineId: 'rice', grams: null, basis: 'estimated', nutrients: calories(100) }],
+            facts: [fact(calories(100))],
+        });
+        expect(unknown.quantities[0].grams).toBeNull();
+        const coupled = fitQuantities({
+            lines: [
+                { lineId: 'a', grams: 100, gMin: 0, gMax: 200, basis: 'estimated', nutrients: calories(100) },
+                { lineId: 'b', grams: 100, gMin: 0, gMax: 200, basis: 'estimated', nutrients: calories(200) },
+            ],
+            constraints: [{ type: 'sum', lineIds: ['a', 'b'], gMin: 200, gMax: 200 }],
+            facts: [fact(calories(200))],
+        });
+        expect(coupled.quantities.find(item => item.lineId === 'a').grams).toBeCloseTo(200, 0);
+        expect(coupled.quantities.find(item => item.lineId === 'b').grams).toBeCloseTo(0, 0);
+        expect(coupled.flags.infeasible).toBe(false);
+        const zeroDen = fitQuantities({
+            lines: [
+                { lineId: 'a', grams: 10, gMin: 0, gMax: 20, basis: 'estimated', nutrients: calories(0) },
+                { lineId: 'b', grams: 0, basis: 'measured', nutrients: calories(0) },
+            ],
+            constraints: [{ type: 'ratio', num: 'a', den: 'b', min: 1, max: 2 }],
+            facts: [fact(calories(0))],
+        });
+        expect(zeroDen.flags.infeasible).toBe(true);
     });
 });

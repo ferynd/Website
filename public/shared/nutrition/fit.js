@@ -15,13 +15,14 @@ function parentsOf(lines) {
 }
 
 function isFree(line, lines, constraints) {
-    if (line.basis !== 'estimated') return false;
+    if (!finite(line.grams) || line.basis !== 'estimated') return false;
     if (parentsOf(lines).has(line.lineId)) return false;
     if ((constraints || []).some(item => item?.type === 'fixed' && item.lineIds?.includes(line.lineId))) return false;
     return true;
 }
 
 function boundsOf(line, free) {
+    if (!finite(line.grams)) return { min: null, max: null };
     if (!free) return { min: line.grams, max: line.grams };
     const min = finite(line.gMin) ? line.gMin : line.grams;
     const max = finite(line.gMax) ? line.gMax : line.grams;
@@ -29,6 +30,7 @@ function boundsOf(line, free) {
 }
 
 function clamp(value, bound) {
+    if (!finite(bound.min) || !finite(bound.max)) return value;
     return Math.min(bound.max, Math.max(bound.min, value));
 }
 
@@ -138,12 +140,17 @@ function constraintLoss(lines, grams, constraints) {
         if (constraint.type === 'ratio') {
             const left = grams.get(constraint.num);
             const right = grams.get(constraint.den);
-            if (finite(left) && finite(right) && right > 0) {
-                const ratio = left / right;
-                if (ratio < constraint.min) loss += (constraint.min - ratio) ** 2;
-                if (ratio > constraint.max) loss += (ratio - constraint.max) ** 2;
-                if (ratio < constraint.min - 1e-6 || ratio > constraint.max + 1e-6)
+            if (finite(left) && finite(right)) {
+                if (right <= GRAM_EPSILON && constraint.min > 0) {
+                    loss += constraint.min ** 2 + 1;
                     violations.push({ type: 'ratio', lineIds: [constraint.num, constraint.den] });
+                } else if (right > 0) {
+                    const ratio = left / right;
+                    if (ratio < constraint.min) loss += (constraint.min - ratio) ** 2;
+                    if (ratio > constraint.max) loss += (ratio - constraint.max) ** 2;
+                    if (ratio < constraint.min - 1e-6 || ratio > constraint.max + 1e-6)
+                        violations.push({ type: 'ratio', lineIds: [constraint.num, constraint.den] });
+                }
             }
         }
         if (constraint.type === 'sum') {
@@ -282,11 +289,45 @@ function searchVariable(lines, grams, line, bound, facts, mealServings, starts, 
     grams.set(line.lineId, best);
 }
 
+function searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, constraints) {
+    for (const constraint of constraints || []) {
+        if (constraint.type !== 'sum' || !finite(constraint.gMin) || !finite(constraint.gMax)) continue;
+        const ids = constraint.lineIds || [];
+        const freeIds = ids.filter(id => finite(bounds.get(id)?.min) && bounds.get(id).min !== bounds.get(id).max);
+        if (freeIds.length < 2) continue;
+        const fixed = ids.filter(id => !freeIds.includes(id)).reduce((sum, id) => sum + (grams.get(id) || 0), 0);
+        let bestLoss = lossAt(lines, grams, facts, mealServings, starts, constraints);
+        let best = null;
+        const first = freeIds[0];
+        const second = freeIds[1];
+        for (let step = 0; step < 21; step++) {
+            const total = constraint.gMin + (constraint.gMax - constraint.gMin) * (step / 20);
+            const remain = total - fixed;
+            for (let inner = 0; inner < 21; inner++) {
+                const span = bounds.get(first).max - bounds.get(first).min;
+                const left = bounds.get(first).min + span * (inner / 20);
+                const right = remain - left - freeIds.slice(2).reduce((sum, id) => sum + grams.get(id), 0);
+                if (right < bounds.get(second).min - 1e-6 || right > bounds.get(second).max + 1e-6) continue;
+                const trial = new Map(grams);
+                trial.set(first, left);
+                trial.set(second, right);
+                const next = lossAt(lines, trial, facts, mealServings, starts, constraints);
+                if (next < bestLoss - 1e-12) {
+                    bestLoss = next;
+                    best = trial;
+                }
+            }
+        }
+        if (best) for (const [id, value] of best) grams.set(id, value);
+    }
+}
+
 function optimize(lines, startGrams, bounds, facts, mealServings, constraints) {
     const grams = new Map(startGrams);
     const starts = new Map(startGrams);
-    const free = lines.filter(line => bounds.get(line.lineId).min !== bounds.get(line.lineId).max);
+    const free = lines.filter(line => finite(bounds.get(line.lineId).min) && bounds.get(line.lineId).min !== bounds.get(line.lineId).max);
     for (let pass = 0; pass < 24; pass++) {
+        searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, constraints);
         const before = JSON.stringify([...grams]);
         for (const line of free)
             searchVariable(lines, grams, line, bounds.get(line.lineId), facts, mealServings, starts, constraints);
@@ -334,7 +375,7 @@ function quantitiesFrom(lines, grams, starts) {
  * The result is one plausible fit, not a claim that the recipe was identified.
  */
 export function fitQuantities({ lines = [], constraints = [], facts = [], servings = null } = {}) {
-    const starts = new Map(lines.map(line => [line.lineId, finite(line.grams) ? line.grams : 0]));
+    const starts = new Map(lines.map(line => [line.lineId, finite(line.grams) ? line.grams : null]));
     const original = quantitiesFrom(lines, starts, starts);
     const preview = nutrientTargets(facts, lines, starts, servings);
     const initial = residuals(lines, starts, facts, servings);
