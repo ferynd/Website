@@ -37,13 +37,13 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 13:28 CT. Verify heads before relying on this section.
+As of 2026-11-09 14:02 CT. Verify heads before relying on this section.
 
-Merged on `main` (`848d3ac`): #185, #186, #187, #188, #189 (#62, `91e10ad`), #190 (#67 import, `f3ff0c7`), #191 (#64 Part A calculation, `df864e1`), #192 (#66 resolution, `848d3ac`), and #193 (orchestrator handoff, `4aaf892`).
+Merged on `main` (`91241f3`): #185, #186, #187, #188, #189 (#62, `91e10ad`), #190 (#67 import, `f3ff0c7`), #191 (#64 Part A calculation, `df864e1`), #192 (#66 resolution, `848d3ac`), #193 (orchestrator handoff, `4aaf892`), and #194 (#70 Import workspace, `91241f3`).
 
-Open: #70 tracker Import workspace is the active item. It reuses the merged modules and does not enable fitting or production saving.
+Open: #65 quantity fitting is the active item. #69 library may run in parallel and is not in this change. Production saving and #63 stay gated.
 
-Next order after #70: #65 fitting, then #69 library, then #68 end-to-end. #63 stays gated. Ignore docs PRs #159 and #166.
+Next after #65: #69 library, then #68 end-to-end. Ignore docs PRs #159 and #166.
 
 ## Taking over
 
@@ -65,6 +65,8 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 13:28 | #66 resolution | #192 | `848d3ac81636194bbdb74ac7d64be1f80dd1e9ea` | Merged to main. | Start #70 on a new branch. Do not reopen #192. |
 | 2026-11-09 13:30 | #70 import workspace | #194 | `d6e405625fdc791c23acc43408cd2ac240f41c36` | PR opened. Fit and production save stay off. | Independent review of the branch head, then green CI. |
 | 2026-11-09 13:54 | #70 import workspace | #194 | `5b216ba5ed8b8c8c580f43255e8430e30ae42c8a` | Codex findings addressed in this commit. | Independent review of the branch head, then green CI. |
+| 2026-11-09 14:02 | #70 import workspace | #194 | `91241f3` | Merged to main. | Start #65 on a new branch. #69 may run in parallel later. |
+| 2026-11-09 14:02 | #65 quantity fitting |  |  | In progress. Estimated grams only. | Open the PR, then one independent review of its head. |
 
 ## Logins and setup
 

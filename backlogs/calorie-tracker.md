@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #66, and #67 are archived. Critical path: **#70 → #65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #66, #67, and #70 are archived. Critical path: **#65 → #69**. In parallel: #60 Part B, #61 Part B, and #64 Part B are approval-gated and must be done before live saving; #63 batches run after #62 (plus #62 Part B for live work). #68 is last. #71 is deferred and off the critical path. IDs are stable, so items appear in dependency order rather than by number. #69 may run in parallel with #65 once #66 exists.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -64,18 +64,10 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #66, and #67 are archived. C
   - **Checks:** dry-run reports, source-license review, root/tracker suites for any config change.
   - **Migration/deploy:** **Requires James's explicit approval** to provision or use live credentials (for example an FDC API key) and to publish staged data to production.
 
-### #70: Build the tracker's Import workspace
-
-- [p] **Orchestrate paste → validate → match → resolve → calculate → [fit] → review → save in the tracker.** Depends: #67, #66, #64 Part A; #65 for the fit stage (capability-gated); #64 Part B for saving (capability-gated).
-  > pushed — tracker Import tab reuses #61/#62/#64/#66/#67; fit and production save stay off; checks: tracker 1098, root 2015, API 43, lint, build, ci:contract, ci:docs; commit: 5b216ba; PR: #194
-  - **Surfaces:** tracker primary "Import ingredient list" entry, stage navigation and draft state, "Copy assistant instructions," offline/capability indicators, legacy paste entry as a secondary option.
-  - **Accept:** one entry point accepts ingredient-list JSON or paste, a saved meal or recipe, or legacy paste; no photo, barcode, or OCR input. Stages run in order and are resumable per the [workflow](../docs/nutrition/workflow.md#staged-meal-analysis). Each value shows whether it came from deterministic data, the user, or an assistant. With matched ingredients the whole flow uses zero model calls. Fitting runs only when eligible known facts exist. Until #61 Part B and #64 Part B are released, the workspace runs through review and offers export/copy only. Matching and calculation work offline from the #61 cache; packet copy works offline. Drafts are keyed to the authenticated owner, cleared on sign-out or account switch, and never shown across users. Cancel prevents the meal/diary commit; research jobs or approved profiles already created are preserved and reported accurately.
-  - **Checks:** tracker suite; end-to-end fixtures for assistant-prepared lists (with and without known facts), saved meals, recipes, and legacy paste; packet round trip through resolve; zero-model assertions for matched inputs; zero re-research of matched lines; draft resume/cancel with owner scoping; legacy paste parity; accessibility/mobile; root suite and lint/build where shared or React code changes.
-  - **Migration/deploy:** ships behind a capability flag; legacy paste remains available. Uses rules released by #61/#64; no new production enablement without the approvals recorded there.
-
 ### #65: Fit ingredient quantities to known evidence
 
-- [ ] **Implement deterministic constrained meal reconstruction.** Depends: #64 Part A, #67.
+- [p] **Implement deterministic constrained meal reconstruction.** Depends: #64 Part A, #67.
+  > in progress — shared fit.js moves estimated grams only; fixed quantities and profiles stay put
   - **Surfaces:** pure inference module shared by both tools, evidence model, quantity review data, uncertainty and known-versus-calculated outputs.
   - **Accept:** targets are only known facts with real provenance and an applicable basis; with none, fitting is skipped and no target is invented. Free variables are `estimated` lines bounded by `[gMin, gMax]`, starting from the assistant's estimate; `measured`/`label`/`recipe_stated`/`fixed` lines never change (their ranges feed uncertainty only). Constraints: serving weights, ingredient order, ratios, ≤2 % tails, preparation states and yield, rounded nutrient intervals and stated uncertainty. Output per-nutrient known-versus-calculated differences, estimated quantities with ranges, residuals, and flags for non-unique solutions and infeasibility. Never change known facts, measured quantities, or profile nutrition; never present one fit as the unique recipe. Save algorithm version, bounds, weights, and assumptions. Deterministic, dependency-free, and offline. Corrected quantities recalculate without AI.
   - **Checks:** [required solver cases](../docs/nutrition/workflow.md#required-solver-cases), photo-only no-fit case, withheld exact recipes, deterministic repetition, rounding/yield tests; root/tracker/UI checks as applicable.

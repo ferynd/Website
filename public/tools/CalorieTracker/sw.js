@@ -67,6 +67,7 @@ const APP_SHELL = [
   '/shared/nutrition/importWorkspaceDraft.js',
   '/shared/nutrition/resolution.js',
   '/shared/nutrition/calculate.js',
+  '/shared/nutrition/fit.js',
   '/shared/nutrition/variantVocabulary.js',
   '/shared/nutrition/import/index.js',
   '/shared/nutrition/import/ingredientList.js',

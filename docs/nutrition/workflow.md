@@ -226,6 +226,8 @@ Retain source-reported meal nutrients as observed facts. Show derived estimates 
 
 For an ingredient amount `q` grams with a profile per 100 g, nutrient contribution is `q / 100 × profile value`. The shared implementation is [calculate.js](../../public/shared/nutrition/calculate.js). Missing profile values contribute unknown coverage, not measured zero. Scale ingredient contributions before summing. Keep full internal precision and round only at the display/export boundary. Weighted fiber is computed per ingredient and then summed. Meal status is estimated if any counted input is estimated, otherwise calculated, otherwise reported. Unknown stays null.
 
+Quantity fitting is [fit.js](../../public/shared/nutrition/fit.js). It moves only estimated grams inside their bounds, calls `calculateMeal` for residuals, and leaves measured, label, and recipe-stated grams unchanged. A rounded fact without an interval width is not an exact target. With no eligible fact, nothing moves.
+
 Use source energy as its own observation. A 4/4/9 macro estimate is a diagnostic, not an unconditional equality: source methods, fiber, polyols, allulose, alcohol, and organic acids can affect the relationship [S1, S4]. Do not add fat, fatty-acid, sugar, or fiber subfields to their parent totals. Fatty-acid sums need not equal total lipid exactly [S1].
 
 ### Derived project metrics

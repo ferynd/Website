@@ -1,4 +1,4 @@
-export function workspaceCapabilities(): Readonly<{ workspace: boolean; photo: false; barcode: false; ocr: false; fit: false; libraryDeepLink: false; directAi: false; save: boolean; exportCopy: true }>;
+export function workspaceCapabilities(): Readonly<{ workspace: boolean; photo: false; barcode: false; ocr: false; fit: true; libraryDeepLink: false; directAi: false; save: boolean; exportCopy: true }>;
 export const WORKSPACE_STAGES: readonly string[];
 export function createWorkspace(ownerUid: string): any;
 export function importWorkspaceInput(workspace: any, input: any, options?: { kind?: string }): any;

@@ -8,6 +8,7 @@ import {
     buildResolution, cancelResolution, chooseExisting, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete,
 } from './resolution.js';
 import { PROFILE_FIELDS } from './research/profileFields.js';
+import { fitQuantities } from './fit.js';
 
 /** Save stays off until both Part B write flags are on. This module does not flip them. */
 export function workspaceCapabilities() {
@@ -16,7 +17,7 @@ export function workspaceCapabilities() {
         photo: false,
         barcode: false,
         ocr: false,
-        fit: false,
+        fit: true,
         libraryDeepLink: false,
         directAi: false,
         save: INGREDIENT_STORE_WRITES_ENABLED && NUTRIENT_V2_WRITES_ENABLED,
@@ -255,14 +256,36 @@ export function calculateWorkspace(workspace) {
     return done(workspace, { stage: 'fit', calculation: result.calculation, resolution: workspace.resolution });
 }
 
-/** #65 is off. Eligible facts are reported and not solved. */
+/** Fit estimated grams when eligible facts exist, then recalculate. Profiles and facts are not rewritten. */
 export function fitWorkspace(workspace) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const facts = fitTargets(workspace.draft.import);
-    const fit = facts.length
-        ? { available: false, ran: false, facts: facts.length, reason: 'quantity fitting is not available', modelCalls: 0 }
-        : { available: false, ran: false, facts: 0, reason: 'no eligible known facts', modelCalls: 0 };
-    return done(workspace, { stage: 'review', fit });
+    const lines = workspace.draft.import.ingredients.map(stored => {
+        const line = effectiveLine(workspace.draft, stored.lineId);
+        const item = workspace.resolution?.items?.find(row => row.lineId === line.lineId);
+        return {
+            lineId: line.lineId,
+            grams: line.quantity?.g ?? 0,
+            gMin: line.quantity?.gMin,
+            gMax: line.quantity?.gMax,
+            basis: item?.estimate ? 'estimated' : line.quantity?.basis,
+            nutrients: item?.nutrients || {},
+            parentLineId: line.parentLineId,
+            yieldRetention: line.yieldRetention,
+            order: line.order,
+            fiberCategory: line.fiberCategory,
+            fiberComponents: line.fiberComponents,
+        };
+    });
+    const fit = fitQuantities({ lines, constraints: workspace.draft.import.constraints || [], facts, servings: workspace.draft.import.meal?.servings?.count ?? workspace.draft.import.meal?.servings ?? null });
+    let resolution = workspace.resolution;
+    let calculation = workspace.calculation;
+    if (fit.ran && resolution) {
+        const fitted = new Map(fit.quantities.map(item => [item.lineId, item.grams]));
+        resolution = { ...resolution, lines: resolution.lines.map(line => fitted.has(line.lineId) ? { ...line, grams: fitted.get(line.lineId) } : line), modelCalls: 0 };
+        calculation = recalculateResolution(resolution).calculation;
+    }
+    return done(workspace, { stage: 'review', fit: { ...fit, facts: facts.length }, resolution, calculation });
 }
 
 export function reviewWorkspace(workspace) {
