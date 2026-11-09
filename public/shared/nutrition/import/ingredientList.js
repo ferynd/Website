@@ -428,7 +428,7 @@ export function validateIngredientList(input) {
     const seen = new Set();
     for (const [index, raw] of (Array.isArray(source.ingredients) ? source.ingredients : []).entries()) {
         const path = `$.ingredients[${index}]`;
-        if (!allow(raw, path, ['lineId', 'name', 'kind', 'variant', 'quantity', 'role', 'parentLineId', 'order', 'confidence', 'notes', 'assumptionIds'], fail)) continue;
+        if (!allow(raw, path, ['lineId', 'name', 'kind', 'variant', 'quantity', 'role', 'parentLineId', 'order', 'confidence', 'notes', 'assumptionIds', 'yield', 'waterDeltaG', 'fatAbsorbedG', 'fatDiscardedG', 'fatAbsorbedExternal', 'yieldRetention'], fail)) continue;
         if (typeof raw.lineId !== 'string' || !ID_RE.test(raw.lineId) || raw.lineId === 'meal') fail(`${path}.lineId`, 'invalid line id');
         else if (seen.has(raw.lineId)) fail(`${path}.lineId`, 'duplicate line id');
         seen.add(raw.lineId);
@@ -482,6 +482,33 @@ export function validateIngredientList(input) {
         if (raw.assumptionIds != null) {
             if (!Array.isArray(raw.assumptionIds) || raw.assumptionIds.some(id => typeof id !== 'string' || !ID_RE.test(id))) fail(`${path}.assumptionIds`, 'invalid assumption id');
             else line.assumptionIds = [...raw.assumptionIds];
+        }
+        const yieldSource = raw.yield && typeof raw.yield === 'object' ? raw.yield : raw;
+        const yieldPath = raw.yield ? `${path}.yield` : path;
+        if (raw.yield != null && !allow(raw.yield, `${path}.yield`, ['waterDeltaG', 'fatAbsorbedG', 'fatDiscardedG', 'fatAbsorbedExternal', 'nutrientRetention'], fail)) {
+            /* the field errors are already recorded */
+        } else {
+            const water = yieldSource.waterDeltaG ?? raw.waterDeltaG;
+            if (water != null) {
+                if (typeof water !== 'number' || !Number.isFinite(water)) fail(`${yieldPath}.waterDeltaG`, 'expected a finite number');
+                else line.waterDeltaG = water;
+            }
+            for (const key of ['fatAbsorbedG', 'fatDiscardedG']) {
+                const value = yieldSource[key] ?? raw[key];
+                if (value == null) continue;
+                if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) fail(`${yieldPath}.${key}`, 'expected a non-negative number');
+                else line[key] = value;
+            }
+            const external = yieldSource.fatAbsorbedExternal ?? raw.fatAbsorbedExternal;
+            if (external != null) {
+                if (typeof external !== 'boolean') fail(`${yieldPath}.fatAbsorbedExternal`, 'expected true or false');
+                else line.fatAbsorbedExternal = external;
+            }
+            const retention = yieldSource.nutrientRetention ?? raw.yieldRetention;
+            if (retention != null) {
+                if (typeof retention !== 'number' || !Number.isFinite(retention) || retention < 0) fail(`${yieldPath}.nutrientRetention`, 'expected a non-negative number');
+                else line.yieldRetention = retention;
+            }
         }
         ingredients.push(line);
     }

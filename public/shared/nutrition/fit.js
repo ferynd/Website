@@ -1,4 +1,4 @@
-import { calculateMeal } from './calculate.js';
+import { calculateMeal, nutrientBasis } from './calculate.js';
 
 /** Deterministic quantity fit. Profiles, known facts, and fixed grams stay put. */
 export const FIT_VERSION = 2;
@@ -64,7 +64,11 @@ function mealLines(lines, grams) {
 
 function totalGrams(lines, grams) {
     const parents = parentsOf(lines);
-    return lines.reduce((sum, line) => sum + (parents.has(line.lineId) ? 0 : (grams.get(line.lineId) || 0)), 0);
+    return lines.reduce((sum, line) => {
+        if (parents.has(line.lineId)) return sum;
+        const basis = nutrientBasis({ ...line, grams: grams.get(line.lineId) });
+        return sum + (basis ? basis.cookedG : 0);
+    }, 0);
 }
 
 function nutrientTargets(facts, lines, grams, mealServings) {

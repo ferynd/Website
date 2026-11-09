@@ -139,4 +139,12 @@ describe('shared meal calculation', () => {
         expect(result.nutrients.calories.value).toBe(375 + 216 + 70);
         expect(result.mass).toMatchObject({ rawG: 250, cookedG: 220, waterDeltaG: -30 });
     });
+
+    it('does not report more discarded fat or water than the line contains', () => {
+        const basis = nutrientBasis({ lineId: 'oil', grams: 10, fatDiscardedG: 15, waterDeltaG: -30 });
+        expect(basis.fatDiscardedG).toBe(10);
+        expect(basis.waterDeltaG).toBeCloseTo(0);
+        expect(basis.cookedG).toBe(0);
+        expect(basis.g).toBe(0);
+    });
 });

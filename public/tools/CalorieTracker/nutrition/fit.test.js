@@ -156,6 +156,13 @@ describe('quantity fitting', () => {
         expect(nested.quantities.find(item => item.lineId === 'tomato').grams).toBeCloseTo(50, 0);
         expect(nested.calculation.nutrients.calories.value).toBeCloseTo(25, 0);
         expect(nested.modelCalls).toBe(0);
+        const boiled = fitQuantities({
+            lines: [{ lineId: 'pasta', grams: 100, gMin: 50, gMax: 200, basis: 'estimated', nutrients: calories(350), yieldRetention: 2 }],
+            facts: [{ factId: 'serve', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } }, nutrients: calories(175) }],
+        });
+        expect(boiled.quantities[0].grams).toBeCloseTo(100, 0);
+        expect(boiled.calculation.nutrients.calories.value).toBeCloseTo(350, 0);
+        expect(boiled.flags.infeasible).toBe(false);
         const unknown = fitQuantities({
             lines: [{ lineId: 'rice', grams: null, basis: 'estimated', nutrients: calories(100) }],
             facts: [fact(calories(100))],

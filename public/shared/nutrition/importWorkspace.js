@@ -100,8 +100,21 @@ function originFor(kind) {
     return 'assistant';
 }
 
+function withMealWater(lines, meal) {
+    const raw = meal?.yield?.rawTotal?.g;
+    const cooked = meal?.yield?.cookedTotal?.g;
+    if (!Number.isFinite(raw) || raw <= 0 || !Number.isFinite(cooked) || cooked < 0) return lines;
+    const parents = new Set(lines.filter(line => line.parentLineId).map(line => line.parentLineId));
+    const counted = lines.filter(line => !parents.has(line.lineId) && Number.isFinite(line.grams) && line.grams > 0);
+    if (!counted.length || counted.some(line => Number.isFinite(line.waterDeltaG) || (Number.isFinite(line.yieldRetention) && line.yieldRetention > 1)))
+        return lines;
+    const basis = counted.reduce((sum, line) => sum + line.grams, 0);
+    const delta = cooked - raw;
+    return lines.map(line => counted.includes(line) ? { ...line, waterDeltaG: delta * (line.grams / basis) } : line);
+}
+
 function resolutionLines(draft) {
-    return draft.import.ingredients.map(stored => {
+    return withMealWater(draft.import.ingredients.map(stored => {
         const line = effectiveLine(draft, stored.lineId);
         return {
             lineId: line.lineId,
@@ -122,7 +135,7 @@ function resolutionLines(draft) {
             fiberCategory: line.fiberCategory,
             fiberComponents: line.fiberComponents,
         };
-    });
+    }), draft.import.meal);
 }
 
 /** One entry. Photo, barcode, and OCR inputs are refused. */
@@ -283,7 +296,7 @@ export function calculateWorkspace(workspace) {
 export function fitWorkspace(workspace) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const facts = fitTargets(workspace.draft.import);
-    const lines = workspace.draft.import.ingredients.map(stored => {
+    const lines = withMealWater(workspace.draft.import.ingredients.map(stored => {
         const line = effectiveLine(workspace.draft, stored.lineId);
         const item = workspace.resolution?.items?.find(row => row.lineId === line.lineId);
         return {
@@ -303,18 +316,23 @@ export function fitWorkspace(workspace) {
             fiberCategory: line.fiberCategory,
             fiberComponents: line.fiberComponents,
         };
-    });
+    }), workspace.draft.import.meal);
     const meal = workspace.draft.import.meal || {};
     const constraints = [...(workspace.draft.import.constraints || [])];
+    const rawTarget = meal.yield?.rawTotal?.g;
+    if (Number.isFinite(rawTarget) && rawTarget > 0) {
+        const ids = lines.filter(line => !line.parentLineId).map(line => line.lineId);
+        if (ids.length) constraints.push({ type: 'sum', lineIds: ids, gMin: rawTarget, gMax: rawTarget });
+    }
     const fit = fitQuantities({ lines, constraints, facts, servings: meal.servings?.count ?? meal.servings ?? null });
     let resolution = workspace.resolution;
     let calculation = workspace.calculation;
     if (fit.ran && resolution) {
         const fitted = new Map(fit.quantities.map(item => [item.lineId, item.grams]));
-        resolution = { ...resolution, lines: resolution.lines.map(line => {
+        resolution = { ...resolution, lines: withMealWater(resolution.lines.map(line => {
             const grams = fitted.get(line.lineId);
             return Number.isFinite(grams) ? { ...line, grams } : line;
-        }), modelCalls: 0 };
+        }), meal), modelCalls: 0 };
         calculation = recalculateResolution(resolution).calculation;
     }
     return done(workspace, { stage: 'review', fit: { ...fit, facts: facts.length }, resolution, calculation });

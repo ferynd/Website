@@ -45,13 +45,17 @@ export function nutrientBasis(line) {
     if (!Number.isFinite(stated) || stated < 0) return null;
     const retention = stated > 1 ? 1 : stated;
     const explicitWater = Number.isFinite(line.waterDeltaG);
-    const waterDeltaG = explicitWater ? line.waterDeltaG : (stated > 1 ? grams * (stated - 1) : 0);
-    const fatDiscardedG = Number.isFinite(line.fatDiscardedG) && line.fatDiscardedG > 0 ? line.fatDiscardedG : 0;
+    let waterDeltaG = explicitWater ? line.waterDeltaG : (stated > 1 ? grams * (stated - 1) : 0);
+    let fatDiscardedG = Number.isFinite(line.fatDiscardedG) && line.fatDiscardedG > 0 ? line.fatDiscardedG : 0;
     const fatAbsorbedG = Number.isFinite(line.fatAbsorbedG) && line.fatAbsorbedG > 0 ? line.fatAbsorbedG : 0;
     const externalFat = line.fatAbsorbedExternal === true ? fatAbsorbedG : 0;
+    if (fatDiscardedG > grams) fatDiscardedG = grams;
+    const remaining = grams - fatDiscardedG + externalFat;
+    if (waterDeltaG < 0 && -waterDeltaG > remaining) waterDeltaG = -remaining;
     const scale = value => {
         if (!Number.isFinite(value) || value < 0) return null;
-        return Math.max(0, value - Math.min(fatDiscardedG, value)) * retention;
+        const discarded = Math.min(fatDiscardedG, value);
+        return Math.max(0, value - discarded) * retention;
     };
     const g = scale(grams);
     const cooked = grams + waterDeltaG + externalFat - fatDiscardedG;
