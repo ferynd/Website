@@ -1,6 +1,6 @@
 # Ingredient-based nutrition
 
-Status: #60 registry/readers, #61 Part A ingredient identities, and the #62 research pipeline are implemented. Both write flags remain false; ingredient rules are repo source pending Part B deployment. The static curated catalog ships empty (0 profiles). #67 adds shared ingredient-list import and paste parsing ([implementation](ingredient-import.md)); the Import workspace UI, calculation, and fitting have not shipped. Research packets are available through shared code and the operator CLI. See [ingredient release](ingredient-store-release.md).
+Status, as code on `main` (`497f941`), not as a production data deploy or a populated catalog: #60 registry and readers, #61 Part A, #62 research packets, #64 Part A calculation, #65 fitting, #66 resolution, #67 import parsing, #70 Import workspace, and the #69 search/review Library tab are implemented. Both write flags remain false. Ingredient rules are repository source, not a deployed ruleset. The curated catalog has 0 profiles. Private profile saves (#69 Part B), meal snapshots (#64 Part B), live sources, and population are not done. The [2026-11-09 requirements review](REQUIREMENTS_REVIEW_2026-11-09.md) is the current plan. See [ingredient release](ingredient-store-release.md).
 
 ## Goal
 

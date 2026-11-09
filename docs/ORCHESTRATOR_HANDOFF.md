@@ -22,12 +22,12 @@ Living stage file for a takeover. Muse, or any later orchestrator, reads this be
 
 These need James's explicit approval. Report the blocker instead of bypassing it.
 
-- #63 live food-data pulls or bulk population
+- #63 live food-data pulls or bulk population, including a live FDC call made only to draft a dry-run
 - Paid API enablement
-- Production Firestore writes
+- Production Firestore writes, queries, and exports. The 2026-11-09 exception is the read-only #60 census and backup, which James approved and the parent runs. Other agents do not run it.
 - Flipping `INGREDIENT_STORE_WRITES_ENABLED` or `NUTRIENT_V2_WRITES_ENABLED`
 - Firestore rules, index, or Auth deploys
-- Part B of #60, #61, and #64
+- Production enablement for #61 Part B and #64 Part B. Branch code with the write flags left false is allowed. The census exception does not approve #60's writer flag.
 
 ## Nutrition architecture
 
@@ -37,22 +37,23 @@ Contracts: [overview](nutrition/README.md), [workflow](nutrition/workflow.md), [
 
 ## Current stage
 
-As of 2026-11-09 15:41 CT. Verify heads before relying on this section.
+As of 2026-11-09 17:10 CT. Verify heads before relying on this section.
 
-Merged on `main` (`497f941`): #185 through #196. Latest merges are #195 (#65 fitting, `8122694`) and #196 (#69 Ingredient Library, `497f941`).
+Merged on `main` (`da04c70`): #185 through #197. #197 keeps private profile saves open as #69 Part B.
 
-No ungated nutrition slice remains. The merged #69 slice is search, review, and staged research. Private add, edit, and save stay open as #69 Part B. Do not start #68, #69 Part B, or the other Part B / #63 / #71 items until James approves the gates below.
+The parent finished the read-only census of `jlb-calorietracker` on 2026-11-09 about 16:32 CT. Aggregates: 609 documents backed up off-repo; 1 user; 191 food documents, all v1; 0 v2 food documents; 0 non-numeric legacy foods; 0 food id collisions; 417 daily entries; 3200 food elements; 0 element collisions; largest entry 8257 bytes; 1 recipe; 0 confirmed links; 0 export refs; 2 timestamp fields. The in-memory restore passed. The backup used REST and a CLI token, so integer versus double was not kept. Take a fresh Admin SDK backup before any migration. Script bugs are #80. Do not query production again. Do not treat the census as permission to flip a write flag.
 
-Approvals required, in dependency order:
+The plan is [the 2026-11-09 requirements review](nutrition/REQUIREMENTS_REVIEW_2026-11-09.md). Next code, after this docs PR, keeps both write flags false:
 
-- **#60 Part B:** production census and backup, then enabling `NUTRIENT_V2_WRITES_ENABLED`, then deployment. The flag stays false.
-- **#61 Part B:** three separate approvals: Firestore rules deploy, live smoke with throwaway accounts, and enabling `INGREDIENT_STORE_WRITES_ENABLED`. The flag stays false.
-- **#69 Part B:** private profile add, edit, and save. It waits on #61 Part B and the same write-flag approval. `commitLibraryEdit()` stays `writes_disabled`. Affected meals stay deferred until #64 Part B.
-- **#62 Part B:** provision or use a live FDC credential, and publish staged curated data. No live food pull until then.
-- **#63:** approval before each live catalog import, and before any paid API batch. A #63 gap report is required before #68. Subscription residual research does not need a spend approval; importing those results still needs the catalog-import approval.
-- **#64 Part B:** rules deploy or production schema change. It also waits on #61 Part B. Saving stays gated.
-- **#68:** production smoke, migrations, and each enablement step. It also waits on every item above plus the already merged #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice.
-- **#71:** deferred. Approval is required to build or enable the route, provision a key, raise the $0 cap, or deploy Storage rules.
+1. #72 yield, water, fat, and retention.
+2. #73 research evidence on the applied draft.
+3. #74 honest lookup status, with no live call.
+4. #78 beta tab label and explicit abandon copy.
+5. #75 remaining doc compatibility notes.
+6. #69 Part B and #64 Part B in branches, emulator or fixtures only.
+7. #76 local-fixture dry-run report, and #77 aggregate counts from a foods-only extract the parent keeps outside the checkout. Do not commit names, ids, paths, or nutrient values.
+
+Still unapproved: live FDC, catalog import, rules deploys, either write flag, production saves, #68 production smoke, and #71. Do not flip `NUTRIENT_V2_WRITES_ENABLED` to carry beta detail. Legacy food and diary writes stay v1.
 
 Ignore docs PRs #159 and #166.
 
@@ -82,6 +83,12 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-09 15:04 | #69 ingredient library | #196 | `e40f5bbd43d46dc480621fbeb02a0d3691943db3` | PR opened. Private writes and affected meals stay off. | Independent review of the branch head, then green CI. |
 | 2026-11-09 15:41 | #69 ingredient library | #196 | `497f94194d38e649c8c03325c200d24ed31b2f6b` | Merged to main. | Stop. #68 and the Part B items need James's approval. Do not start them. |
 | 2026-11-09 15:52 | #69 archive correction | #197 | `f26027543e3bc72e0c4580f7de12353ede410d0c` | Codex finding addressed. Search and review are archived. Private add, edit, and save stay open as #69 Part B. | Do not start #69 Part B. It needs the #61 Part B write approval. |
+| 2026-11-09 16:34 | Nutrition requirements review | #198 | `7158db2c6349f00ac7d7d3db4a1d3477eaaba899` | Docs plan opened. James approved only the read-only census, which the parent is running. No code and no production query in this change. | Independent review of the PR head, then green CI. Do not start phase 2 until this plan is merged. |
+| 2026-11-09 16:45 | Nutrition requirements review | #198 | `82cc010a0e60ca86469cf7a1c011c67c9174f920` | Grok requested three factual corrections: water gain, the cache runbook tense, and the official-miss button. | Review the correction commit. |
+| 2026-11-09 16:55 | Nutrition requirements review | #198 | `1ecb59c0bbb1a8bd0127216af898bfa8b3ffac9c` | Grok approved that SHA. Codex then required a diary-guard limit, item #79, phase-2 ordering, an unknown census result, the #59–#78 range, and an aggregate-only #77 report. | Review the Codex correction commit. |
+| 2026-11-09 17:05 | Nutrition requirements review | #198 | `02095104636de273003ed52c057b773ee997b13a` | Grok asked every #77 sentence to say foods-only, outside the checkout, and no path, name, id, or nutrient value. | Review the aligned head. |
+| 2026-11-09 16:32 | #60 read-only census | | `da04c70` | Parent census of `jlb-calorietracker`. 609 docs backed up off-repo. 191 foods, all v1, 0 v2. 417 daily entries, 3200 elements, 0 collisions, largest 8257 bytes. 1 recipe, 0 confirmed links, 0 export refs. 1 user. 2 timestamp fields. In-memory restore passed. REST backup does not keep integer versus double. | Fresh Admin SDK backup before any migration. Track script bugs as #80. Do not rerun production. |
+| 2026-11-09 17:10 | #197 archive correction | #197 | `da04c70` | Merged to main. | #198 is rebased onto this main. Review the rebased head. |
 
 ## Logins and setup
 

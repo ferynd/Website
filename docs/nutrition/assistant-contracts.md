@@ -1,6 +1,6 @@
 # Assistant contracts
 
-Status: research request/response v1 is implemented by the [shared research pipeline](research-pipeline.md) (#62). Ingredient-list import v1, the human paste format, and the copyable assistant instructions are implemented by [ingredient-list import](ingredient-import.md) (#67). The Import workspace UI has not shipped. Shipped behavior is recorded in [README](README.md); tasks and release gates live in [the active backlog](../../backlogs/calorie-tracker.md).
+Status: research request/response v1 is implemented by the [shared research pipeline](research-pipeline.md) (#62). Ingredient-list import v1, the human paste format, and the copyable assistant instructions are implemented by [ingredient-list import](ingredient-import.md) (#67). The Import workspace and Library search UI are implemented with writes off. Saving, live lookup, and population are not. Current status is the [2026-11-09 requirements review](REQUIREMENTS_REVIEW_2026-11-09.md); tasks and release gates live in [the active backlog](../../backlogs/calorie-tracker.md).
 
 ## Contents
 
