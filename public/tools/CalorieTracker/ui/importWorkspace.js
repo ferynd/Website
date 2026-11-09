@@ -63,7 +63,11 @@ export function wireImportWorkspace(getUid) {
     };
     const run = async (action) => {
         const uid = owner();
-        if (!uid) { show(null); return; }
+        if (!uid) {
+            text(document.getElementById('import-message'), 'Sign in to import. Drafts stay on your account.');
+            show(null);
+            return;
+        }
         if (!workspace || workspace.ownerUid !== uid) workspace = createWorkspace(uid).workspace;
         const result = await action(workspace);
         if (result?.workspace) workspace = result.workspace;
