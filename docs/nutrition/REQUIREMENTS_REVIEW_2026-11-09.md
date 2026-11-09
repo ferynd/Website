@@ -41,7 +41,7 @@ James approved only the read-only #60 Part B census and backup. The parent is ru
 | Save testing uses an isolated Firebase test project | (3) | No test-project runbook or suite exists. #61 Part B still describes production smoke, which is a different approval. Phase 3 owns the isolated project. |
 | No silent edits to existing foods or diary | (1) for the beta path | The workspace never calls the food or diary writers. |
 | A global nutrient flag must not expose legacy flows to incompatible writes | (2) and (4) | `NUTRIENT_V2_WRITES_ENABLED` is one compile-time switch for food and day shape. Turning it on would change legacy saves. Do not flip it for the beta. Meal snapshots belong in the #64 Part B collection. Legacy food and diary documents stay v1. |
-| Old clients and cached PWAs cannot overwrite or drop new fields | (1) for v2 food documents that do not exist yet; (2) for the cache-name plan | v1 writers skip `nutrientSchemaVersion >= 2`. The repository cache is already `nutritrack-v5` while writes are off (`sw.js`, `capabilities.js`). The #61 runbook still says the write-enable PR should bump v4 to v5. That bump already happened, so a later writer needs a new cache name. #75. |
+| Old clients and cached PWAs cannot overwrite or drop new fields | (1) for v2 food documents that do not exist yet; (2) for the cache-name plan | v1 writers skip `nutrientSchemaVersion >= 2`. The repository cache is already `nutritrack-v5` while writes are off (`sw.js`, `capabilities.js`). This PR updates the #61 runbook so the write-enable PR must pick a new cache name after v5. #75 keeps the compatibility note. |
 | Clear failure, and the user can abandon to the old flow | (2) | `cancelWorkspace()` keeps `committed: false`. The Import screen does not yet say that failure leaves Today unchanged, and the tab is not labeled Beta. #78. |
 
 **Implemented / tested:** write flags false, cancel does not commit, v1 refuses a newer food schema. **Deployed:** flags and rules are not deployed as enabled writers. **Populated:** no.
@@ -52,10 +52,10 @@ Class **(2)** and **(4)**. New item **#72**.
 
 `fitWorkspace()` in `public/shared/nutrition/importWorkspace.js` does both things James rejected:
 
-- It treats `meal.servingWeight.g`, or else `meal.yield.rawTotal.g`, as an exact sum of the non-parent ingredient grams.
-- When cooked weight is present and less than or equal to raw weight, it sets every line that lacks `yieldRetention` to `cooked / raw`.
+- It treats `meal.servingWeight.g`, or else `meal.yield.rawTotal.g`, as an exact sum of the lines that have no `parentLineId`. That set includes compound parents and excludes their children.
+- When cooked weight is present and less than or equal to raw weight, it sets `yieldRetention` to `cooked / raw` on the temporary lines passed to `fitQuantities()`. It does not write that ratio back onto `resolution.lines`. `recalculateResolution()` therefore calculates from the original lines, and `workspace.calculation` can omit the ratio the solver just used.
 
-`calculate.js` then multiplies ingredient grams by `yieldRetention` before scaling per-100 g nutrients. Retention above 1 is rejected, so water gain drops that line out of the sum (`gramsOf()` returns null). There is no separate water gain or loss, no fat absorbed or discarded, and no USDA retention factor. A single ratio therefore scales nutrients as if the missing weight were nutrient loss.
+`calculate.js` multiplies grams by `yieldRetention` before scaling per-100 g nutrients. If a line already has retention above 1, below 0, or non-finite, `gramsOf()` returns null and `calculateMeal()` skips that line. `fitWorkspace()` does not create that case. When cooked weight is greater than raw weight, it leaves retention unset, so calculation uses 1 and keeps the line at its full grams. Water gain is not modeled, and it does not drop the line. There is no separate water gain or loss, no fat absorbed or discarded, and no USDA retention factor. A single cooked/raw ratio, when the solver sees it, scales nutrients as if the missing weight were nutrient loss.
 
 Tests that exist: `calculate.test.js` checks one nested `yieldRetention: 0.5`, and `fit.test.js` checks a 0.5 slope. There is no roasted-meat, boiled-pasta, baking, sauce, or mixed-dish regression. `fit.js` does not itself invent the universal ratio; `fitWorkspace()` does, and `calculate.js` applies whatever retention it is given.
 
@@ -76,7 +76,7 @@ Class **(2)** and **(3)**. Updated item **#74**, still gated by **#62 Part B** f
 | Claim | Status |
 | --- | --- |
 | Ladder order: curated/private, official, packet, manual or explicit incomplete | Implemented in `resolution.js` (`LADDER`). A packet is refused until an official attempt exists. |
-| A lookup that was not performed must not show as `not_found` | Not satisfied. `lookupWorkspace()` records `outcome: 'not_found'` without contacting a database. `researchLibraryFields()` does the same before building a packet. The Import button calls `lookupWorkspace()` for every unresolved line. |
+| A lookup that was not performed must not show as `not_found` | Not satisfied. `lookupWorkspace()` records `outcome: 'not_found'` without contacting a database. `researchLibraryFields()` does the same before building a packet. The Import screen button **Record official miss** (`import-lookup`) calls `lookupWorkspace()` for every unresolved line. The **Import** button only calls `importWorkspaceInput()`. |
 | Real deterministic lookup when live sources are enabled | Not implemented. Adapters exist for pinned local FDC fixtures. No live release is pinned. #62 Part B. |
 | No re-research of resolved fields | Implemented for a library-resolved line (`matched_line`). Field-gap packets request `missingFields` only when those fields were computed. The Library button does not pass a chosen field list. |
 
