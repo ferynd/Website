@@ -1,4 +1,7 @@
+import { createCuratedCatalogSource } from '../../../shared/nutrition/ingredientCatalog.js';
+import { openProfileCache } from '../../../shared/nutrition/profileCache.js';
 import { clearWorkspaceDraft, readWorkspaceDraft, writeWorkspaceDraft } from '../../../shared/nutrition/importWorkspaceDraft.js';
+import { getIngredientStore } from '../services/ingredientStore.js';
 import {
     calculateWorkspace, cancelWorkspace, createWorkspace, fitWorkspace, importWorkspaceInput, instructionsWorkspace,
     lookupWorkspace, matchWorkspace, packetWorkspace, reviewWorkspace, saveWorkspace, WORKSPACE_STAGES,
@@ -48,6 +51,30 @@ async function copyText(value) {
     try { await navigator.clipboard?.writeText(value || ''); } catch { /* The textarea remains the copy source. */ }
 }
 
+async function matchPorts(ownerUid) {
+    const empty = async () => ({ items: [] });
+    let privateSearch = empty;
+    let curatedSearch = empty;
+    let loadRevision = async () => null;
+    try {
+        const cache = await openProfileCache({ ownerUid });
+        loadRevision = async ref => {
+            const got = await cache.getRevision(ref);
+            return got?.status === 'fresh' ? { revision: got.revision } : null;
+        };
+    } catch { /* A missing cache leaves the line unresolved rather than zero. */ }
+    try {
+        const store = await getIngredientStore();
+        privateSearch = name => store.searchPrivate(name);
+    } catch { /* Offline or signed-out search does not invent a match. */ }
+    try {
+        const catalog = createCuratedCatalogSource();
+        await catalog.open();
+        curatedSearch = name => catalog.search(name).catch(() => ({ items: [] }));
+    } catch { /* The curated catalog can be absent offline. */ }
+    return { privateSearch, curatedSearch, loadRevision };
+}
+
 /** Tracker Import tab. Values are text, and saving stays gated. */
 export function wireImportWorkspace(getUid) {
     let workspace = null;
@@ -78,7 +105,7 @@ export function wireImportWorkspace(getUid) {
     };
     document.getElementById('import-run')?.addEventListener('click', () => run(current => importWorkspaceInput(current, document.getElementById('import-text')?.value || '', { kind: document.getElementById('import-kind')?.value || 'ingredient_list' })));
     document.getElementById('import-instructions')?.addEventListener('click', () => copyText(instructionsWorkspace().text));
-    document.getElementById('import-match')?.addEventListener('click', () => run(current => matchWorkspace(current, {})));
+    document.getElementById('import-match')?.addEventListener('click', () => run(async current => matchWorkspace(current, await matchPorts(current.ownerUid))));
     document.getElementById('import-lookup')?.addEventListener('click', () => run(current => lookupWorkspace(current, (current.resolution?.items || []).filter(item => !item.resolved).map(item => item.lineId))));
     document.getElementById('import-packet')?.addEventListener('click', () => run(async current => {
         const ids = (current.resolution?.items || []).filter(item => !item.resolved).map(item => item.lineId);

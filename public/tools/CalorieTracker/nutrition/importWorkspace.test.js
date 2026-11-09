@@ -28,6 +28,13 @@ describe('import workspace', () => {
         expect(step.workspace.origins[0].origin).toBe('assistant');
         step = await matchWorkspace(step.workspace, { nutrientsByLine: { rice: known }, lineRefs: { rice: { identityId: 'rice-id', variantId: 'rice-cooked', revision: 1 } }, refDims: { rice: { state: 'cooked' } } });
         expect(step.workspace.resolution.items[0].kind).toBe('resolved');
+        const fromCache = await matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, {
+            lineRefs: { rice: { identityId: 'rice-id', variantId: 'rice-cooked', revision: 1 } },
+            refDims: { rice: { state: 'cooked' } },
+            loadRevision: async () => ({ revision: { nutrients: Object.fromEntries(PROFILE_FIELDS.map(key => [key, key === 'calories' ? 130 : 0])), nutrientMeta: { quality: Object.fromEntries(PROFILE_FIELDS.map(key => [key, { status: 'measured' }])) } } }),
+        });
+        expect(fromCache.workspace.resolution.items[0].kind).toBe('resolved');
+        expect(fromCache.workspace.resolution.items[0].source).toBe('library');
         expect((await packetWorkspace(step.workspace, ['rice'])).error).toBe('matched_line');
         step = calculateWorkspace(step.workspace);
         expect(step.workspace.calculation.nutrients.calories.value).toBe(130);
@@ -48,8 +55,11 @@ describe('import workspace', () => {
     it('adapts legacy paste, saved meals, and recipes, and copies a packet only after an official miss', async () => {
         const legacy = importWorkspaceInput(createWorkspace('owner-a').workspace, 'Calories: 100\nProtein: 5g', { kind: 'legacy_paste' });
         expect(legacy.workspace.origins[0]).toMatchObject({ origin: 'user', sourceKind: 'legacy_paste' });
-        const meal = importWorkspaceInput(createWorkspace('owner-a').workspace, { foodItems: [{ id: 'bowl', name: 'Rice bowl', quantity: 1, calories: 200 }] }, { kind: 'saved_meal' });
+        const meal = importWorkspaceInput(createWorkspace('owner-a').workspace, JSON.stringify({ foodItems: [{ id: 'bowl', name: 'Rice bowl', quantity: 1, calories: 200 }] }), { kind: 'saved_meal' });
+        expect(meal.ok).toBe(true);
         expect(meal.workspace.origins[0].origin).toBe('deterministic');
+        const recipeText = importWorkspaceInput(createWorkspace('owner-a').workspace, JSON.stringify({ name: 'Beans', servings: { baselineServings: 2 }, ingredients: [{ displayName: 'black beans', quantityG: 80 }] }), { kind: 'saved_recipe' });
+        expect(recipeText.ok).toBe(true);
         const recipe = importWorkspaceInput(createWorkspace('owner-a').workspace, { name: 'Beans', servings: { baselineServings: 2 }, ingredients: [{ displayName: 'black beans', quantityG: 80 }] }, { kind: 'saved_recipe' });
         expect(recipe.workspace.origins[0].origin).toBe('deterministic');
         let step = await matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, {});

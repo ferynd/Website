@@ -6,6 +6,7 @@ import {
 import {
     buildResolution, cancelResolution, chooseExisting, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete,
 } from './resolution.js';
+import { PROFILE_FIELDS } from './research/profileFields.js';
 
 /** Save stays off until both Part B write flags are on. This module does not flip them. */
 export function workspaceCapabilities() {
@@ -60,6 +61,23 @@ export function createWorkspace(ownerUid) {
     return { ok: true, workspace: blank(ownerUid.trim()) };
 }
 
+function asJson(input) {
+    if (typeof input !== 'string') return { ok: true, value: input };
+    try { return { ok: true, value: JSON.parse(input) }; }
+    catch { return { ok: false }; }
+}
+
+function observationsFromRevision(revision) {
+    const nutrients = {};
+    for (const key of PROFILE_FIELDS) {
+        const value = revision?.nutrients?.[key];
+        const status = revision?.nutrientMeta?.quality?.[key]?.status;
+        if (value == null && !status) continue;
+        nutrients[key] = { value: value ?? null, status: status || (value == null ? 'unknown' : 'measured') };
+    }
+    return nutrients;
+}
+
 function originFor(kind) {
     if (kind === 'legacy_paste') return 'user';
     if (kind === 'saved_meal' || kind === 'saved_recipe' || kind === 'recipe_standardizer') return 'deterministic';
@@ -88,8 +106,11 @@ export function importWorkspaceInput(workspace, input, { kind = 'ingredient_list
     if (REJECTED.has(kind)) return fail(workspace, 'unsupported_input');
     let result;
     if (kind === 'legacy_paste') result = fromLegacyPaste(typeof input === 'string' ? input : '');
-    else if (kind === 'saved_meal') result = fromSavedMeal(input);
-    else if (kind === 'saved_recipe' || kind === 'recipe') result = fromSavedRecipe(input);
+    else if (kind === 'saved_meal' || kind === 'saved_recipe' || kind === 'recipe') {
+        const body = asJson(input);
+        if (!body.ok) return fail(workspace, 'invalid_import', { errors: [{ path: '$', message: 'expected JSON' }] });
+        result = kind === 'saved_meal' ? fromSavedMeal(body.value) : fromSavedRecipe(body.value);
+    }
     else if (kind === 'ingredient_list' || kind === 'paste') result = importIngredientList(input);
     else return fail(workspace, 'unsupported_input');
     if (!result?.ok) return fail(workspace, 'invalid_import', { errors: result?.errors || [] });
@@ -112,11 +133,22 @@ export function correctWorkspaceLine(workspace, lineId, patch) {
 export async function matchWorkspace(workspace, ports = {}) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const match = await reconcileImport(workspace.draft, ports);
+    const nutrientsByLine = { ...(ports.nutrientsByLine || {}) };
+    const revisionsByLine = { ...(ports.revisionsByLine || {}) };
+    if (ports.loadRevision) {
+        for (const line of match.lines) {
+            if (line.outcome !== 'exact' || !line.ref) continue;
+            const loaded = await ports.loadRevision(line.ref);
+            if (!loaded?.revision) continue;
+            revisionsByLine[line.lineId] = loaded.revision;
+            nutrientsByLine[line.lineId] = { ...observationsFromRevision(loaded.revision), ...(nutrientsByLine[line.lineId] || {}) };
+        }
+    }
     const resolution = buildResolution({
         lines: resolutionLines(workspace.draft),
         matches: match.lines.map(line => ({ lineId: line.lineId, outcome: line.outcome === 'exact' ? 'exact' : line.outcome === 'missing' ? 'missing' : line.outcome, ref: line.ref || null })),
-        nutrientsByLine: ports.nutrientsByLine || {},
-        revisionsByLine: ports.revisionsByLine || {},
+        nutrientsByLine,
+        revisionsByLine,
         servings: workspace.draft.import.meal?.servings?.count ?? null,
     });
     return done(workspace, { stage: 'resolve', match, resolution });
