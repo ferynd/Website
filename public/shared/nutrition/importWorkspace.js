@@ -339,8 +339,9 @@ export function instructionsWorkspace() {
 export function saveWorkspace(workspace) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const caps = workspaceCapabilities();
-    const rendered = renderIngredientPaste(exportList(workspace));
-    const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(workspace.draft.import, null, 2) };
+    const list = exportList(workspace);
+    const rendered = renderIngredientPaste(list);
+    const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(list, null, 2) };
     if (!caps.save) {
         return done(workspace, { stage: 'save', exportCopy, committed: false, save: { available: false, reason: 'export only until ingredient and nutrient writes are approved' } });
     }

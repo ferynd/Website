@@ -331,6 +331,7 @@ function optimize(lines, startGrams, bounds, facts, mealServings, constraints) {
         const before = JSON.stringify([...grams]);
         for (const line of free)
             searchVariable(lines, grams, line, bounds.get(line.lineId), facts, mealServings, starts, constraints);
+        searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, constraints);
         if (JSON.stringify([...grams]) === before) break;
     }
     return grams;
