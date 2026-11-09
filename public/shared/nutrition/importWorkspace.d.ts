@@ -1,9 +1,12 @@
-export function workspaceCapabilities(): Readonly<{ workspace: true; photo: false; barcode: false; ocr: false; fit: false; libraryDeepLink: false; directAi: false; save: boolean; exportCopy: true }>;
+export function workspaceCapabilities(): Readonly<{ workspace: boolean; photo: false; barcode: false; ocr: false; fit: false; libraryDeepLink: false; directAi: false; save: boolean; exportCopy: true }>;
 export const WORKSPACE_STAGES: readonly string[];
 export function createWorkspace(ownerUid: string): any;
 export function importWorkspaceInput(workspace: any, input: any, options?: { kind?: string }): any;
 export function correctWorkspaceLine(workspace: any, lineId: string, patch: any): any;
 export function matchWorkspace(workspace: any, ports?: any): Promise<any>;
+export function confirmWorkspace(workspace: any, lineId: string, variantId: string, ports?: any, options?: any): Promise<any>;
+export function applyResearchResponse(workspace: any, input: any): Promise<any>;
+export function packetCopy(packet: any): string;
 export function chooseWorkspace(workspace: any, lineId: string, choice: any): any;
 export function lookupWorkspace(workspace: any, lineIds: string[], attempt?: any): any;
 export function packetWorkspace(workspace: any, lineIds: string[], options?: any): Promise<any>;

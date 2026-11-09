@@ -1,8 +1,9 @@
-import { INGREDIENT_STORE_WRITES_ENABLED, NUTRIENT_V2_WRITES_ENABLED } from './capabilities.js';
+import { IMPORT_WORKSPACE_ENABLED, INGREDIENT_STORE_WRITES_ENABLED, NUTRIENT_V2_WRITES_ENABLED } from './capabilities.js';
 import {
-    applyLineCorrection, copyAssistantInstructions, effectiveLine, fitTargets, fromLegacyPaste, fromSavedMeal, fromSavedRecipe,
+    applyLineCorrection, confirmMatch, copyAssistantInstructions, effectiveLine, fitTargets, fromLegacyPaste, fromSavedMeal, fromSavedRecipe,
     importIngredientList, reconcileImport, renderIngredientPaste,
 } from './import/index.js';
+import { validateResearchResponse } from './research/researchPacket.js';
 import {
     buildResolution, cancelResolution, chooseExisting, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete,
 } from './resolution.js';
@@ -11,7 +12,7 @@ import { PROFILE_FIELDS } from './research/profileFields.js';
 /** Save stays off until both Part B write flags are on. This module does not flip them. */
 export function workspaceCapabilities() {
     return Object.freeze({
-        workspace: true,
+        workspace: IMPORT_WORKSPACE_ENABLED,
         photo: false,
         barcode: false,
         ocr: false,
@@ -129,6 +130,29 @@ export function correctWorkspaceLine(workspace, lineId, patch) {
     return done(workspace, { draft: next.draft, resolution, calculation: null, review: null });
 }
 
+async function resolutionFromMatch(workspace, match, ports = {}) {
+    const nutrientsByLine = { ...(ports.nutrientsByLine || {}) };
+    const revisionsByLine = { ...(ports.revisionsByLine || {}) };
+    if (ports.loadRevision) {
+        for (const line of match.lines) {
+            if ((line.outcome !== 'exact' && line.outcome !== 'confirmed_by_user') || !line.ref) continue;
+            try {
+                const loaded = await ports.loadRevision(line.ref);
+                if (!loaded?.revision) continue;
+                revisionsByLine[line.lineId] = loaded.revision;
+                nutrientsByLine[line.lineId] = { ...observationsFromRevision(loaded.revision), ...(nutrientsByLine[line.lineId] || {}) };
+            } catch { /* A failed profile read leaves the line unresolved. */ }
+        }
+    }
+    return buildResolution({
+        lines: resolutionLines(workspace.draft),
+        matches: match.lines.map(line => ({ lineId: line.lineId, outcome: line.outcome === 'exact' || line.outcome === 'confirmed_by_user' ? 'exact' : line.outcome === 'missing' ? 'missing' : line.outcome, ref: line.ref || null })),
+        nutrientsByLine,
+        revisionsByLine,
+        servings: workspace.draft.import.meal?.servings?.count ?? null,
+    });
+}
+
 /** Match through #61. Does not research or write. */
 export async function matchWorkspace(workspace, ports = {}) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
@@ -141,27 +165,16 @@ export async function matchWorkspace(workspace, ports = {}) {
         ...(ports.privateSearch ? { privateSearch: safeSearch(ports.privateSearch) } : {}),
         ...(ports.curatedSearch ? { curatedSearch: safeSearch(ports.curatedSearch) } : {}),
     });
-    const nutrientsByLine = { ...(ports.nutrientsByLine || {}) };
-    const revisionsByLine = { ...(ports.revisionsByLine || {}) };
-    if (ports.loadRevision) {
-        for (const line of match.lines) {
-            if (line.outcome !== 'exact' || !line.ref) continue;
-            try {
-                const loaded = await ports.loadRevision(line.ref);
-                if (!loaded?.revision) continue;
-                revisionsByLine[line.lineId] = loaded.revision;
-                nutrientsByLine[line.lineId] = { ...observationsFromRevision(loaded.revision), ...(nutrientsByLine[line.lineId] || {}) };
-            } catch { /* A failed profile read leaves the line unresolved. */ }
-        }
-    }
-    const resolution = buildResolution({
-        lines: resolutionLines(workspace.draft),
-        matches: match.lines.map(line => ({ lineId: line.lineId, outcome: line.outcome === 'exact' ? 'exact' : line.outcome === 'missing' ? 'missing' : line.outcome, ref: line.ref || null })),
-        nutrientsByLine,
-        revisionsByLine,
-        servings: workspace.draft.import.meal?.servings?.count ?? null,
-    });
-    return done(workspace, { stage: 'resolve', match, resolution });
+    return done(workspace, { stage: 'resolve', match, resolution: await resolutionFromMatch(workspace, match, ports) });
+}
+
+/** Confirm one candidate. A form conflict still requires acknowledgeConflict. */
+export async function confirmWorkspace(workspace, lineId, variantId, ports = {}, options = {}) {
+    if (!workspace?.match) return fail(workspace, 'match_required');
+    const confirmed = confirmMatch(workspace.match, lineId, variantId, options);
+    if (!confirmed.ok) return fail(workspace, confirmed.reason);
+    const match = confirmed.result;
+    return done(workspace, { stage: 'resolve', match, resolution: await resolutionFromMatch(workspace, match, ports) });
 }
 
 function withResolution(workspace, result) {
@@ -184,6 +197,39 @@ export function lookupWorkspace(workspace, lineIds, attempt = {}) {
         resolution = next.state;
     }
     return done(workspace, { stage: 'resolve', resolution });
+}
+
+export function packetCopy(packet) {
+    if (!packet) return '';
+    if (packet.copyText) return packet.copyText;
+    const texts = packet.copyTexts || [];
+    return texts.map((text, index) => `Packet ${index + 1} of ${texts.length}\n\n${text}`).join('\n\n');
+}
+
+/** Validate a pasted #62 response and keep its nutrients on the matching lines. Does not write a profile. */
+export async function applyResearchResponse(workspace, input) {
+    if (!workspace?.resolution) return fail(workspace, 'match_required');
+    const body = asJson(input);
+    if (!body.ok || !body.value || typeof body.value !== 'object') return fail(workspace, 'invalid_response', { errors: [{ path: '$', message: 'expected JSON' }] });
+    const response = body.value;
+    const request = (workspace.resolution.pendingRequests || []).find(item => item.requestId === response.requestId);
+    if (!request) return fail(workspace, 'unknown_request');
+    const jobs = (workspace.resolution.pendingJobs || []).filter(job => job.pendingRequest?.requestId === request.requestId);
+    let validated;
+    try { validated = await validateResearchResponse(response, { request, jobs }); }
+    catch (error) { return fail(workspace, 'invalid_response', { errors: [{ path: '$', message: error.message }] }); }
+    const items = workspace.resolution.items.map(item => ({ ...item }));
+    for (const result of validated.results) {
+        const lineId = jobs.find(job => job.jobId === result.targetId)?.target?.lineId;
+        const item = items.find(row => row.lineId === lineId);
+        if (!item) continue;
+        const nutrients = { ...item.nutrients };
+        for (const [key, nutrient] of Object.entries(result.nutrients || {}))
+            nutrients[key] = { value: nutrient.value, status: nutrient.status };
+        item.nutrients = nutrients;
+        item.source = 'packet';
+    }
+    return done(workspace, { resolution: { ...workspace.resolution, items, modelCalls: 0 } });
 }
 
 export async function packetWorkspace(workspace, lineIds, options) {

@@ -5,6 +5,8 @@
 export const NUTRIENT_V2_WRITES_ENABLED = false;
 
 export const INGREDIENT_STORE_WRITES_ENABLED = false;
+/** The Import tab is on. Saving and fitting stay off through their own flags. */
+export const IMPORT_WORKSPACE_ENABLED = true;
 export const INGREDIENT_STORE_SCHEMA_VERSION = 1;
 
 export const NUTRITRACK_CACHE_NAME = 'nutritrack-v5';
@@ -21,5 +23,6 @@ export const NUTRITION_CAPABILITIES = {
     return resolveNutrientWriteVersion();
   },
   textLabelsV2: true,
+  importWorkspace: IMPORT_WORKSPACE_ENABLED,
   cacheName: NUTRITRACK_CACHE_NAME,
 };

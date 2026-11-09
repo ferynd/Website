@@ -241,6 +241,7 @@ async function handleUserLoggedIn(user) {
 
   try {
     stateObject.userId = user.uid;
+    globalThis.__resumeImportWorkspace?.();
 
     // Update UI
     updateUIForLoggedInUser(user);

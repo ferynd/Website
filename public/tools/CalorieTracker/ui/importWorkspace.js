@@ -2,9 +2,10 @@ import { createCuratedCatalogSource } from '../../../shared/nutrition/ingredient
 import { openProfileCache } from '../../../shared/nutrition/profileCache.js';
 import { clearWorkspaceDraft, readWorkspaceDraft, writeWorkspaceDraft } from '../../../shared/nutrition/importWorkspaceDraft.js';
 import { getIngredientStore } from '../services/ingredientStore.js';
+import { IMPORT_WORKSPACE_ENABLED } from '../../../shared/nutrition/capabilities.js';
 import {
-    calculateWorkspace, cancelWorkspace, createWorkspace, fitWorkspace, importWorkspaceInput, instructionsWorkspace,
-    lookupWorkspace, matchWorkspace, packetWorkspace, reviewWorkspace, saveWorkspace, WORKSPACE_STAGES,
+    applyResearchResponse, calculateWorkspace, cancelWorkspace, confirmWorkspace, createWorkspace, fitWorkspace, importWorkspaceInput, instructionsWorkspace,
+    lookupWorkspace, matchWorkspace, packetCopy, packetWorkspace, reviewWorkspace, saveWorkspace, WORKSPACE_STAGES,
 } from '../../../shared/nutrition/importWorkspace.js';
 
 const text = (node, value) => { if (node) node.textContent = value == null ? '' : String(value); };
@@ -27,6 +28,31 @@ function show(workspace) {
         const kind = line.kind || line.sourceKind || '';
         row.textContent = [name, origin, kind, line.basis || ''].filter(Boolean).join(' · ');
         output.append(row);
+    }
+    if (workspace.calculation?.nutrients) {
+        const known = Object.entries(workspace.calculation.nutrients).filter(([, item]) => item?.value != null);
+        const unknown = Object.values(workspace.calculation.nutrients).filter(item => item?.value == null).length;
+        const totals = document.createElement('p');
+        totals.textContent = `Calculated: ${known.slice(0, 8).map(([key, item]) => `${key} ${item.value} (${item.status || 'unknown'})`).join('; ')}${unknown ? `; ${unknown} unknown` : ''}`;
+        output.append(totals);
+    }
+    for (const comparison of workspace.review?.comparisons || []) {
+        for (const row of comparison.rows || []) {
+            const fact = document.createElement('p');
+            fact.textContent = `${comparison.factId} ${row.key}: known ${row.known ?? 'n/a'}, calculated ${row.calculated ?? 'n/a'}${row.note ? `, ${row.note}` : ''}`;
+            output.append(fact);
+        }
+    }
+    for (const line of workspace.match?.lines || []) {
+        if (!line.needsConfirmation) continue;
+        for (const candidate of line.candidates || []) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn btn-secondary btn-sm';
+            button.textContent = candidate.compatibility === 'conflict' ? `Confirm conflict: ${candidate.canonicalName || candidate.variantId}` : `Use ${candidate.canonicalName || candidate.variantId}`;
+            button.addEventListener('click', () => run(async current => confirmWorkspace(current, line.lineId, candidate.variantId ?? candidate.ref?.variantId, await matchPorts(current.ownerUid), { acknowledgeConflict: candidate.compatibility === 'conflict' })));
+            output.append(button);
+        }
     }
     if (workspace.fit?.reason) {
         const fit = document.createElement('p');
@@ -87,6 +113,11 @@ async function matchPorts(ownerUid) {
 
 /** Tracker Import tab. Values are text, and saving stays gated. */
 export function wireImportWorkspace(getUid) {
+    if (!IMPORT_WORKSPACE_ENABLED) {
+        document.getElementById('tab-btn-import')?.classList.add('hidden');
+        document.getElementById('tab-import')?.classList.add('hidden');
+        return;
+    }
     let workspace = null;
     const owner = () => {
         const uid = getUid();
@@ -120,7 +151,7 @@ export function wireImportWorkspace(getUid) {
     document.getElementById('import-packet')?.addEventListener('click', () => run(async current => {
         const ids = (current.resolution?.items || []).filter(item => !item.resolved).map(item => item.lineId);
         const result = await packetWorkspace(current, ids);
-        if (result.ok) await copyText(result.workspace.packet?.copyText || '');
+        if (result.ok) await copyText(packetCopy(result.workspace.packet));
         return result;
     }));
     document.getElementById('import-review')?.addEventListener('click', () => run(current => {
@@ -136,8 +167,10 @@ export function wireImportWorkspace(getUid) {
         return result;
     }));
     document.getElementById('import-cancel')?.addEventListener('click', () => run(current => cancelWorkspace(current)));
+    document.getElementById('import-apply')?.addEventListener('click', () => run(current => applyResearchResponse(current, document.getElementById('import-response')?.value || '')));
     document.getElementById('tab-btn-import')?.addEventListener('click', resume);
     window.__clearImportWorkspace = () => { workspace = null; clearWorkspaceDraft(); show(null); };
+    window.__resumeImportWorkspace = resume;
     resume();
     text(document.getElementById('import-stages'), WORKSPACE_STAGES.join(' → '));
 }

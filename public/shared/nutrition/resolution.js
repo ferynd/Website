@@ -110,7 +110,7 @@ export async function researchPacket(state, lineIds, { override = false, ownerUi
         jobs.push({
             state: 'queued', jobId, requestedFields: fields,
             attempts: item.officialAttempts.length ? item.officialAttempts : [{ adapter: 'override', release: 'user', outcome: 'skipped' }],
-            target: { dims, canonicalName: item.name, category: 'other', kind: line?.kind || 'generic', aliases: [], knownObservations: {}, identityId, variantId, ...(ref ? { baseRef: ref, baseRevision: item.baseRevision } : {}) },
+            target: { dims, canonicalName: item.name, category: 'other', kind: line?.kind || 'generic', aliases: [], knownObservations: {}, identityId, variantId, lineId: item.lineId, ...(ref ? { baseRef: ref, baseRevision: item.baseRevision } : {}) },
         });
     }
     if (!jobs.length) return { ok: false, error: 'nothing_unresolved', state };

@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { INGREDIENT_STORE_WRITES_ENABLED, NUTRIENT_V2_WRITES_ENABLED } from '../../../shared/nutrition/capabilities.js';
 import { clearWorkspaceDraft, parseWorkspaceRecord, readWorkspaceDraft, writeWorkspaceDraft } from '../../../shared/nutrition/importWorkspaceDraft.js';
 import {
-    calculateWorkspace, cancelWorkspace, createWorkspace, fitWorkspace, importWorkspaceInput, instructionsWorkspace,
-    lookupWorkspace, matchWorkspace, packetWorkspace, reviewWorkspace, saveWorkspace,
+    applyResearchResponse, calculateWorkspace, cancelWorkspace, confirmWorkspace, createWorkspace, fitWorkspace, importWorkspaceInput, instructionsWorkspace,
+    lookupWorkspace, matchWorkspace, packetCopy, packetWorkspace, reviewWorkspace, saveWorkspace,
 } from '../../../shared/nutrition/importWorkspace.js';
+import { IMPORT_WORKSPACE_ENABLED } from '../../../shared/nutrition/capabilities.js';
 import { PROFILE_FIELDS } from '../../../shared/nutrition/research/profileFields.js';
 import { onIngredientAuthChange } from '../services/ingredientSession.js';
 
@@ -38,6 +39,12 @@ describe('import workspace', () => {
         const offline = await matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, { privateSearch: async () => { throw new Error('offline'); }, loadRevision: async () => { throw new Error('denied'); } });
         expect(offline.ok).toBe(true);
         expect(offline.workspace.resolution.items[0].kind).toBe('missing_profile');
+        expect(IMPORT_WORKSPACE_ENABLED).toBe(true);
+        const ambiguous = importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace;
+        ambiguous.match = { lines: [{ lineId: 'rice', name: 'white rice', outcome: 'ambiguous', needsConfirmation: true, candidates: [{ variantId: 'rice-cooked', compatibility: 'exact', canonicalName: 'Rice', ref: { identityId: 'rice-id', variantId: 'rice-cooked', revision: 1 } }] }] };
+        const confirmed = await confirmWorkspace(ambiguous, 'rice', 'rice-cooked', { loadRevision: async () => ({ revision: { nutrients: Object.fromEntries(PROFILE_FIELDS.map(key => [key, key === 'calories' ? 130 : 0])), nutrientMeta: { quality: Object.fromEntries(PROFILE_FIELDS.map(key => [key, { status: 'measured' }])) } } }) });
+        expect(confirmed.workspace.resolution.items[0]).toMatchObject({ kind: 'resolved', source: 'library' });
+        expect(packetCopy({ copyText: null, copyTexts: ['one', 'two'] })).toContain('Packet 2 of 2');
         expect((await packetWorkspace(step.workspace, ['rice'])).error).toBe('matched_line');
         step = calculateWorkspace(step.workspace);
         expect(step.workspace.calculation.nutrients.calories.value).toBe(130);
@@ -70,6 +77,11 @@ describe('import workspace', () => {
         step = lookupWorkspace(step.workspace, ['rice']);
         const packet = await packetWorkspace(step.workspace, ['rice']);
         expect(packet.workspace.packet.copyText).toContain('nutrition.researchRequest');
+        const { responseFor } = await import('./researchPacketFixtures.js');
+        const applied = await applyResearchResponse(packet.workspace, JSON.stringify(responseFor(packet.workspace.resolution.pendingRequests[0])));
+        expect(applied.ok, JSON.stringify(applied.errors)).toBe(true);
+        expect(applied.workspace.resolution.items[0].source).toBe('packet');
+        expect(applied.workspace.committed).toBe(false);
         expect(packet.workspace.modelCalls).toBe(0);
         const cancelled = cancelWorkspace(packet.workspace);
         expect(cancelled.workspace.committed).toBe(false);
