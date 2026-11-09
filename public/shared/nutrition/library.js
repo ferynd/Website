@@ -57,7 +57,7 @@ export function reviewLibraryProfile({ revision = null, conversions = [], scope 
     const nutrients = revision?.nutrients || {};
     const quality = revision?.nutrientMeta?.quality || {};
     const missingFields = PROFILE_FIELDS.filter(key => quality[key]?.status === 'not_applicable' ? false : nutrients[key] == null);
-    const missingConversions = conversions.length ? [] : ['household'];
+    const missingConversions = conversions.some(item => item?.kind === 'household' || item?.unit === 'cup') ? [] : ['household'];
     return {
         ok: true,
         missingFields,
@@ -83,6 +83,12 @@ export function stageLibraryEdit({ scope = 'private', ownerUid, viewerUid, base 
     if (scope !== 'private') return { ok: false, error: 'curated_read_only', writes: false, diaryUntouched: true };
     if (!viewerUid || viewerUid !== ownerUid) return { ok: false, error: 'owner_mismatch', writes: false, diaryUntouched: true };
     const nutrients = { ...(base?.nutrients || {}), ...(patch.nutrients || {}) };
+    const revision = (base?.revision || 0) + 1;
+    const variantId = base?.variantId || patch.variantId || 'profile';
+    const { contentHash: _oldHash, revisionId: _oldRevisionId, ...rest } = base || {};
+    const quality = { ...(base?.nutrientMeta?.quality || {}) };
+    for (const key of Object.keys(patch.nutrients || {}))
+        if (!quality[key]) quality[key] = { status: 'measured' };
     return {
         ok: true,
         writes: false,
@@ -90,11 +96,14 @@ export function stageLibraryEdit({ scope = 'private', ownerUid, viewerUid, base 
         committed: false,
         diaryUntouched: true,
         draft: {
-            ...(base || {}),
+            ...rest,
             ownerUid,
+            variantId,
             nutrients,
-            revision: (base?.revision || 0) + 1,
-            supersedes: base?.revision ? { revision: base.revision, contentHash: base.contentHash || null } : null,
+            nutrientMeta: { ...(base?.nutrientMeta || {}), quality },
+            revision,
+            revisionId: `${variantId}~r${revision}`,
+            supersedes: base?.revision ? { revision: base.revision, ...(base.revisionId ? { revisionId: base.revisionId } : {}), ...(base.contentHash ? { contentHash: base.contentHash } : {}) } : null,
             source: patch.source || base?.sources || null,
             basis: patch.basis || base?.basis || { kind: 'per_100g_edible', state: 'unspecified' },
         },
@@ -106,15 +115,16 @@ export function commitLibraryEdit() {
 }
 
 /** Research selected fields through the shared #62 packet. Nothing is saved. */
-export async function researchLibraryFields({ lineId = 'profile', name = 'ingredient', missingFields = [], revisionsByLine = {}, ref = null } = {}) {
+export async function researchLibraryFields({ lineId = null, name = 'ingredient', missingFields = [], revisionsByLine = {}, ref = null, ownerUid = null, namespace = null } = {}) {
+    const id = lineId || String(name || 'profile').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24) || 'profile';
     let resolution = buildResolution({
-        lines: [{ lineId, name, grams: 100, quantityBasis: 'estimated', variant: {} }],
-        matches: [{ lineId, outcome: ref ? 'exact' : 'missing', ref }],
+        lines: [{ lineId: id, name, grams: 100, quantityBasis: 'estimated', variant: {} }],
+        matches: [{ lineId: id, outcome: ref ? 'exact' : 'missing', ref }],
         revisionsByLine,
     });
-    const lookup = lookupOfficial(resolution, lineId, { outcome: 'not_found', unresolvedFields: missingFields });
+    const lookup = lookupOfficial(resolution, id, { outcome: 'not_found', unresolvedFields: missingFields });
     if (!lookup.ok) return { ok: false, error: lookup.error, modelCalls: 0 };
     resolution = lookup.state;
-    const packet = await researchPacket(resolution, [lineId]);
+    const packet = await researchPacket(resolution, [id], { ...(ownerUid ? { ownerUid } : {}), ...(namespace ? { namespace } : {}) });
     return packet.ok ? { ...packet, modelCalls: 0, writes: false, staged: true } : { ...packet, modelCalls: 0, writes: false };
 }

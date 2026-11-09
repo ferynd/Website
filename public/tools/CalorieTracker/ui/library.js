@@ -19,10 +19,7 @@ async function sources() {
     } catch { /* The curated catalog can be absent offline. */ }
     try {
         const store = await getIngredientStore();
-        list.push({ scope: 'private', search: async (query, page) => {
-            try { return await store.searchPrivate(query, page); }
-            catch { return { items: [], cursor: null }; }
-        } });
+        list.push({ scope: 'private', search: (query, page) => store.searchPrivate(query, page), close: () => store.close() });
     } catch { /* Signed-out search still shows the curated page. */ }
     return list;
 }
@@ -45,12 +42,19 @@ export function wireLibrary(getUid) {
             if (item.missingConversions) row(node, `Missing conversions: ${item.missingConversions.join(', ') || 'none'}`);
         }
     };
+    let packetState = null;
     const runSearch = async (nextCursor) => {
+        const list = await sources();
         if (nextCursor && !Object.values(nextCursor).some(Boolean)) {
             text(document.getElementById('library-message'), 'No more results');
             return;
         }
-        const found = await searchLibrary({ query: document.getElementById('library-query')?.value || '', sources: await sources(), pageSize: 25, cursor: nextCursor });
+        let found;
+        try {
+            found = await searchLibrary({ query: document.getElementById('library-query')?.value || '', sources: list, pageSize: 25, cursor: nextCursor });
+        } finally {
+            for (const source of list) source.close?.();
+        }
         cursor = found.cursor;
         const merged = new Map();
         for (const item of [...(nextCursor ? rows : []), ...found.items]) {
@@ -66,17 +70,36 @@ export function wireLibrary(getUid) {
     document.getElementById('library-search')?.addEventListener('click', () => runSearch(null));
     document.getElementById('library-more')?.addEventListener('click', () => runSearch(cursor));
     document.getElementById('library-filter')?.addEventListener('change', () => render(rows));
-    document.getElementById('library-review')?.addEventListener('click', () => {
-        const review = reviewLibraryProfile({ revision: null, conversions: [], scope: 'curated' });
-        rows = [{ name: 'Selected profile', scope: 'curated', ...review }];
+    document.getElementById('library-review')?.addEventListener('click', async () => {
+        const item = rows.find(row => row.ref);
+        if (!item) { text(document.getElementById('library-message'), 'Search and choose a profile first.'); return; }
+        let revision = null;
+        let conversions = [];
+        try {
+            const store = await getIngredientStore();
+            try {
+                revision = (await store.resolveRef(item.ref))?.revision || null;
+                conversions = await store.getConversions(item.ref);
+            } finally { store.close(); }
+        } catch { /* Review still reports the gap when the profile cannot be read. */ }
+        const review = reviewLibraryProfile({ revision, conversions, scope: item.scope || 'curated', ownerUid: item.ref?.ownerUid || null, viewerUid: getUid() });
+        rows = [{ name: item.canonicalName || item.variantId, scope: item.scope, ...review }];
         render(rows);
     });
     document.getElementById('library-research')?.addEventListener('click', async () => {
         const uid = getUid();
         if (!uid) { text(document.getElementById('library-message'), 'Sign in to research a private profile.'); return; }
-        const packet = await researchLibraryFields({ name: document.getElementById('library-query')?.value || 'ingredient' });
+        const name = document.getElementById('library-query')?.value || 'ingredient';
+        const packet = await researchLibraryFields({ name, ownerUid: uid });
+        packetState = packet.state || null;
         const box = document.getElementById('library-copy');
         if (box) box.value = packet.copyText || '';
         text(document.getElementById('library-message'), packet.ok ? 'Research packet copied below. It is not saved.' : packet.error);
+    });
+    document.getElementById('library-apply')?.addEventListener('click', async () => {
+        if (!packetState) { text(document.getElementById('library-message'), 'Copy a research packet before applying a response.'); return; }
+        const { applyResearchResponse } = await import('../../../shared/nutrition/importWorkspace.js');
+        const applied = await applyResearchResponse({ resolution: packetState }, document.getElementById('library-response')?.value || '');
+        text(document.getElementById('library-message'), applied.ok ? 'Response staged for review. It is not saved.' : (applied.error || 'invalid response'));
     });
 }

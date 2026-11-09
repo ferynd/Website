@@ -38,6 +38,8 @@ describe('ingredient library', () => {
         expect(review.missingFields).not.toContain('calories');
         expect(review.missingFields.length).toBeGreaterThan(0);
         expect(review.missingConversions).toEqual(['household']);
+        expect(reviewLibraryProfile({ conversions: [{ kind: 'household', unit: 'piece' }] }).missingConversions).toEqual([]);
+        expect(reviewLibraryProfile({ conversions: [{ kind: 'mass', unit: 'piece' }] }).missingConversions).toEqual(['household']);
         expect(review.affectedMeals.available).toBe(false);
         expect(filterLibraryGaps([review, { missingFields: [], missingConversions: ['household'] }], 'fields')).toHaveLength(1);
         expect(filterLibraryGaps([review], 'conversions')).toHaveLength(1);
@@ -45,6 +47,8 @@ describe('ingredient library', () => {
         expect(stageLibraryEdit({ scope: 'private', ownerUid: 'a', viewerUid: 'b' }).error).toBe('owner_mismatch');
         const staged = stageLibraryEdit({ scope: 'private', ownerUid: 'a', viewerUid: 'a', base: { revision: 2, nutrients: { calories: 100 }, contentHash: 'sha256:ab' }, patch: { nutrients: { protein: 3 }, source: { type: 'manual' } } });
         expect(staged.draft.revision).toBe(3);
+        expect(staged.draft.revisionId).toBe('profile~r3');
+        expect(staged.draft.contentHash).toBeUndefined();
         expect(staged.draft.nutrients).toMatchObject({ calories: 100, protein: 3 });
         expect(staged.diaryUntouched).toBe(true);
         expect(staged.writes).toBe(false);
@@ -53,9 +57,12 @@ describe('ingredient library', () => {
     });
 
     it('builds a research packet for selected fields and does not save it', async () => {
-        const packet = await researchLibraryFields({ name: 'black beans', missingFields: [] });
-        expect(packet.ok).toBe(true);
-        expect(packet.copyText).toContain('nutrition.researchRequest');
+        const beans = await researchLibraryFields({ name: 'black beans', ownerUid: 'owner-a' });
+        const ricePacket = await researchLibraryFields({ name: 'white rice', ownerUid: 'owner-a' });
+        expect(beans.ok).toBe(true);
+        expect(beans.pendingJobs[0].jobId).not.toBe(ricePacket.pendingJobs[0].jobId);
+        expect(beans.state.pendingJobs[0].state).toBe('awaiting_response');
+        const packet = beans;
         expect(packet.writes).toBe(false);
         expect(packet.modelCalls).toBe(0);
     });
