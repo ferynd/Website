@@ -57,16 +57,26 @@ async function matchPorts(ownerUid) {
     let curatedSearch = empty;
     let loadRevision = async () => null;
     try {
-        const cache = await openProfileCache({ ownerUid });
+        const store = await getIngredientStore();
+        privateSearch = async name => {
+            try { return await store.searchPrivate(name); }
+            catch { return { items: [] }; }
+        };
         loadRevision = async ref => {
+            const got = await store.resolveRef(ref);
+            return got?.revision ? { revision: got.revision } : null;
+        };
+    } catch { /* Offline or signed-out search does not invent a match. */ }
+    try {
+        const cache = await openProfileCache({ ownerUid });
+        const fromStore = loadRevision;
+        loadRevision = async ref => {
+            const loaded = await fromStore(ref);
+            if (loaded?.revision) return loaded;
             const got = await cache.getRevision(ref);
-            return got?.status === 'fresh' ? { revision: got.revision } : null;
+            return got?.status === 'fresh' || got?.status === 'stale' ? { revision: got.revision } : null;
         };
     } catch { /* A missing cache leaves the line unresolved rather than zero. */ }
-    try {
-        const store = await getIngredientStore();
-        privateSearch = name => store.searchPrivate(name);
-    } catch { /* Offline or signed-out search does not invent a match. */ }
     try {
         const catalog = createCuratedCatalogSource();
         await catalog.open();

@@ -35,6 +35,9 @@ describe('import workspace', () => {
         });
         expect(fromCache.workspace.resolution.items[0].kind).toBe('resolved');
         expect(fromCache.workspace.resolution.items[0].source).toBe('library');
+        const offline = await matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, { privateSearch: async () => { throw new Error('offline'); }, loadRevision: async () => { throw new Error('denied'); } });
+        expect(offline.ok).toBe(true);
+        expect(offline.workspace.resolution.items[0].kind).toBe('missing_profile');
         expect((await packetWorkspace(step.workspace, ['rice'])).error).toBe('matched_line');
         step = calculateWorkspace(step.workspace);
         expect(step.workspace.calculation.nutrients.calories.value).toBe(130);

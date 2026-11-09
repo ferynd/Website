@@ -132,16 +132,26 @@ export function correctWorkspaceLine(workspace, lineId, patch) {
 /** Match through #61. Does not research or write. */
 export async function matchWorkspace(workspace, ports = {}) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
-    const match = await reconcileImport(workspace.draft, ports);
+    const safeSearch = search => async name => {
+        try { return await search(name); }
+        catch { return { items: [] }; }
+    };
+    const match = await reconcileImport(workspace.draft, {
+        ...ports,
+        ...(ports.privateSearch ? { privateSearch: safeSearch(ports.privateSearch) } : {}),
+        ...(ports.curatedSearch ? { curatedSearch: safeSearch(ports.curatedSearch) } : {}),
+    });
     const nutrientsByLine = { ...(ports.nutrientsByLine || {}) };
     const revisionsByLine = { ...(ports.revisionsByLine || {}) };
     if (ports.loadRevision) {
         for (const line of match.lines) {
             if (line.outcome !== 'exact' || !line.ref) continue;
-            const loaded = await ports.loadRevision(line.ref);
-            if (!loaded?.revision) continue;
-            revisionsByLine[line.lineId] = loaded.revision;
-            nutrientsByLine[line.lineId] = { ...observationsFromRevision(loaded.revision), ...(nutrientsByLine[line.lineId] || {}) };
+            try {
+                const loaded = await ports.loadRevision(line.ref);
+                if (!loaded?.revision) continue;
+                revisionsByLine[line.lineId] = loaded.revision;
+                nutrientsByLine[line.lineId] = { ...observationsFromRevision(loaded.revision), ...(nutrientsByLine[line.lineId] || {}) };
+            } catch { /* A failed profile read leaves the line unresolved. */ }
         }
     }
     const resolution = buildResolution({
