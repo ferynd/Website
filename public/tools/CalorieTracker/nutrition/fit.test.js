@@ -79,6 +79,23 @@ describe('quantity fitting', () => {
             facts: [fact({ protein: { value: 10, unit: 'g' } })],
         });
         expect(protein.flags.nonUnique).toBe(true);
+        const identified = fitQuantities({
+            lines: [
+                { lineId: 'a', grams: 40, gMin: 0, gMax: 200, basis: 'estimated', nutrients: { calories: { value: 100, status: 'measured' }, protein: { value: 10, status: 'measured' } } },
+                { lineId: 'b', grams: 40, gMin: 0, gMax: 52, basis: 'estimated', nutrients: { calories: { value: 200, status: 'measured' }, protein: { value: 5, status: 'measured' } } },
+            ],
+            facts: [fact({ calories: { value: 150, unit: 'kcal' }, protein: { value: 7.5, unit: 'g' } })],
+        });
+        expect(identified.flags.nonUnique).toBe(false);
+        expect(identified.flags.unique).toBe(true);
+        const small = fitQuantities({
+            lines: [
+                { lineId: 'a', grams: 6, gMin: 0, gMax: 100, basis: 'estimated', nutrients: calories(100) },
+                { lineId: 'b', grams: 6, gMin: 0, gMax: 100, basis: 'estimated', nutrients: calories(100) },
+            ],
+            facts: [fact(calories(12))],
+        });
+        expect(small.flags.nonUnique).toBe(true);
         expect(uneven.calculation.nutrients.calories.value).toBeCloseTo(100, 0);
         const partial = fitQuantities({
             lines: [
