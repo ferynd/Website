@@ -9,12 +9,16 @@ export interface DatasetPin {
     sha256: string | null;
     fixtureOnly: boolean;
 }
-export async function readPinnedBulk(file: string, pin: DatasetPin) {
+async function readPinnedBytes(file: string, pin: DatasetPin) {
     if (!pin.sha256 || !/^sha256:[a-f0-9]{64}$/.test(pin.sha256))
         throw new Error('Dataset is unpinned');
     const data = await readFile(file);
     if ('sha256:' + createHash('sha256').update(data).digest('hex') !== pin.sha256)
         throw new Error('Dataset checksum mismatch');
+    return data;
+}
+export async function readPinnedBulk(file: string, pin: DatasetPin) {
+    const data = await readPinnedBytes(file, pin);
     const raw = JSON.parse(data.toString('utf8'));
     const foods = Array.isArray(raw) ? raw : raw.FoundationFoods || raw.BrandedFoods || raw.foods;
     if (!Array.isArray(foods))
@@ -35,6 +39,25 @@ export async function indexBulk(file: string, pin: DatasetPin, cache: SourceCach
     for (const food of foods)
         await cache.set(`fdc_bulk:${pin.release}:${food.fdcId}`, food);
     return foods.length;
+}
+/**
+ * One pinned food record per file (the committed synthetic fixtures). The same
+ * pin, label, and parser checks as readPinnedBulk apply.
+ */
+export async function readPinnedRecord(file: string, pin: DatasetPin) {
+    const data = await readPinnedBytes(file, pin);
+    const food = JSON.parse(data.toString('utf8'));
+    if (!food || typeof food !== 'object' || Array.isArray(food))
+        throw new PermanentSourceError('Invalid pinned food record');
+    if (pin.fixtureOnly && !/synthetic/i.test(food._fixture || ''))
+        throw new Error('Fixture-only reader refuses unlabeled data');
+    await parseFdcFood(food, { release: pin.release });
+    return food as Record<string, unknown>;
+}
+export async function indexPinnedRecord(file: string, pin: DatasetPin, cache: SourceCache) {
+    const food = await readPinnedRecord(file, pin);
+    await cache.set(`fdc_bulk:${pin.release}:${food.fdcId}`, food);
+    return food;
 }
 export function createFdcBulkAdapter({ cache, release, matches }: {
     cache: SourceCache;
