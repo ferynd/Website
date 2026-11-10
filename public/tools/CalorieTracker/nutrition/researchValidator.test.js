@@ -298,3 +298,16 @@ it.each(['accessedAt', 'publishedAt'])('rejects invalid source %s dates before a
     const valid = await makeValidJob({ sources: { valid: { type: 'label', version: 'fixture', permittedUse: 'CC0', accessedAt: '2026-11-06T12:00:00Z', publishedAt: '2025-01-01' } } });
     expect((await validateProposal(valid)).isValid).toBe(true);
 });
+
+describe('Q-004 assumed_zero validation (issue #215)', () => {
+    it('rejects a nonzero value carrying the assumed_zero status', async () => {
+        const job = await makeValidJob({ values: { sodium: 5 }, qualities: { sodium: { status: 'assumed_zero' } }, provenance: { sodium: { sourceKey: 'src-1', sourceNutrientId: '1093', sourceDerivationCode: 'Z' } } });
+        const outcome = await validateProposal(job);
+        expect(outcome.errors.some(e => e.includes('assumed_zero status requires a zero value'))).toBe(true);
+    });
+    it('accepts a zero value carrying the assumed_zero status', async () => {
+        const job = await makeValidJob({ values: { sodium: 0 }, qualities: { sodium: { status: 'assumed_zero' } }, provenance: { sodium: { sourceKey: 'src-1', sourceNutrientId: '1093', sourceDerivationCode: 'Z' } } });
+        const outcome = await validateProposal(job);
+        expect(outcome.errors.some(e => e.includes('assumed_zero'))).toBe(false);
+    });
+});

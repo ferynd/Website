@@ -26,6 +26,28 @@ export function applyStagedConventions(stagedRecord, conventions = {}, { base = 
         stagedRecord.carbConvention = conventions.carbConvention;
     return stagedRecord;
 }
+// Derivation-code quality policy (issue #215 ANSWER Q-004, decided under
+// James's delegation): a USDA value is measured only when its derivation
+// code says analytical (A). NC is calculated, Z is assumed_zero (numeric 0
+// kept), and every other code, or no code, is source_reported: a real source
+// value whose determination method this software does not classify. Branded
+// rows keep label_reported. The raw code travels in field provenance as
+// sourceDerivationCode so the classification stays auditable.
+export function fdcQualityStatus(item, dataType) {
+    if (dataType === 'Branded')
+        return 'label_reported';
+    switch (item?.derivationCode) {
+        case 'A': return 'measured';
+        case 'NC': return 'calculated';
+        case 'Z': return 'assumed_zero';
+        default: return 'source_reported';
+    }
+}
+function withDerivationCode(provenance, item) {
+    if (item?.derivationCode)
+        provenance.sourceDerivationCode = item.derivationCode;
+    return provenance;
+}
 function conventionFields(result, quality) {
     const explicitFiber = FIBER_MEANINGS.includes(result.fiberMeaning) && result.fiberMeaning !== 'unknown';
     const explicitCarb = CARB_CONVENTIONS.includes(result.carbConvention) && result.carbConvention !== 'unknown';
@@ -112,18 +134,18 @@ export function normalizeSourceResult(result, target = {}) {
     const n2047 = byFdcId.get(2047);
     if (n1008 && Number.isFinite(n1008.amount) && !n1008.isBelowLoq) {
         nutrients.calories = round6(n1008.amount * scale);
-        quality.calories = { status: result.dataType === 'Branded' ? 'label_reported' : 'measured' };
-        fieldProvenance.calories = { sourceKey, sourceNutrientId: '1008' };
+        quality.calories = { status: fdcQualityStatus(n1008, result.dataType) };
+        fieldProvenance.calories = withDerivationCode({ sourceKey, sourceNutrientId: '1008' }, n1008);
     }
     else if (n2048 && Number.isFinite(n2048.amount) && !n2048.isBelowLoq) {
         nutrients.calories = round6(n2048.amount * scale);
         quality.calories = { status: 'calculated' };
-        fieldProvenance.calories = { sourceKey, sourceNutrientId: '2048', derivation: 'atwater_specific_factors' };
+        fieldProvenance.calories = withDerivationCode({ sourceKey, sourceNutrientId: '2048', derivation: 'atwater_specific_factors' }, n2048);
     }
     else if (n2047 && Number.isFinite(n2047.amount) && !n2047.isBelowLoq) {
         nutrients.calories = round6(n2047.amount * scale);
         quality.calories = { status: 'calculated' };
-        fieldProvenance.calories = { sourceKey, sourceNutrientId: '2047', derivation: 'atwater_general_factors' };
+        fieldProvenance.calories = withDerivationCode({ sourceKey, sourceNutrientId: '2047', derivation: 'atwater_general_factors' }, n2047);
     }
     else {
         nutrients.calories = null;
@@ -134,8 +156,8 @@ export function normalizeSourceResult(result, target = {}) {
     const n1005 = byFdcId.get(1005);
     if (n1005 && Number.isFinite(n1005.amount)) {
         nutrients.carbs = round6(n1005.amount * scale);
-        quality.carbs = { status: result.dataType === 'Branded' ? 'label_reported' : 'measured' };
-        fieldProvenance.carbs = { sourceKey, sourceNutrientId: '1005' };
+        quality.carbs = { status: fdcQualityStatus(n1005, result.dataType) };
+        fieldProvenance.carbs = withDerivationCode({ sourceKey, sourceNutrientId: '1005' }, n1005);
     }
     else if (n1005 && n1005.isBelowLoq) {
         nutrients.carbs = null;
@@ -152,11 +174,11 @@ export function normalizeSourceResult(result, target = {}) {
     if (n1079 && Number.isFinite(n1079.amount)) {
         const fiberVal = round6(n1079.amount * scale);
         nutrients.fiberTotal = fiberVal;
-        quality.fiberTotal = { status: result.dataType === 'Branded' ? 'label_reported' : 'measured' };
-        fieldProvenance.fiberTotal = { sourceKey, sourceNutrientId: '1079' };
+        quality.fiberTotal = { status: fdcQualityStatus(n1079, result.dataType) };
+        fieldProvenance.fiberTotal = withDerivationCode({ sourceKey, sourceNutrientId: '1079' }, n1079);
         nutrients.fiber = fiberVal;
-        quality.fiber = { status: result.dataType === 'Branded' ? 'label_reported' : 'measured' };
-        fieldProvenance.fiber = { sourceKey, sourceNutrientId: '1079', derivation: 'same_as:fiberTotal' };
+        quality.fiber = { status: fdcQualityStatus(n1079, result.dataType) };
+        fieldProvenance.fiber = withDerivationCode({ sourceKey, sourceNutrientId: '1079', derivation: 'same_as:fiberTotal' }, n1079);
     }
     else if (n1079 && n1079.isBelowLoq) {
         nutrients.fiberTotal = null;
@@ -242,8 +264,8 @@ export function normalizeSourceResult(result, target = {}) {
             }
             else {
                 nutrients[entry.key] = converted.value;
-                quality[entry.key] = { status: result.dataType === 'Branded' ? 'label_reported' : 'measured' };
-                fieldProvenance[entry.key] = { sourceKey, sourceNutrientId: String(entry.fdcNutrientId) };
+                quality[entry.key] = { status: fdcQualityStatus(item, result.dataType) };
+                fieldProvenance[entry.key] = withDerivationCode({ sourceKey, sourceNutrientId: String(entry.fdcNutrientId) }, item);
             }
         }
     }
@@ -264,8 +286,8 @@ export function normalizeSourceResult(result, target = {}) {
             return;
         }
         nutrients[key] = item.isBelowLoq ? null : converted.value;
-        quality[key] = item.isBelowLoq ? { status: 'below_quantification_limit', upperBound: converted.value } : { status: result.dataType === 'Branded' ? 'label_reported' : 'measured' };
-        fieldProvenance[key] = { sourceKey, sourceNutrientId: String(item.nutrientId) };
+        quality[key] = item.isBelowLoq ? { status: 'below_quantification_limit', upperBound: converted.value } : { status: fdcQualityStatus(item, result.dataType) };
+        fieldProvenance[key] = withDerivationCode({ sourceKey, sourceNutrientId: String(item.nutrientId) }, item);
         if (key === 'calories' && !item.isBelowLoq && [2047, 2048].includes(item.nutrientId)) {
             quality[key].status = 'calculated';
             fieldProvenance[key].derivation = item.nutrientId === 2048 ? 'atwater_specific_factors' : 'atwater_general_factors';

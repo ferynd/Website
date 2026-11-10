@@ -90,7 +90,8 @@ Historical `fiber` values are ambiguous because the chat workflow used weighted 
 Every nutrient observation carries:
 
 - Numeric value or `null`, unit, and per-100-g edible basis.
-- Status: `measured`, `label_reported`, `calculated`, `estimated_from_comparable`, `below_quantification_limit`, `unknown`, or `not_applicable`.
+- Status: `measured`, `label_reported`, `calculated`, `estimated_from_comparable`, `below_quantification_limit`, `unknown`, `not_applicable`, `assumed_zero`, or `source_reported`.
+- Derivation honesty for USDA sources (issue #215, ANSWER Q-004): a value is `measured` only when its USDA derivation code is analytical (A). Code NC is `calculated`; code Z is `assumed_zero` and keeps its numeric 0; any other code, or no code, is `source_reported`, a real source value whose determination method is not classified. The raw derivation code is preserved in field provenance as `sourceDerivationCode`.
 - Source reference, source nutrient definition/ID, retrieval and publication/version dates when available.
 - Derivation and comparator ID/revision for estimates; confidence and a defensible range where useful.
 - Rounding interval, detection/quantification limit, or qualifier when supplied.

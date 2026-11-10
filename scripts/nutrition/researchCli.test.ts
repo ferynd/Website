@@ -115,7 +115,7 @@ function offlineBulkAdapter(permit = 'CC0 fixture license') {
             toSourceResult: async () => ({
                 type: 'fdc', recordId: '9900001', dataType: 'Foundation', description: 'Synthetic apple',
                 release: 'fixture-v1', accessedAt: '2026-11-06', permittedUse: permit, originalBasis: 'per_100g_edible',
-                nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }],
+                nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }],
             }),
         },
     };

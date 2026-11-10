@@ -89,7 +89,7 @@ describe('unit handling', () => {
         expect(kjOnly.result.energy).toMatchObject({ hasKj: true, kjOnly: true, chosen: null });
         expect(kjOnly.normalized.nutrients.calories).toBeNull();
         const cases: [number[], string, string][] = [
-            [[1062, 1008, 2048, 2047], '1008', 'measured'],
+            [[1062, 1008, 2048, 2047], '1008', 'source_reported'],
             [[1062, 2048, 2047], '2048', 'calculated'],
             [[2047, 1062], '2047', 'calculated'],
         ];
@@ -110,7 +110,7 @@ describe('expanded field coverage (#63 V3 fix)', () => {
         expect(normalized.nutrients).toMatchObject({ sugarsTotal: 6.5, molybdenum: 12, resistantStarch: 1.2 });
         expect(normalized.fieldProvenance.sugarsTotal.sourceNutrientId).toBe('1063');
         expect(normalized.fieldProvenance.molybdenum.sourceNutrientId).toBe('1102');
-        expect(normalized.nutrientMeta.quality.sugarsTotal).toEqual({ status: 'measured' });
+        expect(normalized.nutrientMeta.quality.sugarsTotal).toEqual({ status: 'source_reported' });
     });
     it('prefers 2000 over 1063 and a quantified row over a below-LOQ row', async () => {
         const both = await verify(food(9910010, [row(1063, 'g', 6.5), row(2000, 'g', 7)]));
@@ -141,7 +141,7 @@ describe('zero versus unknown', () => {
         expect(result.keys).toMatchObject({ calcium: 'resolved', zinc: 'unknown', magnesium: 'unknown', sodium: 'below_loq', iron: 'absent', cholesterol: 'resolved' });
         expect(normalized.nutrients.calcium).toBe(0);
         expect(normalized.nutrientMeta.quality.calcium.status).toBe('measured');
-        expect(normalized.fieldProvenance.calcium).toEqual({ sourceKey: 'fdc:9910006', sourceNutrientId: '1087' });
+        expect(normalized.fieldProvenance.calcium).toEqual({ sourceKey: 'fdc:9910006', sourceNutrientId: '1087', sourceDerivationCode: 'A' });
         for (const key of ['zinc', 'magnesium', 'iron']) {
             expect(normalized.nutrients[key]).toBeNull();
             expect(normalized.nutrientMeta.quality[key]).toEqual({ status: 'unknown', qualifier: 'gap:not_reported_by_source' });
@@ -149,10 +149,12 @@ describe('zero versus unknown', () => {
         }
         expect(normalized.nutrients.sodium).toBeNull();
         expect(normalized.nutrientMeta.quality.sodium).toEqual({ status: 'below_quantification_limit', upperBound: 0.2 });
-        expect(result).toMatchObject({ nullStaysUnknown: 2, loqPreserved: 1, zero: { preserved: 2, lost: 0, assumedZeroAsMeasured: 1 } });
-        // Documented follow-up: the status ignores the FDC derivation code, so "assumed zero" reads as measured.
-        expect(normalized.nutrientMeta.quality.cholesterol.status).toBe('measured');
-        expect(result.measuredDerivationCodes).toMatchObject({ A: 1, Z: 1 });
+        expect(result).toMatchObject({ nullStaysUnknown: 2, loqPreserved: 1, zero: { preserved: 2, lost: 0, assumedZeroAsMeasured: 0 } });
+        // Q-004 (issue #215): the status now follows the FDC derivation code, so
+        // an "assumed zero" reads as assumed_zero, never as measured.
+        expect(normalized.nutrientMeta.quality.cholesterol.status).toBe('assumed_zero');
+        expect(normalized.fieldProvenance.cholesterol.sourceDerivationCode).toBe('Z');
+        expect(result.measuredDerivationCodes).toMatchObject({ A: 1 });
     });
 });
 

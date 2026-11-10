@@ -179,7 +179,7 @@ Found while running this batch. Items 1 and 2 are fixed here with tests; the res
 
 ## Follow-ups: the import PR for this batch
 
-**Status (2026-11-10):** the import ran; see the [A1 import report](population-batch-a1-import.md). Of the 17 proposals, 12 received reviewed entries after the issue #215 ANSWER Q-000 adjudication (5 of the 17 were rejected there and joined the unresolved list, 13 unresolved total), 11 profiles were validated, staged, and imported, and mayonnaise-regular-as-sold was held out at nutrient validation pending the source decision in issue #215 QUESTION Q-002. Gaps 4 and 5 were fixed by PRs #213 and #214 before the import. The original follow-up plan below is kept for the record.
+**Status (2026-11-10, corrected after review round 1):** the import ran; see the [A1 import report](population-batch-a1-import.md). Of the 17 proposals, 12 received reviewed entries after the issue #215 ANSWER Q-000 adjudication (5 of the 17 were rejected there). Review round 1 (ANSWER Q-003) then removed lemon juice, lime juice, and soy sauce as inferences of the same kind, and the mayonnaise source was switched to the complete SR Legacy record under ANSWER Q-002 with James's approval. Final outcome: 9 reviewed entries, 9 profiles validated, staged, and imported, 16 unresolved. The derivation labeling policy (ANSWER Q-004) was implemented in the same round, so the imported profiles carry derivation-based quality statuses. Gaps 4 and 5 were fixed by PRs #213 and #214 before the import. The original follow-up plan below is kept for the record.
 
 The A1 import PR (`#63-A-1`, under the standing approval, with James's approval recorded in the PR) will contain:
 

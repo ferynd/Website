@@ -16,6 +16,7 @@ export interface FieldProvenance {
     sourceKey: string;
     sourceNutrientId?: string;
     derivation?: string;
+    sourceDerivationCode?: string;
     comparatorRef?: string;
     confidence?: number;
     range?: {

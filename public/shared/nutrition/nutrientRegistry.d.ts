@@ -8,7 +8,9 @@ export type NutrientStatus =
   | 'below_quantification_limit'
   | 'unknown'
   | 'not_applicable'
-  | 'legacy_unclassified';
+  | 'legacy_unclassified'
+  | 'assumed_zero'
+  | 'source_reported';
 
 export const NUTRIENT_STATUSES: readonly NutrientStatus[];
 export const FIBER_MEANINGS: readonly ['total', 'weighted_legacy', 'unknown'];

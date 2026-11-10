@@ -14,6 +14,7 @@ export interface ParsedFdcNutrient {
     median: number | null;
     loq: number | null;
     isBelowLoq: boolean;
+    derivationCode: string | null;
 }
 export interface ParsedPortionCandidate {
     kind: 'household' | 'piece';

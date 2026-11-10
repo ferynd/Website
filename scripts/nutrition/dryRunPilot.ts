@@ -30,7 +30,7 @@ export const FIXTURE_DIR = 'scripts/fixtures/nutrition/fdc';
 export const EXPECTED_CATALOG_COUNT = 1114;
 export const EXPECTED_PRIORITY_1 = 253;
 export const UNRESOLVED_OUTCOME = 'unresolved_no_pinned_local_source';
-export const FIELD_STATUSES = ['measured', 'label_reported', 'calculated', 'estimated_from_comparable', 'below_quantification_limit', 'unknown', 'not_applicable'] as const;
+export const FIELD_STATUSES = ['measured', 'label_reported', 'calculated', 'estimated_from_comparable', 'below_quantification_limit', 'unknown', 'not_applicable', 'assumed_zero', 'source_reported'] as const;
 
 /** Roles: `bulk` and `quality` are indexed into the offline bulk cache; `api_shape` is parsed only; `malformed` must fail. */
 export type FixtureRole = 'bulk' | 'quality' | 'api_shape' | 'malformed';

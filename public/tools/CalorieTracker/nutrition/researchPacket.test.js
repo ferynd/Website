@@ -29,7 +29,7 @@ it('starts assistant values unverified and gates curated/private approval', asyn
         await expect(f.service.review(j.jobId, decision)).rejects.toThrow(scope === 'curated' ? 'unresolved permittedUse' : 'attestation');
         if (scope === 'curated') {
             await expect(f.service.attestSource(j.jobId, 's1', 'reviewer')).rejects.toThrow('deterministic refetch');
-            const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }], permittedUse: 'CC0 fixture' }) }] });
+            const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }], permittedUse: 'CC0 fixture' }) }] });
             const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
             decision.approvedContentHash = await reviewContentHash(verified);
         }
@@ -251,11 +251,11 @@ it('verifies a cited FDC source only after deterministic value comparison', asyn
     const f = await packetFixture();
     f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
     const [j] = await f.service.acceptResponse(f.response);
-    const adapter = { id: 'fdc_bulk', fetch: vi.fn(async () => ({})), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] }) };
+    const adapter = { id: 'fdc_bulk', fetch: vi.fn(async () => ({})), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }] }) };
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [adapter] });
     const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
     expect(verified.proposal.sourceVerification.s1.method).toBe('deterministic_refetch');
-    adapter.toSourceResult = async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 3, unitName: 'g' }] });
+    adapter.toSourceResult = async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 3, unitName: 'g', derivationCode: 'A' }] });
     await expect(service.verifySource(j.jobId, 's1', 'fdc_bulk')).rejects.toThrow('mismatch');
     expect((await f.store.get(j.jobId)).proposal.sourceVerification.s1.status).toBe('unverified');
 });
@@ -338,7 +338,7 @@ it('refuses a cited observation that disagrees in status, bound, rounding, quali
         const g = await packetFixture();
         g.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'], ...tweak };
         const [accepted] = await g.service.acceptResponse(g.response);
-        const narrow = createResearchService({ store: g.store, sourceCache: g.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] }) }] });
+        const narrow = createResearchService({ store: g.store, sourceCache: g.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }] }) }] });
         await expect(narrow.verifySource(accepted.jobId, 's1', 'fdc_bulk')).rejects.toThrow(/observation mismatch/);
         const saved = await g.store.get(accepted.jobId);
         expect(saved.proposal.sourceVerification.s1.status).toBe('unverified');
@@ -436,7 +436,7 @@ it('fails a cooked target when the deterministic FDC record is raw', async () =>
     const [accepted] = await f.service.acceptResponse(f.response);
     expect(accepted.proposal.extractedStateWords).toContain('cooked');
     expect(accepted.validation.errors).not.toContain('Explicit conflict: target is cooked but source is raw');
-    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', description: 'Apples, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] }) }] });
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', description: 'Apples, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }] }) }] });
     const verified = await service.verifySource(accepted.jobId, 's1', 'fdc_bulk');
     expect(verified.proposal.extractedStateWords).toEqual(['raw']);
     expect(verified.validation.errors).toContain('Explicit conflict: target is cooked but source is raw');
@@ -524,7 +524,7 @@ it('points verified nutrient provenance at the verified source, not the first ci
     const litKey = accepted.proposal.assistantSourceKeys.lit;
     const fdcKey = accepted.proposal.assistantSourceKeys.s1;
     expect(accepted.proposal.revisionDraft.fieldProvenance.protein.sourceKey).toBe(litKey);
-    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] }) }] });
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }] }) }] });
     const verified = await service.verifySource(accepted.jobId, 's1', 'fdc_bulk');
     expect(verified.proposal.revisionDraft.fieldProvenance.protein.sourceKey).toBe(fdcKey);
     expect(verified.proposal.revisionDraft.sources[fdcKey].permittedUse).toBe('CC0 fixture');
@@ -558,8 +558,8 @@ it('keeps state words from every verified source and conflicts on their union', 
     result.unresolved = [];
     const [accepted] = await f.service.acceptResponse(f.response);
     const foods = {
-        '9900001': { type: 'fdc', recordId: '9900001', description: 'Apples, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] },
-        '9900002': { type: 'fdc', recordId: '9900002', description: 'Lentils, cooked', extractedStateWords: ['cooked'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1093, amount: 50, unitName: 'mg' }] },
+        '9900001': { type: 'fdc', recordId: '9900001', description: 'Apples, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }] },
+        '9900002': { type: 'fdc', recordId: '9900002', description: 'Lentils, cooked', extractedStateWords: ['cooked'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1093, amount: 50, unitName: 'mg', derivationCode: 'A' }] },
     };
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async (id) => foods[id], toSourceResult: async (raw) => raw }] });
     const cookedFirst = await service.verifySource(accepted.jobId, 's2', 'fdc_bulk');
@@ -583,8 +583,8 @@ it('conflicts a raw-only verified source with a cooked target even after a cooke
     result.unresolved = [];
     const [accepted] = await f.service.acceptResponse(f.response);
     const foods = {
-        '9900002': { type: 'fdc', recordId: '9900002', description: 'Lentils, cooked', extractedStateWords: ['cooked'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] },
-        '9900001': { type: 'fdc', recordId: '9900001', description: 'Lentils, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1093, amount: 50, unitName: 'mg' }] },
+        '9900002': { type: 'fdc', recordId: '9900002', description: 'Lentils, cooked', extractedStateWords: ['cooked'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }] },
+        '9900001': { type: 'fdc', recordId: '9900001', description: 'Lentils, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1093, amount: 50, unitName: 'mg', derivationCode: 'A' }] },
     };
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async (id) => foods[id], toSourceResult: async (raw) => raw }] });
     const rawFirst = await service.verifySource(accepted.jobId, 's2', 'fdc_bulk');
@@ -599,7 +599,7 @@ it('refuses curated attestation after a failed refetch and blocks approval', asy
     f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
     f.response.results[0].unresolved = [];
     const [j] = await f.service.acceptResponse(f.response);
-    const nutrients = [{ nutrientId: 1003, amount: 2, unitName: 'g' }];
+    const nutrients = [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }];
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', permittedUse: 'CC0 fixture', nutrients }) }] });
     const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
     expect(verified.proposal.sourceVerification.s1).toMatchObject({ status: 'verified', method: 'deterministic_refetch' });
@@ -653,7 +653,7 @@ it('shows a verified FDC description beside the curated target and requires a ma
     result.nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
     result.unresolved = [];
     const [accepted] = await f.service.acceptResponse(f.response);
-    const chickpeas = { type: 'fdc', recordId: '9900002', description: 'Chickpeas, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }] };
+    const chickpeas = { type: 'fdc', recordId: '9900002', description: 'Chickpeas, raw', extractedStateWords: ['raw'], permittedUse: 'CC0 fixture', nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }] };
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => chickpeas }] });
     const verified = await service.verifySource(accepted.jobId, 's1', 'fdc_bulk');
     expect(verified.proposal.sourceVerification.s1.status).toBe('verified');
