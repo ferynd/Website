@@ -123,7 +123,8 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     const originalSource = j.proposal.revisionDraft.sources[j.proposal.assistantSourceKeys.s1];
     const originalMatches = [{ manifestId: j.target.manifestId, fdcId: originalSource.recordId, description: originalSource.description || originalSource.title }];
     await expect(stageCatalog([{ ...j, state: 'approved', proposal: { ...j.proposal, sourceVerification: { s1: { status: 'verified', method: 'deterministic_refetch' } } }, review: { approvedContentHash: decision.approvedContentHash } }], { matches: originalMatches })).rejects.toThrow('valid reviewed content hash');
-    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', release: 'fixture-v2', permittedUse: 'CC0 fixture', nutrients: [], portions: [{ kind: 'household', unit: 'cup', amount: 2, grams: 250 }] }) }] });
+    // The refetched record names its description: a reviewed match needs a non-empty one (PR #214).
+    const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', description: 'Synthetic apple', release: 'fixture-v2', permittedUse: 'CC0 fixture', nutrients: [], portions: [{ kind: 'household', unit: 'cup', amount: 2, grams: 250 }] }) }] });
     const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
     const draft = verified.proposal.revisionDraft, conv = verified.proposal.conversions[0];
     expect(draft.sources[verified.proposal.assistantSourceKeys.s1].permittedUse).toBe('CC0 fixture');
@@ -136,6 +137,7 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     const approved = await service.review(j.jobId, { ...decision, approvedContentHash: await reviewContentHash(verified) });
     const approvedSource = approved.proposal.revisionDraft.sources[approved.proposal.assistantSourceKeys.s1];
     const approvedMatches = [{ manifestId: approved.target.manifestId, fdcId: approvedSource.recordId, description: approvedSource.description || approvedSource.title }];
+    expect(approvedMatches[0].description).toBe('Synthetic apple');
     expect((await stageCatalog([approved], { matches: approvedMatches })).manifest.profileCount).toBe(1);
 });
 it.each([
@@ -662,7 +664,8 @@ it('shows a verified FDC description beside the curated target and requires a ma
     expect(packet.markdown).toContain('Chickpeas, raw');
     expect(packet.markdown).toContain('**Identity mismatch:** yes');
     expect(packet.json.identityMismatch).toBe(true);
-    expect(packet.json.verifiedFdc).toEqual([{ sourceId: 's1', recordId: '9900002', description: 'Chickpeas, raw' }]);
+    // The verified record carries the release and data type it is published with (#63 V2, PR #214).
+    expect(packet.json.verifiedFdc).toEqual([{ sourceId: 's1', recordId: '9900002', description: 'Chickpeas, raw', release: 'unknown', dataType: 'Foundation' }]);
     const manifestId = verified.target.manifestId;
     await expect(buildReviewPacket(verified, { matches: [{ manifestId, fdcId: '171000', description: 'Lentils, raw' }] })).rejects.toThrow('match table');
     const same = await buildReviewPacket(verified, { matches: [{ manifestId, fdcId: '9900002', description: 'Chickpeas, raw' }] });

@@ -325,6 +325,12 @@ it('re-checks the match table at staging, even when an API caller skipped it dur
         },
     };
     await expect(stageCatalog([job], { matches: [{ manifestId: 'lentils-raw', fdcId: '171000', description: 'Lentils, raw' }] })).rejects.toThrow('match table');
+    // Fail closed (#63 V2): no reviewed entry for the manifest id is no match.
+    await expect(stageCatalog([job])).rejects.toThrow('match table');
+    await expect(stageCatalog([job], { matches: [{ manifestId: 'other-food', fdcId: '9900002', description: 'Chickpeas, raw' }] })).rejects.toThrow('match table');
+    // A deterministic bulk proposal is re-checked too, including its release.
+    const deterministic = { ...job, match: { sourceAdapter: 'fdc_bulk', sourceId: '9900002', sourceRelease: '2018-04' }, proposal: { revisionDraft: { sources: { 'fdc:9900002': { type: 'fdc', recordId: '9900002', title: 'Chickpeas, raw', version: '2026-10-29', datasetId: 'Foundation' } } } } };
+    await expect(stageCatalog([deterministic], { matches: [{ manifestId: 'lentils-raw', fdcId: '9900002', description: 'Chickpeas, raw', release: '2018-04', dataType: 'Foundation' }] })).rejects.toThrow('match table');
     const approved = await makeApprovedCuratedJob();
     await expect(stageCatalog([approved], { matches: [{ manifestId: 'other-food', fdcId: '1', description: 'Other' }] })).resolves.toBeTruthy();
 });

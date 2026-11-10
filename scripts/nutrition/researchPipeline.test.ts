@@ -5,9 +5,13 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { readManifest, validateManifest, stateToDims, selectNextBatch } from './manifestReader';
 import { readMatchTable, validateMatchTable } from './matchTable';
-import { readPinnedBulk, auditPinnedBulk, indexBulk, createFdcBulkAdapter } from './fdcBulkReader';
+import { readPinnedBulk, auditPinnedBulk, indexBulk, bulkCacheKey, createFdcBulkAdapter } from './fdcBulkReader';
 import { createFileResearchStore, createFileSourceCache, assertLocalPath } from './fileResearchStore';
-import { createMemorySourceCache } from '../../public/shared/nutrition/research/memoryResearchStore.js';
+import { createMemorySourceCache, createMemoryResearchStore } from '../../public/shared/nutrition/research/memoryResearchStore.js';
+import { createResearchService } from '../../public/shared/nutrition/research/researchService.js';
+import { assertCuratedMatchTable } from '../../public/shared/nutrition/research/researchReview.js';
+import { parseFdcFood } from '../../public/shared/nutrition/research/fdcFood.js';
+import { planReleaseFor } from './researchCli';
 import { createResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
 import type { ResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
 import { coverageReport } from './coverageReport';
@@ -151,6 +155,89 @@ it('audits a mixed bulk file per record, value-free, while the strict reader sti
     const open = await auditPinnedBulk(file, { ...pin, fixtureOnly: false });
     expect(open.parsedCount).toBe(2);
     expect(open.foods.map(f => f.fdcId)).toEqual([legume.fdcId, 9900778]);
+});
+async function twoReleaseFixture() {
+    const root = await dir();
+    const load = async (name: string) => JSON.parse(await readFile(`scripts/fixtures/nutrition/fdc/${name}`, 'utf8'));
+    const apple = await load('apple-bulk.json'), legume = { ...await load('legume-bulk.json'), dataType: 'SR Legacy' };
+    // The same fdcId exists in both releases with different descriptions.
+    const appleInSr = { ...apple, dataType: 'SR Legacy', description: 'Apples, raw, with skin (SR synthetic)' };
+    const pinned = async (name: string, release: string, body: unknown) => {
+        const file = path.join(root, name);
+        await writeFile(file, JSON.stringify(body));
+        return { file, pin: { id: name, release, sha256: 'sha256:' + createHash('sha256').update(await readFile(file)).digest('hex'), fixtureOnly: true } };
+    };
+    const foundation = await pinned('foundation.json', 'fx-foundation-2026', { _fixture: 'synthetic; not nutrition data', FoundationFoods: [apple] });
+    const sr = await pinned('sr.json', 'fx-sr-2018', { _fixture: 'synthetic; not nutrition data', SRLegacyFoods: [legume, appleInSr] });
+    const entry = (manifestId: string, food: { fdcId: number; description: string; dataType: string }, release: string) => ({
+        manifestId, adapter: 'fdc_bulk' as const, dataType: food.dataType, fdcId: String(food.fdcId), release, description: food.description,
+        stateEvidence: 'synthetic', rationale: 'synthetic', reviewer: 'fixture-reviewer', reviewedAt: '2026-11-10', checklistVersion: 1 as const,
+    });
+    const matches = await validateMatchTable({ schemaVersion: 1, entries: [
+        entry('fx-apple', apple, foundation.pin.release),
+        entry('fx-legume', legume, sr.pin.release),
+        { ...entry('fx-apple-sr', appleInSr, sr.pin.release), sharedJustification: 'synthetic' },
+    ] });
+    return { apple, legume, appleInSr, foundation, sr, matches };
+}
+it('stamps every job in a mixed Foundation + SR Legacy batch with its own match release (#63 V2 gap 6)', async () => {
+    const { apple, legume, appleInSr, foundation, sr, matches } = await twoReleaseFixture();
+    const cache = createMemorySourceCache();
+    await indexBulk(foundation.file, foundation.pin, cache);
+    await indexBulk(sr.file, sr.pin, cache);
+    // One adapter, constructed with the Foundation release as `run --dataset foundation` would.
+    const adapter = createFdcBulkAdapter({ cache, release: foundation.pin.release, matches });
+    const service = createResearchService({ store: createMemoryResearchStore(), sourceCache: cache, adapters: [adapter] });
+    const expected = [
+        ['fx-apple', apple, foundation.pin.release, 'Foundation'],
+        ['fx-legume', legume, sr.pin.release, 'SR Legacy'],
+        ['fx-apple-sr', appleInSr, sr.pin.release, 'SR Legacy'],
+    ] as const;
+    for (const [manifestId, food, release, dataType] of expected) {
+        const job = await service.enqueue({ target: { manifestId, canonicalName: food.description, dims: { state: 'raw' } } });
+        const ran = await service.runJob(job.jobId);
+        expect(ran.state).toBe('needs_review');
+        const source = Object.values(ran.proposal!.revisionDraft!.sources as Record<string, { recordId: string; title: string; version: string; datasetId: string }>)[0];
+        // Pre-fix, the SR jobs were stamped with the adapter's Foundation release.
+        expect(source).toMatchObject({ recordId: String(food.fdcId), title: food.description, version: release, datasetId: dataType });
+        expect(ran.checkpoint!.sourceCacheKeys).toEqual([bulkCacheKey(release, food.fdcId)]);
+        expect(ran.attempts.at(-1)).toMatchObject({ release, outcome: 'success' });
+        // The fail-closed table check accepts exactly this record at approval and staging.
+        expect(() => assertCuratedMatchTable(ran, matches)).not.toThrow();
+        expect(() => assertCuratedMatchTable(ran, matches.filter(m => m.manifestId !== manifestId))).toThrow('match table');
+    }
+});
+it('never serves a record indexed under another release and refuses a mis-stamped bulk result (#63 V2 gap 6)', async () => {
+    const { apple, foundation, matches } = await twoReleaseFixture();
+    // Only Foundation is indexed: the SR-matched job must not fall back to it.
+    const cache = createMemorySourceCache();
+    await indexBulk(foundation.file, foundation.pin, cache);
+    const adapter = createFdcBulkAdapter({ cache, release: foundation.pin.release, matches });
+    const service = createResearchService({ store: createMemoryResearchStore(), sourceCache: cache, adapters: [adapter] });
+    const srJob = await service.enqueue({ target: { manifestId: 'fx-apple-sr', dims: { state: 'raw' } } });
+    const blocked = await service.runJob(srJob.jobId);
+    expect(blocked.state).toBe('blocked');
+    expect(blocked.blocked).toMatchObject({ code: 'source_permanent_error', needs: 'Pinned bulk record not indexed for release fx-sr-2018' });
+    expect(apple.fdcId).toBe(Number(matches.find(m => m.manifestId === 'fx-apple-sr')!.fdcId));
+    // An adapter that ignores the job's release (the pre-fix behavior) is refused, not mis-stamped.
+    const stale = { ...adapter, toSourceResult: (raw: unknown) => parseFdcFood(raw, { release: foundation.pin.release }) };
+    const both = createMemorySourceCache();
+    await cache.get(bulkCacheKey(foundation.pin.release, apple.fdcId)).then(row => both.set(bulkCacheKey('fx-sr-2018', apple.fdcId), row!.data));
+    const guarded = createResearchService({ store: createMemoryResearchStore(), sourceCache: both, adapters: [stale] });
+    const job = await guarded.enqueue({ target: { manifestId: 'fx-apple-sr', dims: { state: 'raw' } } });
+    const refused = await guarded.runJob(job.jobId);
+    expect(refused.state).toBe('blocked');
+    expect(refused.blocked).toMatchObject({ code: 'source_malformed', needs: 'Source result release fx-foundation-2026 differs from the matched release fx-sr-2018' });
+});
+it('plans a mixed-release batch without claiming a single release (#63 V2 gap 7)', async () => {
+    const { matches } = await twoReleaseFixture();
+    expect(planReleaseFor(['fx-apple', 'fx-legume'], matches)).toBe('fx-foundation-2026+fx-sr-2018');
+    expect(planReleaseFor(['fx-legume', 'fx-apple'], matches)).toBe('fx-foundation-2026+fx-sr-2018');
+    expect(planReleaseFor(['fx-legume', 'fx-apple-sr'], matches)).toBe('fx-sr-2018');
+    expect(planReleaseFor(['no-entry'], matches)).toBe('unconfigured');
+    expect(planReleaseFor(['fx-legume', 'no-entry'], matches, 'fx-sr-2018')).toBe('fx-sr-2018');
+    expect(planReleaseFor(['no-entry'], matches, 'fx-sr-2018')).toBe('fx-sr-2018');
+    expect(() => planReleaseFor(['fx-apple', 'fx-legume'], matches, 'fx-sr-2018')).toThrow('conflicts with reviewed match release(s) fx-foundation-2026');
 });
 it('pins the Foundation and SR Legacy bulk releases in the exact format readPinnedBytes demands', async () => {
     const pinFormat = /^sha256:[a-f0-9]{64}$/;

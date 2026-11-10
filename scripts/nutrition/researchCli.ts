@@ -13,7 +13,7 @@ import { stageCatalog } from '../../public/shared/nutrition/research/stagedCatal
 import type { ResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
 import type { ResearchJobStore, SourceCache, ResearchAdapter, FetchResearchAdapter } from '../../public/shared/nutrition/research/researchPorts.js';
 import { readManifest, selectNextBatch, stateToDims } from './manifestReader';
-import { readMatchTable } from './matchTable';
+import { readMatchTable, validateMatchTable, matchFor } from './matchTable';
 import { createFileResearchStore, createFileSourceCache, assertLocalPath } from './fileResearchStore';
 import { indexBulk, createFdcBulkAdapter } from './fdcBulkReader';
 import { suggestFromBulk } from './matchSuggest';
@@ -34,10 +34,33 @@ async function allJobs(store: ResearchJobStore) {
     } while (cursor);
     return jobs;
 }
-export async function researchCli(args: string[], { output = (v: unknown) => process.stdout.write(typeof v === 'string' ? v + '\n' : Array.isArray(v) && v.length && v.every(item => typeof item.copyable === 'string') ? v.map(item => item.copyable).join('\n\n') + '\n' : JSON.stringify(v, null, 2) + '\n'), fetch: fetcher = globalThis.fetch, fdcBulkAdapter }: {
+/**
+ * The release a planned pass claims. An explicit --dataset/--release must
+ * agree with every reviewed bulk match in the batch. Without one, the pass
+ * names the sorted set of the batch's match-entry releases ('+'-joined), so a
+ * mixed Foundation + SR Legacy batch never claims a single release; a batch
+ * with no reviewed matches stays 'unconfigured'.
+ */
+export function planReleaseFor(manifestIds: readonly string[], matches: Parameters<typeof matchFor>[0], explicit?: string) {
+    const releases = [...new Set(manifestIds.map(id => matchFor(matches, id, 'fdc_bulk')?.sourceRelease).filter((r): r is string => !!r))].sort();
+    if (explicit) {
+        const other = releases.filter(r => r !== explicit);
+        if (other.length)
+            throw new Error(`plan release ${explicit} conflicts with reviewed match release(s) ${other.join(', ')}; omit --dataset/--release to plan a mixed-release batch`);
+        return explicit;
+    }
+    return releases.length ? releases.join('+') : 'unconfigured';
+}
+export async function researchCli(args: string[], { output = (v: unknown) => process.stdout.write(typeof v === 'string' ? v + '\n' : Array.isArray(v) && v.length && v.every(item => typeof item.copyable === 'string') ? v.map(item => item.copyable).join('\n\n') + '\n' : JSON.stringify(v, null, 2) + '\n'), fetch: fetcher = globalThis.fetch, fdcBulkAdapter, matchTable }: {
     output?: (v: unknown) => void;
     fetch?: typeof fetch;
     fdcBulkAdapter?: ResearchAdapter & FetchResearchAdapter;
+    /**
+     * Tests only: a match-table document validated exactly like the reviewed
+     * file. Deliberately not a CLI flag, so an operator cannot point a run at an
+     * unreviewed overlay table.
+     */
+    matchTable?: unknown;
 } = {}) {
     const argv = args[0] === '--' ? args.slice(1) : args;
     const command = argv[0];
@@ -82,7 +105,7 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
             cache = { ...memory, get: async (key) => await memory.get(key) || await disk.get(key), has: async (key) => await memory.has(key) || await disk.has(key), getOrFetch: async <T>(key: string, fetcher: () => Promise<T>) => { const row = await disk.get(key); return row ? { ...row, data: row.data as T, cached: true } : memory.getOrFetch(key, fetcher); } };
         }
     }
-    const entries = await readManifest(), matches = await readMatchTable();
+    const entries = await readManifest(), matches = matchTable === undefined ? await readMatchTable() : await validateMatchTable(matchTable);
     const pin = RESEARCH_CONFIG.datasets.find(d => d.id === str('dataset'));
     const release = str('release') || pin?.release || 'unconfigured';
     if (fdcBulkAdapter && fdcBulkAdapter.id !== 'fdc_bulk')
@@ -101,13 +124,14 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
             const next = selectNextBatch(entries, jobs, { wave: str('wave'), max: Number(str('max') || 25) });
             const parentBatchId = await parentBatchIdFor({ priority: next[0]?.priority, category: next[0]?.category, manifestIds: next.map(e => e.id) });
             const fields = str('fields')?.split(',') || '*';
+            const planRelease = planReleaseFor(next.map(e => e.id), matches, str('release') || pin?.release);
+            const passId = await passIdFor({ parentBatchId, adapter: str('source') || 'fdc_bulk', sourceRelease: planRelease });
             const planned = [];
             for (const e of next) {
                 const { dims, needsReview } = stateToDims(e.state);
-                const passId = await passIdFor({ parentBatchId, adapter: str('source') || 'fdc_bulk', sourceRelease: release });
-                planned.push(await service.enqueue({ parentBatchId, passId, sourceRelease: release, fields, target: { ...e, manifestId: e.id, canonicalName: e.name, dims, needsReview, catalogState: e.state } }));
+                planned.push(await service.enqueue({ parentBatchId, passId, sourceRelease: planRelease, fields, target: { ...e, manifestId: e.id, canonicalName: e.name, dims, needsReview, catalogState: e.state } }));
             }
-            result = { dryRun: !flags.write, parentBatchId, jobs: planned };
+            result = { dryRun: !flags.write, parentBatchId, sourceRelease: planRelease, jobs: planned };
             break;
         }
         case 'index': {
@@ -172,14 +196,18 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
                     result = await service.attestSource(job.jobId, str('verify-source')!, str('reviewer') || '');
                 } else {
                     const source = str('source') || 'fdc-bulk';
+                    let sourceIndex: Record<string, unknown> | null = null;
                     if (!['fdc-bulk', 'fdc-api'].includes(source))
                         throw new Error('Source verification requires fdc-bulk or fdc-api');
                     if (source === 'fdc-bulk' && str('file')) {
                         if (!pin) throw new Error('--file requires a pinned --dataset');
                         if (release !== pin.release) throw new Error('--release must match the dataset pin');
-                        await indexBulk(str('file')!, pin, cache);
+                        // Report the same value-free BulkIndexReport as `index` (PR #213), so the
+                        // records skipped from this release are visible next to the verification.
+                        sourceIndex = { dataset: pin.id, release: pin.release, ...await indexBulk(str('file')!, pin, cache) };
                     }
-                    result = await service.verifySource(job.jobId, str('verify-source')!, source.replace('-', '_'), { matches });
+                    const verified = await service.verifySource(job.jobId, str('verify-source')!, source.replace('-', '_'), { matches });
+                    result = sourceIndex ? { ...verified, sourceIndex } : verified;
                 }
                 break;
             }

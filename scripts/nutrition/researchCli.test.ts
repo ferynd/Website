@@ -112,6 +112,14 @@ function offlineBulkAdapter(permit = 'CC0 fixture license') {
         },
     };
 }
+/** A one-entry reviewed table document for the packet fixture's target (synthetic, in memory only). */
+function reviewedTable(overrides: Record<string, string> = {}) {
+    return { schemaVersion: 1, entries: [{
+        manifestId: 'synthetic-apple', adapter: 'fdc_bulk', dataType: 'Foundation', fdcId: '9900001', release: 'fixture-v1',
+        description: 'Synthetic apple', stateEvidence: 'raw', rationale: 'Synthetic fixture', reviewer: 'fixture-reviewer',
+        reviewedAt: '2026-11-10', checklistVersion: 1, ...overrides,
+    }] };
+}
 it('curated --verify-source refetches through a deterministic adapter and never attests', async () => {
     const f = await packetFixture();
     f.response.results[0].nutrients.protein = { value: 2, unit: 'g', status: 'measured', sourceIds: ['s1'] };
@@ -125,6 +133,13 @@ it('curated --verify-source refetches through a deterministic adapter and never 
     expect(await readFile(file, 'utf8')).toBe(before);
     expect((await disk.get(accepted.jobId))?.proposal?.sourceVerification?.s1?.status).toBe('unverified');
     const offline = offlineBulkAdapter();
+    // Once a reviewed entry exists it must agree on release and dataType too (#63 V2, PR #214).
+    await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1'], { output, fetch, fdcBulkAdapter: offline.adapter, matchTable: reviewedTable({ release: 'other-release' }) })).rejects.toThrow('match table');
+    await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1'], { output, fetch, fdcBulkAdapter: offline.adapter, matchTable: reviewedTable({ dataType: 'SR Legacy' }) })).rejects.toThrow('match table');
+    expect(await readFile(file, 'utf8')).toBe(before);
+    offline.fetched.length = 0;
+    const matchTable = reviewedTable();
+    // PR #213: refetch is allowed before the match-table entry is reviewed (shipped table, no entry).
     const preview = await researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1'], { output, fetch, fdcBulkAdapter: offline.adapter }) as ResearchJob;
     expect(offline.fetched).toEqual(['9900001']);
     expect(preview.proposal?.sourceVerification?.s1).toMatchObject({ status: 'verified', method: 'deterministic_refetch' });
@@ -145,6 +160,11 @@ it('curated --verify-source refetches through a deterministic adapter and never 
     // until the reviewed source-match table contains this FDC record.
     await expect(researchCli(approveArgs, { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('match table');
     expect((await disk.get(accepted.jobId))?.state).toBe('needs_review');
+    // A reviewed entry agreeing on release and dataType lets the same approval through (PR #214).
+    await expect(researchCli(approveArgs, { output, fetch, fdcBulkAdapter: offline.adapter, matchTable: reviewedTable({ release: 'other-release' }) })).rejects.toThrow('match table');
+    const approved = await researchCli(approveArgs, { output, fetch, fdcBulkAdapter: offline.adapter, matchTable }) as ResearchJob;
+    expect(approved.state).toBe('approved');
+    expect(approved.review?.approvedContentHash).toBe(await reviewContentHash(saved!));
     vi.stubEnv('FDC_API_KEY', '');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('--live');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api', '--live'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('FDC_API_KEY');
