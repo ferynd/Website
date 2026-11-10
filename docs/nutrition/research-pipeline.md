@@ -86,6 +86,10 @@ There is no network without --live. fdc-api without --live exits nonzero. Its op
 
 `npx --no-install vite-node scripts/nutrition/dryRunPilotCli.ts -- --date YYYY-MM-DD` regenerates the [dry-run pilot report](dry-run-pilot-report.md); add `--check` to compare without writing. It is offline. It reads the catalog's 253 priority-1 ids, intersects them with the synthetic reviewed match table, and pins each committed FDC fixture by the sha256 of its bytes. Matched identities run through the research service with only the bulk adapter registered. Every other id is recorded as `unresolved_no_pinned_local_source`, never `not_found`. The report holds aggregate counts only, and the command writes nothing except that file. The runner (dryRunPilot.ts) does not import researchCli or the live API adapter.
 
+### Flat-food conversion analysis (#77)
+
+`npx --no-install vite-node scripts/nutrition/conversionAnalysisCli.ts -- --extract <path>` checks whether each flat v1 saved food in a foods-only extract converts to a direct v2 profile without loss. The food keeps its stored basis, every detail value stays null, and no zero is invented. The round trip runs through `readNutrientFields` and `toV2Fields`. The extract must be outside the checkout. The command prints aggregate counts only and writes nothing. The results are in the [conversion report](conversion-report.md).
+
 ## Validation boundaries
 
 Automated coverage includes malformed sources, unknown/LOQ, concentrated additives, state conflicts, retry/idempotency, packet round trips/rejections/chunk bounds, CLI/app canonical equality, pending resume, owner changes/sign-out, fixture pins, redacted operator transport and file CAS/locks. No live FDC ID mapping, source license, production auth, deployment or catalog population is claimed by these tests. The curated manifest remains at zero profiles and both write flags remain false.
