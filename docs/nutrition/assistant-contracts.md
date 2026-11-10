@@ -57,6 +57,7 @@ The state/preparation source of truth is [variantVocabulary.js](../../public/sha
 | `line.order` | Optional `{group, position, tail?: boolean}` (label order and the ≤2 % tail). |
 | `line.confidence` | Optional `{identity, quantity}`, each `low\|medium\|high`; absent means unstated and is shown as such in review. |
 | `line.notes`, `line.assumptionIds[]` | Optional. |
+| `line.yield` | Optional `{waterDeltaG?: number, fatAbsorbedG? ≥0, fatDiscardedG? ≥0, fatAbsorbedExternal?: boolean, nutrientRetention? ≥0}`. See Yield rules. |
 | `knownFacts[]` | ≤10. `{factId, provenance: official_label\|restaurant_published\|manufacturer_site\|user_measured\|user_stated, source: {title, url (https), capturedAt, market}, appliesTo: {scope: meal\|serving\|line, lineId?}, basis: {servings?, servingWeight?: Q, description?}, nutrients: {<registry key or label>: {value, unit, rounding?: fda_label\|exact\|unknown, qualifier?: less_than}}, ingredientStatement? ≤2000}` |
 | `constraints[]` | ≤50. Each is `{type, …}` with `type` one of `fixed{lineIds}`, `ratio{num: lineId, den: lineId, min, max}` (grams of `num` divided by grams of `den`; one line each), `order{lineIds (descending), group}`, `tail_max_percent{lineIds, maxPercent}`, `sum{lineIds, gMin, gMax}` (for example `{"type": "fixed", "lineIds": ["salsa"]}`). |
 | `assumptions[]` | ≤30. `{id, text, appliesTo: [lineId \| factId \| "meal"]}` |
@@ -69,6 +70,16 @@ Quantity rules:
 - `0 ≤ gMin ≤ g ≤ gMax ≤ 1,000,000`.
 - `measured`, `label`, and `recipe_stated` quantities are fixed, as is any line named in a `fixed` constraint. Only `estimated` quantities are free variables for #65 fitting, bounded by `[gMin, gMax]`. To let the fit adjust a `recipe_stated` line, the user changes its basis to `estimated` in the correction layer; the import itself is unchanged.
 - On a fixed line, `gMin`/`gMax` are allowed and record measurement or label tolerance. They feed #64 uncertainty intervals only and never make the line a free variable.
+
+Yield rules (#72):
+
+- "Counted lines" are every line except a compound parent that has children. Raw totals, meal water, the fit, and cooked weight all use this one set (`countedLines` in `calculate.js`).
+- `meal.yield.rawTotal` is an exact raw gram sum of the counted lines. When it is present the fit adds a `sum` constraint over those lines, never over a compound parent.
+- Water changes cooked mass only, never nutrients. Discarded fat and nutrient retention each apply exactly once, in `nutrientBasis`. `nutrientRetention` above 1 is water gain, not a nutrient multiplier. Absorbed fat adds mass only when `fatAbsorbedExternal` is true.
+- `meal.yield.cookedTotal` sets meal water as a residual. A line's own `waterDeltaG`, or a `nutrientRetention` above 1, wins and keeps its own cooked mass. The rest of the cooked total is spread over the other counted lines in proportion to each line's mass after its one fat adjustment, so no line goes below 0 g. If every counted line sets its own water, the lines are left unchanged and the line values win over the meal total.
+- Serving-weight facts scale by cooked mass. When the meal states `cookedTotal` and at least one counted line takes meal water, the fit uses that value as a constant; if the fitted grams still cannot reach it (meal water would take a line below 0 g), the fit is flagged infeasible with a `cooked_total` violation. When every counted line sets its own water, or the meal states no `cookedTotal`, the fit treats cooked mass as moving with the grams it solves. Review uses the cooked mass of the current calculation, which equals the stated `cookedTotal` whenever meal water applies, so fitted or edited grams never leave a stale total.
+- A line-derived cooked mass is used only when every counted line has valid grams. While any counted line has `quantity.g: null`, a serving-weight fact is scaled by the stated `cookedTotal` if there is one, and is otherwise `basis_not_comparable` (in review and in the fit); it is never scaled against the partial mass of the known lines.
+- A JSON export (when yield or other JSON-only fields make paste unavailable) is schema v1 and writes line yield back in the documented nested form `yield: {waterDeltaG?, fatAbsorbedG?, fatDiscardedG?, fatAbsorbedExternal?, nutrientRetention?}`, never as top-level line fields, so it re-imports unchanged.
 
 Ingredient-list rules:
 

@@ -428,7 +428,7 @@ export function validateIngredientList(input) {
     const seen = new Set();
     for (const [index, raw] of (Array.isArray(source.ingredients) ? source.ingredients : []).entries()) {
         const path = `$.ingredients[${index}]`;
-        if (!allow(raw, path, ['lineId', 'name', 'kind', 'variant', 'quantity', 'role', 'parentLineId', 'order', 'confidence', 'notes', 'assumptionIds'], fail)) continue;
+        if (!allow(raw, path, ['lineId', 'name', 'kind', 'variant', 'quantity', 'role', 'parentLineId', 'order', 'confidence', 'notes', 'assumptionIds', 'yield', 'waterDeltaG', 'fatAbsorbedG', 'fatDiscardedG', 'fatAbsorbedExternal', 'yieldRetention'], fail)) continue;
         if (typeof raw.lineId !== 'string' || !ID_RE.test(raw.lineId) || raw.lineId === 'meal') fail(`${path}.lineId`, 'invalid line id');
         else if (seen.has(raw.lineId)) fail(`${path}.lineId`, 'duplicate line id');
         seen.add(raw.lineId);
@@ -482,6 +482,33 @@ export function validateIngredientList(input) {
         if (raw.assumptionIds != null) {
             if (!Array.isArray(raw.assumptionIds) || raw.assumptionIds.some(id => typeof id !== 'string' || !ID_RE.test(id))) fail(`${path}.assumptionIds`, 'invalid assumption id');
             else line.assumptionIds = [...raw.assumptionIds];
+        }
+        const yieldSource = raw.yield && typeof raw.yield === 'object' ? raw.yield : raw;
+        const yieldPath = raw.yield ? `${path}.yield` : path;
+        if (raw.yield != null && !allow(raw.yield, `${path}.yield`, ['waterDeltaG', 'fatAbsorbedG', 'fatDiscardedG', 'fatAbsorbedExternal', 'nutrientRetention'], fail)) {
+            /* the field errors are already recorded */
+        } else {
+            const water = yieldSource.waterDeltaG ?? raw.waterDeltaG;
+            if (water != null) {
+                if (typeof water !== 'number' || !Number.isFinite(water)) fail(`${yieldPath}.waterDeltaG`, 'expected a finite number');
+                else line.waterDeltaG = water;
+            }
+            for (const key of ['fatAbsorbedG', 'fatDiscardedG']) {
+                const value = yieldSource[key] ?? raw[key];
+                if (value == null) continue;
+                if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) fail(`${yieldPath}.${key}`, 'expected a non-negative number');
+                else line[key] = value;
+            }
+            const external = yieldSource.fatAbsorbedExternal ?? raw.fatAbsorbedExternal;
+            if (external != null) {
+                if (typeof external !== 'boolean') fail(`${yieldPath}.fatAbsorbedExternal`, 'expected true or false');
+                else line.fatAbsorbedExternal = external;
+            }
+            const retention = yieldSource.nutrientRetention ?? raw.yieldRetention;
+            if (retention != null) {
+                if (typeof retention !== 'number' || !Number.isFinite(retention) || retention < 0) fail(`${yieldPath}.nutrientRetention`, 'expected a non-negative number');
+                else line.yieldRetention = retention;
+            }
         }
         ingredients.push(line);
     }
@@ -644,6 +671,37 @@ export function validateIngredientList(input) {
     if (!errors.length && constraints.length) checkConstraints(ingredients, constraints, fail, warn);
     if (errors.length) return { ok: false, errors, warnings };
     return { ok: true, list: freeze(list), warnings: freeze(warnings), factUses: freeze(factUses) };
+}
+
+/** Private canonical line yield fields -> documented `line.yield` keys. */
+const PUBLIC_YIELD_KEYS = Object.freeze([
+    ['waterDeltaG', 'waterDeltaG'],
+    ['fatAbsorbedG', 'fatAbsorbedG'],
+    ['fatDiscardedG', 'fatDiscardedG'],
+    ['fatAbsorbedExternal', 'fatAbsorbedExternal'],
+    ['yieldRetention', 'nutrientRetention'],
+]);
+
+/**
+ * The documented schema v1 shape of a canonical list, for JSON export. Validation keeps line yield
+ * as private top-level fields; this rebuilds the nested `yield: { waterDeltaG, ..., nutrientRetention }`
+ * object so the export validates against the published contract and round trips.
+ */
+export function publicIngredientList(list) {
+    return {
+        ...list,
+        ingredients: (list?.ingredients ?? []).map(line => {
+            const out = { ...line };
+            const nested = {};
+            for (const [privateKey, publicKey] of PUBLIC_YIELD_KEYS) {
+                if (!(privateKey in out)) continue;
+                if (out[privateKey] != null) nested[publicKey] = out[privateKey];
+                delete out[privateKey];
+            }
+            if (Object.keys(nested).length) out.yield = nested;
+            return out;
+        }),
+    };
 }
 
 /** Parents and their children are reported together. Callers count one side; this module does not. */

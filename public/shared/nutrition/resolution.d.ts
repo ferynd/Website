@@ -1,4 +1,6 @@
 export const RESOLUTION_CAPABILITIES: Readonly<{ fitPanel: false; libraryDeepLink: false; directAiRoute: false }>;
+/** Cooked grams of the counted lines, or null unless every counted line has a valid mass. */
+export function cookedTotal(lines: any[]): number | null;
 export function buildResolution(input?: { lines?: any[]; matches?: any[]; nutrientsByLine?: Record<string, any>; revisionsByLine?: Record<string, any>; servings?: number | null; totalGrams?: number | null }): any;
 export function chooseExisting(state: any, lineId: string, choice: any): any;
 export function lookupOfficial(state: any, lineId: string, attempt: any): any;

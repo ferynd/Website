@@ -1,7 +1,7 @@
 import { V2_KEYS } from './nutrientRegistry.js';
 
 /** Meal math only. Profiles stay per 100 g. This module does not fetch, fit, or save. */
-export const CALCULATION_VERSION = 1;
+export const CALCULATION_VERSION = 2;
 export const FIBER_WEIGHT_VERSION = 1;
 export const ADJUSTED_CARB_VERSION = 1;
 export const FODMAP_EQUIVALENT_VERSION = 1;
@@ -27,17 +27,64 @@ export function scalePerBasis(quantityGrams, amountPerBasis, basisGrams) {
     return Number.isFinite(contribution) ? contribution : null;
 }
 
-function countedLines(lines) {
+/** Lines whose grams count toward the meal: every line except a parent that has children. */
+export function countedLines(lines) {
     const parents = new Set(lines.filter(line => line.parentLineId).map(line => line.parentLineId));
     return lines.filter(line => !parents.has(line.lineId));
 }
 
+/**
+ * Nutrient grams are the edible profile amount after one fat discard and one nutrient retention.
+ * Water changes cooked weight only. yieldRetention above 1 is water gain, not a dropped line
+ * and not a nutrient multiplier. External absorbed fat adds mass only when fatAbsorbedExternal is set,
+ * so a counted fat line is not added twice.
+ */
+export function nutrientBasis(line) {
+    const grams = Number.isFinite(line.grams) && line.grams >= 0 ? line.grams : null;
+    if (grams == null) return null;
+    const stated = line.yieldRetention == null ? 1 : line.yieldRetention;
+    if (!Number.isFinite(stated) || stated < 0) return null;
+    const retention = stated > 1 ? 1 : stated;
+    const explicitWater = Number.isFinite(line.waterDeltaG);
+    let waterDeltaG = explicitWater ? line.waterDeltaG : (stated > 1 ? grams * (stated - 1) : 0);
+    let fatDiscardedG = Number.isFinite(line.fatDiscardedG) && line.fatDiscardedG > 0 ? line.fatDiscardedG : 0;
+    const fatAbsorbedG = Number.isFinite(line.fatAbsorbedG) && line.fatAbsorbedG > 0 ? line.fatAbsorbedG : 0;
+    const externalFat = line.fatAbsorbedExternal === true ? fatAbsorbedG : 0;
+    if (fatDiscardedG > grams) fatDiscardedG = grams;
+    const remaining = grams - fatDiscardedG + externalFat;
+    if (waterDeltaG < 0 && -waterDeltaG > remaining) waterDeltaG = -remaining;
+    const scale = value => {
+        if (!Number.isFinite(value) || value < 0) return null;
+        const discarded = Math.min(fatDiscardedG, value);
+        return Math.max(0, value - discarded) * retention;
+    };
+    const g = scale(grams);
+    const cooked = grams + waterDeltaG + externalFat - fatDiscardedG;
+    return {
+        g,
+        gMin: scale(line.gMin) ?? g,
+        gMax: scale(line.gMax) ?? g,
+        rawG: grams,
+        cookedG: cooked < 0 ? 0 : cooked,
+        waterDeltaG,
+        fatAbsorbedG,
+        fatDiscardedG,
+        retention,
+    };
+}
+
 function gramsOf(line) {
-    const retention = line.yieldRetention == null ? 1 : line.yieldRetention;
-    if (!Number.isFinite(line.grams) || line.grams < 0 || !Number.isFinite(retention) || retention < 0 || retention > 1)
-        return null;
-    const scale = value => value == null ? null : value * retention;
-    return { g: line.grams * retention, gMin: scale(line.gMin) ?? line.grams * retention, gMax: scale(line.gMax) ?? line.grams * retention };
+    const basis = nutrientBasis(line);
+    if (!basis) return null;
+    return { g: basis.g, gMin: basis.gMin, gMax: basis.gMax };
+}
+
+function addMass(total, basis) {
+    total.rawG += basis.rawG;
+    total.cookedG += basis.cookedG;
+    total.waterDeltaG += basis.waterDeltaG;
+    total.fatAbsorbedG += basis.fatAbsorbedG;
+    total.fatDiscardedG += basis.fatDiscardedG;
 }
 
 function observation(line, key) {
@@ -182,10 +229,16 @@ export function calculateMeal(input = {}) {
         version: FIBER_WEIGHT_VERSION,
         coverage: { ingredientsKnown: fiberParts.length, ingredientsTotal: lines.length },
     };
+    const mass = { rawG: 0, cookedG: 0, waterDeltaG: 0, fatAbsorbedG: 0, fatDiscardedG: 0 };
+    for (const line of lines) {
+        const basis = nutrientBasis(line);
+        if (basis) addMass(mass, basis);
+    }
     return {
         calculationVersion: CALCULATION_VERSION,
         countedLineIds: lines.map(line => line.lineId),
         nutrients,
+        mass,
         adjustedCarbs: { ...adjustedCarbs(nutrients, input.carbConvention), version: ADJUSTED_CARB_VERSION },
         fodmapEquivalents: { ...fodmap(nutrients), version: FODMAP_EQUIVALENT_VERSION },
     };

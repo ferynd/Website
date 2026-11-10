@@ -1,4 +1,4 @@
-import { calculateMeal } from './calculate.js';
+import { calculateMeal, countedLines, nutrientBasis } from './calculate.js';
 import { normalizeVariantDims } from './ingredientVariants.js';
 import { formWordsFor } from './variantVocabulary.js';
 import { fitTargets } from './import/ingredientList.js';
@@ -14,6 +14,28 @@ export const RESOLUTION_CAPABILITIES = Object.freeze({
     directAiRoute: false,
 });
 const LADDER = Object.freeze(['choose_existing', 'lookup_official', 'research_packet', 'manual_entry', 'incomplete_draft', 'cancel']);
+
+/** True when every counted line has a valid mass, so a calculated cooked mass covers the whole meal. */
+function massComplete(lines) {
+    const counted = countedLines(lines || []);
+    return counted.length > 0 && counted.every(line => nutrientBasis(line) != null);
+}
+
+/**
+ * Cooked grams of the counted lines, or null unless every counted line has a valid mass.
+ * A partial sum would make a serving-weight fact look comparable against part of the meal.
+ */
+export function cookedTotal(lines) {
+    if (!massComplete(lines)) return null;
+    const seen = new Set();
+    let total = 0;
+    for (const line of countedLines(lines)) {
+        if (seen.has(line.lineId)) continue;
+        seen.add(line.lineId);
+        total += nutrientBasis(line).cookedG;
+    }
+    return total;
+}
 
 function missingFields(nutrients = {}) {
     return PROFILE_FIELDS.filter(key => {
@@ -54,8 +76,9 @@ export function buildResolution({ lines = [], matches = [], nutrientsByLine = {}
             baseRevision: revisionsByLine[line.lineId] || null,
         });
     }
-    const grams = Number.isFinite(totalGrams) ? totalGrams : (lines.every(line => Number.isFinite(line.grams)) && lines.length ? lines.reduce((sum, line) => sum + line.grams, 0) : null);
-    return { schemaVersion: 1, items, lines, servings, totalGrams: grams, capabilities: RESOLUTION_CAPABILITIES, ladder: LADDER, modelCalls: 0, cancelled: false, committed: false };
+    const declared = Number.isFinite(totalGrams) && totalGrams >= 0 ? totalGrams : null;
+    const grams = declared ?? cookedTotal(lines);
+    return { schemaVersion: 1, items, lines, servings, totalGrams: grams, declaredTotalGrams: declared, capabilities: RESOLUTION_CAPABILITIES, ladder: LADDER, modelCalls: 0, cancelled: false, committed: false };
 }
 
 function replace(state, lineId, patch) {
@@ -165,7 +188,22 @@ export function recalculateResolution(state, options = {}) {
     return { calculation: calculateMeal({ ...options, lines: resolutionLines(state) }), modelCalls: 0, researchedLineIds: state.items.filter(item => item.source === 'packet').map(item => item.lineId) };
 }
 
-function scaleFactValue(value, fact, state) {
+/**
+ * Cooked meal mass for serving-weight facts. The calculated cooked mass is used only when every counted
+ * line has a valid mass, so edited or fitted grams cannot leave a stale total. Otherwise only an explicit
+ * meal cooked total is comparable; a partial line sum is not.
+ */
+function comparableCookedMass(state, calculation) {
+    if (massComplete(state.lines)) {
+        const cooked = calculation?.mass?.cookedG;
+        if (Number.isFinite(cooked)) return cooked;
+        if (Number.isFinite(state.totalGrams)) return state.totalGrams;
+    }
+    return Number.isFinite(state.declaredTotalGrams) ? state.declaredTotalGrams : null;
+}
+
+/** Serving-weight facts scale by the comparable cooked mass, or are not comparable. */
+function scaleFactValue(value, fact, state, calculation) {
     if (!Number.isFinite(value)) return null;
     if (fact.appliesTo?.scope !== 'serving') return value;
     const mealServings = state.servings;
@@ -173,7 +211,7 @@ function scaleFactValue(value, fact, state) {
     if (Number.isFinite(mealServings) && mealServings > 0 && Number.isFinite(factServings) && factServings > 0)
         return value * (mealServings / factServings);
     const weight = fact.basis?.servingWeight?.g;
-    const total = state.totalGrams;
+    const total = comparableCookedMass(state, calculation);
     if (Number.isFinite(total) && total > 0 && Number.isFinite(weight) && weight > 0)
         return value * (total / weight);
     return null;
@@ -198,7 +236,7 @@ export function reviewResolution(state, calculation, facts = []) {
     const comparisons = facts.filter(fact => fact.appliesTo?.scope !== 'line' && (fact.appliesTo?.scope === 'serving' || fitTargets({ knownFacts: [fact] }).length)).map(fact => {
         const rows = Object.entries(fact.nutrients || {}).map(([key, observed]) => {
             const calculated = calculation?.nutrients?.[key]?.value ?? null;
-            const known = scaleFactValue(observed.value, fact, state);
+            const known = scaleFactValue(observed.value, fact, state, calculation);
             const note = fact.appliesTo?.scope === 'serving' && known == null ? 'basis_not_comparable' : null;
             if (observed.qualifier === 'less_than')
                 return { key, known, unit: observed.unit, qualifier: 'less_than', calculated, consistent: calculated == null || known == null ? null : calculated <= known, difference: null, ...(note ? { note } : {}) };

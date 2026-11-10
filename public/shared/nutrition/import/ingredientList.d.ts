@@ -44,6 +44,8 @@ export function validateIngredientList(input: unknown): {
     warnings: ImportIssue[];
     factUses?: Readonly<Record<string, string>>;
 };
+/** Rebuilds the documented nested `line.yield` object (nutrientRetention, not yieldRetention) for JSON export. */
+export function publicIngredientList<T extends { ingredients?: any[] }>(list: T): T & { ingredients: any[] };
 export function compoundGroups(list: { ingredients?: any[] }): Array<{ parentLineId: string; childLineIds: string[] }>;
 export function isFreeQuantity(line: any, constraints?: any[]): boolean;
 export function fitTargets(list: { knownFacts?: any[] }): any[];

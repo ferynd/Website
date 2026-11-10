@@ -156,6 +156,13 @@ describe('quantity fitting', () => {
         expect(nested.quantities.find(item => item.lineId === 'tomato').grams).toBeCloseTo(50, 0);
         expect(nested.calculation.nutrients.calories.value).toBeCloseTo(25, 0);
         expect(nested.modelCalls).toBe(0);
+        const boiled = fitQuantities({
+            lines: [{ lineId: 'pasta', grams: 100, gMin: 50, gMax: 200, basis: 'estimated', nutrients: calories(350), yieldRetention: 2 }],
+            facts: [{ factId: 'serve', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } }, nutrients: calories(175) }],
+        });
+        expect(boiled.quantities[0].grams).toBeCloseTo(100, 0);
+        expect(boiled.calculation.nutrients.calories.value).toBeCloseTo(350, 0);
+        expect(boiled.flags.infeasible).toBe(false);
         const unknown = fitQuantities({
             lines: [{ lineId: 'rice', grams: null, basis: 'estimated', nutrients: calories(100) }],
             facts: [fact(calories(100))],
@@ -181,5 +188,41 @@ describe('quantity fitting', () => {
             facts: [fact(calories(0))],
         });
         expect(zeroDen.flags.infeasible).toBe(true);
+    });
+
+    it('solves a serving-weight fact whose cooked mass moves with the fitted grams', () => {
+        const serving = { factId: 'serve', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } }, nutrients: calories(300) };
+        const beef = grams => ({ lineId: 'beef', grams, gMin: 0, gMax: 400, basis: 'estimated', nutrients: calories(200), waterDeltaG: -50 });
+        // The 1e-8 deviation weight pulls a few micrograms toward the start; 1e-4 g is the exact solve.
+        const moving = fitQuantities({ lines: [beef(100)], facts: [serving] });
+        expect(moving.quantities[0].grams).toBeCloseTo(150, 4);
+        expect(moving.flags.infeasible).toBe(false);
+        expect(moving.calculation.nutrients.calories.value).toBeCloseTo(300, 4);
+        expect(moving.residuals[0].known).toBeCloseTo(300, 4);
+        for (const start of [150, 300]) {
+            const again = fitQuantities({ lines: [beef(start)], facts: [serving] });
+            expect(again.quantities[0].grams).toBeCloseTo(150, 4);
+        }
+        const declared = fitQuantities({
+            lines: [{ lineId: 'beef', grams: 100, gMin: 0, gMax: 400, basis: 'estimated', nutrients: calories(200) }],
+            facts: [serving],
+            cookedTotal: 100,
+        });
+        expect(declared.quantities[0].grams).toBeCloseTo(150, 4);
+        expect(declared.residuals[0].known).toBe(300);
+        expect(declared.flags.infeasible).toBe(false);
+    });
+
+    it('does not scale a serving-weight fact against a partial cooked mass (#72 fix round 2)', () => {
+        const serve = fact(calories(100), { factId: 'serve', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } } });
+        const lines = [
+            { lineId: 'rice', grams: 100, gMin: 0, gMax: 300, basis: 'estimated', nutrients: calories(200) },
+            { lineId: 'sauce', grams: null, basis: 'estimated', nutrients: calories(50) },
+        ];
+        const partial = fitQuantities({ lines, facts: [serve] });
+        expect(partial.ran).toBe(false);
+        expect(partial.residuals).toEqual([expect.objectContaining({ factId: 'serve', reason: 'basis_not_comparable' })]);
+        const declared = fitQuantities({ lines, facts: [serve], cookedTotal: 300 });
+        expect(declared.residuals.find(row => row.factId === 'serve').known).toBe(300);
     });
 });
