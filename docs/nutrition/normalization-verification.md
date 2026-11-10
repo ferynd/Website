@@ -1,6 +1,6 @@
 # Normalization verification against the pinned FDC releases (#63 V3)
 
-Run: 2026-11-10. Branch `claude/calorie-tracker-63-v2v3` from `main` `62f2336`. Authority: James's decisions of 2026-11-10 (V3: verify nutrient normalization against actual records, covering expanded field coverage, units, zero versus unknown, provenance, and source matching). This document holds **aggregate counts only**: no nutrient value, no record content, and no dataset file entered the repository. FDC ids and the verbatim description of one record are public metadata. The run wrote nothing; its only output was stdout JSON. No live call, no API key, no Firestore access. The reviewed [match table](source-match-table.json) is unchanged, and both write flags stay false.
+Run: 2026-11-10. Branch `claude/calorie-tracker-63-v2v3` (PR #214), first run from `main` `62f2336`, then rebased onto `main` `bde7740` (PR #213) and re-run with identical counts (see [Rebase onto PR #213](#rebase-onto-pr-213)). Authority: James's decisions of 2026-11-10 (V3: verify nutrient normalization against actual records, covering expanded field coverage, units, zero versus unknown, provenance, and source matching). This document holds **aggregate counts only**: no nutrient value, no record content, and no dataset file entered the repository. FDC ids and the verbatim description of one record are public metadata. The run wrote nothing; its only output was stdout JSON. No live call, no API key, no Firestore access. The reviewed [match table](source-match-table.json) is unchanged, and both write flags stay false.
 
 Related: [research pipeline](research-pipeline.md) · [A1 batch report](population-batch-a1-report.md) · [FDC pins dry run](fdc-pins-dry-run-report.md)
 
@@ -17,6 +17,7 @@ Related: [research pipeline](research-pipeline.md) · [A1 batch report](populati
 9. [Defects and follow-ups](#defects-and-follow-ups)
 10. [In-repo tests](#in-repo-tests)
 11. [Re-run](#re-run)
+12. [Rebase onto PR #213](#rebase-onto-pr-213)
 
 ## What was checked
 
@@ -32,7 +33,7 @@ Related: [research pipeline](research-pipeline.md) · [A1 batch report](populati
 
 Any disagreement is a defect. Each resolved value is also recomputed from its source row with the registry converter (`convertUnit`) as a unit spot check. Energy must follow 1008 > 2048 > 2047, and kJ (1062) must never reach calories. Vitamin A IU (1104) and total folate (1177) must stay gaps and never become RAE or DFE values. Phylloquinone-only vitamin K (1185) must stay a gap. Record provenance (recordId, source key, release, dataType, publishedAt, checksum recomputed from the record, title, accessedAt, permittedUse) must survive normalization.
 
-The 17 A1 proposals also run end to end as **one mixed-release batch** (3 Foundation, 14 SR Legacy) through `researchService.runJob` with a single bulk adapter. They use in-memory, verification-only entries built from the pinned records. Those entries are not reviewed, and nothing was written to the match table. Each resulting draft is compared with the normalizer's output and checked with the fail-closed reviewed-table gate (`assertCuratedMatchTable`).
+The 17 A1 proposals also run end to end as **one mixed-release batch** (3 Foundation, 14 SR Legacy) through `researchService.runJob` with a single bulk adapter. They use in-memory, verification-only entries built from the pinned records. Those entries are not reviewed, and nothing was written to the match table. Each resulting draft is compared with the normalizer's output and checked with the fail-closed reviewed-table gate (`assertCuratedMatchTable`). The absent-entry rule in that gate is PR #213's. The release and dataType agreement, the non-empty description rule, and the re-check of deterministic bulk proposals are PR #214's.
 
 ## Runs
 
@@ -231,3 +232,19 @@ npx --no-install vite-node scripts/nutrition/normalizationVerificationCli.ts -- 
 ```
 
 The output is deterministic: it prints no timestamps, and the sample is evenly spaced by fdcId.
+
+## Rebase onto PR #213
+
+PR #213 (merged as `bde7740`) took over tolerant Foundation indexing and the fail-closed rule for an absent match-table entry. PR #214 was rebased onto it, and this suite now indexes through PR #213's `indexBulk`. That function indexes every parsed record, returns a value-free report, and treats a duplicate fdcId as fatal. Neither pinned file has a duplicate fdcId, so the same records are indexed as before. The suite's own pin and checksum check (`auditPinnedBulk`) did not change.
+
+Both runs were repeated after the rebase, against the same pinned files:
+
+| Measure | Before rebase | After rebase |
+| --- | ---: | ---: |
+| Sample records checked / with defects | 217 / 0 | 217 / 0 |
+| All parsed records checked / with defects | 8,207 / 0 | 8,207 / 0 |
+| Resolved fields, all records (Foundation + SR Legacy) | 9,120 + 283,680 = 292,800 | 9,120 + 283,680 = 292,800 |
+| A1: found and parsed / reaching `needs_review` / stamped with own release | 17 / 17 / 17 | 17 / 17 / 17 |
+| A1 gate: exact passes / no entry, wrong release, wrong dataType fail / report description fails | 17 / 17, 17, 17 / 1 | 17 / 17, 17, 17 / 1 |
+
+No count changed.
