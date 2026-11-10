@@ -66,3 +66,19 @@ describe('ingredient library', () => {
         expect(packet.modelCalls).toBe(0);
     });
 });
+
+describe('library research lookup status (#74)', () => {
+    it('records not_performed instead of an official miss and still returns a packet', async () => {
+        const packet = await researchLibraryFields({ name: 'black beans', ownerUid: 'owner-a', missingFields: ['protein', 'fiber'] });
+        expect(packet.ok, packet.error).toBe(true);
+        const item = packet.state.items[0];
+        expect(item.officialAttempts).toEqual([{ adapter: 'none', release: null, outcome: 'not_performed', reason: 'live official sources are not enabled' }]);
+        expect(item.resolved).toBe(false);
+        expect(packet.packets[0].targets[0].triedSources).toEqual([{ adapter: 'none', release: null, outcome: 'not_performed' }]);
+        expect(packet.packets[0].targets[0].requestedFields).toEqual(['fiber', 'protein']);
+        expect(packet.copyText).not.toContain('not_found');
+        expect(packet.copyText).not.toContain('nutrition-curated@0');
+        expect(packet.writes).toBe(false);
+        expect(packet.modelCalls).toBe(0);
+    });
+});

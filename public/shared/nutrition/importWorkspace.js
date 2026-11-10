@@ -5,7 +5,7 @@ import {
 } from './import/index.js';
 import { validateResearchResponse } from './research/researchPacket.js';
 import {
-    buildResolution, cancelResolution, chooseExisting, cookedTotal, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete,
+    buildResolution, cancelResolution, chooseExisting, cookedTotal, LIVE_SOURCES_DISABLED, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete,
 } from './resolution.js';
 import { PROFILE_FIELDS } from './research/profileFields.js';
 import { fitQuantities } from './fit.js';
@@ -266,12 +266,17 @@ export function chooseWorkspace(workspace, lineId, choice) {
     return withResolution(workspace, chooseExisting(workspace.resolution, lineId, choice));
 }
 
-/** Records an official attempt. This module does not contact a food database. */
-export function lookupWorkspace(workspace, lineIds, attempt = {}) {
+/**
+ * Visits the official-lookup step. This module does not contact a food database (live sources are
+ * #62 Part B), so every attempt it records is `not_performed` with no adapter or release. The third
+ * parameter is kept for call compatibility and ignored: a caller cannot make the workspace claim
+ * `not_found` or `resolved` for a lookup that never ran.
+ */
+export function lookupWorkspace(workspace, lineIds, _attempt = {}) {
     if (!workspace?.resolution) return fail(workspace, 'match_required');
     let resolution = workspace.resolution;
     for (const lineId of lineIds) {
-        const next = lookupOfficial(resolution, lineId, { outcome: 'not_found', adapter: 'curated', reason: 'live official sources are not enabled', ...attempt });
+        const next = lookupOfficial(resolution, lineId, { outcome: 'not_performed', reason: LIVE_SOURCES_DISABLED });
         if (!next.ok) return fail(workspace, next.error);
         resolution = next.state;
     }
