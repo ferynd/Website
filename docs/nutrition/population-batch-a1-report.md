@@ -179,6 +179,8 @@ Found while running this batch. Items 1 and 2 are fixed here with tests; the res
 
 ## Follow-ups: the import PR for this batch
 
+**Status (2026-11-10):** the import ran; see the [A1 import report](population-batch-a1-import.md). Of the 17 proposals, 12 received reviewed entries after the issue #215 ANSWER Q-000 adjudication (5 of the 17 were rejected there and joined the unresolved list, 13 unresolved total), 11 profiles were validated, staged, and imported, and mayonnaise-regular-as-sold was held out at nutrient validation pending the source decision in issue #215 QUESTION Q-002. Gaps 4 and 5 were fixed by PRs #213 and #214 before the import. The original follow-up plan below is kept for the record.
+
 The A1 import PR (`#63-A-1`, under the standing approval, with James's approval recorded in the PR) will contain:
 
 1. Reviewed match-table entries for the 17 proposed matches above: `adapter: fdc_bulk`, `dataType`, `fdcId`, `release`, verbatim `description`, `stateEvidence`, `rationale`, reviewer handle, `reviewedAt`, `checklistVersion: 1`. The flagged cases are re-confirmed by the human reviewer first, and any rejected proposal moves to the unresolved list.

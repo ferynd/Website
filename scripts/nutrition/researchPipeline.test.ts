@@ -31,8 +31,13 @@ it('validates the 1114 queued identities without values, using the shared state 
     expect(selectNextBatch(entries, [], {})).toHaveLength(25);
     expect(stateToDims('alien').needsReview).toBe(true);
 });
-it('ships an empty match table and requires reviewed unique matches or shared-source justification', async () => {
-    expect(await readMatchTable()).toEqual([]);
+it('ships a validated match table and requires reviewed unique matches or shared-source justification', async () => {
+    // The shipped table carries the reviewed entries of the latest completed
+    // batch (A1: docs/nutrition/population-batch-a1-import.md). It must always
+    // validate, and manifest ids stay unique within an adapter.
+    const shipped = await readMatchTable();
+    expect(shipped.length).toBeGreaterThan(0);
+    expect(new Set(shipped.map(e => e.manifestId + ':' + e.adapter)).size).toBe(shipped.length);
     const raw = JSON.parse(await readFile('scripts/fixtures/nutrition/match-table-mini.json', 'utf8'));
     expect(await validateMatchTable(raw)).toHaveLength(4);
     raw.entries.push({ ...raw.entries[0] });

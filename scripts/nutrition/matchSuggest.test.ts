@@ -34,7 +34,9 @@ it('searches a release with a malformed record through the audit path, which the
 });
 it('suggest stays review-only and returns no candidates without a pinned file', async () => {
     const id = JSON.parse(await readFile('docs/nutrition/ingredient-catalog.json', 'utf8')).entries[0].id;
+    const tableBefore = await readFile('docs/nutrition/source-match-table.json', 'utf8');
     const result = await researchCli(['suggest', '--manifest-id', id], { output: () => { } });
     expect(result).toMatchObject({ reviewOnly: true, dataset: null, candidates: [], skippedRecords: 0 });
-    expect(JSON.parse(await readFile('docs/nutrition/source-match-table.json', 'utf8')).entries).toEqual([]);
+    // Suggestion output never edits the reviewed match table.
+    expect(await readFile('docs/nutrition/source-match-table.json', 'utf8')).toBe(tableBefore);
 });
