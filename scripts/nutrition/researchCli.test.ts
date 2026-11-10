@@ -52,13 +52,21 @@ it('plan/packet/import/review/coverage are dry-run by default and never fetch', 
     await researchCli(['coverage', '--store', root], { output, fetch });
     expect(fetch).not.toHaveBeenCalled();
 });
-it('refuses fdc-api without --live and writes without --store; curated manifest remains empty', async () => {
+it('refuses fdc-api without --live and writes without --store; curated manifest stays consistent with its shards', async () => {
     const fetch = vi.fn();
     await expect(researchCli(['run', '--source', 'fdc-api'], { output, fetch })).rejects.toThrow('--live');
     await expect(researchCli(['plan', '--write'], { output, fetch })).rejects.toThrow('--store');
     expect(fetch).not.toHaveBeenCalled();
-    const manifest = JSON.parse(await readFile('public/shared/nutrition/catalog/nutrition-curated/manifest.json', 'utf8'));
-    expect(manifest.profileCount).toBe(0);
+    // The curated catalog is populated by reviewed #63 batch imports (first:
+    // A1, docs/nutrition/population-batch-a1-import.md). profileCount must
+    // always equal the number of variant records across the shipped shards.
+    const base = 'public/shared/nutrition/catalog/nutrition-curated/';
+    const manifest = JSON.parse(await readFile(base + 'manifest.json', 'utf8'));
+    let records = 0;
+    for (const shard of Object.values(manifest.variantShards) as { file: string }[])
+        records += (JSON.parse(await readFile(base + shard.file, 'utf8')) as unknown[]).length;
+    expect(manifest.profileCount).toBe(records);
+    expect(manifest.profileCount).toBeGreaterThan(0);
 });
 it('retry requires a job, previews without persistence, and only --write requeues blocked jobs', async () => {
     const root = await dir(), fetch = vi.fn(() => { throw new Error('network forbidden'); });
@@ -107,7 +115,7 @@ function offlineBulkAdapter(permit = 'CC0 fixture license') {
             toSourceResult: async () => ({
                 type: 'fdc', recordId: '9900001', dataType: 'Foundation', description: 'Synthetic apple',
                 release: 'fixture-v1', accessedAt: '2026-11-06', permittedUse: permit, originalBasis: 'per_100g_edible',
-                nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g' }],
+                nutrients: [{ nutrientId: 1003, amount: 2, unitName: 'g', derivationCode: 'A' }],
             }),
         },
     };

@@ -17,7 +17,7 @@ export const POLYOL_COUNTED_FRACTIONS = Object.freeze({
     erythritol: 0, sorbitol: 0.5, mannitol: 0.5, isomalt: 0.5, xylitol: 0.5, glycerol: 0.5, maltitol: 0.75,
 });
 const STORED_KEYS = V2_KEYS.filter(key => key !== 'fiberWeightedLegacy');
-const REPORTED = new Set(['measured', 'label_reported', 'legacy_unclassified']);
+const REPORTED = new Set(['measured', 'label_reported', 'legacy_unclassified', 'source_reported']);
 
 /** One scaling rule for per-100 g profiles and per-unit foods. Null stays null. */
 export function scalePerBasis(quantityGrams, amountPerBasis, basisGrams) {

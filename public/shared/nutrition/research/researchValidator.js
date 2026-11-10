@@ -79,8 +79,10 @@ export async function validateProposal(job, { base = null } = {}) {
     // 3. Status for all V2_KEYS
     const quality = draft.nutrientMeta?.quality || {};
     for (const key of V2_KEYS) {
-        if (draft.nutrients[key] === null && ['measured', 'label_reported', 'calculated', 'estimated_from_comparable'].includes(quality[key]?.status))
+        if (draft.nutrients[key] === null && ['measured', 'label_reported', 'calculated', 'estimated_from_comparable', 'source_reported', 'assumed_zero'].includes(quality[key]?.status))
             errors.push(`Field ${key} observational status requires non-null value`);
+        if (quality[key]?.status === 'assumed_zero' && draft.nutrients[key] !== null && draft.nutrients[key] !== 0)
+            errors.push(`Field ${key} assumed_zero status requires a zero value`);
         if (!quality[key]?.status) {
             errors.push(`Field ${key} has no status`);
         }

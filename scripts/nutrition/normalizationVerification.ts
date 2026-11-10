@@ -31,7 +31,7 @@ import { stateToDims, type ManifestEntry } from './manifestReader';
 
 export type KeyOutcome = 'resolved' | 'below_loq' | 'unknown' | 'gap' | 'absent';
 export const KEY_OUTCOMES: readonly KeyOutcome[] = ['resolved', 'below_loq', 'unknown', 'gap', 'absent'];
-const RESOLVED_STATUSES = new Set(['measured', 'calculated', 'label_reported']);
+const RESOLVED_STATUSES = new Set(['measured', 'calculated', 'label_reported', 'assumed_zero', 'source_reported']);
 const OMEGA3_COMPONENTS = [1404, 1278, 1272] as const;
 const KJ_ENERGY_ID = 1062;
 

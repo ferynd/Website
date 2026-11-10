@@ -14,6 +14,12 @@ export const NUTRIENT_STATUSES = Object.freeze([
   'below_quantification_limit',
   'unknown',
   'not_applicable',
+  // Derivation-code policy (issue #215 ANSWER Q-004, decided under James's
+  // delegation): a USDA assumed zero keeps its numeric 0 under its own
+  // status, and a source value whose determination method is not classified
+  // is source_reported, never silently measured.
+  'assumed_zero',
+  'source_reported',
   'legacy_unclassified',
 ]);
 

@@ -72,13 +72,15 @@ Stored profile fields per profile: 67. Validated profiles: 1. Field-status total
 
 | Field status | Fields |
 | --- | --- |
-| `measured` | 12 |
+| `measured` | 0 |
 | `label_reported` | 0 |
 | `calculated` | 1 |
 | `estimated_from_comparable` | 0 |
 | `below_quantification_limit` | 0 |
 | `unknown` | 54 |
 | `not_applicable` | 0 |
+| `assumed_zero` | 0 |
+| `source_reported` | 12 |
 
 ## Unresolved fields
 

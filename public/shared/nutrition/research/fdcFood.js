@@ -147,6 +147,7 @@ export async function parseFdcFood(json, { release = 'unknown', accessedAt } = {
             median: Number.isFinite(Number(item.median)) ? Number(item.median) : null,
             loq,
             isBelowLoq: Boolean(isLoq),
+            derivationCode: derivationCode || null,
         });
     }
     // Portion parsing

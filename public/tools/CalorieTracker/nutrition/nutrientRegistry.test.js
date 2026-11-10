@@ -206,6 +206,7 @@ describe('nutrient registry', () => {
     expect(listed).toEqual([
       'measured', 'label_reported', 'calculated', 'estimated_from_comparable',
       'below_quantification_limit', 'unknown', 'not_applicable',
+      'assumed_zero', 'source_reported',
     ]);
     expect([...NUTRIENT_STATUSES]).toEqual([...listed, 'legacy_unclassified']);
   });

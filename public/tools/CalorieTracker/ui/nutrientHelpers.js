@@ -88,6 +88,8 @@ const STATUS_BADGES = {
   unknown: 'unknown',
   not_applicable: 'n/a',
   legacy_unclassified: 'legacy',
+  assumed_zero: 'assumed zero',
+  source_reported: 'source reported',
 };
 
 /** Pure display string. Partial coverage is a caller prefix ("≥"), not baked in here. */

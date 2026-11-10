@@ -190,7 +190,39 @@ it.each([[2048, 'atwater_specific_factors'], [2047, 'atwater_general_factors']])
     expect(normalized.nutrients.calories).toBe(200);
     expect(normalized.nutrientMeta.quality.calories.status).toBe('calculated');
     expect(normalized.fieldProvenance.calories).toMatchObject({ sourceNutrientId: String(nutrientId), derivation });
-    result.nutrients.push({ nutrientId: 1008, amount: 90, unitName: 'kcal' });
+    result.nutrients.push({ nutrientId: 1008, amount: 90, unitName: 'kcal', derivationCode: 'A' });
     expect(normalizeSourceResult(result).nutrientMeta.quality.calories.status).toBe('measured');
     expect(normalizeSourceResult(result).nutrients.calories).toBe(180);
+});
+
+describe('Q-004 derivation policy (issue #215)', () => {
+    it('classifies FDC quality from derivation codes and carries the raw code in provenance', async () => {
+        const raw = loadFixture('apple-bulk.json');
+        const parsed = await parseFdcFood(raw, { release: '2024-10-31' });
+        const set = (id, code) => { parsed.nutrients.find(n => n.nutrientId === id).derivationCode = code; };
+        set(1008, 'A');
+        set(1003, 'NC');
+        set(1114, 'Z');
+        const proposal = normalizeSourceResult(parsed);
+        expect(proposal.nutrientMeta.quality.calories.status).toBe('measured');
+        expect(proposal.fieldProvenance.calories.sourceDerivationCode).toBe('A');
+        expect(proposal.nutrientMeta.quality.protein.status).toBe('calculated');
+        expect(proposal.fieldProvenance.protein.sourceDerivationCode).toBe('NC');
+        expect(proposal.nutrientMeta.quality.vitaminD.status).toBe('assumed_zero');
+        expect(proposal.nutrients.vitaminD).toBe(0);
+        expect(proposal.fieldProvenance.vitaminD.sourceDerivationCode).toBe('Z');
+        // Sodium (1093) carries no code in this fixture: a real source value,
+        // but source_reported, never silently measured.
+        expect(proposal.nutrients.sodium).toBe(1);
+        expect(proposal.nutrientMeta.quality.sodium.status).toBe('source_reported');
+        expect(proposal.fieldProvenance.sodium.sourceDerivationCode).toBeUndefined();
+    });
+    it('keeps branded rows label_reported regardless of derivation code', async () => {
+        const raw = loadFixture('apple-bulk.json');
+        const parsed = await parseFdcFood(raw, { release: '2024-10-31' });
+        parsed.dataType = 'Branded';
+        parsed.nutrients.find(n => n.nutrientId === 1003).derivationCode = 'NC';
+        const proposal = normalizeSourceResult(parsed);
+        expect(proposal.nutrientMeta.quality.protein.status).toBe('label_reported');
+    });
 });
