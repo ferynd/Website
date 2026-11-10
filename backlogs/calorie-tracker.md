@@ -141,7 +141,7 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
 ### #74: Make official lookup status honest
 
 - [p] **Record an official result only after a lookup runs.** Depends: #62 and #66. A live USDA or manufacturer call stays #62 Part B.
-  > pushed — `lookupWorkspace()` and `researchLibraryFields()` record `not_performed` (adapter `none`, release null) instead of a fabricated `not_found`; caller attempts cannot claim `not_found` or `resolved`; genuine attempts keep the pinned release; the packet ladder still opens; Import button relabeled; flags false; checks: nutrition 530, tracker 1146, root 2015, ci:docs; commit: 355cc0e; PR: pending
+  > pushed — `lookupWorkspace()` and `researchLibraryFields()` record `not_performed` (adapter `none`, release null) instead of a fabricated `not_found`; caller attempts cannot claim `not_found` or `resolved`; genuine attempts keep the pinned release; the packet ladder still opens; Import button relabeled; flags false; checks: nutrition 530, tracker 1146, root 2015, ci:docs; commit: 355cc0e; PR: #202
   - **Surfaces:** `lookupWorkspace()`, `lookupOfficial()`, and `researchLibraryFields()`.
   - **Accept:** curated or private match, then official lookup, then a research packet, then manual entry or an explicit incomplete draft. If live sources are disabled, the state says the lookup was not performed. It does not say `not_found`. When live sources are later enabled, lookup is deterministic and uses the pinned release. Resolved fields are not sent for research again.
   - **Checks:** tracker suite for the workspace and resolution ladder.
