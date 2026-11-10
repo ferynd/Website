@@ -114,7 +114,7 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
             const pin = RESEARCH_CONFIG.datasets.find(d => d.id === str('dataset'));
             if (!pin || !str('file'))
                 throw new Error('--dataset and --file required');
-            result = { count: await indexBulk(str('file')!, pin, cache), dryRun: !flags.write };
+            result = { ...await indexBulk(str('file')!, pin, cache), dryRun: !flags.write };
             break;
         }
         case 'run': {

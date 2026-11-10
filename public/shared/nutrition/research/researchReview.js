@@ -80,11 +80,11 @@ export function verifiedFdcRecords(job) {
     }
     return records;
 }
-/** True when no match-table row exists for this manifest, or this record is that row. */
+/** Verified curated FDC records must have an exact reviewed match-table entry. */
 export function verifiedRecordMatchesTable(manifestId, record, matches = []) {
     const entries = (matches || []).filter(entry => entry && entry.manifestId === manifestId);
     if (!entries.length)
-        return true;
+        return false;
     const description = String(record?.description || '').trim();
     const recordId = String(record?.recordId || '');
     return entries.some(entry => String(entry.fdcId) === recordId && String(entry.description || '').trim() === description);

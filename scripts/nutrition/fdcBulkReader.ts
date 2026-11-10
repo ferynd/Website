@@ -109,11 +109,33 @@ export async function auditPinnedBulk(file: string, pin: DatasetPin): Promise<Bu
     }
     return { total: foods.length, parsedCount: parsed.length, foods: parsed, failures, failureCategories, duplicateCount };
 }
-export async function indexBulk(file: string, pin: DatasetPin, cache: SourceCache) {
-    const foods = await readPinnedBulk(file, pin);
-    for (const food of foods)
+export interface BulkIndexReport {
+    count: number;
+    total: number;
+    skippedRecords: number;
+    skippedFdcIds: (number | null)[];
+    failureCategories: Record<string, number>;
+}
+
+/**
+ * Index validated records from a checksum-pinned release, without allowing a malformed
+ * nutrient amount in an unrelated record to block the whole release. Duplicate IDs
+ * remain fatal: choosing either duplicate would make a match non-reproducible.
+ * Report only record IDs and sanitized failure categories, never nutrient values.
+ */
+export async function indexBulk(file: string, pin: DatasetPin, cache: SourceCache): Promise<BulkIndexReport> {
+    const audit = await auditPinnedBulk(file, pin);
+    if (audit.duplicateCount)
+        throw new PermanentSourceError('Duplicate food ID');
+    for (const food of audit.foods)
         await cache.set(`fdc_bulk:${pin.release}:${food.fdcId}`, food);
-    return foods.length;
+    return {
+        count: audit.parsedCount,
+        total: audit.total,
+        skippedRecords: audit.failures.length,
+        skippedFdcIds: audit.failures.map(failure => failure.fdcId),
+        failureCategories: audit.failureCategories,
+    };
 }
 /**
  * One pinned food record per file (the committed synthetic fixtures). The same

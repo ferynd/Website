@@ -120,7 +120,9 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     const [j] = await f.service.acceptResponse(response);
     const decision = { decision: 'approve', reviewer: 'r', approvedContentHash: await reviewContentHash(j) };
     await expect(f.service.review(j.jobId, decision)).rejects.toThrow('unresolved permittedUse');
-    await expect(stageCatalog([{ ...j, state: 'approved', proposal: { ...j.proposal, sourceVerification: { s1: { status: 'verified', method: 'deterministic_refetch' } } }, review: { approvedContentHash: decision.approvedContentHash } }])).rejects.toThrow('valid reviewed content hash');
+    const originalSource = j.proposal.revisionDraft.sources[j.proposal.assistantSourceKeys.s1];
+    const originalMatches = [{ manifestId: j.target.manifestId, fdcId: originalSource.recordId, description: originalSource.description || originalSource.title }];
+    await expect(stageCatalog([{ ...j, state: 'approved', proposal: { ...j.proposal, sourceVerification: { s1: { status: 'verified', method: 'deterministic_refetch' } } }, review: { approvedContentHash: decision.approvedContentHash } }], { matches: originalMatches })).rejects.toThrow('valid reviewed content hash');
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => ({ type: 'fdc', recordId: '9900001', release: 'fixture-v2', permittedUse: 'CC0 fixture', nutrients: [], portions: [{ kind: 'household', unit: 'cup', amount: 2, grams: 250 }] }) }] });
     const verified = await service.verifySource(j.jobId, 's1', 'fdc_bulk');
     const draft = verified.proposal.revisionDraft, conv = verified.proposal.conversions[0];
@@ -132,7 +134,9 @@ it('verifies normalized FDC portion weights, resolves licenses and rehashes draf
     expect(verified.validation.isValid).toBe(true);
     await expect(service.review(j.jobId, decision)).rejects.toThrow('hash mismatch');
     const approved = await service.review(j.jobId, { ...decision, approvedContentHash: await reviewContentHash(verified) });
-    expect((await stageCatalog([approved])).manifest.profileCount).toBe(1);
+    const approvedSource = approved.proposal.revisionDraft.sources[approved.proposal.assistantSourceKeys.s1];
+    const approvedMatches = [{ manifestId: approved.target.manifestId, fdcId: approvedSource.recordId, description: approvedSource.description || approvedSource.title }];
+    expect((await stageCatalog([approved], { matches: approvedMatches })).manifest.profileCount).toBe(1);
 });
 it.each([
     ['wrong echo', r => { r.requestId = 'rq-' + '0'.repeat(24); }, 'requestId'],
@@ -651,7 +655,9 @@ it('shows a verified FDC description beside the curated target and requires a ma
     const service = createResearchService({ store: f.store, sourceCache: f.sourceCache, adapters: [{ id: 'fdc_bulk', fetch: async () => ({}), toSourceResult: async () => chickpeas }] });
     const verified = await service.verifySource(accepted.jobId, 's1', 'fdc_bulk');
     expect(verified.proposal.sourceVerification.s1.status).toBe('verified');
-    const packet = await buildReviewPacket(verified);
+    const reviewedMatch = { manifestId: verified.target.manifestId, fdcId: '9900002', description: 'Chickpeas, raw' };
+    await expect(buildReviewPacket(verified)).rejects.toThrow('match table');
+    const packet = await buildReviewPacket(verified, { matches: [reviewedMatch] });
     expect(packet.markdown).toContain('Lentils, raw');
     expect(packet.markdown).toContain('Chickpeas, raw');
     expect(packet.markdown).toContain('**Identity mismatch:** yes');
