@@ -112,6 +112,16 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Implement one research pipeline for bulk population, library research, and meal gaps.**
   > Resolved: shared state/preparation vocabulary plus research request/response v1, two-phase adapters, `awaiting_response`, verification, owner-scoped IndexedDB, curated/manual/label/FDC adapters with no live use, staging, coverage, and dry-run `packet`/`import-packet`; checks recorded on the PRs: tracker, root, API, lint, build, ci:contract, ci:docs, unchanged rules, empty curated manifest; merged: ffe83a6 (PR #188) and 91e10ad (PR #189); residual risk: live pins, credentials, and curated publication remain #62 Part B and require explicit approval. Both write flags stay false and the curated manifest stays at zero profiles. See [research-pipeline.md](../docs/nutrition/research-pipeline.md).
 
+## #72 — yield without scaling nutrients by water
+
+- [x] **Separate raw weight, cooked weight, water, fat, and retention.**
+  > Resolved: water loss or gain no longer scales nutrients; the raw total still constrains the sum; serving-weight facts use cooked mass; absorbed or discarded fat and retention are explicit and counted once; `yieldRetention` above 1 is kept; a declared cooked total the fit cannot reach is flagged `cooked_total`; JSON export nests `line.yield`; `.d.ts` declare version 2. Two fix rounds (Grok, then Codex) were fixed before merge. Checks: nutrition 516, tracker 1132, root 2015, `tsc` on the changed `.d.ts`, ci:docs, ci:contract, and green CI; roasted-meat, boiled-pasta, baking, sauce-fat, and mixed-dish regressions pass on `main`. The final review was an orchestrator review disclosed on the PR. Merged: b66786c (PR #200, supersedes #199). Residual risk: none known. Both write flags stayed false; no production write.
+
+## #73 — research evidence on the applied draft
+
+- [x] **Stop dropping provenance when a research response is applied.**
+  > Resolved: applied nutrients keep the full validated field plus `requestId`; each item keeps `researchEvidence` per request (sources with version, publishedAt, accessedAt; unresolved; assumptions; `unverified`); null stays unknown; revision-draft sources keep `publishedAt`; no profile is written. Checks: nutrition 522, tracker 1138, root 2015, ci:docs, and green CI; the #73 evidence tests pass on `main`. The final review was an orchestrator review disclosed on the PR because external reviewers were unavailable. Merged: 95f959e (PR #201). Residual risk: `researchEvidence` from an earlier request stays on the item after a later response replaces those fields, so stale evidence can remain until a follow-up (or #69 Part B review/save) prunes or marks it. Saving the revision stays #69 Part B.
+
 ## #61 Part A — ingredient identities, revisions, and conversions
 
 - [x] **Implement ingredient identities, variants, sources, and revisions (Part A).**

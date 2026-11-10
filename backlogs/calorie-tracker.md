@@ -1,6 +1,6 @@
 # CalorieTracker: active backlog
 
-Single source of truth for work on `public/tools/CalorieTracker/` and the shared ingredient-nutrition integration with Recipe Standardizer. Items through #59, #60 Part A, and #61 Part A are merged and archived.
+Single source of truth for work on `public/tools/CalorieTracker/` and the shared ingredient-nutrition integration with Recipe Standardizer. Items through #59, #60 Part A, #61 Part A, #72, and #73 are merged and archived.
 
 ## Purpose and scope
 
@@ -55,7 +55,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 ## Release phases (James, 2026-11-09)
 
 1. Read-only census and backup (#60 Part B). The parent completed the count on 2026-11-09: 191 v1 foods, 0 v2 foods, 417 daily entries. The REST backup is not a migration copy. Writers stay off. Agents do not query production. Script bugs are #80.
-2. Technical corrections and branch implementations with both write flags false, in this order: #72, #73, #74 lookup honesty, #78, #75, then #69 Part B and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depend on #72, #73, and #74, so they are not the first selectable items.
+2. Technical corrections and branch implementations with both write flags false, in this order: #72 (merged), #73 (merged), #74 lookup honesty, #78, #75, then #69 Part B and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depend on #72, #73, and #74, so they are not selectable until #74 merges.
 3. Beta validation (#79) in an isolated Firebase test project. Not production. #68 depends on a recorded #79 result.
 4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the #77 aggregate counts from a foods-only extract kept outside the checkout. No names, ids, paths, or nutrient values are committed.
 5. Controlled enablement, one gate at a time, each with backup and rollback. Live FDC, catalog import, rules, and writer flags stay unapproved. Do not flip `NUTRIENT_V2_WRITES_ENABLED` for the beta; legacy food and diary writes stay v1.
@@ -63,7 +63,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. #72 is in progress on this branch. #69 Part B and #64 Part B wait on #72, #73, and #74. #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. #74 is pushed and awaiting merge. #69 Part B and #64 Part B wait on #74 (#72 and #73 are merged). #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -138,27 +138,10 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
   - **Checks:** flag-off default (no provider calls), auth including anonymous rejection, rate-limit, cancellation, $0-cap and concurrent budget-reservation tests, service-worker network-only test, `npm run test:api`; update `SECURITY.md` and `ARCHITECTURE.md` when built.
   - **Migration/deploy:** **Requires James's explicit approval** to build or enable the route, provision a key, raise the $0 cap, or deploy any Storage rules it needs.
 
-### #72: Model yield without scaling nutrients by water
-
-- [p] **Separate raw weight, cooked weight, water, fat, and retention.** Depends: #64 Part A and #65. No production approval.
-  > pushed — water does not scale nutrients; raw total still constrains the sum; serving facts use cooked mass; checks: tracker 1112; commit: cd2969e; PR: #199
-  - **Surfaces:** `fitWorkspace()`, `calculate.js`, and `fit.js`.
-  - **Accept:** a finished serving weight is not an exact sum of raw ingredient grams. Water loss or gain does not scale nutrients. Fat absorbed or discarded and retention factors are explicit and are not applied twice. `yieldRetention` above 1 is not silently dropped. Regression tests cover roasted meat, boiled pasta, baking, sauces, and a mixed dish.
-  - **Checks:** tracker suite for `calculate.js`, `fit.js`, and `importWorkspace.js`.
-  - **Migration/deploy:** none. Flags stay false.
-
-### #73: Keep research evidence on the applied draft
-
-- [p] **Stop dropping provenance when a research response is applied.** Depends: #62 and #70. Saving the revision stays #69 Part B.
-  > pushed — applied nutrients keep the full validated field plus `requestId`; each item keeps `researchEvidence` per request (sources with version, publishedAt, accessedAt; unresolved; assumptions; unverified); null stays unknown; revision-draft sources keep `publishedAt`; flags false; checks: nutrition 522, tracker 1138, root 2015, ci:docs; commit: 8a25c95; PR: #201
-  - **Surfaces:** `applyResearchResponse()` and `packetProposal.js`.
-  - **Accept:** the applied draft keeps per-field sources, values, units, status, uncertainty, confidence, comparators, derivations, source versions, retrieval dates, and explicit unknowns. A null stays unknown. The workspace still does not write a profile while the write flag is false.
-  - **Checks:** tracker suite around `importWorkspace.test.js` and the research packet tests.
-  - **Migration/deploy:** none.
-
 ### #74: Make official lookup status honest
 
-- [ ] **Record an official result only after a lookup runs.** Depends: #62 and #66. A live USDA or manufacturer call stays #62 Part B.
+- [p] **Record an official result only after a lookup runs.**
+  > pushed — `lookupWorkspace()` and `researchLibraryFields()` record `not_performed` (adapter `none`, release null) instead of a fabricated `not_found`; caller attempts cannot claim `not_found` or `resolved`; genuine attempts keep the pinned release; the packet ladder still opens; Import button relabeled; flags false; checks: nutrition 530, tracker 1146, root 2015, ci:docs; commit: 355cc0e; PR: pending Depends: #62 and #66. A live USDA or manufacturer call stays #62 Part B.
   - **Surfaces:** `lookupWorkspace()`, `lookupOfficial()`, and `researchLibraryFields()`.
   - **Accept:** curated or private match, then official lookup, then a research packet, then manual entry or an explicit incomplete draft. If live sources are disabled, the state says the lookup was not performed. It does not say `not_found`. When live sources are later enabled, lookup is deterministic and uses the pinned release. Resolved fields are not sent for research again.
   - **Checks:** tracker suite for the workspace and resolution ladder.
