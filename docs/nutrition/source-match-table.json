@@ -106,6 +106,45 @@
       "checklistVersion": 1
     },
     {
+      "manifestId": "cocoa-powder-unsweetened-natural-as-sold",
+      "adapter": "fdc_bulk",
+      "dataType": "SR Legacy",
+      "fdcId": "169593",
+      "release": "2018-04",
+      "description": "Cocoa, dry powder, unsweetened",
+      "stateEvidence": "Unqualified cocoa record; the alkali-processed sibling (169594) carries the processed with alkali qualifier explicitly, so the unqualified record is the natural (not Dutch) form in the dataset taxonomy. See docs/nutrition/a1-evidence-matrix.md.",
+      "rationale": "Supported equivalent under the documented attributes rubric adopted in issue #215: unsweetened dry cocoa powder, not alkali processed by taxonomy, no contradicting evidence in the record.",
+      "reviewer": "pumpkin-a1-import",
+      "reviewedAt": "2026-11-10",
+      "checklistVersion": 1
+    },
+    {
+      "manifestId": "lemon-juice-fresh-ready-to-drink",
+      "adapter": "fdc_bulk",
+      "dataType": "SR Legacy",
+      "fdcId": "167747",
+      "release": "2018-04",
+      "description": "Lemon juice, raw",
+      "stateEvidence": "Record is raw fresh juice; portions are wedge, lemon yield, cup, fl oz, consistent with fresh-squeezed rather than concentrate.",
+      "rationale": "Exact fresh juice record for the fresh ready-to-drink catalog variant. From-concentrate (167748) and branded bottled siblings (167801, 167802) rejected during adjudication.",
+      "reviewer": "pumpkin-a1-import",
+      "reviewedAt": "2026-11-10",
+      "checklistVersion": 1
+    },
+    {
+      "manifestId": "lime-juice-fresh-ready-to-drink",
+      "adapter": "fdc_bulk",
+      "dataType": "SR Legacy",
+      "fdcId": "168156",
+      "release": "2018-04",
+      "description": "Lime juice, raw",
+      "stateEvidence": "Record is raw fresh juice, matching the fresh ready-to-drink variant.",
+      "rationale": "Exact fresh juice record. The canned or bottled sibling (168157) is rejected.",
+      "reviewer": "pumpkin-a1-import",
+      "reviewedAt": "2026-11-10",
+      "checklistVersion": 1
+    },
+    {
       "manifestId": "mayonnaise-regular-as-sold",
       "adapter": "fdc_bulk",
       "dataType": "SR Legacy",
@@ -114,6 +153,32 @@
       "description": "Salad dressing, mayonnaise, regular",
       "stateEvidence": "The record name explicitly says regular mayonnaise, and the record is nutritionally complete where it matters for a catalog staple: energy 680 kcal, total fat 74.8 g, sodium 635 mg, protein 0.96 g, carbohydrate 0.57 g per 100 g across 135 nutrient rows.",
       "rationale": "Source switched from Foundation 2758986 to SR Legacy 171009 on the ANSWER Q-002 recommendation in issue #215, approved by James on Nov 10, 2026. The Foundation record is the identity-exact label but carries no energy, total fat, carbohydrate, or sodium rows, so it is preserved in the adjudication audit trail as a rejected-for-base candidate and is not merged into this profile. The mayonnaise-type dressing record 171403 is a different product and was not used.",
+      "reviewer": "pumpkin-a1-import",
+      "reviewedAt": "2026-11-10",
+      "checklistVersion": 1
+    },
+    {
+      "manifestId": "orange-juice-fresh-ready-to-drink",
+      "adapter": "fdc_bulk",
+      "dataType": "SR Legacy",
+      "fdcId": "169098",
+      "release": "2018-04",
+      "description": "Orange juice, raw (Includes foods for USDA's Food Distribution Program)",
+      "stateEvidence": "Record is raw fresh juice, the only non-canned, non-concentrate orange juice record; every processed sibling carries its qualifier explicitly (canned 169099, chilled from concentrate 169100, frozen concentrate 169102). See docs/nutrition/a1-evidence-matrix.md.",
+      "rationale": "Supported equivalent under the documented attributes rubric adopted in issue #215: product, form, and processing state established by the dataset naming taxonomy, no contradicting evidence in the record. The Food Distribution Program parenthetical is a distribution note, not a processing qualifier.",
+      "reviewer": "pumpkin-a1-import",
+      "reviewedAt": "2026-11-10",
+      "checklistVersion": 1
+    },
+    {
+      "manifestId": "soy-sauce-regular-as-sold",
+      "adapter": "fdc_bulk",
+      "dataType": "SR Legacy",
+      "fdcId": "174277",
+      "release": "2018-04",
+      "description": "Soy sauce made from soy and wheat (shoyu)",
+      "stateEvidence": "Regular-sodium brewed soy sauce from soy and wheat; portions are packet, tbsp, tsp, cup.",
+      "rationale": "Exact regular brewed shoyu record. Tamari (174278), hydrolyzed vegetable protein (174279), and the low-sodium records are rejected.",
       "reviewer": "pumpkin-a1-import",
       "reviewedAt": "2026-11-10",
       "checklistVersion": 1

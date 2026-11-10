@@ -53,11 +53,18 @@ export function validateRevision(doc) {
             errors.push('Invalid confidence');
     }
     for (const [k, value] of Object.entries(doc.nutrients ?? {})) {
+        const status = doc.nutrientMeta?.quality?.[k]?.status;
+        // Q-004 invariant (issue #215 ANSWER Q-005 blocker 2): an assumed_zero
+        // observation is the numeric 0 from a USDA Z derivation code, never a
+        // null and never a positive value, and never a different derivation.
+        if (status === 'assumed_zero' && value !== 0)
+            errors.push('Assumed zero requires a zero value: ' + k);
+        if (status === 'assumed_zero' && doc.fieldProvenance?.[k]?.sourceDerivationCode && doc.fieldProvenance[k].sourceDerivationCode !== 'Z')
+            errors.push('Assumed zero requires a Z derivation code: ' + k);
         if (value === null)
             continue;
         if (typeof value !== 'number' || !Number.isFinite(value) || checkPer100g(k, value) === 'reject')
             errors.push('Invalid nutrient: ' + k);
-        const status = doc.nutrientMeta?.quality?.[k]?.status;
         if (!['measured', 'label_reported', 'calculated', 'estimated_from_comparable', 'below_quantification_limit', 'not_applicable', 'assumed_zero', 'source_reported'].includes(status))
             errors.push('Evidence status required: ' + k);
         const sourceKey = doc.fieldProvenance?.[k]?.sourceKey;
