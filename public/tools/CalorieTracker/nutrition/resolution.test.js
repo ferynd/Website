@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { buildResolution, cancelResolution, chooseExisting, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete } from '../../../shared/nutrition/resolution.js';
+import { buildResolution, cancelResolution, cookedTotal, chooseExisting, lookupOfficial, manualEntry, recalculateResolution, researchPacket, reviewResolution, saveIncomplete } from '../../../shared/nutrition/resolution.js';
 import { PROFILE_FIELDS } from '../../../shared/nutrition/research/profileFields.js';
 import { validateResearchResponse } from '../../../shared/nutrition/research/researchPacket.js';
 
@@ -117,5 +118,51 @@ describe('missing ingredient resolution', () => {
         expect(fieldPacket.pendingJobs[0].state).toBe('awaiting_response');
         expect(fieldPacket.pendingJobs[0].pendingRequest.status).toBe('pending');
         expect(review.modelCalls).toBe(0);
+    });
+});
+
+describe('cooked mass for serving-weight review (#72 fix round 2)', () => {
+    const serve = { factId: 'serve', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } }, nutrients: { calories: { value: 100, unit: 'kcal' } } };
+    const partial = [{ lineId: 'rice', name: 'rice', grams: 100 }, { lineId: 'sauce', name: 'sauce', grams: null }];
+
+    it('does not sum a partial cooked mass when a counted line has no grams', () => {
+        expect(cookedTotal(partial)).toBeNull();
+        expect(cookedTotal([{ lineId: 'rice', grams: 100 }, { lineId: 'pasta', grams: 50, yieldRetention: 2 }])).toBe(200);
+        const state = buildResolution({ lines: partial });
+        expect(state.totalGrams).toBeNull();
+        const calculation = recalculateResolution(state).calculation;
+        expect(calculation.mass.cookedG).toBe(100);
+        const row = reviewResolution(state, calculation, [serve]).comparisons[0].rows[0];
+        expect(row).toMatchObject({ known: null, difference: null, note: 'basis_not_comparable' });
+    });
+
+    it('uses an explicit meal cooked total when line mass is incomplete', () => {
+        const state = buildResolution({ lines: partial, totalGrams: 300 });
+        const calculation = recalculateResolution(state).calculation;
+        const row = reviewResolution(state, calculation, [serve]).comparisons[0].rows[0];
+        expect(row.known).toBe(300);
+        expect(row.note).toBeUndefined();
+    });
+});
+
+describe('nutrition declarations match the runtime (#72 fix round 2)', () => {
+    const read = name => readFileSync(new URL(`../../../shared/nutrition/${name}.d.ts`, import.meta.url), 'utf8');
+
+    it.each(['calculate', 'fit', 'resolution'])('%s.d.ts declares every export and its version literal', async name => {
+        const module = await import(`../../../shared/nutrition/${name}.js`);
+        const declarations = read(name);
+        for (const key of Object.keys(module)) {
+            expect(declarations).toMatch(new RegExp(`export (const|function) ${key}\\b`));
+            if (/_VERSION$/.test(key)) expect(declarations).toContain(`export const ${key}: ${module[key]};`);
+        }
+    });
+
+    it('pins version 2 and declares the cooked-total inputs', () => {
+        expect(read('calculate')).toContain('export const CALCULATION_VERSION: 2;');
+        expect(read('calculate')).toMatch(/export function countedLines\b/);
+        expect(read('calculate')).toMatch(/export function nutrientBasis\b/);
+        expect(read('fit')).toContain('export const FIT_VERSION: 2;');
+        expect(read('fit')).toMatch(/fitQuantities\(input\?: \{[^}]*cookedTotal\?: number \| null/);
+        expect(read('resolution')).toMatch(/export function cookedTotal\(lines: any\[\]\): number \| null;/);
     });
 });

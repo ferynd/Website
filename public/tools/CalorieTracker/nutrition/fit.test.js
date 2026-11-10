@@ -212,4 +212,17 @@ describe('quantity fitting', () => {
         expect(declared.residuals[0].known).toBe(300);
         expect(declared.flags.infeasible).toBe(false);
     });
+
+    it('does not scale a serving-weight fact against a partial cooked mass (#72 fix round 2)', () => {
+        const serve = fact(calories(100), { factId: 'serve', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } } });
+        const lines = [
+            { lineId: 'rice', grams: 100, gMin: 0, gMax: 300, basis: 'estimated', nutrients: calories(200) },
+            { lineId: 'sauce', grams: null, basis: 'estimated', nutrients: calories(50) },
+        ];
+        const partial = fitQuantities({ lines, facts: [serve] });
+        expect(partial.ran).toBe(false);
+        expect(partial.residuals).toEqual([expect.objectContaining({ factId: 'serve', reason: 'basis_not_comparable' })]);
+        const declared = fitQuantities({ lines, facts: [serve], cookedTotal: 300 });
+        expect(declared.residuals.find(row => row.factId === 'serve').known).toBe(300);
+    });
 });

@@ -281,3 +281,95 @@ describe('meal yield water (#72 fix round 1)', () => {
         expect(matched.workspace.resolution.totalGrams).toBe(150);
     });
 });
+
+const servingFact = (calories, g = 100) => ({ factId: 'serve', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g, basis: 'label' } }, nutrients: { calories: { value: calories, unit: 'kcal' } } });
+const serveRow = workspace => reviewWorkspace(workspace).workspace.review.comparisons.find(item => item.factId === 'serve').rows[0];
+
+describe('serving-weight facts and yield export (#72 fix round 2)', () => {
+    const unknownLine = { lineId: 'sauce', name: 'sauce', quantity: { g: null, basis: 'estimated', original: { amount: 1, unit: 'ladle' } } };
+
+    it('keeps a serving-weight fact unapplied while a counted line has unknown grams', async () => {
+        const workspace = await calculated(yieldList([measured('rice', 100), unknownLine], null, [servingFact(100)]), { rice: kcal(100), sauce: kcal(50) });
+        expect(workspace.calculation.mass.cookedG).toBe(100);
+        expect(workspace.resolution.totalGrams).toBeNull();
+        const row = serveRow(workspace);
+        expect(row.note).toBe('basis_not_comparable');
+        expect(row.known).toBeNull();
+        expect(row.difference).toBeNull();
+    });
+
+    it('still scales by an explicit meal cooked total when a counted line has unknown grams', async () => {
+        const workspace = await calculated(yieldList(
+            [measured('rice', 100), unknownLine],
+            { cookedTotal: { g: 250, basis: 'measured' } },
+            [servingFact(100)],
+        ), { rice: kcal(100), sauce: kcal(50) });
+        const row = serveRow(workspace);
+        expect(row.note).toBeUndefined();
+        expect(row.known).toBeCloseTo(250, 9);
+    });
+
+    it('fits against the moving line-derived cooked mass when every counted line sets its own water', async () => {
+        const meal = { cookedTotal: { g: 180, basis: 'measured' } };
+        const line = { lineId: 'a', name: 'a', quantity: { g: 160, gMin: 0, gMax: 600, basis: 'estimated' }, yield: { waterDeltaG: 20 } };
+        // The finding's example: a fixed 180 g target would fit the 50 kcal/100 g line to about 360 g, cooking to 380 g.
+        const example = fitWorkspace(await calculated(yieldList([line], meal, [servingFact(100)]), { a: kcal(50) })).workspace;
+        const grams = example.fit.quantities[0].grams;
+        expect(Math.abs(grams - 360)).toBeGreaterThan(1);
+        expect(example.calculation.mass.cookedG).toBeCloseTo(grams + 20, 9);
+        expect(example.fit.residuals[0].known).toBeCloseTo(example.calculation.mass.cookedG, 6);
+        // A feasible case: 200 kcal/100 g solves 2x = x + 20 against the moving mass, not 2x = 180.
+        const feasible = fitWorkspace(await calculated(yieldList([line], meal, [servingFact(100)]), { a: kcal(200) })).workspace;
+        expect(feasible.fit.quantities[0].grams).toBeCloseTo(20, 3);
+        expect(feasible.calculation.mass.cookedG).toBeCloseTo(40, 3);
+        expect(feasible.fit.flags.infeasible).toBe(false);
+        const row = serveRow(feasible);
+        expect(row.known).toBeCloseTo(feasible.calculation.mass.cookedG, 6);
+        expect(row.difference).toBeCloseTo(0, 3);
+    });
+
+    it('keeps the declared cooked total fixed in the fit when another line absorbs the meal water', async () => {
+        const meal = { cookedTotal: { g: 180, basis: 'measured' } };
+        const lines = [
+            { lineId: 'a', name: 'a', quantity: { g: 100, gMin: 0, gMax: 600, basis: 'estimated' }, yield: { waterDeltaG: 20 } },
+            measured('b', 100),
+        ];
+        // 200 kcal/100 g fits a to 90 g (110 g cooked); b absorbs -30 g of water to keep the 180 g total.
+        const fitted = fitWorkspace(await calculated(yieldList(lines, meal, [servingFact(100)]), { a: kcal(200), b: kcal(0) })).workspace;
+        expect(fitted.fit.quantities.find(item => item.lineId === 'a').grams).toBeCloseTo(90, 3);
+        expect(fitted.fit.residuals[0].known).toBeCloseTo(180, 9);
+        expect(fitted.calculation.mass.cookedG).toBeCloseTo(180, 6);
+        expect(fitted.fit.flags.infeasible).toBe(false);
+        // 50 kcal/100 g would need a at 360 g (380 g cooked): b cannot lose 200 g, so the declared total is not met.
+        const unmet = fitWorkspace(await calculated(yieldList(lines, meal, [servingFact(100)]), { a: kcal(50), b: kcal(0) })).workspace;
+        expect(unmet.calculation.mass.cookedG).not.toBeCloseTo(180, 0);
+        expect(unmet.fit.flags.infeasible).toBe(true);
+        expect(unmet.fit.flags.unique).toBe(false);
+        expect(unmet.fit.violations).toContainEqual(expect.objectContaining({ type: 'cooked_total' }));
+    });
+
+    it('exports line yield as the documented nested object in schema v1 JSON', async () => {
+        const input = yieldList([
+            measured('beef', 200, { yield: { waterDeltaG: -40, fatDiscardedG: 10, nutrientRetention: 0.9 } }),
+            measured('chicken', 100, { yield: { fatAbsorbedG: 5, fatAbsorbedExternal: true } }),
+            measured('onion', 50),
+        ]);
+        const workspace = await calculated(input, { beef: kcal(250), chicken: kcal(165), onion: kcal(40) });
+        expect(workspace.draft.import.ingredients[0].yieldRetention).toBe(0.9);
+        const exported = saveWorkspace(workspace).workspace.exportCopy;
+        expect(exported.format).toBe('json');
+        const json = JSON.parse(exported.text);
+        expect(json).toMatchObject({ kind: 'nutrition.ingredientList', schemaVersion: 1 });
+        const [beef, chicken, onion] = json.ingredients;
+        expect(beef.yield).toEqual({ waterDeltaG: -40, fatDiscardedG: 10, nutrientRetention: 0.9 });
+        expect(chicken.yield).toEqual({ fatAbsorbedG: 5, fatAbsorbedExternal: true });
+        expect(onion.yield).toBeUndefined();
+        for (const line of json.ingredients)
+            for (const key of ['waterDeltaG', 'yieldRetention', 'fatAbsorbedG', 'fatDiscardedG', 'fatAbsorbedExternal']) expect(line).not.toHaveProperty(key);
+        const reimported = importWorkspaceInput(createWorkspace('owner-a').workspace, exported.text);
+        expect(reimported.ok, JSON.stringify(reimported.errors)).toBe(true);
+        expect(reimported.workspace.draft.import.ingredients).toEqual(workspace.draft.import.ingredients);
+        expect(INGREDIENT_STORE_WRITES_ENABLED).toBe(false);
+        expect(NUTRIENT_V2_WRITES_ENABLED).toBe(false);
+    });
+});

@@ -3,7 +3,7 @@ export { createImportDraft, applyLineCorrection, effectiveLine } from './importD
 export { fromLegacyPaste, fromRecipeStandardizerRecipe, fromSavedMeal, fromSavedRecipe } from './inputAdapters.js';
 export { confirmMatch, proposeConfirmedAlias, reconcileImport } from './reconcile.js';
 export { ASSISTANT_INSTRUCTIONS, INSTRUCTIONS_VERSION, copyAssistantInstructions } from './assistantInstructions.js';
-export { IMPORT_LIMITS, IMPORT_SCHEMA_VERSION, INGREDIENT_LIST_KIND, MODEL_CALLS, compoundGroups, fitTargets, isFreeQuantity, researchEvidence, resolveLineQuantity, validateIngredientList } from './ingredientList.js';
+export { IMPORT_LIMITS, IMPORT_SCHEMA_VERSION, INGREDIENT_LIST_KIND, MODEL_CALLS, compoundGroups, fitTargets, isFreeQuantity, publicIngredientList, researchEvidence, resolveLineQuantity, validateIngredientList } from './ingredientList.js';
 import { createImportDraft } from './importDraft.js';
 import { parseIngredientPaste } from './pasteFormat.js';
 import { validateIngredientList } from './ingredientList.js';

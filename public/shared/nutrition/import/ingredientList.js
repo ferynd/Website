@@ -673,6 +673,37 @@ export function validateIngredientList(input) {
     return { ok: true, list: freeze(list), warnings: freeze(warnings), factUses: freeze(factUses) };
 }
 
+/** Private canonical line yield fields -> documented `line.yield` keys. */
+const PUBLIC_YIELD_KEYS = Object.freeze([
+    ['waterDeltaG', 'waterDeltaG'],
+    ['fatAbsorbedG', 'fatAbsorbedG'],
+    ['fatDiscardedG', 'fatDiscardedG'],
+    ['fatAbsorbedExternal', 'fatAbsorbedExternal'],
+    ['yieldRetention', 'nutrientRetention'],
+]);
+
+/**
+ * The documented schema v1 shape of a canonical list, for JSON export. Validation keeps line yield
+ * as private top-level fields; this rebuilds the nested `yield: { waterDeltaG, ..., nutrientRetention }`
+ * object so the export validates against the published contract and round trips.
+ */
+export function publicIngredientList(list) {
+    return {
+        ...list,
+        ingredients: (list?.ingredients ?? []).map(line => {
+            const out = { ...line };
+            const nested = {};
+            for (const [privateKey, publicKey] of PUBLIC_YIELD_KEYS) {
+                if (!(privateKey in out)) continue;
+                if (out[privateKey] != null) nested[publicKey] = out[privateKey];
+                delete out[privateKey];
+            }
+            if (Object.keys(nested).length) out.yield = nested;
+            return out;
+        }),
+    };
+}
+
 /** Parents and their children are reported together. Callers count one side; this module does not. */
 export function compoundGroups(list) {
     const groups = new Map();

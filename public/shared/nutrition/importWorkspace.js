@@ -1,7 +1,7 @@
 import { IMPORT_WORKSPACE_ENABLED, INGREDIENT_STORE_WRITES_ENABLED, NUTRIENT_V2_WRITES_ENABLED } from './capabilities.js';
 import {
     applyLineCorrection, confirmMatch, copyAssistantInstructions, effectiveLine, fitTargets, fromLegacyPaste, fromSavedMeal, fromSavedRecipe,
-    importIngredientList, reconcileImport, renderIngredientPaste,
+    importIngredientList, publicIngredientList, reconcileImport, renderIngredientPaste,
 } from './import/index.js';
 import { validateResearchResponse } from './research/researchPacket.js';
 import {
@@ -28,6 +28,7 @@ export function workspaceCapabilities() {
 
 export const WORKSPACE_STAGES = Object.freeze(['import', 'match', 'resolve', 'calculate', 'fit', 'review', 'save']);
 const REJECTED = new Set(['photo', 'barcode', 'ocr', 'image']);
+const COOKED_TOLERANCE_G = 0.05;
 
 function blank(ownerUid) {
     return {
@@ -111,6 +112,17 @@ function ownsWater(line) {
     return Number.isFinite(line.waterDeltaG) || (Number.isFinite(line.yieldRetention) && line.yieldRetention > 1);
 }
 
+/** Pre-water mass of a counted line that can take a share of the meal-water residual, or 0. */
+function absorbingMass(line) {
+    if (!Number.isFinite(line.grams) || line.grams < 0 || ownsWater(line)) return 0;
+    return nutrientBasis({ ...line, waterDeltaG: 0 })?.cookedG ?? 0;
+}
+
+/** True when some counted line takes meal water, so the meal cooked total holds as the line grams change. */
+function mealWaterAbsorbed(lines) {
+    return countedLines(lines).some(line => absorbingMass(line) > 0);
+}
+
 /**
  * Meal cooked total -> per-line water. Water is the residual after each line's one fat adjustment:
  * fixed lines keep their own cooked mass, and the rest is spread over the other counted lines in
@@ -129,8 +141,7 @@ function withMealWater(input, meal) {
     const fixedMass = counted.filter(ownsWater).reduce((sum, line) => sum + (nutrientBasis(line)?.cookedG ?? 0), 0);
     const pre = new Map();
     for (const line of counted) {
-        if (ownsWater(line)) continue;
-        const mass = nutrientBasis({ ...line, waterDeltaG: 0 })?.cookedG ?? 0;
+        const mass = absorbingMass(line);
         if (mass > 0) pre.set(line, mass);
     }
     const preMass = [...pre.values()].reduce((sum, mass) => sum + mass, 0);
@@ -327,8 +338,10 @@ export function calculateWorkspace(workspace) {
 export function fitWorkspace(workspace) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const facts = fitTargets(workspace.draft.import);
-    // Fit lines carry only their own water: a declared cooked total is passed to the fit as a fixed
-    // mass, and meal water is re-derived from the fitted grams below.
+    // Fit lines carry only their own water. A declared cooked total is passed to the fit as a fixed
+    // mass only when some counted line absorbs the meal-water residual; when every counted line sets its
+    // own water, those values win over the meal total, so the fit uses the moving line-derived mass.
+    // Meal water is re-derived from the fitted grams below.
     const lines = workspace.draft.import.ingredients.map(stored => {
         const line = effectiveLine(workspace.draft, stored.lineId);
         const item = workspace.resolution?.items?.find(row => row.lineId === line.lineId);
@@ -359,9 +372,11 @@ export function fitWorkspace(workspace) {
         if (ids.length) constraints.push({ type: 'sum', lineIds: ids, gMin: rawTarget, gMax: rawTarget });
     }
     const cooked = declaredCooked(meal);
-    const fit = fitQuantities({ lines, constraints, facts, servings: meal.servings?.count ?? meal.servings ?? null, cookedTotal: cooked });
+    const fixedCooked = cooked != null && mealWaterAbsorbed(lines) ? cooked : null;
+    const fit = fitQuantities({ lines, constraints, facts, servings: meal.servings?.count ?? meal.servings ?? null, cookedTotal: fixedCooked });
     let resolution = workspace.resolution;
     let calculation = workspace.calculation;
+    let result = fit;
     if (fit.ran && resolution) {
         const fitted = new Map(fit.quantities.map(item => [item.lineId, item.grams]));
         const nextLines = withMealWater(resolution.lines.map(line => {
@@ -370,8 +385,17 @@ export function fitWorkspace(workspace) {
         }), meal);
         resolution = { ...resolution, lines: nextLines, totalGrams: cooked ?? cookedTotal(nextLines), modelCalls: 0 };
         calculation = recalculateResolution(resolution).calculation;
+        // Meal water never takes a line below 0 g, so a fixed cooked total can still be out of reach.
+        const cookedG = calculation?.mass?.cookedG;
+        if (fixedCooked != null && Number.isFinite(cookedG) && Math.abs(cookedG - fixedCooked) > COOKED_TOLERANCE_G) {
+            result = {
+                ...fit,
+                flags: { ...fit.flags, infeasible: true, unique: false },
+                violations: [...(fit.violations || []), { type: 'cooked_total', expectedG: fixedCooked, cookedG }],
+            };
+        }
     }
-    return done(workspace, { stage: 'review', fit: { ...fit, facts: facts.length }, resolution, calculation });
+    return done(workspace, { stage: 'review', fit: { ...result, facts: facts.length }, resolution, calculation });
 }
 
 export function reviewWorkspace(workspace) {
@@ -392,7 +416,7 @@ export function saveWorkspace(workspace) {
     const caps = workspaceCapabilities();
     const list = exportList(workspace);
     const rendered = renderIngredientPaste(list);
-    const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(list, null, 2) };
+    const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(publicIngredientList(list), null, 2) };
     if (!caps.save) {
         return done(workspace, { stage: 'save', exportCopy, committed: false, save: { available: false, reason: 'export only until ingredient and nutrient writes are approved' } });
     }

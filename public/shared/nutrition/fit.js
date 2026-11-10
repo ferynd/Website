@@ -71,13 +71,19 @@ function mealLines(lines, grams) {
     return lines.map(line => ({ ...line, grams: grams.get(line.lineId), quantityBasis: line.basis }));
 }
 
-/** Cooked meal mass. A declared meal cooked total is a meal fact and does not move with the grams. */
+/**
+ * Cooked meal mass. A declared meal cooked total is a meal fact and does not move with the grams.
+ * Without one, the mass moves with the grams and is null unless every counted line has a valid mass.
+ */
 function totalGrams(lines, grams, meal) {
     if (finite(meal.cookedTotal)) return meal.cookedTotal;
-    return countedLines(lines).reduce((sum, line) => {
+    let total = 0;
+    for (const line of countedLines(lines)) {
         const basis = nutrientBasis({ ...line, grams: grams.get(line.lineId) });
-        return sum + (basis ? basis.cookedG : 0);
-    }, 0);
+        if (!basis) return null;
+        total += basis.cookedG;
+    }
+    return total;
 }
 
 function nutrientTargets(facts, lines, grams, meal) {
