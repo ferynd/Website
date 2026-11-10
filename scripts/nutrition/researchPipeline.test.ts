@@ -45,7 +45,7 @@ it('refuses unpinned/mismatched/unlabeled bulk files and caches a pinned synthet
     await expect(readPinnedBulk(file, pin)).rejects.toThrow('checksum');
     pin.sha256 = 'sha256:' + createHash('sha256').update(await readFile(file)).digest('hex');
     const cache = createMemorySourceCache();
-    expect(await indexBulk(file, pin, cache)).toBe(1);
+    expect(await indexBulk(file, pin, cache)).toMatchObject({ count: 1, total: 1, skippedRecords: 0 });
     const adapter = createFdcBulkAdapter({ cache, release: pin.release, matches: [] });
     expect((await adapter.fetch(String(food.fdcId))).fdcId).toBe(food.fdcId);
     delete food._fixture;
@@ -60,7 +60,7 @@ it('indexes a synthetic SRLegacyFoods-shaped release and keeps the pin, label, d
     const write = async (body: unknown) => { await writeFile(file, JSON.stringify(body)); return 'sha256:' + createHash('sha256').update(await readFile(file)).digest('hex'); };
     const pin = { id: 'sr-legacy', release: 'fixture-sr-v1', sha256: await write({ _fixture: 'synthetic; not nutrition data', SRLegacyFoods: foods }), fixtureOnly: true };
     const cache = createMemorySourceCache();
-    expect(await indexBulk(file, pin, cache)).toBe(2);
+    expect(await indexBulk(file, pin, cache)).toMatchObject({ count: 2, total: 2, skippedRecords: 0 });
     for (const food of foods)
         expect((await cache.get(`fdc_bulk:${pin.release}:${food.fdcId}`))!.data.fdcId).toBe(food.fdcId);
     const adapter = createFdcBulkAdapter({ cache, release: pin.release, matches: [] });
@@ -78,6 +78,29 @@ it('indexes a synthetic SRLegacyFoods-shaped release and keeps the pin, label, d
     pin.sha256 = await write({ _fixture: 'synthetic; not nutrition data', SRLegacyFood: foods });
     await expect(readPinnedBulk(file, pin)).rejects.toThrow('Invalid bulk food array');
 });
+it('indexes all valid Foundation rows, reports malformed rows, and rejects duplicate IDs', async () => {
+    const root = await dir(), file = path.join(root, 'foundation.json');
+    const load = async (name: string) => JSON.parse(await readFile(`scripts/fixtures/nutrition/fdc/${name}`, 'utf8'));
+    const apple = await load('apple-bulk.json'), oil = await load('oil-bulk.json');
+    const invalid = await load('malformed-string-amount.json');
+    const write = async (foods: unknown[]) => {
+        await writeFile(file, JSON.stringify({ _fixture: 'synthetic', FoundationFoods: foods }));
+        return 'sha256:' + createHash('sha256').update(await readFile(file)).digest('hex');
+    };
+    const pin = { id: 'foundation', release: 'fixture-foundation-v1', sha256: await write([apple, invalid, oil]), fixtureOnly: true };
+    const cache = createMemorySourceCache();
+    const indexed = await indexBulk(file, pin, cache);
+    expect(indexed).toMatchObject({ count: 2, total: 3, skippedRecords: 1, skippedFdcIds: [invalid.fdcId] });
+    expect(JSON.stringify(indexed)).not.toContain('invalid-string');
+    expect((await cache.get(`fdc_bulk:${pin.release}:${apple.fdcId}`))?.data.fdcId).toBe(apple.fdcId);
+    expect((await cache.get(`fdc_bulk:${pin.release}:${oil.fdcId}`))?.data.fdcId).toBe(oil.fdcId);
+    expect(await cache.get(`fdc_bulk:${pin.release}:${invalid.fdcId}`)).toBeNull();
+    pin.sha256 = await write([apple, apple, oil]);
+    await expect(indexBulk(file, pin, createMemorySourceCache())).rejects.toThrow('Duplicate food ID');
+    pin.sha256 = 'sha256:' + '0'.repeat(64);
+    await expect(indexBulk(file, pin, createMemorySourceCache())).rejects.toThrow('checksum');
+});
+
 it('audits a mixed bulk file per record, value-free, while the strict reader still aborts', async () => {
     const root = await dir(), file = path.join(root, 'mixed.json');
     const load = async (name: string) => JSON.parse(await readFile(`scripts/fixtures/nutrition/fdc/${name}`, 'utf8'));
