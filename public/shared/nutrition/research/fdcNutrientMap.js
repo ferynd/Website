@@ -31,12 +31,16 @@ export const FDC_NUTRIENT_ENTRIES = Object.freeze([
     { fdcNutrientId: 1253, nutrientNumber: '601', key: 'cholesterol', sourceUnit: 'mg', policy: 'exact', note: 'Cholesterol' },
     { fdcNutrientId: 1009, nutrientNumber: '209', key: 'starch', sourceUnit: 'g', policy: 'exact', note: 'Starch' },
     { fdcNutrientId: 2000, nutrientNumber: '269', key: 'sugarsTotal', sourceUnit: 'g', policy: 'exact', note: 'Sugars, total including NLEA' },
+    // Foundation reports total sugars as 1063 (sum of analyzed mono- and
+    // disaccharides). 2000 is listed first and wins when both are present (#63 V3).
+    { fdcNutrientId: 1063, nutrientNumber: '269.3', key: 'sugarsTotal', sourceUnit: 'g', policy: 'exact', note: 'Sugars, Total (Foundation)' },
     { fdcNutrientId: 1235, nutrientNumber: '539', key: 'sugarsAdded', sourceUnit: 'g', policy: 'exact', note: 'Sugars, added' },
     { fdcNutrientId: 1213, nutrientNumber: '213', key: 'lactose', sourceUnit: 'g', policy: 'exact', note: 'Lactose' },
     // Fiber
     { fdcNutrientId: 1079, nutrientNumber: '291', key: 'fiberTotal', sourceUnit: 'g', policy: 'exact', note: 'Fiber, total dietary' },
     { fdcNutrientId: 1082, nutrientNumber: '295', key: 'fiberSoluble', sourceUnit: 'g', policy: 'exact', note: 'Fiber, soluble' },
     { fdcNutrientId: 1084, nutrientNumber: '297', key: 'fiberInsoluble', sourceUnit: 'g', policy: 'exact', note: 'Fiber, insoluble' },
+    { fdcNutrientId: 1071, nutrientNumber: '283', key: 'resistantStarch', sourceUnit: 'g', policy: 'exact', note: 'Resistant starch (#63 V3)' },
     // Fat classes & fatty acids
     { fdcNutrientId: 1258, nutrientNumber: '606', key: 'fatSaturated', sourceUnit: 'g', policy: 'exact', note: 'Fatty acids, total saturated' },
     { fdcNutrientId: 1257, nutrientNumber: '605', key: 'fatTrans', sourceUnit: 'g', policy: 'exact', note: 'Fatty acids, total trans' },
@@ -58,6 +62,7 @@ export const FDC_NUTRIENT_ENTRIES = Object.freeze([
     { fdcNutrientId: 1101, nutrientNumber: '315', key: 'manganese', sourceUnit: 'mg', policy: 'exact', note: 'Manganese, Mn' },
     { fdcNutrientId: 1103, nutrientNumber: '317', key: 'selenium', sourceUnit: 'mcg', policy: 'exact', note: 'Selenium, Se' },
     { fdcNutrientId: 1100, nutrientNumber: '314', key: 'iodine', sourceUnit: 'mcg', policy: 'exact', note: 'Iodine, I' },
+    { fdcNutrientId: 1102, nutrientNumber: '316', key: 'molybdenum', sourceUnit: 'mcg', policy: 'exact', note: 'Molybdenum, Mo (#63 V3)' },
     // Vitamins
     { fdcNutrientId: 1162, nutrientNumber: '401', key: 'vitaminC', sourceUnit: 'mg', policy: 'exact', note: 'Vitamin C, total ascorbic acid' },
     { fdcNutrientId: 1165, nutrientNumber: '404', key: 'vitaminB1', sourceUnit: 'mg', policy: 'exact', note: 'Thiamin' },

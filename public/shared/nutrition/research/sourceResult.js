@@ -194,7 +194,13 @@ export function normalizeSourceResult(result, target = {}) {
         quality.omega3 = { status: 'unknown', qualifier: 'gap:partial_components' };
         gaps.omega3 = 'partial_components';
     }
-    // Map remaining mapped entries from FDC_NUTRIENT_ENTRIES
+    // Map remaining mapped entries from FDC_NUTRIENT_ENTRIES. When two exact
+    // rows map to one key (sugarsTotal: 2000, then Foundation's 1063), the first
+    // quantified row wins; a below-LOQ row is used only when none is quantified
+    // (the energy rule).
+    const filledByExact = new Set();
+    const quantifiedRow = item => !!item && Number.isFinite(item.amount) && !item.isBelowLoq;
+    const otherQuantified = (entry, item) => FDC_NUTRIENT_ENTRIES.some(e => e.policy !== 'gap' && e.key === entry.key && e !== entry && quantifiedRow(byFdcId.get(e.fdcNutrientId)) && byFdcId.get(e.fdcNutrientId) !== item);
     for (const entry of FDC_NUTRIENT_ENTRIES) {
         if (entry.policy === 'gap') {
             const item = byFdcId.get(entry.fdcNutrientId);
@@ -213,8 +219,10 @@ export function normalizeSourceResult(result, target = {}) {
             continue;
         }
         const item = byFdcId.get(entry.fdcNutrientId);
-        if (!item)
+        if (!item || filledByExact.has(entry.key) || (item.isBelowLoq && otherQuantified(entry, item)))
             continue;
+        if (item.isBelowLoq || (item.amount !== null && item.amount !== undefined && Number.isFinite(item.amount)))
+            filledByExact.add(entry.key);
         if (item.isBelowLoq) {
             nutrients[entry.key] = null;
             quality[entry.key] = { status: 'below_quantification_limit', upperBound: convertUnit(entry.key, item.loq * scale, item.unitName || entry.sourceUnit).value };
