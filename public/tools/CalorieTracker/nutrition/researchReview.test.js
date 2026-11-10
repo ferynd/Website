@@ -2,7 +2,7 @@ import { it, expect, describe } from 'vitest';
 import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
 import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
 import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
-import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION, publishedIdentityFor, reviewContentHash } from '../../../shared/nutrition/research/researchReview.js';
+import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION, publishedIdentityFor, reviewContentHash, verifiedRecordMatchesTable, assertCuratedMatchTable } from '../../../shared/nutrition/research/researchReview.js';
 async function makeJobWithDraft(values = { protein: 10, calories: 40 }) {
     const staged = emptyStagedRecord();
     for (const k of V2_KEYS) {
@@ -45,6 +45,30 @@ async function makeJobWithDraft(values = { protein: 10, calories: 40 }) {
     };
     return { job, draft };
 }
+it('fails closed on unreviewed curated FDC records and permits exact reviewed matches', () => {
+    const manifestId = 'apple-raw-with-skin';
+    const entry = { manifestId, fdcId: '9900001', description: 'Apple, raw' };
+    const record = { recordId: '9900001', description: 'Apple, raw' };
+    expect(verifiedRecordMatchesTable(manifestId, record, [])).toBe(false);
+    expect(verifiedRecordMatchesTable(manifestId, record, [entry])).toBe(true);
+    expect(verifiedRecordMatchesTable(manifestId, { ...record, description: 'Apple, cooked' }, [entry])).toBe(false);
+    expect(verifiedRecordMatchesTable(manifestId, { ...record, recordId: '9900002' }, [entry])).toBe(false);
+
+    const job = {
+        scope: 'curated',
+        target: { manifestId },
+        proposal: {
+            revisionDraft: { sources: { s1: { type: 'fdc', recordId: record.recordId, title: record.description } } },
+            assistantSourceKeys: { s1: 's1' },
+            assistantResult: { sources: [{ sourceId: 's1' }] },
+            sourceVerification: { s1: { status: 'verified', method: 'deterministic_refetch' } },
+        },
+    };
+    expect(() => assertCuratedMatchTable(job, [])).toThrow('match table');
+    expect(() => assertCuratedMatchTable(job, [entry])).not.toThrow();
+    expect(() => assertCuratedMatchTable({ ...job, scope: 'private' }, [])).not.toThrow();
+});
+
 describe('Research Review', () => {
     it('correctly calculates revision diffs between base and draft', async () => {
         const { draft } = await makeJobWithDraft({ protein: 10, calories: 40 });
