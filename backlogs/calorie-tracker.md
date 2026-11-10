@@ -1,6 +1,6 @@
 # CalorieTracker: active backlog
 
-Single source of truth for work on `public/tools/CalorieTracker/` and the shared ingredient-nutrition integration with Recipe Standardizer. Items through #59, #60 Part A, #61 Part A, #72, #73, #74, and #78 are merged and archived.
+Single source of truth for work on `public/tools/CalorieTracker/` and the shared ingredient-nutrition integration with Recipe Standardizer. Items through #59, #60 Part A, #61 Part A, #72, #73, #74, #75, and #78 are merged and archived.
 
 ## Purpose and scope
 
@@ -55,7 +55,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 ## Release phases (James, 2026-11-09)
 
 1. Read-only census and backup (#60 Part B). The parent completed the count on 2026-11-09: 191 v1 foods, 0 v2 foods, 417 daily entries. The REST backup is not a migration copy. Writers stay off. Agents do not query production. Script bugs are #80.
-2. Technical corrections and branch implementations with both write flags false, in this order: #72 (merged), #73 (merged), #74 lookup honesty (merged), #78 (merged), #75, then #69 Part B and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depended on #72, #73, and #74; all three are merged.
+2. Technical corrections and branch implementations with both write flags false, in this order: #72 (merged), #73 (merged), #74 lookup honesty (merged), #78 (merged), #75 (merged), then #69 Part B (pushed, branch only) and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depended on #72, #73, and #74; all three are merged.
 3. Beta validation (#79) in an isolated Firebase test project. Not production. #68 depends on a recorded #79 result.
 4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the #77 aggregate counts from a foods-only extract kept outside the checkout. No names, ids, paths, or nutrient values are committed.
 5. Controlled enablement, one gate at a time, each with backup and rollback. Live FDC, catalog import, rules, and writer flags stay unapproved. Do not flip `NUTRIENT_V2_WRITES_ENABLED` for the beta; legacy food and diary writes stay v1.
@@ -63,7 +63,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73, #74, #78, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. #75 is pushed and awaiting merge. #78 merged as `e93190e` (PR #203). #74 merged as `bd6d56f` (PR #202), so #69 Part B and #64 Part B no longer wait on #74 (#72, #73, and #74 are merged). #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73, #74, #75, #78, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. #69 Part B is a pushed branch implementation awaiting review; #64 Part B is next. #75 merged as `7700351` (PR #204). #78 merged as `e93190e` (PR #203). #74 merged as `bd6d56f` (PR #202), so #69 Part B and #64 Part B no longer wait on #74 (#72, #73, and #74 are merged). #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -94,7 +94,8 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
 
 ### #69 Part B: Save private library profiles
 
-- [ ] **Add, edit, and save owner-private ingredient profiles.** Depends: #72, #73, and #74 before branch implementation. Production save also depends on #61 Part B and #79. The search/review library merged in #196 (`497f941`). Do not start the branch before those three corrections. Do not deploy rules or write production.
+- [p] **Add, edit, and save owner-private ingredient profiles.** Depends: #72, #73, and #74 before branch implementation. Production save also depends on #61 Part B and #79. The search/review library merged in #196 (`497f941`). Do not start the branch before those three corrections. Do not deploy rules or write production.
+  > pushed - branch implementation with both write flags false: `buildLibraryDraft()` builds a validated revision draft from a staged manual, label, or applied research edit (unpatched fields keep value, quality, and provenance; per-field source, unit, status, uncertainty, confidence, comparator, derivation, source version, and dates are kept; anything unrepresentable is reported in `unrepresented`); `commitLibraryEdit()` saves the next revision or a private override through the ingredient store, maps conflicts to `revision_conflict` with the draft kept in the pending-save outbox, and stays `writes_disabled` with the flag off; Research passes the reviewed ref, revision, and missing fields; one "Save to my library" button says writes are off and keeps the staged result; tests use the mocked flag and fake port only; no rules change, no production write, no diary write; checks: nutrition 543, tracker 1159, root 2015, `tsc` on `library.d.ts`, ci:docs; commit: d721070; PR: pending
   - **Surfaces:** library add/edit actions, `commitLibraryEdit`, and `researchLibraryFields`. The merged tab searches, reviews, and stages research only. The research button passes the name and owner, not the selected ref, revision, and field list. `commitLibraryEdit()` returns `writes_disabled`.
   - **Accept:** add a private profile; an edit creates the next revision; import a label or manual verified values; review and save a research result without dropping per-field source, unit, status, uncertainty, confidence, comparator, derivation, source version, or retrieval date; choose specific missing fields and pass that ref, revision, and field list into the research request; show evidence and revision history; private overrides replace the owner's view; curated records stay immutable. Saved edits never change another user's data and never rewrite saved diary snapshots. Affected meals stay deferred until #64 Part B.
   - **Checks:** tracker and root suites; revision-on-edit, override precedence, field selection, and staged-research save or cancel. Rules tests if rules change. Emulator only until #61 Part B is approved.
@@ -137,15 +138,6 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
   - **Accept:** off by default, feature-flagged, $0 budget cap; a durable server-side budget reservation before every provider call (concurrent/duplicate requests cannot exceed the cap; reconciled with actual usage); non-anonymous Firebase users only (reject `signInAnonymously` guests); keys server-side only; user-initiated, rate/size-bounded (per verified account plus global/IP or App Check quota), cancellable, and logged without private payloads. The UI learns whether the route is enabled and has budget. Outputs pass the same #62/#67 validators as copy/paste. The service worker treats the route as network-only and clears legacy Cache Storage entries on sign-out. Select the provider/model at enablement time and record it in the PR.
   - **Checks:** flag-off default (no provider calls), auth including anonymous rejection, rate-limit, cancellation, $0-cap and concurrent budget-reservation tests, service-worker network-only test, `npm run test:api`; update `SECURITY.md` and `ARCHITECTURE.md` when built.
   - **Migration/deploy:** **Requires James's explicit approval** to build or enable the route, provision a key, raise the $0 cap, or deploy any Storage rules it needs.
-
-### #75: Correct nutrition docs and cached-client compatibility
-
-- [p] **Finish the compatibility notes that this review does not close.** Depends: none. The false `nutritrack-v4` current-cache sentences and the "calculation has not shipped" overview are corrected with the 2026-11-09 review.
-  > pushed — a Cached-client compatibility section in the release runbook distinguishes implemented, tested, deployed, and populated; the write-enable cache is a new name after `nutritrack-v5`; saved-food writes are described with the newer-schema transaction guard; diary `setDoc` replacement is described as unprotected until #60 Part B adds a transactional guard; no doc claims cached clients cannot drop newer diary fields; docs only, no code changed; checks: ci:docs; commit: c978d7d; PR: #204
-  - **Surfaces:** nutrition docs, tracker README, and `docs/nutrition/ingredient-store-release.md`.
-  - **Accept:** docs distinguish implemented, tested, deployed, and populated. They do not call a merged calculator a populated catalog or a deployed ruleset. The write-enable cache bump is a new name after `nutritrack-v5`. Saved-food writes are described with the newer-schema transaction guard. Diary `setDoc` replacement is described as unprotected until #60 Part B adds a transactional guard. Do not claim that every cached client is unable to drop future diary fields.
-  - **Checks:** `npm run ci:docs`.
-  - **Migration/deploy:** docs only.
 
 ### #76: Dry-run the priority-1 population pilot
 
