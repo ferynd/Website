@@ -3,9 +3,11 @@
 Purpose: per-item attribute evidence from the pinned source records for the
 A1 items removed or rejected under the literal-wording standard (ANSWER
 Q-000 and Q-003), so the adopted material-attribute policy can be applied to
-documented evidence instead of title wording alone. All evidence below is
-read directly from the pinned bulk files (SR Legacy 2018-04 and Foundation
-2026-10-29). Nothing here changes any adjudication by itself.
+documented evidence instead of title wording alone. Primary record facts below are drawn from the pinned bulk files (SR Legacy
+2018-04 and Foundation 2026-10-29), while the cocoa naming interpretation
+also cites independent published evidence. The original pinned files are
+operator-local; source file SHA-256s are recorded in the import report.
+This matrix does not alter a staged profile by itself.
 
 Reading guide: "Supported" means the material food identity is supported by
 record evidence and a documented naming convention, with no material
@@ -18,8 +20,8 @@ match is not proof of a specific package, production history, or formulation.
 
 ### lemon-juice-fresh-ready-to-drink -> SR Legacy 167747 "Lemon juice, raw"
 - Product and form: lemon, juice. Category: Fruits and Fruit Juices.
-- Processing state: "raw" is the dataset's state word for the unprocessed
-  form. Every processed sibling carries its qualifier explicitly: 167748
+- Processing state: "raw" is the dataset's label for the raw food
+  state. It does not certify unpasteurized, fresh-squeezed retail juice. Every processed sibling carries its qualifier explicitly: 167748
   "Lemon juice from concentrate, canned or bottled", 167801 and 167802
   branded bottled concentrates. 167747 is the unqualified raw lemon-juice
   option among these relevant siblings; the word "raw" does not prove
