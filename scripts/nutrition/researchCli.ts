@@ -1,6 +1,7 @@
 import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { createMemoryResearchStore, createMemorySourceCache } from '../../public/shared/nutrition/research/memoryResearchStore.js';
 import { createResearchService } from '../../public/shared/nutrition/research/researchService.js';
 import { parentBatchIdFor, passIdFor } from '../../public/shared/nutrition/research/researchJob.js';
@@ -14,13 +15,15 @@ import type { ResearchJobStore, SourceCache, ResearchAdapter, FetchResearchAdapt
 import { readManifest, selectNextBatch, stateToDims } from './manifestReader';
 import { readMatchTable } from './matchTable';
 import { createFileResearchStore, createFileSourceCache, assertLocalPath } from './fileResearchStore';
-import { readPinnedBulk, indexBulk, createFdcBulkAdapter } from './fdcBulkReader';
+import { indexBulk, createFdcBulkAdapter } from './fdcBulkReader';
+import { suggestFromBulk } from './matchSuggest';
 import { createFdcApiAdapter } from './fdcApiAdapter';
 import { coverageReport } from './coverageReport';
 import { RESEARCH_CONFIG } from './researchConfig';
 export { canonicalRequestBody };
 /** This export is also used to assert CLI/browser byte parity. */
 export const packetForJobs = buildResearchPackets;
+const COMMANDS: readonly string[] = ['plan', 'index', 'run', 'retry', 'validate', 'review', 'stage', 'coverage', 'suggest', 'packet', 'import-packet'];
 async function allJobs(store: ResearchJobStore) {
     const jobs: ResearchJob[] = [];
     let cursor: string | null | undefined;
@@ -38,7 +41,7 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
 } = {}) {
     const argv = args[0] === '--' ? args.slice(1) : args;
     const command = argv[0];
-    if (!['plan', 'index', 'run', 'retry', 'validate', 'review', 'stage', 'coverage', 'suggest', 'packet', 'import-packet'].includes(command))
+    if (!COMMANDS.includes(command))
         throw new Error('Expected plan/index/run/retry/validate/review/stage/coverage/suggest/packet/import-packet');
     const flags: Record<string, string | boolean> = {};
     const booleanFlags = ['write', 'live', 'attest', 'include-label-evidence'];
@@ -223,15 +226,34 @@ export async function researchCli(args: string[], { output = (v: unknown) => pro
             if (!entry)
                 throw new Error('Unknown manifest ID');
             // Suggestions are candidates, never automatic match-table edits.
+            // The audit path tolerates (and counts) records the parser rejects,
+            // so the real Foundation release can be searched.
             const pin = RESEARCH_CONFIG.datasets.find(d => d.id === str('dataset'));
-            const foods = pin && str('file') ? await readPinnedBulk(str('file')!, pin) : [];
-            result = { manifestId: entry.id, reviewOnly: true, candidates: foods.filter(f => String(f.description).toLowerCase().includes(entry.name.toLowerCase())).map(f => ({ fdcId: f.fdcId, description: f.description })) };
+            const found = pin && str('file') ? await suggestFromBulk(str('file')!, pin, entry, Number(str('max') || 20)) : { candidates: [], skippedRecords: 0, skippedFdcIds: [] };
+            result = { manifestId: entry.id, reviewOnly: true, dataset: pin?.id ?? null, release: pin?.release ?? null, ...found };
             break;
         }
     }
     output(result);
     return result;
 }
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+/**
+ * vite-node consumes the script path (and a bare `--`), so its own binary is
+ * argv[1] and the CLI command is argv[2]; a plain `node` launch passes the
+ * script itself. Requiring a known command under vite-node keeps another
+ * vite-node script that imports this module from running it by accident.
+ */
+export function isResearchCliEntry(argv: readonly string[], scriptFilePath: string) {
+    const launcher = argv[1];
+    if (!launcher)
+        return false;
+    if (['vite-node', 'vite-node.mjs'].includes(path.basename(launcher))) {
+        const command = argv[2] === '--' ? argv[3] : argv[2];
+        return COMMANDS.includes(command);
+    }
+    const real = (p: string) => { try { return realpathSync(p); } catch { return path.resolve(p); } };
+    return real(launcher) === real(scriptFilePath);
+}
+if (isResearchCliEntry(process.argv, fileURLToPath(import.meta.url))) {
     researchCli(process.argv.slice(2)).catch(error => { process.stderr.write(String(error.message) + '\n'); process.exitCode = 1; });
 }
