@@ -311,7 +311,7 @@ This is a full-featured nutrition tracker built as a static client-side app (pla
 | Tab | What it does |
 |---|---|
 | **Today** | Daily food log, food database, paste-and-parse staging area, exercise sessions, and a compact macro header |
-| **Import** | Ingredient Import workspace. It does not save a meal or write the diary while nutrition write flags are false. The planned label is Ingredient Import (Beta). |
+| **Ingredient Import (Beta)** | Ingredient Import workspace, separate from Today. Export does not save or log a meal, and a failed or cancelled import says existing foods and the diary were not changed. **Return to Today** switches back. Diary add stays a separate explicit action. |
 | **Library** | Search and review shared ingredient profiles. Private add, edit, and save are not enabled. |
 | **Nutrients** | Full micronutrient breakdown with filter chips, daily-floor vs. 7-day-average tracking, UL warnings, and a multi-series Chart.js chart |
 | **Energy** | Weight upload (CSV), empirical TDEE/rest-day estimation, missing-day fill, vacation-range fill, underreporting true-up, and estimate management |

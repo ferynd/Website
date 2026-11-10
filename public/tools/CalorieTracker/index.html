@@ -82,7 +82,7 @@
       <div class="tab-bar-wrap">
         <nav class="tab-bar" role="tablist" aria-label="App sections">
           <button id="tab-btn-today"     class="tab-btn active" data-tab="today"     role="tab" aria-selected="true"  aria-controls="tab-today"     tabindex="0">Today</button>
-          <button id="tab-btn-import"    class="tab-btn"        data-tab="import"    role="tab" aria-selected="false" aria-controls="tab-import"    tabindex="-1">Import</button>
+          <button id="tab-btn-import"    class="tab-btn"        data-tab="import"    role="tab" aria-selected="false" aria-controls="tab-import"    tabindex="-1">Ingredient Import (Beta)</button>
           <button id="tab-btn-library"   class="tab-btn"        data-tab="library"   role="tab" aria-selected="false" aria-controls="tab-library"   tabindex="-1">Library</button>
           <button id="tab-btn-nutrients" class="tab-btn"        data-tab="nutrients" role="tab" aria-selected="false" aria-controls="tab-nutrients" tabindex="-1">Nutrients</button>
           <button id="tab-btn-energy"    class="tab-btn"        data-tab="energy"    role="tab" aria-selected="false" aria-controls="tab-energy"    tabindex="-1">Energy</button>
@@ -127,7 +127,7 @@
     </div>
 
     <div id="tab-import" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-btn-import">
-      <h2 class="text-xl font-bold mb-2 text-secondary">Import ingredient list</h2>
+      <h2 class="text-xl font-bold mb-2 text-secondary">Ingredient Import (Beta)</h2>
       <p id="import-capability" class="text-xs text-muted mb-2"></p>
       <p id="import-stages" class="text-xs text-muted mb-3"></p>
       <label for="import-kind" class="block text-sm font-medium text-primary mb-1">Input</label>
@@ -149,6 +149,7 @@
         <button type="button" id="import-review" class="btn btn-secondary btn-sm">Calculate and review</button>
         <button type="button" id="import-export" class="btn btn-secondary btn-sm">Copy export</button>
         <button type="button" id="import-cancel" class="btn btn-secondary btn-sm">Cancel</button>
+        <button type="button" id="import-return-today" class="btn btn-secondary btn-sm">Return to Today</button>
       </div>
       <p id="import-stage" class="text-sm mb-2" aria-live="polite"></p>
       <p id="import-message" class="text-sm mb-2" role="status"></p>

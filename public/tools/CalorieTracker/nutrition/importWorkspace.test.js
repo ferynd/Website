@@ -1,9 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { INGREDIENT_STORE_WRITES_ENABLED, NUTRIENT_V2_WRITES_ENABLED } from '../../../shared/nutrition/capabilities.js';
 import { clearWorkspaceDraft, parseWorkspaceRecord, readWorkspaceDraft, writeWorkspaceDraft } from '../../../shared/nutrition/importWorkspaceDraft.js';
 import {
     applyResearchResponse, calculateWorkspace, cancelWorkspace, confirmWorkspace, createWorkspace, fitWorkspace, importWorkspaceInput, instructionsWorkspace,
-    lookupWorkspace, matchWorkspace, packetCopy, packetWorkspace, reviewWorkspace, saveWorkspace,
+    lookupWorkspace, matchWorkspace, packetCopy, packetWorkspace, reviewWorkspace, saveWorkspace, WORKSPACE_SAVE_REASON, WORKSPACE_UNCHANGED_NOTICE,
 } from '../../../shared/nutrition/importWorkspace.js';
 import { IMPORT_WORKSPACE_ENABLED } from '../../../shared/nutrition/capabilities.js';
 import { PROFILE_FIELDS } from '../../../shared/nutrition/research/profileFields.js';
@@ -512,5 +513,50 @@ describe('honest official lookup status (#74)', () => {
         const step = lookupWorkspace(matched.workspace, ['rice']);
         expect(step.workspace.resolution.items[0]).toMatchObject({ kind: 'resolved', resolved: true, source: 'library', missingFields: [] });
         expect((await packetWorkspace(step.workspace, ['rice'])).error).toBe('matched_line');
+    });
+});
+
+describe('#78 beta tab label and explicit diary add', () => {
+    const unchanged = 'Your existing foods and diary were not changed.';
+    const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
+    const html = read('../index.html');
+    const buttonLabel = id => html.match(new RegExp(`<button id="${id}"[^>]*>([^<]*)</button>`))?.[1];
+    const panel = html.slice(html.indexOf('<div id="tab-import"'), html.indexOf('<div id="tab-today"'));
+
+    it('labels the import tab and panel Ingredient Import (Beta) and keeps Library separate', () => {
+        expect(buttonLabel('tab-btn-import')).toBe('Ingredient Import (Beta)');
+        expect(html).toMatch(/<button id="tab-btn-import"[^>]*data-tab="import"/);
+        expect(buttonLabel('tab-btn-library')).toBe('Library');
+        expect(buttonLabel('tab-btn-today')).toBe('Today');
+        expect(panel).toContain('<h2 class="text-xl font-bold mb-2 text-secondary">Ingredient Import (Beta)</h2>');
+    });
+
+    it('offers Return to Today in the import panel and renders the unchanged sentence from the shared constant', () => {
+        expect(panel).toMatch(/<button type="button" id="import-return-today"[^>]*>Return to Today<\/button>/);
+        const ui = read('../ui/importWorkspace.js');
+        expect(ui).toContain('WORKSPACE_UNCHANGED_NOTICE');
+        expect(ui).toMatch(/getElementById\('import-return-today'\)\?\.addEventListener\('click', \(\) => activateTab\('today'\)\)/);
+        expect(ui).toMatch(/import \{ activateTab \} from '\.\/dashboard\.js'/);
+        expect(WORKSPACE_UNCHANGED_NOTICE).toBe(unchanged);
+    });
+
+    it('says an abandoned import left foods and the diary unchanged, and keeps cancel behavior', async () => {
+        const step = lookupWorkspace((await matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, {})).workspace, ['rice']);
+        const packet = await packetWorkspace(step.workspace, ['rice']);
+        const cancelled = cancelWorkspace(packet.workspace);
+        expect(cancelled.ok).toBe(true);
+        expect(cancelled.workspace).toMatchObject({ cancelled: true, committed: false, notice: unchanged });
+        expect(cancelled.workspace.preserved[0].jobId).toMatch(/^rj-/);
+        expect(cancelWorkspace(createWorkspace('owner-a').workspace).workspace.notice).toBe(unchanged);
+    });
+
+    it('states that saving exported the meal without logging it to the diary', () => {
+        const imported = importWorkspaceInput(createWorkspace('owner-a').workspace, list);
+        const saved = saveWorkspace(imported.workspace);
+        expect(saved.ok).toBe(true);
+        expect(saved.workspace.committed).toBe(false);
+        expect(saved.workspace.save).toEqual({ available: false, logged: false, reason: 'Export only until ingredient and nutrient writes are approved. This meal was not logged to the diary.' });
+        expect(saved.workspace.save.reason).toBe(WORKSPACE_SAVE_REASON);
+        expect(saved.workspace.exportCopy.format).toBe('paste');
     });
 });
