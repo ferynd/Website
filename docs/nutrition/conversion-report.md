@@ -8,6 +8,8 @@ The extract was a fresh foods-only pull of the current saved foods, made on 2026
 
 It reconciles with the 2026-11-09 census count of 191 v1 foods: the extract holds 191 foods, all v1.
 
+Every count in this report was verified by running the committed analysis CLI (`scripts/nutrition/conversionAnalysisCli.ts`) against the private extract on 2026-11-10; its aggregate output matches this report exactly. The serving-basis counts come from that run's classifier (`classifyBasis` in `scripts/nutrition/conversionAnalysis.ts`), so they are reproducible from the repository code.
+
 A detailed per-food validation file was delivered to James privately. It is not in the repository.
 
 ## Conversion definition
@@ -77,12 +79,12 @@ Converted detail values: all null across all foods. Fiber meaning and carb conve
 
 | Basis stated in the name | Foods |
 | --- | --- |
-| Weight stated | 93 |
-| Count/unit stated | 20 |
-| Other basis stated | 46 |
-| No explicit basis | 32 |
+| Weight stated | 92 |
+| Count/unit stated | 30 |
+| Other basis stated | 36 |
+| No explicit basis | 33 |
 
-Reconciliation: 93 + 20 + 46 + 32 = 191.
+Reconciliation: 92 + 30 + 36 + 33 = 191.
 
 ## Quantity field (observation)
 

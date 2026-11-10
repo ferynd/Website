@@ -161,7 +161,7 @@ const UNIT_WORDS =
   'pc|pcs|piece|pieces|ct|count|cookie|cookies|bar|bars|can|cans|bottle|bottles|scoop|scoops|slice|slices|' +
   'pack|packs|packet|packets|bag|bags|serving|servings|each|unit|units|cup|cups|tbsp|tsp|egg|eggs|patty|patties|' +
   'link|links|stick|sticks|pouch|pouches|box|boxes|wrap|wraps|tortilla|tortillas|biscuit|biscuits';
-const UNIT_IN_PAREN = new RegExp(`\\b(?:${UNIT_WORDS})\\b`, 'i');
+const UNIT_IN_PAREN = new RegExp(`(?:^|[\\d\\s])(?:${UNIT_WORDS})\\b`, 'i');
 const UNIT_TRAILING = new RegExp(`\\d+(?:\\.\\d+)?\\s*(?:${UNIT_WORDS})$`, 'i');
 const TRAILING_PAREN = /\(([^()]*)\)\s*$/;
 
