@@ -10,6 +10,7 @@ import { PROFILE_FIELDS } from '../../../shared/nutrition/research/profileFields
 import { onIngredientAuthChange } from '../services/ingredientSession.js';
 import { renderIngredientPaste } from '../../../shared/nutrition/import/pasteFormat.js';
 import { nutrientBasis } from '../../../shared/nutrition/calculate.js';
+import { responseFor } from './researchPacketFixtures.js';
 
 const list = {
     kind: 'nutrition.ingredientList', schemaVersion: 1,
@@ -371,5 +372,100 @@ describe('serving-weight facts and yield export (#72 fix round 2)', () => {
         expect(reimported.workspace.draft.import.ingredients).toEqual(workspace.draft.import.ingredients);
         expect(INGREDIENT_STORE_WRITES_ENABLED).toBe(false);
         expect(NUTRIENT_V2_WRITES_ENABLED).toBe(false);
+    });
+});
+
+describe('research evidence on the applied draft (#73)', () => {
+    /** One measured field with a versioned source, one comparable estimate, and one explicit unknown. */
+    function richResponse(request) {
+        const response = responseFor(request);
+        const result = response.results[0];
+        result.sources.push({ sourceId: 'c1', type: 'composition_db', title: 'Synthetic comparable table', url: 'https://example.test/comparable', recordId: 'cmp-7', version: 'cmp-2026.1', publishedAt: '2026-01-15', accessedAt: '2026-11-07' });
+        result.nutrients.protein = { value: 2.7, unit: 'g', status: 'measured', sourceIds: ['s1'], qualifier: 'lab', roundingInterval: 0.1 };
+        result.nutrients.fat = { value: 300, unit: 'mg', status: 'estimated_from_comparable', sourceIds: ['c1'], comparator: { name: 'Synthetic long-grain rice', sourceId: 'c1', transferReason: 'Same grain and cooking method' }, derivation: 'Comparable cooked rice, same water ratio', range: { min: 200, max: 400 }, confidence: 0.6 };
+        result.nutrients.sodium = { value: null, unit: 'mg', status: 'unknown', sourceIds: [] };
+        result.unresolved = result.unresolved
+            .filter(entry => entry.field !== 'protein' && entry.field !== 'fat')
+            .map(entry => entry.field === 'sodium' ? { field: 'sodium', reason: 'Salt added at cooking is not stated' } : entry);
+        result.assumptions = ['Cooked without added fat'];
+        return response;
+    }
+
+    async function packetStep() {
+        let step = await matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, {});
+        step = lookupWorkspace(step.workspace, ['rice']);
+        return packetWorkspace(step.workspace, ['rice']);
+    }
+
+    it('keeps per-field evidence, result sources, and explicit unknowns on the applied item', async () => {
+        const packet = await packetStep();
+        const request = packet.workspace.resolution.pendingRequests[0];
+        const applied = await applyResearchResponse(packet.workspace, JSON.stringify(richResponse(request)));
+        expect(applied.ok, JSON.stringify(applied.errors)).toBe(true);
+        const item = applied.workspace.resolution.items.find(row => row.lineId === 'rice');
+        expect(item.source).toBe('packet');
+        expect(item.nutrients.protein).toEqual({ value: 2.7, unit: 'g', status: 'measured', sourceIds: ['s1'], requestId: request.requestId, qualifier: 'lab', roundingInterval: 0.1 });
+        // Units are the validator's normalized registry units: 300 mg fat becomes 0.3 g, and the range converts too.
+        expect(item.nutrients.fat).toEqual({
+            value: 0.3, unit: 'g', status: 'estimated_from_comparable', sourceIds: ['c1'], requestId: request.requestId,
+            comparator: { name: 'Synthetic long-grain rice', sourceId: 'c1', transferReason: 'Same grain and cooking method' },
+            derivation: 'Comparable cooked rice, same water ratio', range: { min: 0.2, max: 0.4 }, confidence: 0.6,
+        });
+        expect(item.researchEvidence).toHaveLength(1);
+        const [evidence] = item.researchEvidence;
+        expect(evidence.requestId).toBe(request.requestId);
+        expect(evidence.verification).toBe('unverified');
+        expect(evidence.sources).toEqual([
+            { sourceId: 's1', type: 'fdc', title: 'Synthetic fixture', url: 'https://example.test/synthetic', recordId: '9900001', version: 'fixture-v1', accessedAt: '2026-11-06' },
+            { sourceId: 'c1', type: 'composition_db', title: 'Synthetic comparable table', url: 'https://example.test/comparable', recordId: 'cmp-7', version: 'cmp-2026.1', publishedAt: '2026-01-15', accessedAt: '2026-11-07' },
+        ]);
+        expect(evidence.unresolved).toContainEqual({ field: 'sodium', reason: 'Salt added at cooking is not stated' });
+        expect(evidence.unresolved.some(entry => entry.field === 'protein' || entry.field === 'fat')).toBe(false);
+        expect(evidence.assumptions).toEqual(['Cooked without added fat']);
+        // Every cited source id resolves inside the same evidence record.
+        const cited = new Set(evidence.sources.map(source => source.sourceId));
+        for (const nutrient of Object.values(item.nutrients)) for (const id of nutrient.sourceIds || []) expect(cited.has(id)).toBe(true);
+        expect(applied.workspace.committed).toBe(false);
+        expect(applied.workspace.capabilities.save).toBe(false);
+        expect(INGREDIENT_STORE_WRITES_ENABLED).toBe(false);
+        expect(NUTRIENT_V2_WRITES_ENABLED).toBe(false);
+    });
+
+    it('keeps a null field unknown and never coerces it to zero', async () => {
+        const packet = await packetStep();
+        const applied = await applyResearchResponse(packet.workspace, richResponse(packet.workspace.resolution.pendingRequests[0]));
+        expect(applied.ok, JSON.stringify(applied.errors)).toBe(true);
+        const item = applied.workspace.resolution.items[0];
+        expect(item.nutrients.sodium).toMatchObject({ value: null, status: 'unknown', unit: 'mg', sourceIds: [] });
+        const calculated = calculateWorkspace(applied.workspace);
+        expect(calculated.workspace.calculation.nutrients.sodium.value).toBeNull();
+        expect(calculated.workspace.calculation.nutrients.sodium.status).toBe('unknown');
+        expect(calculated.workspace.calculation.nutrients.protein.value).toBeCloseTo(2.7);
+        expect(calculated.workspace.committed).toBe(false);
+    });
+
+    it('calculates the same totals with or without the extra evidence fields', async () => {
+        const packet = await packetStep();
+        const applied = await applyResearchResponse(packet.workspace, richResponse(packet.workspace.resolution.pendingRequests[0]));
+        const bare = structuredClone(applied.workspace);
+        bare.resolution.items = bare.resolution.items.map(item => ({
+            ...item,
+            nutrients: Object.fromEntries(Object.entries(item.nutrients).map(([key, nutrient]) => [key, { value: nutrient.value, status: nutrient.status }])),
+        }));
+        delete bare.resolution.items[0].researchEvidence;
+        expect(calculateWorkspace(applied.workspace).workspace.calculation).toEqual(calculateWorkspace(bare).workspace.calculation);
+    });
+
+    it('replaces only the fields a response supplies and keeps one evidence record per request', async () => {
+        const packet = await packetStep();
+        const request = packet.workspace.resolution.pendingRequests[0];
+        const seeded = structuredClone(packet.workspace);
+        seeded.resolution.items[0].nutrients = { ...seeded.resolution.items[0].nutrients, unrequested: { value: 1, status: 'measured' } };
+        const once = await applyResearchResponse(seeded, richResponse(request));
+        expect(once.workspace.resolution.items[0].nutrients.unrequested).toEqual({ value: 1, status: 'measured' });
+        const twice = await applyResearchResponse(once.workspace, richResponse(request));
+        expect(twice.ok).toBe(true);
+        expect(twice.workspace.resolution.items[0].researchEvidence).toHaveLength(1);
+        expect(twice.workspace.committed).toBe(false);
     });
 });

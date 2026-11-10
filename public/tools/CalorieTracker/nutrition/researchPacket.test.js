@@ -681,3 +681,33 @@ it('rejects source ids that are not short opaque ids, because they become publis
     ok.response.results[0].sources.push({ sourceId: 'fdc-2_cup.v1', type: 'literature', title: 'Conversion note', url: 'https://example.org/note', accessedAt: '2026-11-06' });
     await expect(ok.service.acceptResponse(ok.response)).resolves.toBeTruthy();
 });
+it('keeps source version, publication, and retrieval dates on the revision draft (#73)', async () => {
+    const f = await packetFixture({ fields: ['protein', 'fat', 'sodium'] });
+    const result = f.response.results[0];
+    result.sources[0].publishedAt = '2026-04-01';
+    result.sources.push({ sourceId: 'c1', type: 'composition_db', title: 'Synthetic comparable table', url: 'https://example.test/comparable', recordId: 'cmp-7', version: 'cmp-2026.1', publishedAt: '2026-01-15', accessedAt: '2026-11-07' });
+    result.nutrients.protein = { value: 2.7, unit: 'g', status: 'measured', sourceIds: ['s1'] };
+    result.nutrients.fat = { value: 0.3, unit: 'g', status: 'estimated_from_comparable', sourceIds: ['c1'], comparator: { name: 'Synthetic comparable', sourceId: 'c1', transferReason: 'Same form' }, derivation: 'Comparable estimate', range: { min: 0.2, max: 0.4 }, confidence: 0.6 };
+    result.unresolved = [{ field: 'sodium', reason: 'Salt is not stated' }];
+    const [j] = await f.service.acceptResponse(f.response), draft = j.proposal.revisionDraft, keys = j.proposal.assistantSourceKeys;
+    expect(draft.sources[keys.s1]).toMatchObject({ type: 'fdc', recordId: '9900001', version: 'fixture-v1', publishedAt: '2026-04-01', accessedAt: '2026-11-06' });
+    expect(draft.sources[keys.c1]).toMatchObject({ type: 'comparable', recordId: 'cmp-7', version: 'cmp-2026.1', publishedAt: '2026-01-15', accessedAt: '2026-11-07' });
+    expect(draft.fieldProvenance.fat).toEqual({ sourceKey: keys.c1, derivation: 'Comparable estimate', comparatorRef: JSON.stringify({ name: 'Synthetic comparable', sourceId: 'c1', transferReason: 'Same form' }), range: { min: 0.2, max: 0.4 }, confidence: 0.6 });
+    expect(draft.nutrients.sodium).toBeNull();
+    expect(draft.nutrientMeta.quality.sodium.status).toBe('unknown');
+    expect(j.proposal.gaps.sodium).toBe('Salt is not stated');
+    await expect(verifyRevisionHash(draft)).resolves.toBe(true);
+});
+it('keeps sourceless evidence for an unknown field on the assistant result, not as invented provenance (#73)', async () => {
+    const f = await packetFixture({ fields: ['sodium'] });
+    const result = f.response.results[0];
+    result.nutrients.sodium = { value: null, unit: 'mg', status: 'unknown', sourceIds: [], derivation: 'No comparable lists added salt', range: { min: 0, max: 400 }, confidence: 0.2 };
+    result.unresolved = [{ field: 'sodium', reason: 'Salt is not stated' }];
+    const [j] = await f.service.acceptResponse(f.response);
+    // Revision provenance needs a cited sourceKey, so a sourceless unknown gets no entry there.
+    expect(j.proposal.revisionDraft.fieldProvenance.sodium).toBeUndefined();
+    expect(j.proposal.revisionDraft.nutrients.sodium).toBeNull();
+    expect(j.proposal.assistantResult.nutrients.sodium).toMatchObject({ value: null, status: 'unknown', derivation: 'No comparable lists added salt', range: { min: 0, max: 400 }, confidence: 0.2 });
+    expect(j.proposal.assistantResult.unresolved).toEqual([{ field: 'sodium', reason: 'Salt is not stated' }]);
+    expect(j.proposal.gaps.sodium).toBe('Salt is not stated');
+});

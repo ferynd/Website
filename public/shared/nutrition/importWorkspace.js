@@ -302,10 +302,25 @@ export async function applyResearchResponse(workspace, input) {
         const lineId = jobs.find(job => job.jobId === result.targetId)?.target?.lineId;
         const item = items.find(row => row.lineId === lineId);
         if (!item) continue;
+        // Keep the whole validated field (unit, qualifier, uncertainty, range, confidence, derivation,
+        // comparator, sourceIds) and tag it with the request whose evidence record holds its sources.
+        // Calculation reads only value and status, so the extra fields are inert. Fields the response
+        // does not supply keep their earlier values.
         const nutrients = { ...item.nutrients };
         for (const [key, nutrient] of Object.entries(result.nutrients || {}))
-            nutrients[key] = { value: nutrient.value, status: nutrient.status };
+            nutrients[key] = { ...structuredClone(nutrient), requestId: request.requestId };
         item.nutrients = nutrients;
+        // One evidence record per request: result-level sources (with version, publishedAt, and
+        // accessedAt), explicit unknowns, and assumptions. Re-applying a request replaces its record.
+        const evidence = {
+            requestId: request.requestId,
+            targetId: result.targetId,
+            verification: 'unverified',
+            sources: structuredClone(result.sources || []),
+            unresolved: structuredClone(result.unresolved || []),
+            assumptions: structuredClone(result.assumptions || []),
+        };
+        item.researchEvidence = [...(item.researchEvidence || []).filter(entry => entry.requestId !== request.requestId), evidence];
         item.source = 'packet';
     }
     return done(workspace, { resolution: { ...workspace.resolution, items, modelCalls: 0 } });
