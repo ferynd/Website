@@ -141,9 +141,10 @@ it('curated --verify-source refetches through a deterministic adapter and never 
     const approveArgs = ['review', '--store', root, '--job', accepted.jobId, '--decide', 'approve', '--reviewer', 'reviewer', '--hash', await reviewContentHash(saved!), '--write'];
     if (warnings.length)
         approveArgs.push('--ack', warnings.join('|'));
-    const approved = await researchCli(approveArgs, { output, fetch, fdcBulkAdapter: offline.adapter }) as ResearchJob;
-    expect(approved.state).toBe('approved');
-    expect(approved.review?.approvedContentHash).toBe(await reviewContentHash(saved!));
+    // Refetch is allowed before match review, but curated approval now fails closed
+    // until the reviewed source-match table contains this FDC record.
+    await expect(researchCli(approveArgs, { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('match table');
+    expect((await disk.get(accepted.jobId))?.state).toBe('needs_review');
     vi.stubEnv('FDC_API_KEY', '');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('--live');
     await expect(researchCli(['review', '--store', root, '--job', accepted.jobId, '--verify-source', 's1', '--source', 'fdc-api', '--live'], { output, fetch, fdcBulkAdapter: offline.adapter })).rejects.toThrow('FDC_API_KEY');
