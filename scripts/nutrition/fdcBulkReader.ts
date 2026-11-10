@@ -20,7 +20,7 @@ async function readPinnedBytes(file: string, pin: DatasetPin) {
 export async function readPinnedBulk(file: string, pin: DatasetPin) {
     const data = await readPinnedBytes(file, pin);
     const raw = JSON.parse(data.toString('utf8'));
-    const foods = Array.isArray(raw) ? raw : raw.FoundationFoods || raw.BrandedFoods || raw.foods;
+    const foods = Array.isArray(raw) ? raw : raw.FoundationFoods || raw.SRLegacyFoods || raw.BrandedFoods || raw.foods;
     if (!Array.isArray(foods))
         throw new PermanentSourceError('Invalid bulk food array');
     const seen = new Set();
