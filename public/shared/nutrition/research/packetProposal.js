@@ -30,7 +30,7 @@ export async function packetProposal(job, result) {
     applyStagedConventions(stagedRecord, { fiberMeaning: 'total', carbConvention: 'includes_fiber' }, { base, requested: job.requestedFields });
     const assistantSourceKeys = Object.fromEntries(result.sources.map(s => [s.sourceId, job.pendingRequest.requestId + ':' + s.sourceId]));
     for (const s of result.sources)
-        sources[assistantSourceKeys[s.sourceId]] = { type: ['fdc', 'label', 'manufacturer'].includes(s.type) ? s.type : 'comparable', recordId: s.recordId || s.sourceId, title: s.title, url: s.url, version: s.version || 'assistant-cited-v1', accessedAt: s.accessedAt, permittedUse: 'review_required' };
+        sources[assistantSourceKeys[s.sourceId]] = { type: ['fdc', 'label', 'manufacturer'].includes(s.type) ? s.type : 'comparable', recordId: s.recordId || s.sourceId, title: s.title, url: s.url, version: s.version || 'assistant-cited-v1', ...(s.publishedAt ? { publishedAt: s.publishedAt } : {}), accessedAt: s.accessedAt, permittedUse: 'review_required' };
     const gaps = {};
     for (const [key, n] of Object.entries(result.nutrients)) {
         stagedRecord.values[key] = n.value;
