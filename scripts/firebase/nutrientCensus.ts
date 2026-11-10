@@ -6,12 +6,16 @@
  *   npx vite-node --config vitest.config.ts scripts/firebase/nutrientCensus.ts -- \
  *     --project jlb-calorietracker --out <new dir outside the checkout> --dry-run [--backup]
  * `--config vitest.config.ts` supplies the `@/` alias the logic imports need.
- * Credential: GOOGLE_APPLICATION_CREDENTIALS if set, else an existing Firebase CLI login
- * (configstore under XDG_CONFIG_HOME or HOME/.config), else Application Default Credentials.
+ * Credential: always applicationDefault(). If GOOGLE_APPLICATION_CREDENTIALS is set it is used as is.
+ * Otherwise an existing Firebase CLI login (configstore under XDG_CONFIG_HOME or HOME/.config) is staged
+ * as an authorized_user JSON file (mode 0600, fresh 0700 mkdtemp directory under the OS temp dir) and
+ * GOOGLE_APPLICATION_CREDENTIALS points at it for this process only. Firestore accepts that implicit
+ * ADC credential. The directory is removed and the variable restored when the run ends, pass or fail.
+ * With neither, plain Application Default Credentials (gcloud). No token is ever printed.
  */
-import { constants, existsSync, mkdirSync, openSync, closeSync, fsyncSync, readFileSync, writeFileSync, realpathSync, statSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { resolve, relative, isAbsolute, dirname, sep } from 'node:path';
+import { constants, existsSync, mkdirSync, mkdtempSync, openSync, closeSync, fsyncSync, readFileSync, writeFileSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
+import { join, resolve, relative, isAbsolute, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
@@ -22,6 +26,7 @@ import {
   refuseUnsafeRun,
   selectCensusCredential,
   type CensusDoc,
+  type CensusEnv,
   type CensusUser,
 } from './nutrientCensusLogic';
 
@@ -103,12 +108,20 @@ async function loadUsers(db: ReaderDb): Promise<CensusLoad> {
 
 type AdminCredential = import('firebase-admin/app').Credential;
 
-/** Injection seam for tests. The defaults authenticate and read production read-only. */
+/**
+ * Injection seam for tests. The defaults authenticate and read production read-only.
+ * env, homeDir, readText, and tempBase default to process.env, the OS home, the real file system,
+ * and the OS temp dir. Tests inject them so they never touch the real HOME, env, or network.
+ */
 export type CensusDeps<C = AdminCredential> = {
   /** Resolve a credential and prove it works. Runs before the output directory exists. */
   authenticate(): Promise<C>;
   /** Read-only load of every user's foods, daily entries, and recipes. */
   loadCensus(credential: C, projectId: string): Promise<CensusLoad>;
+  env?: CensusEnv;
+  homeDir?: string;
+  readText?: (path: string) => string | null;
+  tempBase?: string;
 };
 
 /** A missing or unreadable file is not fatal. Contents are never printed. */
@@ -120,13 +133,54 @@ function readOptionalText(path: string): string | null {
   }
 }
 
-async function defaultAuthenticate(): Promise<AdminCredential> {
-  const { applicationDefault, refreshToken } = await import('firebase-admin/app');
-  const choice = selectCensusCredential(process.env, homedir(), readOptionalText);
-  const credential = choice.kind === 'firebase-cli' ? refreshToken(choice.credential) : applicationDefault();
+type StagedCredential = { restore(): void };
+
+/**
+ * With GOOGLE_APPLICATION_CREDENTIALS unset and a Firebase CLI login present, write the authorized_user
+ * JSON to a private temp file and point GOOGLE_APPLICATION_CREDENTIALS at it, so applicationDefault()
+ * loads it as an implicit credential that Firestore accepts. restore() removes the file and the variable.
+ * Otherwise nothing is touched and restore() does nothing.
+ */
+export function stageCensusCredential(
+  env: CensusEnv,
+  homeDir: string,
+  readText: (path: string) => string | null,
+  tempBase: string,
+): StagedCredential {
+  const choice = selectCensusCredential(env, homeDir, readText);
+  if (choice.kind !== 'firebase-cli') return { restore: () => undefined };
+  const hadVariable = Object.prototype.hasOwnProperty.call(env, 'GOOGLE_APPLICATION_CREDENTIALS');
+  const previous = env.GOOGLE_APPLICATION_CREDENTIALS;
+  const dir = mkdtempSync(join(tempBase, 'nutrient-census-adc-'));
+  const restore = (): void => {
+    if (hadVariable) env.GOOGLE_APPLICATION_CREDENTIALS = previous;
+    else delete env.GOOGLE_APPLICATION_CREDENTIALS;
+    rmSync(dir, { recursive: true, force: true });
+  };
+  try {
+    const file = join(dir, 'authorized_user.json');
+    exclusivePrivateFile(file, JSON.stringify(choice.credential));
+    env.GOOGLE_APPLICATION_CREDENTIALS = file;
+  } catch (error) {
+    restore();
+    throw error;
+  }
+  return { restore };
+}
+
+type AdminAppModule = Pick<typeof import('firebase-admin/app'), 'applicationDefault'>;
+
+/** applicationDefault() for every path; the CLI login arrives through the staged file. */
+export async function authenticateWithApplicationDefault(
+  loadApp: () => Promise<AdminAppModule> = () => import('firebase-admin/app'),
+): Promise<AdminCredential> {
+  const { applicationDefault } = await loadApp();
+  const credential = applicationDefault();
   await credential.getAccessToken();
   return credential;
 }
+
+const defaultAuthenticate = (): Promise<AdminCredential> => authenticateWithApplicationDefault();
 
 async function defaultLoadCensus(credential: AdminCredential, projectId: string): Promise<CensusLoad> {
   const { deleteApp, initializeApp } = await import('firebase-admin/app');
@@ -173,22 +227,33 @@ export async function main<C = AdminCredential>(
   const repo = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '../..'));
   if (!outsideCheckout(repo, out)) throw new CensusPreconditionError('Census output must be outside the checkout');
 
-  // Authenticate before creating anything, so a failed auth leaves no directory that blocks a retry.
-  const credential = await deps.authenticate();
+  // The staged CLI credential lives only for this run; the finally removes it on success, failure, or throw.
+  const staged = stageCensusCredential(
+    deps.env ?? process.env,
+    deps.homeDir ?? homedir(),
+    deps.readText ?? readOptionalText,
+    deps.tempBase ?? tmpdir(),
+  );
+  try {
+    // Authenticate before creating anything, so a failed auth leaves no directory that blocks a retry.
+    const credential = await deps.authenticate();
 
-  mkdirSync(out, { recursive: true, mode: 0o700 });
-  const realOut = realpathSync(out);
-  if (!outsideCheckout(repo, realOut)) throw new CensusPreconditionError('Census output must be outside the checkout');
-  if ((statSync(realOut).mode & 0o077) !== 0) throw new CensusPreconditionError('Output directory must have mode 0700');
+    mkdirSync(out, { recursive: true, mode: 0o700 });
+    const realOut = realpathSync(out);
+    if (!outsideCheckout(repo, realOut)) throw new CensusPreconditionError('Census output must be outside the checkout');
+    if ((statSync(realOut).mode & 0o077) !== 0) throw new CensusPreconditionError('Output directory must have mode 0700');
 
-  const { users, backup } = await deps.loadCensus(credential, values.project);
-  const report = censusFromFixtures(users);
-  if (values.backup) {
-    exclusivePrivateFile(resolve(realOut, 'backup.json'), `${JSON.stringify(encodeBackup(backup))}\n`);
+    const { users, backup } = await deps.loadCensus(credential, values.project);
+    const report = censusFromFixtures(users);
+    if (values.backup) {
+      exclusivePrivateFile(resolve(realOut, 'backup.json'), `${JSON.stringify(encodeBackup(backup))}\n`);
+    }
+    const planText = `${JSON.stringify(report, null, 2)}\n`;
+    exclusivePrivateFile(resolve(realOut, 'plan.json'), planText);
+    console.log(JSON.stringify({ mode: 'dry-run', projectId: values.project, counts: report, planSha256: digest(planText) }));
+  } finally {
+    staged.restore();
   }
-  const planText = `${JSON.stringify(report, null, 2)}\n`;
-  exclusivePrivateFile(resolve(realOut, 'plan.json'), planText);
-  console.log(JSON.stringify({ mode: 'dry-run', projectId: values.project, counts: report, planSha256: digest(planText) }));
 }
 
 // vite-node consumes the script path, so its own binary is argv[1]. Nothing else imports this file.

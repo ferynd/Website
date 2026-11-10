@@ -1,11 +1,11 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fingerprintTrackerFoodV1, parseTrackerFood } from '@/app/tools/recipe-standardizer/lib/trackerFoods';
 import { LEGACY_V1_KEYS } from '@/public/shared/nutrition/nutrientRegistry.js';
-import { main } from './nutrientCensus';
+import { authenticateWithApplicationDefault, main } from './nutrientCensus';
 import {
   censusFromFixtures,
   cliAuthorizedUserCredential,
@@ -165,6 +165,12 @@ describe('nutrient census', () => {
     expect(source).not.toMatch(/from\s+['"]firebase-admin/);
     expect(source).toMatch(/import\('firebase-admin\/app'\)/);
     expect(source).toMatch(/import\('firebase-admin\/firestore'\)/);
+  });
+
+  it('never builds a non-implicit refreshToken() credential, which Firestore rejects', () => {
+    const source = readFileSync(new URL('./nutrientCensus.ts', import.meta.url), 'utf8');
+    expect(source).not.toContain('refreshToken(');
+    expect(source).toContain('applicationDefault()');
   });
 });
 
@@ -327,5 +333,141 @@ describe('nutrient census run order', () => {
     expect(existsSync(inside)).toBe(false);
     expect(authenticate).not.toHaveBeenCalled();
     expect(loadCensus).not.toHaveBeenCalled();
+  });
+});
+
+describe('nutrient census staged ADC credential', () => {
+  const CLI_PATH = join('/fixture-home', '.config', 'configstore', 'firebase-tools.json');
+  const CLI_CONFIG = JSON.stringify({ tokens: { refresh_token: FAKE_REFRESH, access_token: 'fixture-access' }, user: { email: 'someone@example.test' } });
+  const readText = (path: string): string | null => (path === CLI_PATH ? CLI_CONFIG : null);
+  const expectedCredential = {
+    type: 'authorized_user',
+    client_id: FIREBASE_CLI_CLIENT_ID,
+    client_secret: FIREBASE_CLI_CLIENT_SECRET,
+    refresh_token: FAKE_REFRESH,
+  };
+  let parent: string;
+  let out: string;
+  let tempBase: string;
+  const argv = (): string[] => ['node', 'nutrientCensus.ts', '--', '--project', 'jlb-calorietracker', '--out', out, '--dry-run'];
+  const load = async () => ({ users: [] as CensusUser[], backup: [] });
+
+  type Seen = { path: string | undefined; parsed?: unknown; fileMode?: number; dirMode?: number; inTempBase?: boolean };
+  /** A fake firebase-admin/app whose applicationDefault() reads the injected env, as real ADC reads process.env. */
+  function fakeAdmin(env: Record<string, string | undefined>, seen: Seen[], fail: boolean) {
+    const applicationDefault = vi.fn(() => {
+      const path = env.GOOGLE_APPLICATION_CREDENTIALS;
+      const record: Seen = { path };
+      if (path && existsSync(path)) {
+        record.parsed = JSON.parse(readFileSync(path, 'utf8')) as unknown;
+        record.fileMode = statSync(path).mode & 0o777;
+        record.dirMode = statSync(dirname(path)).mode & 0o777;
+        record.inTempBase = dirname(dirname(path)) === tempBase;
+      }
+      seen.push(record);
+      return {
+        getAccessToken: async () => {
+          if (fail) throw new Error('fixture auth failure');
+          return { access_token: 'fixture-access', expires_in: 3600 };
+        },
+      };
+    });
+    const authenticate = () => authenticateWithApplicationDefault(async () => ({ applicationDefault }) as never);
+    return { applicationDefault, authenticate };
+  }
+
+  beforeEach(() => {
+    // Safety net for process.env; every case below injects its own env object.
+    vi.stubEnv('GOOGLE_APPLICATION_CREDENTIALS', join(tmpdir(), 'nutrient-census-no-such-credential.json'));
+    parent = mkdtempSync(join(tmpdir(), 'nutrient-census-adc-test-'));
+    out = join(parent, 'run');
+    tempBase = join(parent, 'tmp');
+    mkdirSync(tempBase, { mode: 0o700 });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.restoreAllMocks();
+    rmSync(parent, { recursive: true, force: true });
+  });
+
+  it('stages the CLI login as a private ADC file for applicationDefault and removes it after success', async () => {
+    const env: Record<string, string | undefined> = { HOME: '/fixture-home' };
+    const seen: Seen[] = [];
+    const { applicationDefault, authenticate } = fakeAdmin(env, seen, false);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await main(argv(), { authenticate, loadCensus: load, env, homeDir: '/fixture-home', readText, tempBase });
+    expect(applicationDefault).toHaveBeenCalledTimes(1);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.path).toBeTruthy();
+    expect(seen[0]!.parsed).toEqual(expectedCredential);
+    expect(seen[0]!.fileMode).toBe(0o600);
+    expect(seen[0]!.dirMode).toBe(0o700);
+    expect(seen[0]!.inTempBase).toBe(true);
+    expect(existsSync(seen[0]!.path!)).toBe(false);
+    expect(readdirSync(tempBase)).toEqual([]);
+    expect('GOOGLE_APPLICATION_CREDENTIALS' in env).toBe(false);
+    expect(existsSync(join(out, 'plan.json'))).toBe(true);
+    expect(JSON.stringify(log.mock.calls)).not.toContain(FAKE_REFRESH);
+  });
+
+  it('removes the staged file and restores the variable when auth fails, leaving no output directory', async () => {
+    const env: Record<string, string | undefined> = { HOME: '/fixture-home', GOOGLE_APPLICATION_CREDENTIALS: '' };
+    const seen: Seen[] = [];
+    const { authenticate } = fakeAdmin(env, seen, true);
+    const loadCensus = vi.fn(load);
+    await expect(main(argv(), { authenticate, loadCensus, env, homeDir: '/fixture-home', readText, tempBase })).rejects.toThrow('fixture auth failure');
+    expect(seen[0]!.parsed).toEqual(expectedCredential);
+    expect(existsSync(seen[0]!.path!)).toBe(false);
+    expect(readdirSync(tempBase)).toEqual([]);
+    expect(env.GOOGLE_APPLICATION_CREDENTIALS).toBe('');
+    expect(loadCensus).not.toHaveBeenCalled();
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it('removes the staged file when authenticate throws before applicationDefault', async () => {
+    const env: Record<string, string | undefined> = { HOME: '/fixture-home' };
+    let during: string | undefined;
+    const authenticate = async (): Promise<never> => {
+      during = env.GOOGLE_APPLICATION_CREDENTIALS;
+      throw new Error('fixture import failure');
+    };
+    await expect(main(argv(), { authenticate, loadCensus: load, env, homeDir: '/fixture-home', readText, tempBase })).rejects.toThrow();
+    expect(during).toBeTruthy();
+    expect(existsSync(during!)).toBe(false);
+    expect(readdirSync(tempBase)).toEqual([]);
+    expect('GOOGLE_APPLICATION_CREDENTIALS' in env).toBe(false);
+  });
+
+  it('leaves a preset GOOGLE_APPLICATION_CREDENTIALS alone and stages nothing', async () => {
+    const env: Record<string, string | undefined> = { HOME: '/fixture-home', GOOGLE_APPLICATION_CREDENTIALS: '/preset/key.json' };
+    const seen: Seen[] = [];
+    const { authenticate } = fakeAdmin(env, seen, false);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await main(argv(), { authenticate, loadCensus: load, env, homeDir: '/fixture-home', readText, tempBase });
+    expect(seen).toEqual([{ path: '/preset/key.json' }]);
+    expect(env.GOOGLE_APPLICATION_CREDENTIALS).toBe('/preset/key.json');
+    expect(readdirSync(tempBase)).toEqual([]);
+  });
+
+  it('uses plain ADC with no temp file when there is no CLI login', async () => {
+    const env: Record<string, string | undefined> = { HOME: '/nowhere' };
+    const seen: Seen[] = [];
+    const { authenticate } = fakeAdmin(env, seen, false);
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await main(argv(), { authenticate, loadCensus: load, env, homeDir: '/nowhere', readText, tempBase });
+    expect(seen).toEqual([{ path: undefined }]);
+    expect('GOOGLE_APPLICATION_CREDENTIALS' in env).toBe(false);
+    expect(readdirSync(tempBase)).toEqual([]);
+  });
+
+  it('stages nothing when a precondition refuses the run', async () => {
+    const env: Record<string, string | undefined> = { HOME: '/fixture-home' };
+    const authenticate = vi.fn(async () => 'fixture-credential');
+    const refused = ['node', 's', '--', '--project', 'jlb-calorietracker', '--out', parent, '--dry-run'];
+    await expect(main(refused, { authenticate, loadCensus: load, env, homeDir: '/fixture-home', readText, tempBase })).rejects.toThrow(/output directory/);
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(readdirSync(tempBase)).toEqual([]);
+    expect('GOOGLE_APPLICATION_CREDENTIALS' in env).toBe(false);
   });
 });
