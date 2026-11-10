@@ -1,16 +1,26 @@
 /**
  * Read-only nutrient census. Built for Part B and not run in Part A.
  * Prints aggregate counts only. Document names and nutrient values stay in the optional backup file.
+ *
+ * Run (only with James's approval; agents do not run it against production):
+ *   npx vite-node --config vitest.config.ts scripts/firebase/nutrientCensus.ts -- \
+ *     --project jlb-calorietracker --out <new dir outside the checkout> --dry-run [--backup]
+ * `--config vitest.config.ts` supplies the `@/` alias the logic imports need.
+ * Credential: GOOGLE_APPLICATION_CREDENTIALS if set, else an existing Firebase CLI login
+ * (configstore under XDG_CONFIG_HOME or HOME/.config), else Application Default Credentials.
  */
-import { constants, existsSync, mkdirSync, openSync, closeSync, fsyncSync, writeFileSync, realpathSync, statSync } from 'node:fs';
+import { constants, existsSync, mkdirSync, openSync, closeSync, fsyncSync, readFileSync, writeFileSync, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { resolve, relative, isAbsolute, dirname, sep } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
   censusFromFixtures,
   digest,
   encodeBackup,
+  isCensusProcessEntry,
   refuseUnsafeRun,
+  selectCensusCredential,
   type CensusDoc,
   type CensusUser,
 } from './nutrientCensusLogic';
@@ -31,16 +41,6 @@ function toJsonSafe(value: unknown): unknown {
     return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, toJsonSafe(item)]));
   }
   return null;
-}
-
-function isProcessEntry(): boolean {
-  const argvPath = process.argv[1];
-  if (!argvPath) return false;
-  try {
-    return import.meta.url === pathToFileURL(realpathSync(argvPath)).href;
-  } catch {
-    return import.meta.url === pathToFileURL(argvPath).href;
-  }
 }
 
 function exclusivePrivateFile(path: string, contents: string): void {
@@ -76,7 +76,9 @@ function plainDocs(docs: CensusDoc[]): CensusDoc[] {
   });
 }
 
-async function loadUsers(db: ReaderDb): Promise<{ users: CensusUser[]; backup: { path: string; data: Record<string, unknown> }[] }> {
+type CensusLoad = { users: CensusUser[]; backup: { path: string; data: Record<string, unknown> }[] };
+
+async function loadUsers(db: ReaderDb): Promise<CensusLoad> {
   const trackerRefs = await db.collection('artifacts/default-app-id/users').listDocuments();
   const recipeRefs = await db.collection('artifacts/recipe-standardizer/users').listDocuments();
   const uids = [...new Set([...trackerRefs, ...recipeRefs].map((ref) => ref.id))].sort();
@@ -99,7 +101,57 @@ async function loadUsers(db: ReaderDb): Promise<{ users: CensusUser[]; backup: {
   return { users, backup };
 }
 
-export async function main(argv: string[] = process.argv): Promise<void> {
+type AdminCredential = import('firebase-admin/app').Credential;
+
+/** Injection seam for tests. The defaults authenticate and read production read-only. */
+export type CensusDeps<C = AdminCredential> = {
+  /** Resolve a credential and prove it works. Runs before the output directory exists. */
+  authenticate(): Promise<C>;
+  /** Read-only load of every user's foods, daily entries, and recipes. */
+  loadCensus(credential: C, projectId: string): Promise<CensusLoad>;
+};
+
+/** A missing or unreadable file is not fatal. Contents are never printed. */
+function readOptionalText(path: string): string | null {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+async function defaultAuthenticate(): Promise<AdminCredential> {
+  const { applicationDefault, refreshToken } = await import('firebase-admin/app');
+  const choice = selectCensusCredential(process.env, homedir(), readOptionalText);
+  const credential = choice.kind === 'firebase-cli' ? refreshToken(choice.credential) : applicationDefault();
+  await credential.getAccessToken();
+  return credential;
+}
+
+async function defaultLoadCensus(credential: AdminCredential, projectId: string): Promise<CensusLoad> {
+  const { deleteApp, initializeApp } = await import('firebase-admin/app');
+  const { getFirestore } = await import('firebase-admin/firestore');
+  const app = initializeApp({ projectId, credential });
+  const db = getFirestore(app);
+  try {
+    return await loadUsers(db as unknown as ReaderDb);
+  } finally {
+    await db.terminate();
+    await deleteApp(app);
+  }
+}
+
+const defaultDeps: CensusDeps = { authenticate: defaultAuthenticate, loadCensus: defaultLoadCensus };
+
+function outsideCheckout(repo: string, path: string): boolean {
+  const rel = relative(repo, path);
+  return rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel);
+}
+
+export async function main<C = AdminCredential>(
+  argv: string[] = process.argv,
+  deps: CensusDeps<C> = defaultDeps as unknown as CensusDeps<C>,
+): Promise<void> {
   const separator = argv.indexOf('--');
   const { values } = parseArgs({
     args: argv.slice(separator >= 0 ? separator + 1 : 2),
@@ -118,37 +170,29 @@ export async function main(argv: string[] = process.argv): Promise<void> {
   } catch (error) {
     throw new CensusPreconditionError(error instanceof Error ? error.message : 'Refusing to run');
   }
-  const repo = realpathSync(resolve(dirname(new URL(import.meta.url).pathname), '../..'));
+  const repo = realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '../..'));
+  if (!outsideCheckout(repo, out)) throw new CensusPreconditionError('Census output must be outside the checkout');
+
+  // Authenticate before creating anything, so a failed auth leaves no directory that blocks a retry.
+  const credential = await deps.authenticate();
+
   mkdirSync(out, { recursive: true, mode: 0o700 });
   const realOut = realpathSync(out);
-  const rel = relative(repo, realOut);
-  if (!(rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel))) {
-    throw new CensusPreconditionError('Census output must be outside the checkout');
-  }
+  if (!outsideCheckout(repo, realOut)) throw new CensusPreconditionError('Census output must be outside the checkout');
   if ((statSync(realOut).mode & 0o077) !== 0) throw new CensusPreconditionError('Output directory must have mode 0700');
 
-  const { applicationDefault, deleteApp, initializeApp } = await import('firebase-admin/app');
-  const { getFirestore } = await import('firebase-admin/firestore');
-  const credential = applicationDefault();
-  await credential.getAccessToken();
-  const app = initializeApp({ projectId: values.project, credential });
-  const db = getFirestore(app);
-  try {
-    const { users, backup } = await loadUsers(db as unknown as ReaderDb);
-    const report = censusFromFixtures(users);
-    if (values.backup) {
-      exclusivePrivateFile(resolve(realOut, 'backup.json'), `${JSON.stringify(encodeBackup(backup))}\n`);
-    }
-    const planText = `${JSON.stringify(report, null, 2)}\n`;
-    exclusivePrivateFile(resolve(realOut, 'plan.json'), planText);
-    console.log(JSON.stringify({ mode: 'dry-run', projectId: values.project, counts: report, planSha256: digest(planText) }));
-  } finally {
-    await db.terminate();
-    await deleteApp(app);
+  const { users, backup } = await deps.loadCensus(credential, values.project);
+  const report = censusFromFixtures(users);
+  if (values.backup) {
+    exclusivePrivateFile(resolve(realOut, 'backup.json'), `${JSON.stringify(encodeBackup(backup))}\n`);
   }
+  const planText = `${JSON.stringify(report, null, 2)}\n`;
+  exclusivePrivateFile(resolve(realOut, 'plan.json'), planText);
+  console.log(JSON.stringify({ mode: 'dry-run', projectId: values.project, counts: report, planSha256: digest(planText) }));
 }
 
-if (isProcessEntry()) {
+// vite-node consumes the script path, so its own binary is argv[1]. Nothing else imports this file.
+if (isCensusProcessEntry(process.argv, fileURLToPath(import.meta.url))) {
   main().catch((error: unknown) => {
     console.error(error instanceof CensusPreconditionError ? error.message : 'Census stopped without printing private data.');
     process.exitCode = 1;
