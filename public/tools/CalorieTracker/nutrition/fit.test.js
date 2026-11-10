@@ -189,4 +189,27 @@ describe('quantity fitting', () => {
         });
         expect(zeroDen.flags.infeasible).toBe(true);
     });
+
+    it('solves a serving-weight fact whose cooked mass moves with the fitted grams', () => {
+        const serving = { factId: 'serve', provenance: 'user_stated', appliesTo: { scope: 'serving' }, basis: { servingWeight: { g: 100 } }, nutrients: calories(300) };
+        const beef = grams => ({ lineId: 'beef', grams, gMin: 0, gMax: 400, basis: 'estimated', nutrients: calories(200), waterDeltaG: -50 });
+        // The 1e-8 deviation weight pulls a few micrograms toward the start; 1e-4 g is the exact solve.
+        const moving = fitQuantities({ lines: [beef(100)], facts: [serving] });
+        expect(moving.quantities[0].grams).toBeCloseTo(150, 4);
+        expect(moving.flags.infeasible).toBe(false);
+        expect(moving.calculation.nutrients.calories.value).toBeCloseTo(300, 4);
+        expect(moving.residuals[0].known).toBeCloseTo(300, 4);
+        for (const start of [150, 300]) {
+            const again = fitQuantities({ lines: [beef(start)], facts: [serving] });
+            expect(again.quantities[0].grams).toBeCloseTo(150, 4);
+        }
+        const declared = fitQuantities({
+            lines: [{ lineId: 'beef', grams: 100, gMin: 0, gMax: 400, basis: 'estimated', nutrients: calories(200) }],
+            facts: [serving],
+            cookedTotal: 100,
+        });
+        expect(declared.quantities[0].grams).toBeCloseTo(150, 4);
+        expect(declared.residuals[0].known).toBe(300);
+        expect(declared.flags.infeasible).toBe(false);
+    });
 });

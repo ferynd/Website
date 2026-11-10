@@ -1,4 +1,4 @@
-import { calculateMeal, nutrientBasis } from './calculate.js';
+import { calculateMeal, countedLines, nutrientBasis } from './calculate.js';
 
 /** Deterministic quantity fit. Profiles, known facts, and fixed grams stay put. */
 export const FIT_VERSION = 2;
@@ -34,20 +34,29 @@ function clamp(value, bound) {
     return Math.min(bound.max, Math.max(bound.min, value));
 }
 
-function scaleKnown(value, fact, totalGrams, mealServings) {
+/** Known value per gram of cooked meal mass, or 0 when the fact does not scale with that mass. */
+function perCookedGram(value, fact, meal) {
+    if (!finite(value) || fact.appliesTo?.scope !== 'serving') return 0;
+    const factServings = fact.basis?.servings;
+    if (finite(meal.servings) && meal.servings > 0 && finite(factServings) && factServings > 0) return 0;
+    const weight = fact.basis?.servingWeight?.g;
+    return finite(weight) && weight > 0 ? value / weight : 0;
+}
+
+function scaleKnown(value, fact, totalGrams, meal) {
     if (!finite(value)) return null;
     if (fact.appliesTo?.scope !== 'serving') return value;
     const factServings = fact.basis?.servings;
-    if (finite(mealServings) && mealServings > 0 && finite(factServings) && factServings > 0)
-        return value * (mealServings / factServings);
+    if (finite(meal.servings) && meal.servings > 0 && finite(factServings) && factServings > 0)
+        return value * (meal.servings / factServings);
     const weight = fact.basis?.servingWeight?.g;
     if (finite(totalGrams) && totalGrams > 0 && finite(weight) && weight > 0)
         return value * (totalGrams / weight);
     return null;
 }
 
-function targetFor(fact, key, observed, totalGrams, mealServings) {
-    const known = scaleKnown(observed.value, fact, totalGrams, mealServings);
+function targetFor(fact, key, observed, totalGrams, meal) {
+    const known = scaleKnown(observed.value, fact, totalGrams, meal);
     if (known == null) return { usable: false, reason: fact.appliesTo?.scope === 'serving' ? 'basis_not_comparable' : 'not_numeric' };
     if (observed.qualifier === 'less_than') return { usable: true, kind: 'less_than', bound: known };
     if (observed.rounding && observed.rounding !== 'exact') {
@@ -62,22 +71,22 @@ function mealLines(lines, grams) {
     return lines.map(line => ({ ...line, grams: grams.get(line.lineId), quantityBasis: line.basis }));
 }
 
-function totalGrams(lines, grams) {
-    const parents = parentsOf(lines);
-    return lines.reduce((sum, line) => {
-        if (parents.has(line.lineId)) return sum;
+/** Cooked meal mass. A declared meal cooked total is a meal fact and does not move with the grams. */
+function totalGrams(lines, grams, meal) {
+    if (finite(meal.cookedTotal)) return meal.cookedTotal;
+    return countedLines(lines).reduce((sum, line) => {
         const basis = nutrientBasis({ ...line, grams: grams.get(line.lineId) });
         return sum + (basis ? basis.cookedG : 0);
     }, 0);
 }
 
-function nutrientTargets(facts, lines, grams, mealServings) {
+function nutrientTargets(facts, lines, grams, meal) {
     const targets = [];
     const notes = [];
-    const total = totalGrams(lines, grams);
+    const total = totalGrams(lines, grams, meal);
     for (const fact of facts) {
         for (const [key, observed] of Object.entries(fact.nutrients || {})) {
-            const target = targetFor(fact, key, observed, total, mealServings);
+            const target = targetFor(fact, key, observed, total, meal);
             if (!target.usable) {
                 notes.push({ factId: fact.factId, key, reason: target.reason, rounding: target.rounding || null });
                 continue;
@@ -89,8 +98,7 @@ function nutrientTargets(facts, lines, grams, mealServings) {
 }
 
 function nutrientComplete(lines, key) {
-    const parents = parentsOf(lines);
-    return lines.filter(line => !parents.has(line.lineId)).every(line => finite(line.nutrients?.[key]?.value));
+    return countedLines(lines).every(line => finite(line.nutrients?.[key]?.value));
 }
 
 function slopeOf(line, key) {
@@ -101,9 +109,9 @@ function slopeOf(line, key) {
     return retention * line.nutrients[key].value / 100;
 }
 
-function smoothLoss(lines, grams, facts, mealServings, starts) {
+function smoothLoss(lines, grams, facts, meal, starts) {
     const calculated = calculateMeal({ lines: mealLines(lines, grams) });
-    const { targets } = nutrientTargets(facts, lines, grams, mealServings);
+    const { targets } = nutrientTargets(facts, lines, grams, meal);
     let loss = 0;
     for (const target of targets) {
         if (!nutrientComplete(lines, target.key)) continue;
@@ -213,8 +221,8 @@ function constraintLoss(lines, grams, constraints) {
     return { loss, violations };
 }
 
-function nutrientError(lines, grams, facts, mealServings) {
-    const scored = residuals(lines, grams, facts, mealServings);
+function nutrientError(lines, grams, facts, meal) {
+    const scored = residuals(lines, grams, facts, meal);
     let error = 0;
     for (const row of scored.rows) {
         if (row.reason) continue;
@@ -224,11 +232,11 @@ function nutrientError(lines, grams, facts, mealServings) {
     return error;
 }
 
-function lossAt(lines, grams, facts, mealServings, starts, constraints) {
-    return smoothLoss(lines, grams, facts, mealServings, starts) + CONSTRAINT_WEIGHT * constraintLoss(lines, grams, constraints).loss;
+function lossAt(lines, grams, facts, meal, starts, constraints) {
+    return smoothLoss(lines, grams, facts, meal, starts) + CONSTRAINT_WEIGHT * constraintLoss(lines, grams, constraints).loss;
 }
 
-function smoothPoint(lines, grams, line, bound, facts, mealServings, starts) {
+function smoothPoint(lines, grams, line, bound, facts, meal, starts) {
     const x0 = grams.get(line.lineId);
     const start = starts.get(line.lineId);
     const scaleStart = Math.max(Math.abs(start), 1);
@@ -236,37 +244,49 @@ function smoothPoint(lines, grams, line, bound, facts, mealServings, starts) {
     let numerator = deviation * start;
     let denominator = deviation;
     const calculated = calculateMeal({ lines: mealLines(lines, grams) });
+    // A serving-weight target moves with this line's cooked mass, so it is linear in x too:
+    // known(x) = ks * x + kc. The residual (slope - ks) * x - (kc - base) is solved exactly.
+    const total = totalGrams(lines, grams, meal);
+    let dCooked = 0;
+    if (!finite(meal.cookedTotal)) {
+        const stepped = new Map(grams);
+        stepped.set(line.lineId, x0 + 1);
+        dCooked = totalGrams(lines, stepped, meal) - total;
+    }
     const project = [];
     for (const fact of facts) {
         for (const [key, observed] of Object.entries(fact.nutrients || {})) {
             if (!nutrientComplete(lines, key)) continue;
             const slope = slopeOf(line, key);
             if (slope == null) continue;
-            const known = scaleKnown(observed.value, fact, totalGrams(lines, grams), mealServings);
+            const known = scaleKnown(observed.value, fact, total, meal);
             if (known == null) continue;
             const base = (calculated.nutrients?.[key]?.value ?? 0) - slope * x0;
+            const ks = perCookedGram(observed.value, fact, meal) * dCooked;
+            const effSlope = slope - ks;
+            const effTarget = known - ks * x0 - base;
             if (observed.qualifier === 'less_than') {
-                project.push({ slope, limit: known, base, kind: 'less_than' });
+                project.push({ slope: effSlope, target: effTarget });
                 continue;
             }
             if (observed.rounding && observed.rounding !== 'exact' && !finite(observed.roundingInterval)) continue;
             const scale = Math.max(Math.abs(known), 1);
-            numerator += slope * (known - base) / (scale ** 2);
-            denominator += (slope ** 2) / (scale ** 2);
+            numerator += effSlope * effTarget / (scale ** 2);
+            denominator += (effSlope ** 2) / (scale ** 2);
         }
     }
     let next = denominator > 0 ? numerator / denominator : start;
     next = clamp(next, bound);
     for (const item of project) {
         if (item.slope === 0) continue;
-        if (item.slope * next + item.base > item.limit + 1e-9)
-            next = clamp((item.limit - item.base) / item.slope, bound);
+        if (item.slope * next > item.target + 1e-9)
+            next = clamp(item.target / item.slope, bound);
     }
     return next;
 }
 
-function searchVariable(lines, grams, line, bound, facts, mealServings, starts, constraints) {
-    grams.set(line.lineId, smoothPoint(lines, grams, line, bound, facts, mealServings, starts));
+function searchVariable(lines, grams, line, bound, facts, meal, starts, constraints) {
+    grams.set(line.lineId, smoothPoint(lines, grams, line, bound, facts, meal, starts));
     if (constraintLoss(lines, grams, constraints).loss <= 0) return;
     const samples = 65;
     let best = grams.get(line.lineId);
@@ -274,7 +294,7 @@ function searchVariable(lines, grams, line, bound, facts, mealServings, starts, 
     for (let step = 0; step < samples; step++) {
         const value = bound.min + (bound.max - bound.min) * (samples === 1 ? 0 : step / (samples - 1));
         grams.set(line.lineId, value);
-        const next = lossAt(lines, grams, facts, mealServings, starts, constraints);
+        const next = lossAt(lines, grams, facts, meal, starts, constraints);
         if (next < bestLoss - 1e-12 || (Math.abs(next - bestLoss) <= 1e-12 && Math.abs(value - starts.get(line.lineId)) < Math.abs(best - starts.get(line.lineId)))) {
             best = value;
             bestLoss = next;
@@ -286,7 +306,7 @@ function searchVariable(lines, grams, line, bound, facts, mealServings, starts, 
     for (let step = 0; step < 17; step++) {
         const value = lo + (hi - lo) * (step / 16);
         grams.set(line.lineId, value);
-        const next = lossAt(lines, grams, facts, mealServings, starts, constraints);
+        const next = lossAt(lines, grams, facts, meal, starts, constraints);
         if (next < bestLoss - 1e-12 || (Math.abs(next - bestLoss) <= 1e-12 && Math.abs(value - starts.get(line.lineId)) < Math.abs(best - starts.get(line.lineId)))) {
             best = value;
             bestLoss = next;
@@ -295,14 +315,14 @@ function searchVariable(lines, grams, line, bound, facts, mealServings, starts, 
     grams.set(line.lineId, best);
 }
 
-function searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, constraints) {
+function searchCoupledSums(lines, grams, bounds, facts, meal, starts, constraints) {
     for (const constraint of constraints || []) {
         if (constraint.type !== 'sum' || !finite(constraint.gMin) || !finite(constraint.gMax)) continue;
         const ids = constraint.lineIds || [];
         const freeIds = ids.filter(id => finite(bounds.get(id)?.min) && bounds.get(id).min !== bounds.get(id).max);
         if (freeIds.length < 2) continue;
         const fixed = ids.filter(id => !freeIds.includes(id)).reduce((sum, id) => sum + (grams.get(id) || 0), 0);
-        let bestLoss = lossAt(lines, grams, facts, mealServings, starts, constraints);
+        let bestLoss = lossAt(lines, grams, facts, meal, starts, constraints);
         let best = null;
         const first = freeIds[0];
         const second = freeIds[1];
@@ -317,7 +337,7 @@ function searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, co
                 const trial = new Map(grams);
                 trial.set(first, left);
                 trial.set(second, right);
-                const next = lossAt(lines, trial, facts, mealServings, starts, constraints);
+                const next = lossAt(lines, trial, facts, meal, starts, constraints);
                 if (next < bestLoss - 1e-12) {
                     bestLoss = next;
                     best = trial;
@@ -328,27 +348,27 @@ function searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, co
     }
 }
 
-function optimize(lines, startGrams, bounds, facts, mealServings, constraints) {
+function optimize(lines, startGrams, bounds, facts, meal, constraints) {
     const grams = new Map(startGrams);
     const starts = new Map(startGrams);
     const free = lines.filter(line => finite(bounds.get(line.lineId).min) && bounds.get(line.lineId).min !== bounds.get(line.lineId).max);
     for (let pass = 0; pass < 24; pass++) {
-        searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, constraints);
+        searchCoupledSums(lines, grams, bounds, facts, meal, starts, constraints);
         const before = JSON.stringify([...grams]);
         for (const line of free)
-            searchVariable(lines, grams, line, bounds.get(line.lineId), facts, mealServings, starts, constraints);
-        searchCoupledSums(lines, grams, bounds, facts, mealServings, starts, constraints);
+            searchVariable(lines, grams, line, bounds.get(line.lineId), facts, meal, starts, constraints);
+        searchCoupledSums(lines, grams, bounds, facts, meal, starts, constraints);
         if (JSON.stringify([...grams]) === before) break;
     }
     return grams;
 }
 
-function residuals(lines, grams, facts, mealServings) {
+function residuals(lines, grams, facts, meal) {
     const calculated = calculateMeal({ lines: mealLines(lines, grams) });
     const rows = [];
     for (const fact of facts) {
         for (const [key, observed] of Object.entries(fact.nutrients || {})) {
-            const target = targetFor(fact, key, observed, totalGrams(lines, grams), mealServings);
+            const target = targetFor(fact, key, observed, totalGrams(lines, grams, meal), meal);
             const value = nutrientComplete(lines, key) ? (calculated.nutrients?.[key]?.value ?? null) : null;
             if (!target.usable) {
                 rows.push({ factId: fact.factId, key, known: observed.value, calculated: value, difference: null, reason: target.reason, rounding: target.rounding || null });
@@ -380,12 +400,14 @@ function quantitiesFrom(lines, grams, starts) {
 /**
  * Fit estimated grams to eligible known facts. Returns the original grams when there is nothing to fit.
  * The result is one plausible fit, not a claim that the recipe was identified.
+ * cookedTotal is a declared meal cooked mass; serving-weight facts then scale by it as a constant.
  */
-export function fitQuantities({ lines = [], constraints = [], facts = [], servings = null } = {}) {
+export function fitQuantities({ lines = [], constraints = [], facts = [], servings = null, cookedTotal = null } = {}) {
+    const meal = { servings, cookedTotal: finite(cookedTotal) && cookedTotal >= 0 ? cookedTotal : null };
     const starts = new Map(lines.map(line => [line.lineId, finite(line.grams) ? line.grams : null]));
     const original = quantitiesFrom(lines, starts, starts);
-    const preview = nutrientTargets(facts, lines, starts, servings);
-    const initial = residuals(lines, starts, facts, servings);
+    const preview = nutrientTargets(facts, lines, starts, meal);
+    const initial = residuals(lines, starts, facts, meal);
     const evaluable = initial.rows.some(row => row.calculated != null && row.reason == null);
     if (!facts.length || !preview.targets.length || !evaluable) {
         return {
@@ -397,7 +419,7 @@ export function fitQuantities({ lines = [], constraints = [], facts = [], servin
         };
     }
     const bounds = new Map(lines.map(line => [line.lineId, boundsOf(line, isFree(line, lines, constraints))]));
-    const chosen = optimize(lines, starts, bounds, facts, servings, constraints);
+    const chosen = optimize(lines, starts, bounds, facts, meal, constraints);
     const free = lines.filter(line => bounds.get(line.lineId).min !== bounds.get(line.lineId).max);
     let nonUnique = false;
     for (let i = 0; i < free.length && !nonUnique; i++) {
@@ -420,8 +442,8 @@ export function fitQuantities({ lines = [], constraints = [], facts = [], servin
                     const trial = new Map(chosen);
                     trial.set(mover.lineId, nextMover);
                     trial.set(other.lineId, nextOther);
-                    const chosenError = nutrientError(lines, chosen, facts, servings);
-                    const trialError = nutrientError(lines, trial, facts, servings);
+                    const chosenError = nutrientError(lines, chosen, facts, meal);
+                    const trialError = nutrientError(lines, trial, facts, meal);
                     if (trialError <= chosenError + 0.05 && constraintLoss(lines, trial, constraints).violations.length === 0) {
                         nonUnique = true;
                         found = true;
@@ -434,7 +456,7 @@ export function fitQuantities({ lines = [], constraints = [], facts = [], servin
         }
     }
     const constraint = constraintLoss(lines, chosen, constraints);
-    const scored = residuals(lines, chosen, facts, servings);
+    const scored = residuals(lines, chosen, facts, meal);
     const unmetPoint = scored.rows.some(row => row.difference != null && Math.abs(row.difference) > Math.max(0.5, Math.abs(row.known) * 0.02));
     const unmetBound = scored.rows.some(row => row.consistent === false);
     const infeasible = constraint.violations.length > 0 || unmetPoint || unmetBound;

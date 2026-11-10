@@ -27,7 +27,8 @@ export function scalePerBasis(quantityGrams, amountPerBasis, basisGrams) {
     return Number.isFinite(contribution) ? contribution : null;
 }
 
-function countedLines(lines) {
+/** Lines whose grams count toward the meal: every line except a parent that has children. */
+export function countedLines(lines) {
     const parents = new Set(lines.filter(line => line.parentLineId).map(line => line.parentLineId));
     return lines.filter(line => !parents.has(line.lineId));
 }

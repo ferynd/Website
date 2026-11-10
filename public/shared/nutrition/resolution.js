@@ -1,4 +1,4 @@
-import { calculateMeal, nutrientBasis } from './calculate.js';
+import { calculateMeal, countedLines, nutrientBasis } from './calculate.js';
 import { normalizeVariantDims } from './ingredientVariants.js';
 import { formWordsFor } from './variantVocabulary.js';
 import { fitTargets } from './import/ingredientList.js';
@@ -15,13 +15,13 @@ export const RESOLUTION_CAPABILITIES = Object.freeze({
 });
 const LADDER = Object.freeze(['choose_existing', 'lookup_official', 'research_packet', 'manual_entry', 'incomplete_draft', 'cancel']);
 
-function cookedTotal(lines) {
-    const parents = new Set(lines.filter(line => line.parentLineId).map(line => line.parentLineId));
+/** Cooked grams of the counted lines, or null when no counted line has grams. */
+export function cookedTotal(lines) {
     const seen = new Set();
     let total = 0;
     let any = false;
-    for (const line of lines) {
-        if (parents.has(line.lineId) || seen.has(line.lineId) || !Number.isFinite(line.grams)) continue;
+    for (const line of countedLines(lines)) {
+        if (seen.has(line.lineId) || !Number.isFinite(line.grams)) continue;
         const basis = nutrientBasis(line);
         if (!basis) return null;
         seen.add(line.lineId);
@@ -181,7 +181,8 @@ export function recalculateResolution(state, options = {}) {
     return { calculation: calculateMeal({ ...options, lines: resolutionLines(state) }), modelCalls: 0, researchedLineIds: state.items.filter(item => item.source === 'packet').map(item => item.lineId) };
 }
 
-function scaleFactValue(value, fact, state) {
+/** Serving-weight facts scale by the calculated cooked mass, so edited or fitted grams cannot leave a stale total. */
+function scaleFactValue(value, fact, state, calculation) {
     if (!Number.isFinite(value)) return null;
     if (fact.appliesTo?.scope !== 'serving') return value;
     const mealServings = state.servings;
@@ -189,7 +190,8 @@ function scaleFactValue(value, fact, state) {
     if (Number.isFinite(mealServings) && mealServings > 0 && Number.isFinite(factServings) && factServings > 0)
         return value * (mealServings / factServings);
     const weight = fact.basis?.servingWeight?.g;
-    const total = state.totalGrams;
+    const cooked = calculation?.mass?.cookedG;
+    const total = Number.isFinite(cooked) ? cooked : state.totalGrams;
     if (Number.isFinite(total) && total > 0 && Number.isFinite(weight) && weight > 0)
         return value * (total / weight);
     return null;
@@ -214,7 +216,7 @@ export function reviewResolution(state, calculation, facts = []) {
     const comparisons = facts.filter(fact => fact.appliesTo?.scope !== 'line' && (fact.appliesTo?.scope === 'serving' || fitTargets({ knownFacts: [fact] }).length)).map(fact => {
         const rows = Object.entries(fact.nutrients || {}).map(([key, observed]) => {
             const calculated = calculation?.nutrients?.[key]?.value ?? null;
-            const known = scaleFactValue(observed.value, fact, state);
+            const known = scaleFactValue(observed.value, fact, state, calculation);
             const note = fact.appliesTo?.scope === 'serving' && known == null ? 'basis_not_comparable' : null;
             if (observed.qualifier === 'less_than')
                 return { key, known, unit: observed.unit, qualifier: 'less_than', calculated, consistent: calculated == null || known == null ? null : calculated <= known, difference: null, ...(note ? { note } : {}) };
