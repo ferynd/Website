@@ -6,6 +6,15 @@ Source rules use the explicit `{collectionName}/{subpath=**}` form, not recursiv
 
 Prerequisites/residual risk: production index behavior is unverified by the emulator. Pre-#61 recipe tabs can drop ingredient refs, so deploy readers before enabling writers. Cache clearing at sign-out deliberately loses pending drafts. F-141 M4 must include all four new collections. #60 Part B controls only food/day document shape and is a separate release; it is not a prerequisite for #61 Part A.
 
+## Cached-client compatibility
+
+Any write-enable PR (#60 Part B, #61 Part B B5, #64 Part B) must read this section. Each statement is checked against repository code and tests. Nobody has inspected the live worker, the deployed ruleset, or production documents for it.
+
+- **Status terms.** "Implemented" means code on `main`. "Tested" means the repository suites and emulator rules tests pass. "Deployed" needs recorded deploy evidence, and there is none for the ingredient rules: they are repository source, verified in the emulator. "Populated" needs curated profiles, and the curated catalog has 0. A merged calculator, fitter, Import workspace, Library tab, or research pipeline is none of the others.
+- **Cache name.** The repository worker and `NUTRITRACK_CACHE_NAME` are `nutritrack-v5`, and v5 shipped with both write flags false. A write-enable PR must move to a new name after `nutritrack-v5`. Reusing v5 would leave cached clients on the old writer. Do not describe v4 as current.
+- **Saved foods are guarded.** Food save (`food/save.js`) and saved-food CSV import (`exports/csvFormat.js` through `exports/exporters.js`) read the target document inside a Firestore transaction. With v2 writes off, they refuse to overwrite a document whose `nutrientSchemaVersion` is 2 or higher. A cached v1 client therefore cannot overwrite a v2 saved food through those two paths.
+- **Diary days are not guarded.** `saveDailyEntry()` and `saveDailyEntrySnapshot()` in `services/firebase.js` replace the whole `dailyEntries/{date}` document with `setDoc` and do not read or check its schema. The estimate writers in the same file (`saveEstimatedEntry()`, `removeEstimateItem()`, `lockEstimateForDate()`) also use `setDoc`. A cached older client that saves a day can therefore erase or rewrite diary fields written by a newer client. The saved-food guard does not cover diary entries. Until #60 Part B adds a transactional diary guard, no doc may claim that cached clients cannot drop newer diary fields, and new fields in day documents are not safe from cached clients.
+
 ## Part B: Production enablement (**Requires James's explicit approval**; not started)
 
 Preconditions:
@@ -37,7 +46,7 @@ Preconditions:
   - Remove the fixtures afterwards with Admin SDK cleanup under ADC, because the rules deny client deletes.
 
 **B5. Enable writes (approval 3):**
-- A separate small PR sets `INGREDIENT_STORE_WRITES_ENABLED = true` and bumps `NUTRITRACK_CACHE_NAME` and the service worker to a new name after `nutritrack-v5`. v5 is already the repository cache while writes are off, so reusing v5 would leave cached clients on the old writer.
+- A separate small PR sets `INGREDIENT_STORE_WRITES_ENABLED = true` and bumps `NUTRITRACK_CACHE_NAME` and the service worker to a new name after `nutritrack-v5`. v5 is already the repository cache while writes are off, so reusing v5 would leave cached clients on the old writer. The bump does not protect diary days; see [Cached-client compatibility](#cached-client-compatibility).
 - Merge it, verify the deployed bundle SHA, and confirm the Settings line reads `ingredient store v1 (writes on)`.
 
 **Live data copy/backfill: none.**

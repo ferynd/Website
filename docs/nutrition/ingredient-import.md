@@ -2,7 +2,7 @@
 
 [Overview](README.md) · [Workflow](workflow.md) · [Assistant contract](assistant-contracts.md#ingredient-list-import-v1) · [Research pipeline](research-pipeline.md)
 
-Shared modules under [public/shared/nutrition/import](../../public/shared/nutrition/import/) validate assistant-prepared ingredient lists and reconcile them with #61 profiles. They do not calculate nutrients, fit quantities, research missing foods, or write Firestore. The tracker Import workspace (`importWorkspace.js`, #70) calls these modules plus #66 resolution, #64 calculation, and #65 fitting. Production saving stays off. Both write flags stay false. Yield handling is still the single retention multiplier described in the [requirements review](REQUIREMENTS_REVIEW_2026-11-09.md). No photo, OCR, or paid API path is added.
+Shared modules under [public/shared/nutrition/import](../../public/shared/nutrition/import/) validate assistant-prepared ingredient lists and reconcile them with #61 profiles. They do not calculate nutrients, fit quantities, research missing foods, or write Firestore. The tracker Import workspace (`importWorkspace.js`, #70) calls these modules plus #66 resolution, #64 calculation, and #65 fitting. Production saving stays off. Both write flags stay false. Since #72, [calculate.js](../../public/shared/nutrition/calculate.js) applies one fat discard and one nutrient retention per line, and water changes cooked weight only. The single retention multiplier in the [requirements review](REQUIREMENTS_REVIEW_2026-11-09.md) is superseded. No photo, OCR, or paid API path is added.
 
 | Module | Responsibility |
 | --- | --- |
