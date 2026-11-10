@@ -122,6 +122,11 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Stop dropping provenance when a research response is applied.**
   > Resolved: applied nutrients keep the full validated field plus `requestId`; each item keeps `researchEvidence` per request (sources with version, publishedAt, accessedAt; unresolved; assumptions; `unverified`); null stays unknown; revision-draft sources keep `publishedAt`; no profile is written. Checks: nutrition 522, tracker 1138, root 2015, ci:docs, and green CI; the #73 evidence tests pass on `main`. The final review was an orchestrator review disclosed on the PR because external reviewers were unavailable. Merged: 95f959e (PR #201). Residual risk: `researchEvidence` from an earlier request stays on the item after a later response replaces those fields, so stale evidence can remain until a follow-up (or #69 Part B review/save) prunes or marks it. Saving the revision stays #69 Part B.
 
+## #74 — honest official lookup status
+
+- [x] **Record an official result only after a lookup runs.**
+  > Resolved: `lookupWorkspace()` and `researchLibraryFields()` record `not_performed` (adapter `none`, release null) instead of a fabricated `not_found`; a caller attempt cannot claim `not_found` or `resolved` through the workspace; `lookupOfficial()` keeps the pinned curated release only for genuine `resolved`/`not_found` attempts and rejects unknown outcomes; packet `triedSources` carry release null for `not_performed`; the research-packet ladder still opens; the Import button reads "Skip official lookup (not enabled)". Checks: nutrition 530, tracker 1146, root 2015, ci:docs, and green CI; the `not_performed` tests pass on `main`. The final review was an orchestrator review disclosed on the PR because the Codex connector reported its code review usage limit reached. Merged: bd6d56f (PR #202). Residual risk: none known. No live call; both write flags stayed false; no production write. A live USDA or manufacturer lookup stays #62 Part B.
+
 ## #61 Part A — ingredient identities, revisions, and conversions
 
 - [x] **Implement ingredient identities, variants, sources, and revisions (Part A).**
