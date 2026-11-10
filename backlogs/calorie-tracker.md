@@ -54,7 +54,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Release phases (James, 2026-11-09)
 
-1. Read-only census and backup (#60 Part B). The parent completed the count on 2026-11-09: 191 v1 foods, 0 v2 foods, 417 daily entries. The REST backup is not a migration copy. Writers stay off. Agents do not query production. Script bugs are #80.
+1. Read-only census and backup (#60 Part B). The parent completed the count on 2026-11-09: 191 v1 foods, 0 v2 foods, 417 daily entries. The REST backup is not a migration copy. Writers stay off. Agents do not query production. #80 fixed the census script bugs (merged `7990d39`).
 2. Technical corrections and branch implementations with both write flags false, in this order: #72 (merged), #73 (merged), #74 lookup honesty (merged), #78 (merged), #75 (merged), #69 Part B (merged as a branch implementation, writes off), then #64 Part B (merged as a branch implementation, writes off) using emulator or fixture tests. #69 Part B and #64 Part B depended on #72, #73, and #74; all three are merged.
 3. Beta validation (#79) in an isolated Firebase test project. Not production. #68 depends on a recorded #79 result.
 4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the #77 aggregate counts from a foods-only extract kept outside the checkout. No names, ids, paths, or nutrient values are committed.
@@ -63,7 +63,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73, #74, #75, #78, the #69 search/review slice, #69 Part B, and #64 Part B are archived. Selection skips a `[p]` item whose note says `blocked`. #69 Part B merged as `50c3076` (PR #205) as a branch implementation; its production save stays gated on #61 Part B and #79. #64 Part B merged as `91b1bf9` (PR #206) as a branch implementation; its production save stays gated on #61 Part B and #79. #75 merged as `7700351` (PR #204). #78 merged as `e93190e` (PR #203). #74 merged as `bd6d56f` (PR #202), so #69 Part B and #64 Part B no longer wait on #74 (#72, #73, and #74 are merged). #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73, #74, #75, #78, the #69 search/review slice, #69 Part B, #64 Part B, #76, and #80 are archived. Selection skips a `[p]` item whose note says `blocked`. #69 Part B merged as `50c3076` (PR #205) as a branch implementation; its production save stays gated on #61 Part B and #79. #64 Part B merged as `91b1bf9` (PR #206) as a branch implementation; its production save stays gated on #61 Part B and #79. #80 merged as `7990d39` (PR #208). #75 merged as `7700351` (PR #204). #78 merged as `e93190e` (PR #203). #74 merged as `bd6d56f` (PR #202), so #69 Part B and #64 Part B no longer wait on #74 (#72, #73, and #74 are merged). #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -123,7 +123,8 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
 
 ### #77: Estimate lossless conversion of flat saved foods
 
-- [ ] **Count flat foods that can convert without loss or invention.** Depends: a foods-only extract supplied by the parent. Not a production query.
+- [p] **Count flat foods that can convert without loss or invention.** Depends: a foods-only extract supplied by the parent. Not a production query.
+  > in progress — committed on `claude/calorie-tracker-77-conversion-report`: `conversionAnalysis.ts` (verdict, basis classifier, aggregate summarizer; round trip through `readNutrientFields`/`toV2Fields`), an aggregate-only CLI that refuses in-checkout extracts, synthetic-fixture tests, and [the conversion report](../docs/nutrition/conversion-report.md) quoting the orchestrator's 2026-11-10 run: 191 foods, all v1, 191 clean, 0 blocked, 4,584 legacy values identical, all detail null. The per-food validation file went to James privately. No document rewritten; both write flags false; PR #209.
   - **Surfaces:** a protected foods-only file outside the checkout. A nutrient census backup also contains diary entries and recipes, so that backup is not the report input and is not committed.
   - **Accept:** a committed report contains aggregate counts only: how many flat foods can convert without losing a stored value and without inventing a zero or a gram basis, and how many cannot. It contains no document path, food name, id, or nutrient value. No document is rewritten.
   - **Checks:** the aggregates reconcile to the private extract's counts without copying a row into the repository.
@@ -138,15 +139,6 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
   - **Accept:** import, match, research, fit, calculate, review, private-profile save, and meal save are exercised in a Firebase project that is not production. Failure is visible. Abandoning the beta leaves the test diary unchanged until an explicit diary add. Legacy food and diary shapes are not given v2 writes. The log records the project id, ruleset, flags, and cleanup. Production is not contacted.
   - **Checks:** the runbook and the recorded log. Emulator evidence can prepare the runbook; it does not replace the isolated-project log.
   - **Migration/deploy:** none to production. Creating or using the isolated project waits until phase 2 has merged and James confirms which Firebase project is the sandbox.
-
-### #80: Fix the read-only census script
-
-- [p] **Make `nutrientCensus.ts` runnable and retryable without printing private data.** Depends: none. No production run in this item.
-  > in progress — committed on `claude/calorie-tracker-80-census-fix`: auth always uses `applicationDefault()`: a set GOOGLE_APPLICATION_CREDENTIALS is used as is; otherwise an existing Firebase CLI login is staged as an authorized_user JSON file (0600, fresh 0700 temp directory) that GOOGLE_APPLICATION_CREDENTIALS points at for this process only, removed and restored in a finally on success or failure; otherwise plain ADC. Fix round 1 replaced `refreshToken()`, whose non-implicit credential Firestore rejects. Auth runs before the output directory is created; a failed auth leaves no directory and the retry runs; a `vite-node` launch reaches `main()`; output stays aggregates only and inside-checkout output is refused before auth; checks: census 20, root 2042, ci:docs, ci:contract; implementation commits: 3d4cd32, 588ac07 (fix round 1); not run against production; both write flags false; PR #208
-  - **Surfaces:** `scripts/firebase/nutrientCensus.ts` and `scripts/firebase/nutrientCensusLogic.ts`.
-  - **Accept:** authentication can use an already approved local credential path without requiring Application Default Credentials to be the only option. The output directory is created only after auth succeeds, so a failed auth does not leave a directory that `refuseUnsafeRun` treats as an existing run. `vite-node` reaches `main()`. A retry after a failed auth is not blocked by the directory the failed run created. Tests cover those three cases with fixtures. The script still prints aggregates only and still refuses to write inside the checkout.
-  - **Checks:** the census unit tests. Do not run the script against production.
-  - **Migration/deploy:** none. The 2026-11-09 REST backup remains ineligible as a migration copy.
 
 ## Decisions and dependencies
 
