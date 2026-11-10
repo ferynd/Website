@@ -201,8 +201,10 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             let attemptOutcome = 'success';
             let attemptError = null;
             try {
+                // The adapter receives the same release as the cache key, so a
+                // multi-release adapter fetches and stamps this job's release.
                 cachedEntry = await sourceCache.getOrFetch(cacheKey, async () => {
-                    return await adapter.fetch(sourceId, { ...context, scope: job.scope });
+                    return await adapter.fetch(sourceId, { ...context, scope: job.scope, release });
                 });
             }
             catch (err) {
@@ -274,7 +276,12 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             // Convert cached source data to SourceResult
             let sourceResult;
             try {
-                sourceResult = await adapter.toSourceResult(cachedEntry.data, { ...context, scope: job.scope });
+                sourceResult = await adapter.toSourceResult(cachedEntry.data, { ...context, scope: job.scope, release });
+                // A reviewed bulk match names its pinned release; a bulk result stamped
+                // with another release is refused. (fdc_api stamps the live record's own
+                // dataType@publicationDate, a different vocabulary, and is unchanged.)
+                if (adapter.id === 'fdc_bulk' && job.match?.sourceRelease && sourceResult?.release != null && String(sourceResult.release) !== String(job.match.sourceRelease))
+                    throw new Error(`Source result release ${sourceResult.release} differs from the matched release ${release}`);
             }
             catch (error) {
                 job = transition(job, 'blocked', { blocked: { code: 'source_malformed', needs: error.message } });
@@ -574,6 +581,9 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
         const verifiedRecord = {
             recordId: String(result.recordId || source.recordId || ''),
             description: String(result.description || result.title || normalized.sourceRecord?.title || '').trim(),
+            // The release and dataType the record is published with, checked against the reviewed entry.
+            ...(normalized.sourceRecord?.version ? { release: String(normalized.sourceRecord.version) } : {}),
+            ...(normalized.sourceRecord?.datasetId ? { dataType: String(normalized.sourceRecord.datasetId) } : {}),
         };
         // A source can be refetched before its match-table entry is reviewed.
         // If a reviewed entry exists, it must agree. Missing entries fail closed

@@ -2,7 +2,7 @@ import { it, expect, describe } from 'vitest';
 import { emptyStagedRecord, V2_KEYS } from '../../../shared/nutrition/nutrientRegistry.js';
 import { buildRevisionDraft } from '../../../shared/nutrition/ingredientProfile.js';
 import { createResearchJob } from '../../../shared/nutrition/research/researchJob.js';
-import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION, publishedIdentityFor, reviewContentHash, verifiedRecordMatchesTable, assertCuratedMatchTable } from '../../../shared/nutrition/research/researchReview.js';
+import { buildRevisionDiff, buildReviewPacket, applyReviewDecision, CHECKLIST_VERSION, publishedIdentityFor, reviewContentHash, verifiedRecordMatchesTable, verifiedFdcRecords, deterministicFdcRecords, assertCuratedMatchTable } from '../../../shared/nutrition/research/researchReview.js';
 async function makeJobWithDraft(values = { protein: 10, calories: 40 }) {
     const staged = emptyStagedRecord();
     for (const k of V2_KEYS) {
@@ -193,4 +193,70 @@ it('binds the review hash and packet to gaps and the published identity', async 
     const rekinded = structuredClone(job);
     rekinded.target.kind = 'branded';
     await expect(applyReviewDecision(rekinded, decision)).rejects.toThrow('hash mismatch');
+});
+describe('reviewed match table fails closed for curated FDC records (#63 V2)', () => {
+    const entry = { manifestId: 'lemon-juice', fdcId: '167747', description: 'Lemon juice, raw', release: '2018-04', dataType: 'SR Legacy' };
+    const record = { recordId: '167747', description: 'Lemon juice, raw', release: '2018-04', dataType: 'SR Legacy' };
+    it('treats a missing table entry as no match', () => {
+        expect(verifiedRecordMatchesTable('lemon-juice', record, [])).toBe(false);
+        expect(verifiedRecordMatchesTable('lemon-juice', record, undefined)).toBe(false);
+        expect(verifiedRecordMatchesTable('lemon-juice', record, [{ ...entry, manifestId: 'lime-juice' }])).toBe(false);
+        expect(verifiedRecordMatchesTable(undefined, record, [entry])).toBe(false);
+    });
+    it('requires the record to agree on fdcId, description, release, and dataType', () => {
+        expect(verifiedRecordMatchesTable('lemon-juice', record, [entry])).toBe(true);
+        expect(verifiedRecordMatchesTable('lemon-juice', { ...record, recordId: '167748' }, [entry])).toBe(false);
+        expect(verifiedRecordMatchesTable('lemon-juice', { ...record, description: 'Lemon juice, from concentrate' }, [entry])).toBe(false);
+        expect(verifiedRecordMatchesTable('lemon-juice', { ...record, release: '2026-10-29' }, [entry])).toBe(false);
+        expect(verifiedRecordMatchesTable('lemon-juice', { ...record, dataType: 'Foundation' }, [entry])).toBe(false);
+        // A record that omits a release or dataType the entry names does not match.
+        const bare = { recordId: record.recordId, description: record.description };
+        expect(verifiedRecordMatchesTable('lemon-juice', bare, [entry])).toBe(false);
+        expect(verifiedRecordMatchesTable('lemon-juice', { ...bare, release: '2018-04' }, [entry])).toBe(false);
+        // An empty description never matches, even an entry with an empty description.
+        expect(verifiedRecordMatchesTable('lemon-juice', { ...record, description: '' }, [{ ...entry, description: '' }])).toBe(false);
+        // An entry without release/dataType still checks fdcId and description.
+        expect(verifiedRecordMatchesTable('lemon-juice', bare, [{ manifestId: 'lemon-juice', fdcId: '167747', description: 'Lemon juice, raw' }])).toBe(true);
+    });
+    function assistantVerifiedJob(source, { scope = 'curated', method = 'deterministic_refetch' } = {}) {
+        return {
+            scope, target: { manifestId: 'lemon-juice' },
+            proposal: {
+                assistantResult: { sources: [{ sourceId: 's1' }] }, assistantSourceKeys: { s1: 'req:s1' },
+                revisionDraft: { sources: { 'req:s1': source } },
+                sourceVerification: { s1: { status: 'verified', method } },
+            },
+        };
+    }
+    const published = { type: 'fdc', recordId: '167747', title: 'Lemon juice, raw', version: '2018-04', datasetId: 'SR Legacy' };
+    it('fails a refetch-verified curated record with no entry, a wrong release, or a wrong dataType', () => {
+        expect(verifiedFdcRecords(assistantVerifiedJob(published))).toEqual([{ sourceId: 's1', ...record }]);
+        expect(() => assertCuratedMatchTable(assistantVerifiedJob(published), [])).toThrow('match table');
+        expect(() => assertCuratedMatchTable(assistantVerifiedJob({ ...published, version: '2026-10-29' }), [entry])).toThrow('match table');
+        expect(() => assertCuratedMatchTable(assistantVerifiedJob({ ...published, datasetId: 'Foundation' }), [entry])).toThrow('match table');
+        expect(() => assertCuratedMatchTable(assistantVerifiedJob(published), [entry])).not.toThrow();
+    });
+    it('keeps private jobs and non-FDC or unverified sources out of the curated table check', () => {
+        expect(() => assertCuratedMatchTable(assistantVerifiedJob(published, { scope: 'private' }), [])).not.toThrow();
+        expect(() => assertCuratedMatchTable(assistantVerifiedJob({ ...published, type: 'literature' }), [])).not.toThrow();
+        expect(() => assertCuratedMatchTable(assistantVerifiedJob(published, { method: 'reviewer_attestation' }), [])).not.toThrow();
+    });
+    function deterministicJob(source, match = { sourceAdapter: 'fdc_bulk', sourceId: '167747', sourceRelease: '2018-04' }) {
+        return { scope: 'curated', target: { manifestId: 'lemon-juice' }, match, proposal: { revisionDraft: { sources: { 'fdc:167747': source } } } };
+    }
+    it('re-checks a deterministic bulk proposal against its reviewed entry', () => {
+        expect(deterministicFdcRecords(deterministicJob(published))).toEqual([{ sourceId: 'match', ...record }]);
+        expect(() => assertCuratedMatchTable(deterministicJob(published), [entry])).not.toThrow();
+        expect(() => assertCuratedMatchTable(deterministicJob(published), [])).toThrow('match table');
+        // A record stamped with another release (the mixed-release mis-stamp) fails.
+        expect(() => assertCuratedMatchTable(deterministicJob({ ...published, version: '2026-10-29' }), [entry])).toThrow('match table');
+        expect(() => assertCuratedMatchTable(deterministicJob({ ...published, datasetId: 'Foundation' }), [entry])).toThrow('match table');
+        // A missing source record cannot equal a reviewed entry.
+        expect(() => assertCuratedMatchTable(deterministicJob({ ...published, recordId: '1' }), [entry])).toThrow('match table');
+        // Manual and curated-reuse jobs are not FDC matches.
+        expect(deterministicFdcRecords(deterministicJob(published, { sourceAdapter: 'manual', sourceId: 'x' }))).toEqual([]);
+        const reused = deterministicJob(published);
+        reused.proposal.reused = true;
+        expect(deterministicFdcRecords(reused)).toEqual([]);
+    });
 });

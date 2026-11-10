@@ -76,23 +76,69 @@ export function verifiedFdcRecords(job) {
             sourceId,
             recordId: String(source.recordId || ''),
             description: String(source.description || source.title || '').trim(),
+            ...(source.version ? { release: String(source.version) } : {}),
+            ...(source.datasetId ? { dataType: String(source.datasetId) } : {}),
         });
     }
     return records;
 }
-/** Verified curated FDC records must have an exact reviewed match-table entry. */
+/**
+ * FDC records that a deterministic FDC adapter (bulk or API) matched and
+ * normalized into the proposal. Their match came from the table, so approval
+ * and staging re-check that the published source record still equals it.
+ * A deterministic FDC proposal whose source record is missing yields a record
+ * with no description, which can never equal a reviewed entry.
+ */
+export function deterministicFdcRecords(job) {
+    const proposal = job?.proposal;
+    const match = job?.match;
+    if (!proposal?.revisionDraft || proposal.assistantResult || proposal.reused)
+        return [];
+    if (!match || !['fdc_bulk', 'fdc_api'].includes(match.sourceAdapter))
+        return [];
+    const recordId = String(match.sourceId ?? '');
+    const source = Object.values(proposal.revisionDraft.sources || {})
+        .find(s => s && s.type === 'fdc' && String(s.recordId) === recordId);
+    return [{
+        sourceId: 'match',
+        recordId,
+        description: String(source?.description || source?.title || '').trim(),
+        ...(source?.version ? { release: String(source.version) } : {}),
+        ...(source?.datasetId ? { dataType: String(source.datasetId) } : {}),
+    }];
+}
+const sameText = (left, right) => String(left ?? '').trim() === String(right ?? '').trim();
+/**
+ * Fail-closed check of a curated FDC record against the reviewed match table.
+ * Callers use it only for curated jobs and FDC records; private jobs and
+ * non-FDC sources never reach it.
+ *
+ * - No table entry for the manifest id means no match (PR #213). researchService
+ *   still lets a source be refetched before its entry is reviewed; the missing
+ *   entry then fails here, at curated approval and staging.
+ * - The record must equal an entry on fdcId and (non-empty) description.
+ * - When the entry carries release or dataType, the record must carry the
+ *   same value; a record that omits it does not match.
+ */
 export function verifiedRecordMatchesTable(manifestId, record, matches = []) {
+    if (!manifestId || !record)
+        return false;
     const entries = (matches || []).filter(entry => entry && entry.manifestId === manifestId);
     if (!entries.length)
         return false;
-    const description = String(record?.description || '').trim();
-    const recordId = String(record?.recordId || '');
-    return entries.some(entry => String(entry.fdcId) === recordId && String(entry.description || '').trim() === description);
+    const description = String(record.description || '').trim();
+    const recordId = String(record.recordId || '');
+    if (!description || !recordId)
+        return false;
+    return entries.some(entry => String(entry.fdcId) === recordId
+        && sameText(entry.description, description)
+        && (!entry.release || sameText(entry.release, record.release))
+        && (!entry.dataType || sameText(entry.dataType, record.dataType)));
 }
 export function assertCuratedMatchTable(job, matches = []) {
     if (job?.scope !== 'curated')
         return;
-    const records = verifiedFdcRecords(job);
+    const records = [...verifiedFdcRecords(job), ...deterministicFdcRecords(job)];
     if (!records.length)
         return;
     if (records.some(record => !verifiedRecordMatchesTable(job.target?.manifestId, record, matches)))

@@ -137,6 +137,10 @@ export async function indexBulk(file: string, pin: DatasetPin, cache: SourceCach
         failureCategories: audit.failureCategories,
     };
 }
+/** Cache key for one pinned bulk record. The release is part of the key, so releases never alias. */
+export function bulkCacheKey(release: string, fdcId: unknown) {
+    return `fdc_bulk:${release}:${fdcId}`;
+}
 /**
  * One pinned food record per file (the committed synthetic fixtures). The same
  * pin, label, and parser checks as readPinnedBulk apply.
@@ -153,20 +157,36 @@ export async function readPinnedRecord(file: string, pin: DatasetPin) {
 }
 export async function indexPinnedRecord(file: string, pin: DatasetPin, cache: SourceCache) {
     const food = await readPinnedRecord(file, pin);
-    await cache.set(`fdc_bulk:${pin.release}:${food.fdcId}`, food);
+    await cache.set(bulkCacheKey(pin.release, food.fdcId), food);
     return food;
 }
+interface BulkAdapterContext {
+    release?: string;
+    [key: string]: unknown;
+}
+/**
+ * Offline FDC bulk adapter. One adapter serves every pinned release: the
+ * research service passes each job's match-entry release (job.match.sourceRelease)
+ * in the context, so a mixed Foundation + SR Legacy batch fetches each record
+ * from its own release's index and stamps it with that release. The
+ * constructor release is only the fallback for a caller with no match release
+ * (for example source verification of an assistant-cited record).
+ */
 export function createFdcBulkAdapter({ cache, release, matches }: {
     cache: SourceCache;
     release: string;
     matches: MatchEntry[];
 }) {
+    const releaseFor = (context?: BulkAdapterContext) => typeof context?.release === 'string' && context.release ? context.release : release;
     return { id: 'fdc_bulk', scope: ['curated', 'private'] as ('curated' | 'private')[], runsIn: ['cli'] as 'cli'[], requiresSecret: false, release: async () => release, match: async (t: {
             manifestId: string;
-        }) => matchFor(matches, t.manifestId, 'fdc_bulk'), fetch: async (id: string) => {
-            const row = await cache.get(`fdc_bulk:${release}:${id}`);
+        }) => matchFor(matches, t.manifestId, 'fdc_bulk'), fetch: async (id: string, context?: BulkAdapterContext) => {
+            const recordRelease = releaseFor(context);
+            const row = await cache.get(bulkCacheKey(recordRelease, id));
             if (!row)
-                throw new PermanentSourceError('Pinned bulk record not indexed');
+                throw new PermanentSourceError(`Pinned bulk record not indexed for release ${recordRelease}`);
+            if (String((row.data as { fdcId?: unknown })?.fdcId) !== String(id))
+                throw new PermanentSourceError('Indexed bulk record does not carry the requested fdcId');
             return row.data;
-        }, toSourceResult: (raw: unknown) => parseFdcFood(raw, { release }) };
+        }, toSourceResult: (raw: unknown, context?: BulkAdapterContext) => parseFdcFood(raw, { release: releaseFor(context) }) };
 }
