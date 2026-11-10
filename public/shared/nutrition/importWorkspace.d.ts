@@ -1,5 +1,9 @@
 export function workspaceCapabilities(): Readonly<{ workspace: boolean; photo: false; barcode: false; ocr: false; fit: true; libraryDeepLink: false; directAi: false; save: boolean; exportCopy: true }>;
 export const WORKSPACE_STAGES: readonly string[];
+/** Exactly `Your existing foods and diary were not changed.` */
+export const WORKSPACE_UNCHANGED_NOTICE: 'Your existing foods and diary were not changed.';
+/** The export-only save reason; states that the meal was not logged to the diary. */
+export const WORKSPACE_SAVE_REASON: 'Export only until ingredient and nutrient writes are approved. This meal was not logged to the diary.';
 export function createWorkspace(ownerUid: string): any;
 export function importWorkspaceInput(workspace: any, input: any, options?: { kind?: string }): any;
 export function correctWorkspaceLine(workspace: any, lineId: string, patch: any): any;
@@ -26,5 +30,7 @@ export function calculateWorkspace(workspace: any): any;
 export function fitWorkspace(workspace: any): any;
 export function reviewWorkspace(workspace: any): any;
 export function instructionsWorkspace(): any;
+/** Export only: `committed: false` and `save: { available: false, logged: false, reason: WORKSPACE_SAVE_REASON }`. */
 export function saveWorkspace(workspace: any): any;
+/** Keeps research jobs, sets `committed: false`, and sets `notice` to `WORKSPACE_UNCHANGED_NOTICE`. */
 export function cancelWorkspace(workspace: any): any;

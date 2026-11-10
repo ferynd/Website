@@ -1,6 +1,6 @@
 # CalorieTracker: active backlog
 
-Single source of truth for work on `public/tools/CalorieTracker/` and the shared ingredient-nutrition integration with Recipe Standardizer. Items through #59, #60 Part A, #61 Part A, #72, and #73 are merged and archived.
+Single source of truth for work on `public/tools/CalorieTracker/` and the shared ingredient-nutrition integration with Recipe Standardizer. Items through #59, #60 Part A, #61 Part A, #72, #73, and #74 are merged and archived.
 
 ## Purpose and scope
 
@@ -55,7 +55,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 ## Release phases (James, 2026-11-09)
 
 1. Read-only census and backup (#60 Part B). The parent completed the count on 2026-11-09: 191 v1 foods, 0 v2 foods, 417 daily entries. The REST backup is not a migration copy. Writers stay off. Agents do not query production. Script bugs are #80.
-2. Technical corrections and branch implementations with both write flags false, in this order: #72 (merged), #73 (merged), #74 lookup honesty, #78, #75, then #69 Part B and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depend on #72, #73, and #74, so they are not selectable until #74 merges.
+2. Technical corrections and branch implementations with both write flags false, in this order: #72 (merged), #73 (merged), #74 lookup honesty (merged), #78, #75, then #69 Part B and #64 Part B using emulator or fixture tests. #69 Part B and #64 Part B depended on #72, #73, and #74; all three are merged.
 3. Beta validation (#79) in an isolated Firebase test project. Not production. #68 depends on a recorded #79 result.
 4. Priority-1 dry-run pilot (#76) on pinned local fixtures, and the #77 aggregate counts from a foods-only extract kept outside the checkout. No names, ids, paths, or nutrient values are committed.
 5. Controlled enablement, one gate at a time, each with backup and rollback. Live FDC, catalog import, rules, and writer flags stay unapproved. Do not flip `NUTRIENT_V2_WRITES_ENABLED` for the beta; legacy food and diary writes stay v1.
@@ -63,7 +63,7 @@ Baseline: `main` `91e10ad` (#62 / PR #189), inspected 2026-11-08.
 
 ## Active items
 
-Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. #74 is pushed and awaiting merge. #69 Part B and #64 Part B wait on #74 (#72 and #73 are merged). #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
+Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73, #74, and the #69 search/review slice are archived. Selection skips a `[p]` item whose note says `blocked`. #78 is pushed and awaiting merge. #74 merged as `bd6d56f` (PR #202), so #69 Part B and #64 Part B no longer wait on #74 (#72, #73, and #74 are merged). #60 Part B's writer step, #61 Part B, #62 Part B, #63, production saves, #68, and #79 stay approval-gated or sequenced behind phase 2. #71 is deferred.
 
 ### #62 Part B: Pin live sources and publish staged curated data
 
@@ -138,15 +138,6 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
   - **Checks:** flag-off default (no provider calls), auth including anonymous rejection, rate-limit, cancellation, $0-cap and concurrent budget-reservation tests, service-worker network-only test, `npm run test:api`; update `SECURITY.md` and `ARCHITECTURE.md` when built.
   - **Migration/deploy:** **Requires James's explicit approval** to build or enable the route, provision a key, raise the $0 cap, or deploy any Storage rules it needs.
 
-### #74: Make official lookup status honest
-
-- [p] **Record an official result only after a lookup runs.** Depends: #62 and #66. A live USDA or manufacturer call stays #62 Part B.
-  > pushed — `lookupWorkspace()` and `researchLibraryFields()` record `not_performed` (adapter `none`, release null) instead of a fabricated `not_found`; caller attempts cannot claim `not_found` or `resolved`; genuine attempts keep the pinned release; the packet ladder still opens; Import button relabeled; flags false; checks: nutrition 530, tracker 1146, root 2015, ci:docs; commit: 355cc0e; PR: #202
-  - **Surfaces:** `lookupWorkspace()`, `lookupOfficial()`, and `researchLibraryFields()`.
-  - **Accept:** curated or private match, then official lookup, then a research packet, then manual entry or an explicit incomplete draft. If live sources are disabled, the state says the lookup was not performed. It does not say `not_found`. When live sources are later enabled, lookup is deterministic and uses the pinned release. Resolved fields are not sent for research again.
-  - **Checks:** tracker suite for the workspace and resolution ladder.
-  - **Migration/deploy:** no live call and no credential in this item.
-
 ### #75: Correct nutrition docs and cached-client compatibility
 
 - [ ] **Finish the compatibility notes that this review does not close.** Depends: none. The false `nutritrack-v4` current-cache sentences and the "calculation has not shipped" overview are corrected with the 2026-11-09 review.
@@ -173,7 +164,8 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
 
 ### #78: Label the beta import tab and keep diary add explicit
 
-- [ ] **Make the new flow obviously separate from Today.** Depends: #70. No production approval.
+- [p] **Make the new flow obviously separate from Today.** Depends: #70. No production approval.
+  > pushed — tab and panel read `Ingredient Import (Beta)` (Library unchanged); a cancel or failed action shows "Your existing foods and diary were not changed." from the shared `WORKSPACE_UNCHANGED_NOTICE`; a `Return to Today` button calls `activateTab('today')`; the save reason says the meal was not logged to the diary (`logged: false`, `committed: false`, export unchanged); no cache bump (HTML/JS are network-first); flags false; checks: nutrition 534, tracker 1150, root 2015, ci:docs; commit: 3db827b; PR: #203
   - **Surfaces:** `public/tools/CalorieTracker/index.html` Import tab and `ui/importWorkspace.js`.
   - **Accept:** the tab label is `Ingredient Import (Beta)`. Library stays its own tab. Both keep using the shared registry, profile store, and calculation module. A failed or abandoned import says that existing foods and the diary were not changed, and the user can return to Today. Saving a meal still does not log it.
   - **Checks:** tracker suite. Lint is not required unless the React app changes; the tracker page is static.

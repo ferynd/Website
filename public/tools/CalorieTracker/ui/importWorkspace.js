@@ -5,8 +5,9 @@ import { getIngredientStore } from '../services/ingredientStore.js';
 import { IMPORT_WORKSPACE_ENABLED } from '../../../shared/nutrition/capabilities.js';
 import {
     applyResearchResponse, calculateWorkspace, cancelWorkspace, confirmWorkspace, createWorkspace, fitWorkspace, importWorkspaceInput, instructionsWorkspace,
-    lookupWorkspace, matchWorkspace, packetCopy, packetWorkspace, reviewWorkspace, saveWorkspace, WORKSPACE_STAGES,
+    lookupWorkspace, matchWorkspace, packetCopy, packetWorkspace, reviewWorkspace, saveWorkspace, WORKSPACE_STAGES, WORKSPACE_UNCHANGED_NOTICE,
 } from '../../../shared/nutrition/importWorkspace.js';
+import { activateTab } from './dashboard.js';
 
 const text = (node, value) => { if (node) node.textContent = value == null ? '' : String(value); };
 
@@ -118,7 +119,7 @@ async function matchPorts(ownerUid) {
     return { privateSearch, curatedSearch, loadRevision };
 }
 
-/** Tracker Import tab. Values are text, and saving stays gated. */
+/** Tracker Ingredient Import (Beta) tab. Values are text, saving stays gated, and nothing here logs to the diary. */
 export function wireImportWorkspace(getUid) {
     if (!IMPORT_WORKSPACE_ENABLED) {
         document.getElementById('tab-btn-import')?.classList.add('hidden');
@@ -136,7 +137,8 @@ export function wireImportWorkspace(getUid) {
         workspace = uid ? readWorkspaceDraft(uid) || createWorkspace(uid).workspace : null;
         show(workspace);
     };
-    const run = async (action) => {
+    // Import actions never write foods or diary entries, so a failure or cancel always leaves them unchanged.
+    const run = async (action, { abandon = false } = {}) => {
         const uid = owner();
         if (!uid) {
             text(document.getElementById('import-message'), 'Sign in to import. Drafts stay on your account.');
@@ -144,10 +146,14 @@ export function wireImportWorkspace(getUid) {
             return;
         }
         if (!workspace || workspace.ownerUid !== uid) workspace = createWorkspace(uid).workspace;
-        const result = await action(workspace);
+        let result;
+        try { result = await action(workspace); }
+        catch { result = { ok: false, error: 'import failed' }; }
         if (result?.workspace) workspace = result.workspace;
         const message = document.getElementById('import-message');
-        text(message, result?.ok === false ? (result.error || 'import failed') : '');
+        if (result?.ok === false) text(message, `Import failed: ${result.error || 'import failed'}. ${WORKSPACE_UNCHANGED_NOTICE}`);
+        else if (abandon) text(message, `Import cancelled. ${result?.workspace?.notice || WORKSPACE_UNCHANGED_NOTICE}`);
+        else text(message, '');
         show(workspace);
         persist();
     };
@@ -173,7 +179,8 @@ export function wireImportWorkspace(getUid) {
         if (result.ok) await copyText(result.workspace.exportCopy?.text || '');
         return result;
     }));
-    document.getElementById('import-cancel')?.addEventListener('click', () => run(current => cancelWorkspace(current)));
+    document.getElementById('import-cancel')?.addEventListener('click', () => run(current => cancelWorkspace(current), { abandon: true }));
+    document.getElementById('import-return-today')?.addEventListener('click', () => activateTab('today'));
     document.getElementById('import-apply')?.addEventListener('click', () => run(current => applyResearchResponse(current, document.getElementById('import-response')?.value || '')));
     document.getElementById('tab-btn-import')?.addEventListener('click', resume);
     window.__clearImportWorkspace = () => { workspace = null; clearWorkspaceDraft(); show(null); };

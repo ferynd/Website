@@ -27,6 +27,10 @@ export function workspaceCapabilities() {
 }
 
 export const WORKSPACE_STAGES = Object.freeze(['import', 'match', 'resolve', 'calculate', 'fit', 'review', 'save']);
+/** Shown after a failed or abandoned import. Import actions never write foods or diary entries. */
+export const WORKSPACE_UNCHANGED_NOTICE = 'Your existing foods and diary were not changed.';
+/** The export-only save result. Saving never logs the meal; diary add stays a separate explicit action. */
+export const WORKSPACE_SAVE_REASON = 'Export only until ingredient and nutrient writes are approved. This meal was not logged to the diary.';
 const REJECTED = new Set(['photo', 'barcode', 'ocr', 'image']);
 const COOKED_TOLERANCE_G = 0.05;
 
@@ -438,7 +442,7 @@ export function saveWorkspace(workspace) {
     const rendered = renderIngredientPaste(list);
     const exportCopy = rendered.ok ? { format: 'paste', text: rendered.text } : { format: 'json', text: JSON.stringify(publicIngredientList(list), null, 2) };
     if (!caps.save) {
-        return done(workspace, { stage: 'save', exportCopy, committed: false, save: { available: false, reason: 'export only until ingredient and nutrient writes are approved' } });
+        return done(workspace, { stage: 'save', exportCopy, committed: false, save: { available: false, logged: false, reason: WORKSPACE_SAVE_REASON } });
     }
     return fail(workspace, 'save_not_enabled', { exportCopy });
 }
@@ -450,6 +454,7 @@ export function cancelWorkspace(workspace) {
     return done(workspace, {
         cancelled: true,
         committed: false,
+        notice: WORKSPACE_UNCHANGED_NOTICE,
         resolution,
         preserved: pending.map(job => ({ jobId: job.jobId, state: job.state })),
         stage: workspace.stage,
