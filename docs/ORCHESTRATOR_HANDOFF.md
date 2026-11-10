@@ -110,6 +110,7 @@ Append a row at each milestone (PR opened, review sent, review clean, merged). D
 | 2026-11-10 01:44 | #78 beta import tab label and diary add copy | #203 | `b224685` | Orchestrator review APPROVED at this head, with full disclosure on the PR: the Codex connector is at its code review usage limit. CI green at this head. | Merge. |
 | 2026-11-10 01:46 | #78 beta import tab label and diary add copy | #203 | `b224685` | Merged to main as `e93190e` (squash, SHA guarded). | Start #75. |
 | 2026-11-10 01:47 | #75 correct nutrition docs and cached-client compatibility | pending | `c978d7d` | Implementation committed on `claude/calorie-tracker-75-compat-docs`. Docs only: a Cached-client compatibility section in the ingredient store release runbook distinguishes implemented, tested, deployed, and populated, puts the write-enable cache name after `nutritrack-v5`, describes the saved-food newer-schema transaction guard, and describes diary `setDoc` replacement as unprotected until #60 Part B; cross-linked from workflow, the nutrition overview, and the tracker README. #78 reconciled into the archive. `ci:docs` passes. Both write flags stay false. No production writes. Not pushed. | Orchestrator verifies, pushes, and opens the PR. Then independent review of the head and green CI. |
+| 2026-11-10 02:51 | #75 correct nutrition docs and cached-client compatibility | #204 | `12e3129` | PR opened. Implementation at `c978d7d`; reconciliation and Stage log at `12e3129`. | Independent review of the branch head, then green CI. |
 
 ## Logins and setup
 
