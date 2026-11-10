@@ -121,15 +121,6 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
   - **Checks:** flag-off default (no provider calls), auth including anonymous rejection, rate-limit, cancellation, $0-cap and concurrent budget-reservation tests, service-worker network-only test, `npm run test:api`; update `SECURITY.md` and `ARCHITECTURE.md` when built.
   - **Migration/deploy:** **Requires James's explicit approval** to build or enable the route, provision a key, raise the $0 cap, or deploy any Storage rules it needs.
 
-### #76: Dry-run the priority-1 population pilot
-
-- [p] **Report a priority-1 pilot without importing it.** Depends: #62, #72, #73, and #74. Live retrieval stays #62 Part B. Catalog import stays #63.
-  > pushed - offline dry-run runner and aggregate-only report from pinned local fixtures only: attempted 253 priority-1 ids, matched 2 through the synthetic reviewed match table, validated 1, failed validation 1 (source-strategy conflict), 251 unresolved as `unresolved_no_pinned_local_source` (no lookup ran, never `not_found`); the 3 malformed fixtures counted as validation failures; per-field status, gap, and uncertainty counts for the validated profile reconcile to the 253 ids; report contains no catalog id, food name, or nutrient value; writes performed 0; catalog and production match table byte-identical; both write flags false; checks: dry-run 11, root 2026, tracker 1170, ci:docs, ci:contract; commit: 04cae27; PR: #207
-  - **Surfaces:** pinned local fixtures, the 253 priority-1 ids in `docs/nutrition/ingredient-catalog.json`, and a written report.
-  - **Accept:** the report counts matches, coverage, uncertainty, unresolved fields, validation failures, and the production changes a later import would make. It performs none of those changes. Basis is per 100 g edible form, with raw, cooked, drained, fortified, and branded records kept apart. Unknown stays explicit. Estimates carry a comparator, rationale, and range. Subscription assistants remain the residual path. Metered APIs stay at $0.
-  - **Checks:** validator and the report's reconciliation against the 253 ids. App tests only if code changes.
-  - **Migration/deploy:** no live pull and no catalog write. **Requires James's explicit approval** before any live FDC or manufacturer request, even for a dry-run that leaves the repository.
-
 ### #77: Estimate lossless conversion of flat saved foods
 
 - [ ] **Count flat foods that can convert without loss or invention.** Depends: a foods-only extract supplied by the parent. Not a production query.
@@ -150,7 +141,8 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
 
 ### #80: Fix the read-only census script
 
-- [ ] **Make `nutrientCensus.ts` runnable and retryable without printing private data.** Depends: none. No production run in this item.
+- [p] **Make `nutrientCensus.ts` runnable and retryable without printing private data.** Depends: none. No production run in this item.
+  > in progress — committed on `claude/calorie-tracker-80-census-fix`: auth always uses `applicationDefault()`: a set GOOGLE_APPLICATION_CREDENTIALS is used as is; otherwise an existing Firebase CLI login is staged as an authorized_user JSON file (0600, fresh 0700 temp directory) that GOOGLE_APPLICATION_CREDENTIALS points at for this process only, removed and restored in a finally on success or failure; otherwise plain ADC. Fix round 1 replaced `refreshToken()`, whose non-implicit credential Firestore rejects. Auth runs before the output directory is created; a failed auth leaves no directory and the retry runs; a `vite-node` launch reaches `main()`; output stays aggregates only and inside-checkout output is refused before auth; checks: census 20, root 2042, ci:docs, ci:contract; implementation commits: 3d4cd32, 588ac07 (fix round 1); not run against production; both write flags false; PR #208
   - **Surfaces:** `scripts/firebase/nutrientCensus.ts` and `scripts/firebase/nutrientCensusLogic.ts`.
   - **Accept:** authentication can use an already approved local credential path without requiring Application Default Credentials to be the only option. The output directory is created only after auth succeeds, so a failed auth does not leave a directory that `refuseUnsafeRun` treats as an existing run. `vite-node` reaches `main()`. A retry after a failed auth is not blocked by the directory the failed run created. Tests cover those three cases with fixtures. The script still prints aggregates only and still refuses to write inside the checkout.
   - **Checks:** the census unit tests. Do not run the script against production.

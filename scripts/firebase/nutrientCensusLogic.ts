@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import {
   parseTrackerFood,
   verifyTrackerFoodFingerprint,
@@ -50,6 +52,102 @@ const emptyFormats = (): FingerprintFormatCounts => ({ hex8: 0, v2: 0, other: 0 
 export function refuseUnsafeRun(options: { dryRun: boolean; outputDirExists: boolean }): void {
   if (!options.dryRun) throw new Error('Refusing to run without --dry-run');
   if (options.outputDirExists) throw new Error('Refusing to run because the output directory already exists');
+}
+
+/**
+ * Public installed-app OAuth client of the Firebase CLI (firebase-tools src/api.ts). Not a secret.
+ * The user's refresh token is the secret; it stays in the local configstore file and is never printed.
+ */
+export const FIREBASE_CLI_CLIENT_ID = '563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com';
+export const FIREBASE_CLI_CLIENT_SECRET = 'j9iVZfS8kkCEFUPaAeJV0sAi';
+
+export type CensusEnv = Record<string, string | undefined>;
+
+export type AuthorizedUserCredential = {
+  type: 'authorized_user';
+  client_id: string;
+  client_secret: string;
+  refresh_token: string;
+};
+
+export type CensusCredentialChoice =
+  | { kind: 'application-default' }
+  | { kind: 'firebase-cli'; credential: AuthorizedUserCredential };
+
+function nonEmpty(value: string | undefined): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/** Candidate Firebase CLI configstore paths, XDG first. Pure string work. */
+export function firebaseCliConfigPaths(env: CensusEnv, homeDir: string): string[] {
+  const paths: string[] = [];
+  const xdg = nonEmpty(env.XDG_CONFIG_HOME);
+  if (xdg) paths.push(join(xdg, 'configstore', 'firebase-tools.json'));
+  const home = nonEmpty(env.HOME) ?? nonEmpty(homeDir);
+  if (home) {
+    const fallback = join(home, '.config', 'configstore', 'firebase-tools.json');
+    if (!paths.includes(fallback)) paths.push(fallback);
+  }
+  return paths;
+}
+
+/** The authorized_user credential for a parsed configstore, or null. Copies no other config field. */
+export function cliAuthorizedUserCredential(parsedConfig: unknown, env: CensusEnv): AuthorizedUserCredential | null {
+  const config = asRecord(parsedConfig);
+  const tokens = config ? asRecord(config.tokens) : null;
+  const refreshToken = tokens?.refresh_token;
+  if (typeof refreshToken !== 'string' || refreshToken.length === 0) return null;
+  return {
+    type: 'authorized_user',
+    client_id: nonEmpty(env.FIREBASE_CLIENT_ID) ?? FIREBASE_CLI_CLIENT_ID,
+    client_secret: nonEmpty(env.FIREBASE_CLIENT_SECRET) ?? FIREBASE_CLI_CLIENT_SECRET,
+    refresh_token: refreshToken,
+  };
+}
+
+/**
+ * GOOGLE_APPLICATION_CREDENTIALS wins. Otherwise the first readable CLI configstore with a refresh token.
+ * Otherwise Application Default Credentials. readText returns null for a missing or unreadable file;
+ * malformed JSON falls through.
+ */
+export function selectCensusCredential(
+  env: CensusEnv,
+  homeDir: string,
+  readText: (path: string) => string | null,
+): CensusCredentialChoice {
+  if (nonEmpty(env.GOOGLE_APPLICATION_CREDENTIALS)) return { kind: 'application-default' };
+  for (const path of firebaseCliConfigPaths(env, homeDir)) {
+    const text = readText(path);
+    if (text === null) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text) as unknown;
+    } catch {
+      continue;
+    }
+    const credential = cliAuthorizedUserCredential(parsed, env);
+    if (credential) return { kind: 'firebase-cli', credential };
+  }
+  return { kind: 'application-default' };
+}
+
+/**
+ * True when argv[1] is the census script itself or the vite-node launcher.
+ * vite-node consumes the script path, so argv[1] is its own binary. vitest and plain imports are false.
+ */
+export function isCensusProcessEntry(argv: readonly string[], scriptFilePath: string): boolean {
+  const launcher = argv[1];
+  if (!launcher) return false;
+  const name = basename(launcher);
+  if (name === 'vite-node' || name === 'vite-node.mjs') return true;
+  const real = (path: string): string => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return resolve(path);
+    }
+  };
+  return real(launcher) === real(scriptFilePath);
 }
 
 /** JSON that keeps numbers and nulls. Callers convert non-JSON admin types first. */
