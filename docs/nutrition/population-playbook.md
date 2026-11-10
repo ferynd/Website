@@ -2,7 +2,7 @@
 
 Status: instructions for future CalorieTracker #62-#63 execution. [ingredient-catalog.json](ingredient-catalog.json) is the research queue. It is not a completed nutrition database.
 
-Local code and CLI entry points: [shared research pipeline](research-pipeline.md). Live source pins and publication remain approval-gated under #62 Part B.
+Local code and CLI entry points: [shared research pipeline](research-pipeline.md). The FDC Foundation and SR Legacy bulk releases are pinned by checksum ([pinned releases](research-pipeline.md#pinned-fdc-bulk-releases-62-part-b)). An FDC API key still needs James's say-so; catalog import and publication proceed as #63 batches with batch reports.
 
 ## Contents
 
