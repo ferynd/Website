@@ -132,6 +132,11 @@ Energy density, Mifflin-St Jeor, Cunningham, PAL ranges, DRI tables, Compendium 
 - [x] **Make the new flow obviously separate from Today.**
   > Resolved: the tab button and panel heading read `Ingredient Import (Beta)` and Library stays its own tab; a cancel or failed import action shows "Your existing foods and diary were not changed." from the shared `WORKSPACE_UNCHANGED_NOTICE`; a `Return to Today` button calls `activateTab('today')`; the save reason says the meal was not logged to the diary (`logged: false`, `committed: false`, export unchanged); no cache bump because HTML and JS are network-first. Checks: nutrition 534, tracker 1150, root 2015, ci:docs, and green CI; the label, notice, and Return to Today button are on `main`. The final review was an orchestrator review disclosed on the PR because the Codex connector reported its code review usage limit reached. Merged: e93190e (PR #203). Residual risk: none known. Both write flags stayed false; no production write.
 
+## #75 — nutrition docs and cached-client compatibility
+
+- [x] **Finish the compatibility notes that this review does not close.**
+  > Resolved: docs-only compatibility notes. A Cached-client compatibility section in the ingredient store release runbook distinguishes implemented, tested, deployed, and populated; the write-enable cache is a new name after `nutritrack-v5`; saved-food writes are described with the newer-schema transaction guard; diary `setDoc` replacement is described as unprotected until #60 Part B adds a transactional guard; no doc claims cached clients cannot drop newer diary fields; no code changed. Checks: ci:docs and green CI. The final review was an orchestrator review disclosed on the PR because the Codex connector is at its code review usage limit. Merged: 7700351 (PR #204). Residual risk: none known.
+
 ## #61 Part A — ingredient identities, revisions, and conversions
 
 - [x] **Implement ingredient identities, variants, sources, and revisions (Part A).**

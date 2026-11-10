@@ -1,5 +1,6 @@
 import { createCuratedCatalogSource } from '../../../shared/nutrition/ingredientCatalog.js';
-import { filterLibraryGaps, libraryCapabilities, researchLibraryFields, reviewLibraryProfile, searchLibrary } from '../../../shared/nutrition/library.js';
+import { CURATED_CATALOG_ID } from '../../../shared/nutrition/ingredientIds.js';
+import { commitLibraryEdit, filterLibraryGaps, libraryCapabilities, researchLibraryFields, reviewLibraryProfile, searchLibrary, stageLibraryEdit } from '../../../shared/nutrition/library.js';
 import { getIngredientStore } from '../services/ingredientStore.js';
 
 const text = (node, value) => { if (node) node.textContent = value == null ? '' : String(value); };
@@ -24,7 +25,7 @@ async function sources() {
     return list;
 }
 
-/** Tracker library tab. Values are text. Profile writes stay off. */
+/** Tracker library tab. Values are text. Save goes through commitLibraryEdit, which is off while the store flag is false. */
 export function wireLibrary(getUid) {
     let rows = [];
     let cursor = null;
@@ -55,6 +56,7 @@ export function wireLibrary(getUid) {
         }
     };
     let packetState = null;
+    let researchTarget = null;
     const runSearch = async (nextCursor) => {
         if (nextCursor && !Object.values(nextCursor).some(Boolean)) {
             text(document.getElementById('library-message'), 'No more results');
@@ -105,7 +107,21 @@ export function wireLibrary(getUid) {
         const uid = getUid();
         if (!uid) { text(document.getElementById('library-message'), 'Sign in to research a private profile.'); return; }
         const name = selected?.canonicalName || document.getElementById('library-query')?.value || 'ingredient';
-        const packet = await researchLibraryFields({ name, ownerUid: uid });
+        // A reviewed selection pins its ref and revision and asks only for the fields Review found missing.
+        const reviewed = selected?.ref && Array.isArray(selected.missingFields) ? selected : null;
+        let packet;
+        if (reviewed) {
+            let revision = null;
+            try {
+                const store = await getIngredientStore();
+                try { revision = (await store.resolveRef(reviewed.ref))?.revision || null; } finally { store.close(); }
+            } catch { /* researchLibraryFields reports base_revision_required when the profile cannot be read. */ }
+            packet = await researchLibraryFields({ name, ownerUid: uid, ref: reviewed.ref, revision, missingFields: reviewed.missingFields });
+            researchTarget = { item: reviewed, revision };
+        } else {
+            packet = await researchLibraryFields({ name, ownerUid: uid });
+            researchTarget = { item: null, revision: null };
+        }
         packetState = packet.state || null;
         const box = document.getElementById('library-copy');
         if (box) box.value = packet.copyText || '';
@@ -118,5 +134,35 @@ export function wireLibrary(getUid) {
         if (applied.ok) packetState = applied.workspace.resolution;
         const staged = applied.workspace?.resolution?.items?.flatMap(item => Object.keys(item.nutrients || {})) || [];
         text(document.getElementById('library-message'), applied.ok ? `Response staged for review (${staged.join(', ') || 'no nutrient keys'}). It is not saved.` : (applied.error || 'invalid response'));
+    });
+    document.getElementById('library-save')?.addEventListener('click', async () => {
+        const message = value => text(document.getElementById('library-message'), value);
+        const applied = packetState?.items?.find(item => item.researchEvidence?.length) || null;
+        if (!applied) { message('Apply a research response before saving. Nothing was saved.'); return; }
+        const uid = getUid();
+        const item = researchTarget?.item || null;
+        const base = applied.baseRevision || researchTarget?.revision || null;
+        // A curated profile is never edited; saving it creates the owner's private override copy.
+        const create = item?.scope === 'curated' && base ? {
+            identity: { canonicalName: item.canonicalName || applied.name, category: item.category || 'other', kind: item.kind || 'generic' },
+            variant: { dims: item.dims || { state: base.basis?.state }, overrides: { catalogId: CURATED_CATALOG_ID, variantId: item.variantId, revision: base.revision } },
+            basedOn: item.ref, confirmNew: true,
+        } : null;
+        const staged = stageLibraryEdit({ scope: 'private', ownerUid: create ? uid : (base?.ownerUid || uid), viewerUid: uid, base: create ? null : base, patch: { research: applied } });
+        let store = null;
+        // The store opens only when private writes are on; with them off nothing is read or written.
+        if (libraryCapabilities().privateWrites) { try { store = await getIngredientStore(); } catch { /* reported as store_unavailable */ } }
+        let result;
+        try { result = await commitLibraryEdit({ store, staged, base: create ? null : base, create, scope: 'private' }); } finally { store?.close(); }
+        if (result.ok) {
+            packetState = null;
+            message(`Saved revision ${result.ref.revision} to your private library. Diary entries were not changed.`);
+        } else if (result.error === 'writes_disabled') {
+            message('Private library writes are off. The staged result was not saved; it is still staged here.');
+        } else if (result.error === 'revision_conflict') {
+            message('This profile changed since the research packet. The draft was kept in the pending-save list and was not saved.');
+        } else {
+            message(`Not saved (${result.error}). The staged result is still staged here.`);
+        }
     });
 }
