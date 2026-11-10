@@ -141,3 +141,4 @@ James signs in himself. The new orchestrator opens the page or device-code promp
 - Cloudflare: `wrangler login`. Read-only use. Do not deploy.
 - Firebase: `firebase login`. Read-only use. Do not deploy without an approval in Hard gates.
 - Testing: a Google account sign-in on jamesberto.com.
+| 2026-11-10 08:40 | #80 fix the read-only census script | #208 | `8d9ac29` | PR opened. Implementation at `3d4cd32`; backlog note, #76 reconciliation, and Stage rows at `8d9ac29`. | Independent review of the branch head, then green CI. |
