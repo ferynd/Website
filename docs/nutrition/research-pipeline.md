@@ -10,7 +10,7 @@ Shared ESM modules and their TypeScript declarations are in [the research direct
 
 | Module (.js and .d.ts) | Origin and responsibility |
 | --- | --- |
-| fdcNutrientMap | Kept from the paused implementation: FDC ID/definition map. Nutrient id 2047 is Energy (Atwater General Factors), USDA nutrient number 957, derivation `atwater_general_factors`. Id 2048 is Energy (Atwater Specific Factors), number 958, derivation `atwater_specific_factors`. Number 268 is energy in kJ (id 1062) and is not mapped to calories. Number 269 stays total sugars. Mapping validation rejects duplicate nutrient numbers. Mappings remain provisional until a real release is pinned under Part B. |
+| fdcNutrientMap | Kept from the paused implementation: FDC ID/definition map. Nutrient id 2047 is Energy (Atwater General Factors), USDA nutrient number 957, derivation `atwater_general_factors`. Id 2048 is Energy (Atwater Specific Factors), number 958, derivation `atwater_specific_factors`. Number 268 is energy in kJ (id 1062) and is not mapped to calories. Number 269 stays total sugars. Mapping validation rejects duplicate nutrient numbers. The Foundation and SR Legacy releases are now pinned (see [Pinned FDC bulk releases](#pinned-fdc-bulk-releases-62-part-b)); mappings are checked against those files in the #62 Part B dry run before any #63 import relies on them. |
 | fdcFood | Reshaped: shared bulk/API parser, strict numeric input, source checksums, LOQ and household weights. A portion qualifier is kept only when the modifier adds information beyond the normalized unit. |
 | sourceResult | Reshaped: registry normalization, explicit unknowns, source metadata, serving-basis checks, units and LOQ across all nutrient paths; manual/label observations are normalized too, including upper bounds, rounding intervals, and estimate ranges. A direct observation clears the placeholder gap for that field. Its qualifier comes from a limit of quantification or a supplied reason, not from `not_reported_by_source`, when the source did report a status. A definition-mismatch row does not replace a key that already has a status. Energy preference is 1008, then 2048, then 2047. The first of those with a finite quantified amount wins, and a below-quantification row is used only when none of them has one. FDC observations remain per 100 g even if a serving size is listed. |
 | researchJob | Reshaped: stable keys/IDs, transitions, issued request histories and awaiting_response. |
@@ -78,9 +78,41 @@ packet prints the request and copyable block. Save the assistant's response as a
 
 Other commands are index (--dataset/--file), run (--source fdc-bulk, fdc-api, manual or label; manual/label also use --input), validate, stage (--out) and suggest (--manifest-id, optionally --dataset/--file). --batch or --job limits an existing job selection. `run` and `validate` apply the selected jobs one after another, so `--write` can take the store lock for each job in a multi-job batch. `run --input` requires exactly one `--job`, so one manual or label record is not applied to every selected job. `import-packet` still takes `--input` for a response file and does not require `--job`. stage only writes with `--write` and outside public. `stage --write` refuses a non-empty `--out` directory, so a later batch cannot overwrite `manifest.json` and leave earlier shards unlisted. It stages approved jobs and skips the rest; a selection with no approved job is an error. Staging rejects multiple approved passes for the same variant; select one reviewed pass so each variant has one record and profileCount counts unique variants. Suggestion output never edits the reviewed match table. Coverage reports exclude private jobs. For one manifest id, every curated pass is aggregated: the id is approved if any pass is approved, and per-field status is merged across those passes. A later blocked pass does not hide an approved profile.
 
-Every command defaults to dry run. --write requires --store. The file store/source cache use atomic local writes, locks, checksums and CAS. Locks are never stolen automatically by age; after a crash, inspect the recorded PID and remove an abandoned lock explicitly before retrying. Paths resolving through symlinks into public are refused. A malformed cache or store is an error, never an empty successful import. The bulk reader requires a matching SHA-256 pin and currently permits only explicitly labeled synthetic fixtures. Production pins are deliberately absent.
+Every command defaults to dry run. --write requires --store. The file store/source cache use atomic local writes, locks, checksums and CAS. Locks are never stolen automatically by age; after a crash, inspect the recorded PID and remove an abandoned lock explicitly before retrying. Paths resolving through symlinks into public are refused. A malformed cache or store is an error, never an empty successful import. The bulk reader requires a matching SHA-256 pin. A pin with fixtureOnly true accepts only explicitly labeled synthetic fixtures; the two pinned FDC releases below set fixtureOnly false and are accepted only when the file's checksum equals the pin.
 
-There is no network without --live. fdc-api without --live exits nonzero. Its operator-only adapter reads process.env.FDC_API_KEY only after the live gate, sends it in X-Api-Key, and redacts transport/error details. Tests inject fetch and use synthetic keys; no live calls are part of verification. Bulk/manual/label/packet commands need no key. Live credentials and access are dependencies of [#62 Part B](../../backlogs/calorie-tracker.md#62-part-b-pin-live-sources-and-publish-staged-curated-data), requiring James's explicit approval. Publishing catalog shards and #63 population remain separately approval-gated.
+There is no network without --live. fdc-api without --live exits nonzero. Its operator-only adapter reads process.env.FDC_API_KEY only after the live gate, sends it in X-Api-Key, and redacts transport/error details. Tests inject fetch and use synthetic keys; no live calls are part of verification. Bulk/manual/label/packet commands need no key. No FDC API key is configured or provisioned; provisioning one under [#62 Part B](../../backlogs/calorie-tracker.md#62-part-b-pin-live-sources-and-publish-staged-curated-data) still needs James's explicit say-so. Catalog import and staged publication proceed as #63 batches with batch reports under his 2026-11-10 standing approval.
+
+### Pinned FDC bulk releases (#62 Part B)
+
+[researchConfig.ts](../../scripts/nutrition/researchConfig.ts) pins two FDC bulk JSON releases, downloaded and checksummed on 2026-11-10 from fdc.nal.usda.gov. Bulk downloads need no key. Each entry records the download URL, the archive checksum (`archiveSha256`), the extracted file name, and the extracted file's checksum (`sha256`). The reader verifies `sha256`, so that field is always the extracted JSON, never the zip.
+
+| Dataset id | Data type | Release | Extracted file | Top-level key |
+| --- | --- | --- | --- | --- |
+| `foundation` | Foundation | 2026-10-29 (current, October 2026) | FoodData_Central_foundation_food_json_2026-10-29.json | FoundationFoods |
+| `sr-legacy` | SR Legacy | 2018-04 (final, April 2018; not updated) | FoodData_Central_sr_legacy_food_json_2018-04.json | SRLegacyFoods |
+
+The reader accepts a top-level array or the FoundationFoods, SRLegacyFoods, BrandedFoods, or foods key. Foundation and SR Legacy are different data types, not independent confirmations of one observation (see the [source hierarchy](population-playbook.md#source-hierarchy)).
+
+The files are operator-local: keep them in a directory outside the checkout (for example `~/fdc-datasets`) and never commit them, zipped or extracted. To re-fetch and verify both layers:
+
+```sh
+mkdir -p ~/fdc-datasets && cd ~/fdc-datasets
+curl -fLO https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_foundation_food_json_2026-10-29.zip
+curl -fLO https://fdc.nal.usda.gov/fdc-datasets/FoodData_Central_sr_legacy_food_json_2018-04.zip
+sha256sum FoodData_Central_*.zip   # compare with archiveSha256 in researchConfig.ts
+unzip -o FoodData_Central_foundation_food_json_2026-10-29.zip
+unzip -o FoodData_Central_sr_legacy_food_json_2018-04.zip
+sha256sum FoodData_Central_*.json  # compare with sha256 in researchConfig.ts
+```
+
+If either checksum differs, stop. Do not edit a pin to match a new download; a new release is a new pin in its own reviewed change. With matching files, these dry-run commands verify and index each release in memory without writing anything:
+
+```sh
+npx --no-install vite-node scripts/nutrition/researchCli.ts -- index --dataset foundation --file ~/fdc-datasets/FoodData_Central_foundation_food_json_2026-10-29.json
+npx --no-install vite-node scripts/nutrition/researchCli.ts -- index --dataset sr-legacy --file ~/fdc-datasets/FoodData_Central_sr_legacy_food_json_2018-04.json
+```
+
+The FDC API adapter stays off: the bulk path does not use it, and no API key is configured anywhere.
 
 ### Priority-1 dry-run pilot (#76)
 
@@ -92,7 +124,7 @@ There is no network without --live. fdc-api without --live exits nonzero. Its op
 
 ## Validation boundaries
 
-Automated coverage includes malformed sources, unknown/LOQ, concentrated additives, state conflicts, retry/idempotency, packet round trips/rejections/chunk bounds, CLI/app canonical equality, pending resume, owner changes/sign-out, fixture pins, redacted operator transport and file CAS/locks. No live FDC ID mapping, source license, production auth, deployment or catalog population is claimed by these tests. The curated manifest remains at zero profiles and both write flags remain false.
+Automated coverage includes malformed sources, unknown/LOQ, concentrated additives, state conflicts, retry/idempotency, packet round trips/rejections/chunk bounds, CLI/app canonical equality, pending resume, owner changes/sign-out, fixture pins, redacted operator transport and file CAS/locks. Pin-format and SRLegacyFoods coverage uses synthetic data; the tests do not read the real releases. No live FDC ID mapping, source license, production auth, deployment or catalog population is claimed by these tests. The curated manifest remains at zero profiles and both write flags remain false.
 
 ## File-level test and integration handoff
 
