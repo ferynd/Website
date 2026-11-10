@@ -149,7 +149,8 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, and the 
 
 ### #73: Keep research evidence on the applied draft
 
-- [ ] **Stop dropping provenance when a research response is applied.** Depends: #62 and #70. Saving the revision stays #69 Part B.
+- [p] **Stop dropping provenance when a research response is applied.** Depends: #62 and #70. Saving the revision stays #69 Part B.
+  > pushed — applied nutrients keep the full validated field plus `requestId`; each item keeps `researchEvidence` per request (sources with version, publishedAt, accessedAt; unresolved; assumptions; unverified); null stays unknown; revision-draft sources keep `publishedAt`; flags false; checks: nutrition 522, tracker 1138, root 2015, ci:docs; commit: 8a25c95; PR: pending
   - **Surfaces:** `applyResearchResponse()` and `packetProposal.js`.
   - **Accept:** the applied draft keeps per-field sources, values, units, status, uncertainty, confidence, comparators, derivations, source versions, retrieval dates, and explicit unknowns. A null stays unknown. The workspace still does not write a profile while the write flag is false.
   - **Checks:** tracker suite around `importWorkspace.test.js` and the research packet tests.
