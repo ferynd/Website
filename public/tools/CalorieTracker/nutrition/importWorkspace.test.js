@@ -65,7 +65,7 @@ describe('import workspace', () => {
         expect(importWorkspaceInput(step.workspace, 'picture', { kind: 'photo' }).error).toBe('unsupported_input');
     });
 
-    it('adapts legacy paste, saved meals, and recipes, and copies a packet only after an official miss', async () => {
+    it('adapts legacy paste, saved meals, and recipes, and copies a packet only after the official lookup step', async () => {
         const legacy = importWorkspaceInput(createWorkspace('owner-a').workspace, 'Calories: 100\nProtein: 5g', { kind: 'legacy_paste' });
         expect(legacy.workspace.origins[0]).toMatchObject({ origin: 'user', sourceKind: 'legacy_paste' });
         const meal = importWorkspaceInput(createWorkspace('owner-a').workspace, JSON.stringify({ foodItems: [{ id: 'bowl', name: 'Rice bowl', quantity: 1, calories: 200 }] }), { kind: 'saved_meal' });
@@ -467,5 +467,50 @@ describe('research evidence on the applied draft (#73)', () => {
         expect(twice.ok).toBe(true);
         expect(twice.workspace.resolution.items[0].researchEvidence).toHaveLength(1);
         expect(twice.workspace.committed).toBe(false);
+    });
+});
+
+describe('honest official lookup status (#74)', () => {
+    async function unresolvedStep() {
+        return matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, {});
+    }
+
+    it('records not_performed with no pinned release, keeps the line unresolved, and still opens the packet', async () => {
+        const before = await unresolvedStep();
+        const missing = before.workspace.resolution.items[0].missingFields;
+        const step = lookupWorkspace(before.workspace, ['rice']);
+        expect(step.ok).toBe(true);
+        const item = step.workspace.resolution.items[0];
+        expect(item.officialAttempts).toEqual([{ adapter: 'none', release: null, outcome: 'not_performed', reason: 'live official sources are not enabled' }]);
+        expect(JSON.stringify(step.workspace.resolution)).not.toContain('not_found');
+        expect(JSON.stringify(step.workspace.resolution)).not.toContain('nutrition-curated@0');
+        expect(item).toMatchObject({ resolved: false, kind: 'missing_profile' });
+        expect(item.missingFields).toEqual(missing);
+        const packet = await packetWorkspace(step.workspace, ['rice']);
+        expect(packet.ok, packet.error).toBe(true);
+        const target = packet.workspace.resolution.pendingRequests[0].targets[0];
+        expect(target.triedSources).toEqual([{ adapter: 'none', release: null, outcome: 'not_performed' }]);
+        expect(packet.workspace.modelCalls).toBe(0);
+        expect(INGREDIENT_STORE_WRITES_ENABLED).toBe(false);
+        expect(NUTRIENT_V2_WRITES_ENABLED).toBe(false);
+    });
+
+    it.each([
+        ['not_found', { outcome: 'not_found', adapter: 'curated', release: 'nutrition-curated@0' }],
+        ['resolved', { outcome: 'resolved', adapter: 'fdc', release: 'fdc@2026-04', nutrients: known }],
+    ])('ignores a caller attempt that claims %s', async (_label, attempt) => {
+        const step = lookupWorkspace((await unresolvedStep()).workspace, ['rice'], attempt);
+        const item = step.workspace.resolution.items[0];
+        expect(item.officialAttempts.map(row => row.outcome)).toEqual(['not_performed']);
+        expect(item.officialAttempts[0]).toMatchObject({ adapter: 'none', release: null });
+        expect(item.resolved).toBe(false);
+        expect(item.source).not.toBe('official');
+    });
+
+    it('does not unresolve a matched line or send it for research', async () => {
+        const matched = await matchWorkspace(importWorkspaceInput(createWorkspace('owner-a').workspace, list).workspace, { nutrientsByLine: { rice: known }, lineRefs: { rice: { identityId: 'rice-id', variantId: 'rice-cooked', revision: 1 } }, refDims: { rice: { state: 'cooked' } } });
+        const step = lookupWorkspace(matched.workspace, ['rice']);
+        expect(step.workspace.resolution.items[0]).toMatchObject({ kind: 'resolved', resolved: true, source: 'library', missingFields: [] });
+        expect((await packetWorkspace(step.workspace, ['rice'])).error).toBe('matched_line');
     });
 });

@@ -68,7 +68,7 @@ function packetTarget(job, includeLabelEvidence) {
         identity,
         variant, requestedFields: job.requestedFields === '*' ? '*' : fields,
         basis: 'per_100g_edible', expectedUnits: Object.fromEntries(fields.map(k => [k, getNutrient(k).unit])),
-        knownObservations: t.knownObservations || {}, triedSources: job.attempts.map(a => ({ adapter: a.adapter, release: a.release || 'unknown', outcome: a.outcome })),
+        knownObservations: t.knownObservations || {}, triedSources: job.attempts.map(a => ({ adapter: a.adapter, release: a.outcome === 'not_performed' ? null : a.release || 'unknown', outcome: a.outcome })),
         ...(includeLabelEvidence && t.labelEvidence ? { labelEvidence: t.labelEvidence } : {}) });
 }
 export async function buildResearchPackets(jobs, { purpose = 'profile', limits = {}, now = () => Date.now(), randomBytes = () => crypto.getRandomValues(new Uint8Array(12)), includeLabelEvidence = false, singleBatch = false } = {}) {

@@ -14,7 +14,11 @@ export function confirmWorkspace(workspace: any, lineId: string, variantId: stri
 export function applyResearchResponse(workspace: any, input: any): Promise<any>;
 export function packetCopy(packet: any): string;
 export function chooseWorkspace(workspace: any, lineId: string, choice: any): any;
-export function lookupWorkspace(workspace: any, lineIds: string[], attempt?: any): any;
+/**
+ * Records a `not_performed` official attempt (adapter `none`, release null) for each line. No live
+ * source is wired; the third argument is ignored so a caller cannot claim `not_found` or `resolved`.
+ */
+export function lookupWorkspace(workspace: any, lineIds: string[], _attempt?: unknown): any;
 export function packetWorkspace(workspace: any, lineIds: string[], options?: any): Promise<any>;
 export function manualWorkspace(workspace: any, lineId: string, nutrients: any): any;
 export function incompleteWorkspace(workspace: any): any;

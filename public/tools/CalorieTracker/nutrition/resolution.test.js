@@ -166,3 +166,28 @@ describe('nutrition declarations match the runtime (#72 fix round 2)', () => {
         expect(read('resolution')).toMatch(/export function cookedTotal\(lines: any\[\]\): number \| null;/);
     });
 });
+
+describe('official lookup outcomes (#74)', () => {
+    it('keeps the pinned curated release on a genuine not_found attempt', async () => {
+        const state = lookupOfficial(buildResolution({ lines, matches }), 'rice', { outcome: 'not_found', reason: 'not in curated catalog' }).state;
+        expect(state.items[0].officialAttempts).toEqual([{ adapter: 'curated', release: 'nutrition-curated@0', outcome: 'not_found' }]);
+        const pinned = lookupOfficial(buildResolution({ lines, matches }), 'rice', { outcome: 'not_found', adapter: 'fdc', release: 'fdc-sr-legacy@2018-04' }).state;
+        expect(pinned.items[0].officialAttempts[0]).toEqual({ adapter: 'fdc', release: 'fdc-sr-legacy@2018-04', outcome: 'not_found' });
+        const packet = await researchPacket(state, ['rice']);
+        expect(packet.packets[0].targets[0].triedSources).toEqual([{ adapter: 'curated', release: 'nutrition-curated@0', outcome: 'not_found' }]);
+    });
+
+    it('records not_performed without a release, ignoring a supplied adapter or release', async () => {
+        const result = lookupOfficial(buildResolution({ lines, matches }), 'rice', { outcome: 'not_performed', adapter: 'curated', release: 'nutrition-curated@0' });
+        expect(result.ok).toBe(true);
+        expect(result.state.items[0].officialAttempts).toEqual([{ adapter: 'none', release: null, outcome: 'not_performed', reason: 'live official sources are not enabled' }]);
+        expect(result.state.items[0].resolved).toBe(false);
+        expect((await researchPacket(result.state, ['rice'])).ok).toBe(true);
+    });
+
+    it('rejects an attempt with no recognized outcome', () => {
+        const state = buildResolution({ lines, matches });
+        expect(lookupOfficial(state, 'rice', {}).error).toBe('invalid_outcome');
+        expect(lookupOfficial(state, 'rice', { outcome: 'missing' }).error).toBe('invalid_outcome');
+    });
+});

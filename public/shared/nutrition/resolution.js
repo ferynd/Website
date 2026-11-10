@@ -93,10 +93,32 @@ export function chooseExisting(state, lineId, choice) {
     return { ok: true, state: replace(state, lineId, { kind: 'resolved', resolved: true, missingFields: [], estimate, source: estimate ? 'substitute' : 'alias', nutrients: choice.nutrients || item.nutrients, selectedRef: ref, aliasProposal: choice.aliasProposal || null, match: ref ? { ...(item.match || {}), ref, outcome: 'confirmed_by_user' } : item.match }) };
 }
 
+/** Outcomes an official attempt may record. Only `resolved` and `not_found` mean a lookup ran. */
+export const OFFICIAL_OUTCOMES = Object.freeze(['resolved', 'not_found', 'not_performed']);
+export const LIVE_SOURCES_DISABLED = 'live official sources are not enabled';
+
+function attemptRecord(attempt) {
+    // A lookup that did not run consulted no adapter and no release, so it must not claim the curated pin.
+    if (attempt.outcome === 'not_performed') return { adapter: 'none', release: null, outcome: 'not_performed', reason: attempt.reason || LIVE_SOURCES_DISABLED };
+    return { adapter: attempt.adapter || 'curated', release: attempt.release || 'nutrition-curated@0', outcome: attempt.outcome };
+}
+
+/**
+ * Record one official-lookup attempt. `resolved` and `not_found` are for callers that actually ran a
+ * lookup and keep the adapter/release they consulted (default: the pinned curated release).
+ * `not_performed` records that the ladder step was visited without a lookup: adapter `none`, release null.
+ * It still opens the research packet step, and it never unresolves a resolved line.
+ */
 export function lookupOfficial(state, lineId, attempt) {
     const item = state.items.find(row => row.lineId === lineId);
     if (!item) return { ok: false, error: 'unknown_line', state };
-    const officialAttempts = [...item.officialAttempts, { adapter: attempt.adapter || 'curated', release: attempt.release || 'nutrition-curated@0', outcome: attempt.outcome }];
+    if (!OFFICIAL_OUTCOMES.includes(attempt?.outcome)) return { ok: false, error: 'invalid_outcome', state };
+    const record = attemptRecord(attempt);
+    const officialAttempts = [...item.officialAttempts, record];
+    if (attempt.outcome === 'not_performed' && item.resolved) return { ok: true, state: replace(state, lineId, { officialAttempts }) };
+    if (attempt.outcome === 'not_performed') {
+        return { ok: true, state: replace(state, lineId, { officialAttempts, resolved: false, missingFields: attempt.unresolvedFields || item.missingFields, reason: record.reason }) };
+    }
     if (attempt.outcome === 'resolved') {
         return { ok: true, state: replace(state, lineId, { officialAttempts, kind: 'resolved', resolved: true, missingFields: [], source: 'official', nutrients: attempt.nutrients || {} }) };
     }

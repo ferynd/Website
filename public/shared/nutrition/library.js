@@ -1,6 +1,6 @@
 import { INGREDIENT_STORE_WRITES_ENABLED } from './capabilities.js';
 import { PROFILE_FIELDS } from './research/profileFields.js';
-import { buildResolution, lookupOfficial, researchPacket } from './resolution.js';
+import { buildResolution, LIVE_SOURCES_DISABLED, lookupOfficial, researchPacket } from './resolution.js';
 
 /** Library reads and stages. Private production writes stay on the ingredient-store flag. */
 export function libraryCapabilities() {
@@ -112,7 +112,8 @@ export async function researchLibraryFields({ lineId = null, name = 'ingredient'
         matches: [{ lineId: id, outcome: ref ? 'exact' : 'missing', ref }],
         revisionsByLine,
     });
-    const lookup = lookupOfficial(resolution, id, { outcome: 'not_found', unresolvedFields: missingFields });
+    // No live official source is wired, so the ladder step is recorded as not performed, never as a miss.
+    const lookup = lookupOfficial(resolution, id, { outcome: 'not_performed', reason: LIVE_SOURCES_DISABLED, unresolvedFields: missingFields });
     if (!lookup.ok) return { ok: false, error: lookup.error, modelCalls: 0 };
     resolution = lookup.state;
     const packet = await researchPacket(resolution, [id], { ...(ownerUid ? { ownerUid } : {}), ...(namespace ? { namespace } : {}) });
