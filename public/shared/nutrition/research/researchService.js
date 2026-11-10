@@ -575,7 +575,11 @@ export function createResearchService({ store, sourceCache, adapters = [], now =
             recordId: String(result.recordId || source.recordId || ''),
             description: String(result.description || result.title || normalized.sourceRecord?.title || '').trim(),
         };
-        if (job.scope === 'curated' && !verifiedRecordMatchesTable(job.target?.manifestId, verifiedRecord, matches))
+        // A source can be refetched before its match-table entry is reviewed.
+        // If a reviewed entry exists, it must agree. Missing entries fail closed
+        // later at curated approval and staging through assertCuratedMatchTable.
+        const hasReviewedMatch = matches.some(entry => entry?.manifestId === job.target?.manifestId);
+        if (job.scope === 'curated' && hasReviewedMatch && !verifiedRecordMatchesTable(job.target?.manifestId, verifiedRecord, matches))
             await mismatch('Verified FDC record must equal the match table entry');
         const proposal = structuredClone(job.proposal);
         const sourceKey = proposal.assistantSourceKeys[sourceId];
