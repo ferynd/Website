@@ -2,7 +2,7 @@ import { it, expect, vi, afterEach } from 'vitest';
 import { mkdtemp, readdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { researchCli, packetForJobs } from './researchCli';
+import { researchCli, packetForJobs, isResearchCliEntry } from './researchCli';
 import { createFileResearchStore } from './fileResearchStore';
 import { buildResearchPackets, canonicalRequestBody } from '../../public/shared/nutrition/research/researchPacket.js';
 import type { ResearchRequest } from '../../public/shared/nutrition/research/researchPacket.js';
@@ -250,4 +250,16 @@ it('private --verify-source without --source keeps reviewer attestation', async 
     const sourceKey = attested.proposal!.assistantSourceKeys!.s1;
     expect(attested.proposal!.revisionDraft!.sources[sourceKey].permittedUse).toBe('review_required');
     expect(fetch).not.toHaveBeenCalled();
+});
+it('treats a vite-node launch with a CLI command as the entry, and nothing else', () => {
+    const script = path.resolve('scripts/nutrition/researchCli.ts');
+    // vite-node removes the script path and a bare `--`, so its binary is argv[1].
+    expect(isResearchCliEntry(['/usr/bin/node', '/repo/node_modules/.bin/vite-node', 'suggest', '--manifest-id', 'x'], script)).toBe(true);
+    expect(isResearchCliEntry(['/usr/bin/node', '/repo/node_modules/vite-node/vite-node.mjs', '--', 'plan'], script)).toBe(true);
+    expect(isResearchCliEntry(['/usr/bin/node', script, 'plan'], script)).toBe(true);
+    // Another vite-node script importing this module, vitest, or a bare import does not run it.
+    expect(isResearchCliEntry(['/usr/bin/node', '/repo/node_modules/.bin/vite-node'], script)).toBe(false);
+    expect(isResearchCliEntry(['/usr/bin/node', '/repo/node_modules/.bin/vite-node', '--report'], script)).toBe(false);
+    expect(isResearchCliEntry(['/usr/bin/node', '/repo/node_modules/vitest/vitest.mjs', 'run'], script)).toBe(false);
+    expect(isResearchCliEntry(['/usr/bin/node'], script)).toBe(false);
 });
