@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Gemini bundle selection fixture: wave A replay, exclusions, and planner order",
+  "_fixture": "synthetic; not nutrition data",
+  "entries": [
+    { "id": "pear-raw", "name": "Pear, raw", "category": "fruits", "kind": "generic", "state": "raw", "priority": 2, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "apple-with-skin-raw", "name": "Apple, with skin, raw", "category": "fruits", "kind": "generic", "state": "raw", "priority": 1, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "banana-raw", "name": "Banana, raw", "category": "fruits", "kind": "generic", "state": "raw", "priority": 1, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "cherry-raw", "name": "Cherry, raw", "category": "fruits", "kind": "generic", "state": "raw", "priority": 1, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "lentils-boiled-drained-without-added-salt", "name": "Lentils, mature seeds, boiled, without salt", "category": "legumes", "kind": "generic", "state": "boiled-drained-without-added-salt", "priority": 1, "sourceStrategy": "usda-first", "status": "queued", "aliases": ["lentil"] },
+    { "id": "milk-reduced-fat-2-percent-fat-as-sold", "name": "Milk, reduced fat, 2% fat", "category": "dairy", "kind": "generic", "state": "as-sold", "priority": 2, "sourceStrategy": "usda-first", "status": "queued", "notes": "Fluid cow's milk" },
+    { "id": "apple-juice-100-percent-ready-to-drink", "name": "Apple juice, 100%", "category": "fruits", "kind": "generic", "state": "ready-to-drink", "priority": 2, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "apple-with-skin-cooked-without-added-sugar", "name": "Apple, with skin, cooked, without added sugar", "category": "fruits", "kind": "generic", "state": "cooked-without-added-sugar", "priority": 2, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "cherry-dried-sweetened", "name": "Cherry, dried, sweetened", "category": "fruits", "kind": "generic", "state": "dried-sweetened", "priority": 3, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "coconut-milk-canned", "name": "Coconut milk, canned", "category": "beverages", "kind": "generic", "state": "canned", "priority": 1, "sourceStrategy": "manufacturer-first", "status": "queued" },
+    { "id": "sodium-chloride-food-grade-dry", "name": "Sodium chloride", "category": "additives", "kind": "additive", "state": "food-grade-dry", "priority": 1, "sourceStrategy": "compound-reference", "status": "queued" },
+    { "id": "cola-brand-x-as-sold", "name": "Cola, brand X", "category": "beverages", "kind": "branded", "state": "as-sold", "priority": 1, "sourceStrategy": "manufacturer-first", "status": "queued", "variant": "unresolved-brand" }
+  ]
+}
