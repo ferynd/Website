@@ -193,6 +193,8 @@ Found while running this batch. This PR changes no code, so all of these are doc
 
 ## Follow-ups: the import PR for this batch
 
+**Status (2026-11-11):** the import ran; see the [A2 import report](population-batch-a2-import.md). Issue #215 ANSWER Q-010 adjudicated the 18 flagged cases: 11 flagged proposals approved, with tomato paste switched to SR 170459 and plain whole-milk yogurt to SR 171284; 4 flagged proposals held (tamari-regular, Greek 2% and 5%, chèvre); and the 6 existing unresolved ids upheld. The 4 unflagged proposals passed the routine pinned-source checks. Final outcome: 15 reviewed entries, 15 profiles validated, approved, staged, and imported (catalog 14 to 29; V4 combine and append-only checks: 0 defects, preserved 14), 0 rejected at import, 10 unresolved. The plan below is kept for the record.
+
 The A2 import PR (`#63-A-2`, under the standing approval, with James's approval recorded in the PR) will contain:
 
 1. Adjudication of the 18 flagged cases through issue #215 **before** any table entry is written. Any proposal that is rejected moves to the unresolved list with its candidate references kept.

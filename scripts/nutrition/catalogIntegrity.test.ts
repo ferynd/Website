@@ -265,9 +265,10 @@ describe('shipped catalog (#63 V4)', () => {
         const shipped = await readCatalogDirectory(SHIPPED_DIR);
         const s = await verifyCatalog(shipped);
         expect(s.defects).toEqual([]);
-        expect(s.profileCount).toBe(14);
-        expect(s.variantIds).toHaveLength(14);
-        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 14, defects: [] });
+        // 14 A1 profiles plus 15 A2 profiles (#63-A-2).
+        expect(s.profileCount).toBe(29);
+        expect(s.variantIds).toHaveLength(29);
+        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 29, defects: [] });
         sameBytes(await combineCatalogs(shipped, await buildCatalogShards([])), shipped);
     });
 });
@@ -285,7 +286,7 @@ describe('catalogIntegrityCli (#63 V4)', () => {
     it('verifies the shipped catalog by default and prints counts only', async () => {
         let out = '';
         const summary = await main(['node', 'cli'], { write: t => { out += t; } });
-        expect(summary).toMatchObject({ profileCount: 14, defects: [] });
+        expect(summary).toMatchObject({ profileCount: 29, defects: [] });
         expect(JSON.parse(out)).not.toHaveProperty('variantIds');
     });
     it('checks --previous/--next and --combine without writing, and fails on defects', async () => {
