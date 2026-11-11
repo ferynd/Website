@@ -125,7 +125,7 @@ Dependency order: #59, #61 Part A, #62, #64 Part A, #65, #66, #67, #70, #72, #73
 ### #79: Validate the beta in an isolated Firebase project
 
 - [p] **Exercise save behavior away from production.** Depends: #69 Part B and #64 Part B branch implementations, plus #72, #73, #74, and #78. #68 depends on this item.
-  > blocked — phase 3. Do not start during phase 2, and do not point the project at production.
+  > blocked — the live run in `jlb-calorietracker-beta` waits on four beta console setup steps (enable the Cloud Firestore API, create the (default) database, register a web app, create a test auth user); the read-only check on 2026-11-11 found no Firestore API, no database, and no apps. The runbook, verified beta state, and local chained flow evidence are in [beta-validation.md](../docs/nutrition/beta-validation.md) on `claude/calorie-tracker-79-v5-beta-validation` (PR #223). The live Import Workspace save (flow 7b) is also blocked by runbook gaps G1 (no meal store in the UI) and G2 (save gate needs the global v2 flag). Never point at production.
   - **Surfaces:** a written isolated-project runbook and a recorded test log. No production Firestore project.
   - **Accept:** import, match, research, fit, calculate, review, private-profile save, and meal save are exercised in a Firebase project that is not production. Failure is visible. Abandoning the beta leaves the test diary unchanged until an explicit diary add. Legacy food and diary shapes are not given v2 writes. The log records the project id, ruleset, flags, and cleanup. Production is not contacted.
   - **Checks:** the runbook and the recorded log. Emulator evidence can prepare the runbook; it does not replace the isolated-project log.
