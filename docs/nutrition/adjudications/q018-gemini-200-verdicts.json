@@ -1,0 +1,1434 @@
+{
+  "schemaVersion": 1,
+  "reviewId": "Q-018",
+  "reviewDate": "2026-11-11",
+  "bundleId": "gemini-bundle-2026-11-11-f5d496273016",
+  "inputDigest": "f5d49627301683ec5db740bc227f907dd4b3007e142963f1579fe0eb9e729ab9",
+  "source": "Gemini original eight 25-target chunks and deterministic checker; see GitHub issue #215 Q-018",
+  "validationReportSha256": "2d314046061685179003bf3d9417f0a0899b2b38c1a032a0e6f2806c61b0a94e",
+  "geminiChunkSha256": [
+    "f642cce0cebfbc828f2b7315b1901ca1a962901ceb0e21609d6c23fb4625e90c",
+    "74ecf0367b7818348cb19e7706901a3def66dfbb858ba914096a36437c3d72a3",
+    "0b4a7158bbaf916573ac42962ed832d47f2fbd51c0578621dbc057456f77bc41",
+    "1ad08eef3d6e3b53012dcbe3594bf7f08cf02e005a0fadac4610986dd913c64e",
+    "7069a3fe2369113fd035608e1a7dbeadae9fab2b4ba1f24fe3b6ec3dfde1de8b",
+    "a1bc259bf5290a29f55ede0db25bd28d7cd52192e4059bffac26e4707c7f16d9",
+    "18e6f833d23e277b91ea345c923a000cfd78583280269b8d71b78ddad437c594",
+    "9d04d1d6bccdc0d3763385486cc1c5195535c96f51af89727f4c6166f0a3c5b4"
+  ],
+  "counts": {
+    "UNRESOLVED": 45,
+    "HELD": 48,
+    "APPROVED": 100,
+    "REJECTED": 7
+  },
+  "importRules": [
+    "APPROVED means source identity pairing allowed, subject to exact pinned USDA row replay, field provenance and V4 append-only checks",
+    "Do not import HELD, REJECTED or UNRESOLVED",
+    "Join approved targetId and fdcId only against exact original candidate entries and pinned source, do not infer dataset/release/title from this verdict file",
+    "All qualifying review boundaries in reason must be carried into approved source-match-table stateEvidence/rationale",
+    "No automated production Firestore writes, rules changes, writer flags or paid APIs authorized"
+  ],
+  "decisions": [
+    {
+      "targetId": "allulose-crystalline-as-sold",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is crystalline allulose; the sole candidate 175107 is bottled water ('CRYSTAL GEYSER')."
+    },
+    {
+      "targetId": "apple-juice-100-percent-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Unsweetened apple juice is plausible but the FDC description does not establish 100% juice or a reviewed unfortified baseline. Verify its USDA identity/ingredient basis against a 100%-juice specification."
+    },
+    {
+      "targetId": "aromatic-bitters-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is aromatic cocktail bitters; all six candidates are balsam-pear (bitter gourd), a vegetable."
+    },
+    {
+      "targetId": "asparagus-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Boiled and drained are explicit; absence of added salt is not. The with-salt sibling is suggestive but not decisive without source-specific preparation evidence."
+    },
+    {
+      "targetId": "bagel-plain-as-sold",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "This is an enriched, calcium-propionate-containing composite that also includes onion, poppy and sesame bagels. Plain-only identity and default formulation are not established."
+    },
+    {
+      "targetId": "beef-top-sirloin-lean-grilled-without-added-fat",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Candidate is a top-sirloin filet cut with 0-inch trim. Generic top-sirloin steak identity, trim and no-added-fat preparation are not established as the intended default."
+    },
+    {
+      "targetId": "beef-top-sirloin-lean-raw",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Candidate is specifically select-grade and 1/8-inch trimmed; the generic all-grade raw lean-only top sirloin is not demonstrated."
+    },
+    {
+      "targetId": "beer-india-pale-ale-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is India pale ale (or beer); candidates are beerwurst salami, Indian squash, and Indian corn."
+    },
+    {
+      "targetId": "beer-lager-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "USDA regular beer composite does not identify lager style or the intended alcohol/residual sugar composition."
+    },
+    {
+      "targetId": "beer-stout-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is stout beer; candidates are beerwurst salami, generic regular beer (168746), Budweiser (168747), and Budweiser Select light beer (168748)."
+    },
+    {
+      "targetId": "beetroot-boiled-drained-without-added-salt",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is beetroot (the root vegetable); all four candidates are 'Beet greens' (the leafy tops)."
+    },
+    {
+      "targetId": "beetroot-juice-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is beetroot juice; all four candidates are whole raw or boiled 'Beet greens'."
+    },
+    {
+      "targetId": "bell-pepper-green-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2258588",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "bell-pepper-red-cooked-without-added-fat",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source calls the pepper sweet red, not explicitly bell; boiled/drained cooking is narrower than generic cooked without added fat."
+    },
+    {
+      "targetId": "bell-pepper-red-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2258590",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "black-bean-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Boiled and no-salt are explicit but drained solids versus bean cooking liquid is not. Confirm source cooking/edible-portion protocol."
+    },
+    {
+      "targetId": "black-bean-canned-drained-not-rinsed",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "REJECTED",
+      "fdcId": null,
+      "reason": "Source is black turtle beans canned without specifying drained solids or rinsing. Whole canned contents may include liquid; cannot use for drained not-rinsed beans."
+    },
+    {
+      "targetId": "black-bean-canned-drained-rinsed",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2644285",
+      "reason": "Source is explicitly sodium-added canned black beans, then drained and rinsed. Do not treat its micronutrient values as the no-sodium-added product."
+    },
+    {
+      "targetId": "black-bean-dry",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173734",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "black-pepper-dry-ground-or-powdered",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "The source only names black pepper spice, without specifying powdered/ground form. Verify source form rather than assume it."
+    },
+    {
+      "targetId": "black-tea-brewed-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173227",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "brioche-as-sold",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate records exist in the bundle for this target (candidates array is empty)."
+    },
+    {
+      "targetId": "broccoli-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169967",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "broccoli-frozen-as-sold-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Frozen unprepared chopped broccoli, but no-added-salt state is unverified. Source also narrows cut to chopped."
+    },
+    {
+      "targetId": "broccoli-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170379",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "brussels-sprouts-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169971",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "butter-browned-retained-fat-and-milk-solids",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is browned butter (or dairy butter); candidates are butterbur vegetable, biscuit dough, vegetable oil-butter spread, apple butter, and peanut butter."
+    },
+    {
+      "targetId": "butter-salted-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173410",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "butter-unsalted-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "789828",
+      "reason": "USDA unsalted butter stick as the baseline; not a cultured butter or spread."
+    },
+    {
+      "targetId": "cabbage-green-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Cooked drained no-salt cabbage is explicit; green rather than red/other cabbage is not stated."
+    },
+    {
+      "targetId": "cabbage-green-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2346407",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "cannellini-bean-canned-drained-rinsed",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2644287",
+      "reason": "Source is sodium-added canned cannellini beans, drained and rinsed, not a salt-free canned product."
+    },
+    {
+      "targetId": "canola-oil-as-sold",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "Standard culinary canola oil ('Oil, canola', SR Legacy FDC 172336) is not among the candidates; candidates are hash brown potatoes, Spanish rice mix, a corn-and-canola blend (169867), and specialty high-oleic industrial/Natreon canola oils (171033, 171042)."
+    },
+    {
+      "targetId": "carrot-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170394",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "carrot-juice-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170491",
+      "reason": "Source is ready-to-drink canned carrot juice. Fresh juice is a different physical product."
+    },
+    {
+      "targetId": "carrot-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170393",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "cauliflower-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170397",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "cauliflower-frozen-as-sold-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source is frozen cauliflower unprepared; absence of added salt is not documented."
+    },
+    {
+      "targetId": "cauliflower-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169986",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "challah-as-sold",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate records exist in the bundle for this target (candidates array is empty)."
+    },
+    {
+      "targetId": "cheese-tortellini-cooked-drained-without-added-salt",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is cooked cheese tortellini; candidate 172094 ('Tortellini, pasta with cheese filling, fresh-refrigerated, as purchased') is uncooked/as-purchased."
+    },
+    {
+      "targetId": "cheese-tortellini-fresh-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "172094",
+      "reason": "Fresh-refrigerated cheese-filled tortellini as purchased. Cooked and frozen variants remain separate."
+    },
+    {
+      "targetId": "chicken-breast-skinless-poached-without-added-salt",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is skinless poached (or stewed) chicken breast; candidate 171140 is skinless 'braised' (conflict with poached), and candidate 171076 ('stewed') includes skin ('meat and skin')."
+    },
+    {
+      "targetId": "chicken-breast-skinless-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171077",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "chicken-breast-skinless-roasted-without-added-fat",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is skinless roasted chicken breast; all roasted/rotisserie candidates (171075, 171123, 171125) include skin ('meat and skin'), and the only skinless candidate (171140) is 'braised'."
+    },
+    {
+      "targetId": "chicken-broth-no-added-salt-ready-to-use",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is chicken broth; all six candidates are canned or cooked chicken meat."
+    },
+    {
+      "targetId": "chicken-broth-regular-ready-to-use",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is regular ready-to-use liquid chicken broth: 171542 is 'condensed' (undiluted), 171609 is 'low sodium', 171562/171563 are 'dry' bouillon/cubes, and 171099/171110 are canned chicken meat."
+    },
+    {
+      "targetId": "chicken-thigh-skinless-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2646171",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "chicken-thigh-skinless-roasted-without-added-fat",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is skinless roasted chicken thigh; all six candidates are either 'meat and skin' (171522, 173625, 174505, 171127) or chicken skin only (174496, 174503)."
+    },
+    {
+      "targetId": "chickpea-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Boiled and unsalted are explicit, but drained state and water content of the cooked sample require source preparation evidence."
+    },
+    {
+      "targetId": "chickpea-canned-drained-not-rinsed",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "173800",
+      "reason": "Canned chickpeas, drained solids explicit. The separately named rinsed sibling SR 173801 identifies a distinct operation, supporting the unqualified drained-solids reference as not rinsed."
+    },
+    {
+      "targetId": "chickpea-canned-drained-rinsed",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173801",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "chickpea-dry",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173756",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "cilantro-fresh",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169997",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "cinnamon-cassia-dry-ground-or-powdered",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Ground cinnamon is explicit, but species cassia versus Ceylon is not in this source title or cited taxonomic evidence."
+    },
+    {
+      "targetId": "club-soda-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "174842",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "coconut-water-unsweetened-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "174831",
+      "reason": "Source explicitly names unsweetened ready-to-drink coconut water. The generator whole-food-vs-beverage contradiction is a false positive caused by target dimension parsing."
+    },
+    {
+      "targetId": "coffee-brewed-black-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171890",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "coffee-decaffeinated-brewed-black-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171889",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "coffee-liqueur-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Candidate specifies 53 proof/26.5% ABV. Target does not specify proof; alcohol concentration and sugar are material to nutrient values."
+    },
+    {
+      "targetId": "cola-diet-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is diet cola; candidates are diet mayonnaise, pina coladas, dietetic hard candy, and dietetic whipped cream substitute."
+    },
+    {
+      "targetId": "cola-regular-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "174852",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "cranberry-juice-cocktail-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171903",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "cranberry-juice-unsweetened-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "168117",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "croissant-butter-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "174987",
+      "reason": "Butter croissant as sold, not margarine/vegetable-shortening versions."
+    },
+    {
+      "targetId": "cumin-dry-ground-or-powdered",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Cumin seed is not evidence of ground or powdered form; do not silently reuse the same record for two unverified states."
+    },
+    {
+      "targetId": "cumin-whole-dried-seed",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Cumin seed is compatible with whole seed, but the same ambiguous record was also proposed for ground cumin and neither dried nor whole is explicitly documented. Source form needs confirmation."
+    },
+    {
+      "targetId": "dashi-kombu-and-bonito-unsalted-ready-to-use",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate records exist in the bundle for this target (candidates array is empty)."
+    },
+    {
+      "targetId": "dill-dried",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171322",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "dill-fresh",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "172233",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "distilled-spirit-unflavored-40-percent-abv-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle matches 40% ABV (80 proof) distilled spirit; candidates 171919 ('86 proof' = 43% ABV) and 171920 ('90 proof' = 45% ABV) have different alcohol strengths."
+    },
+    {
+      "targetId": "distilled-spirit-unflavored-50-percent-abv-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle matches 50% ABV (100 proof) distilled spirit; candidates 171919 ('86 proof' = 43% ABV) and 171920 ('90 proof' = 45% ABV) have lower alcohol strengths."
+    },
+    {
+      "targetId": "elderflower-liqueur-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is elderflower liqueur; all three candidates (173665, 175097, 175098) are coffee liqueur."
+    },
+    {
+      "targetId": "erythritol-as-sold",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate records exist in the bundle for this target (candidates array is empty)."
+    },
+    {
+      "targetId": "espresso-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171891",
+      "reason": "Restaurant-prepared espresso baseline. Additions of cream/sugar and concentrates are separate."
+    },
+    {
+      "targetId": "flaxseed-ground",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2262075",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "garlic-powder-dry-ground-or-powdered",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171325",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "garlic-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169230",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ginger-ale-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "174846",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ginger-root-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169231",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "grape-juice-100-percent-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "This is specifically fortified with ascorbic acid and calcium; generic unfortified 100% grape juice was not among the six candidates. Retrieve a source with the intended 100%-juice and fortification baseline."
+    },
+    {
+      "targetId": "green-bean-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169141",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "green-bean-canned-drained",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "169143",
+      "reason": "Canned green snap beans, regular pack, drained solids explicit. Salt level is not specified by the target; this approval selects the regular-pack baseline only."
+    },
+    {
+      "targetId": "green-bean-frozen-as-sold-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Frozen unprepared green beans are explicit, but absence of added salt is not established."
+    },
+    {
+      "targetId": "green-bean-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169961",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "green-pea-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170420",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "green-pea-canned-drained",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "170013",
+      "reason": "Canned green peas and drained solids are explicit. Source is a composite including baby/Lesueur types; the target does not specify type or salt level."
+    },
+    {
+      "targetId": "green-pea-frozen-as-sold-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Frozen green peas unprepared are explicit; without-added-salt formulation is not in the record description."
+    },
+    {
+      "targetId": "green-pea-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170419",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "green-tea-brewed-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171917",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ground-beef-80-percent-lean-20-percent-fat-pan-browned-drained-raw-formulation-80-20",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "80/20 crumbles cooked pan-browned are explicit, but whether cooking fat was drained is not documented; this materially changes fats and energy."
+    },
+    {
+      "targetId": "ground-beef-80-percent-lean-20-percent-fat-raw-raw-formulation-80-20",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "174036",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ground-beef-85-percent-lean-15-percent-fat-pan-browned-drained-raw-formulation-85-15",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "85/15 crumbles cooked pan-browned are explicit, but drained-fat procedure is not confirmed."
+    },
+    {
+      "targetId": "ground-beef-85-percent-lean-15-percent-fat-raw-raw-formulation-85-15",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171796",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ground-beef-90-percent-lean-10-percent-fat-pan-browned-drained-raw-formulation-90-10",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "90/10 crumbles cooked pan-browned are explicit, but drained-fat procedure is not confirmed."
+    },
+    {
+      "targetId": "ground-beef-90-percent-lean-10-percent-fat-raw-raw-formulation-90-10",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "174030",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ground-beef-93-percent-lean-7-percent-fat-pan-browned-drained-raw-formulation-93-7",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "93/7 crumbles cooked pan-browned are explicit, but drained-fat procedure is not confirmed."
+    },
+    {
+      "targetId": "ground-beef-93-percent-lean-7-percent-fat-raw-raw-formulation-93-7",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173110",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ground-beef-95-percent-lean-5-percent-fat-pan-browned-drained-raw-formulation-95-5",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "95/5 crumbles cooked pan-browned are explicit, but drained-fat procedure is not confirmed."
+    },
+    {
+      "targetId": "ground-beef-95-percent-lean-5-percent-fat-raw-raw-formulation-95-5",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171790",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "ground-beef-patty-80-percent-lean-20-percent-fat-grilled-drained-raw-formulation-80-20",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "REJECTED",
+      "fdcId": null,
+      "reason": "Material method contradiction: target grilled/drained, cited patty is broiled. The source also does not establish draining."
+    },
+    {
+      "targetId": "ground-beef-patty-90-percent-lean-10-percent-fat-grilled-drained-raw-formulation-90-10",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "REJECTED",
+      "fdcId": null,
+      "reason": "Material method contradiction: target grilled/drained, cited patty is broiled. The source also does not establish draining."
+    },
+    {
+      "targetId": "ground-chicken-pan-browned-drained",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Pan-browned crumbles are explicit, but drainage and the target-required lean/fat formulation are not known."
+    },
+    {
+      "targetId": "ground-chicken-raw",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Raw ground chicken is explicit, but catalog notes require a defined lean/fat composition before population."
+    },
+    {
+      "targetId": "ground-turkey-93-percent-lean-7-percent-fat-pan-browned-drained-raw-formulation-93-7",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "REJECTED",
+      "fdcId": null,
+      "reason": "Candidate is pan-broiled crumbles, not the target pan-browned/drained method. Cooking fat drainage is not established."
+    },
+    {
+      "targetId": "ground-turkey-93-percent-lean-7-percent-fat-raw-raw-formulation-93-7",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "172850",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "herbal-tea-brewed-unsweetened-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "The source is a mixture of herbal teas other than chamomile, rather than generic herbal tea; no-sugar preparation is not explicitly documented."
+    },
+    {
+      "targetId": "honey-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169640",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "honey-manuka-as-sold",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "REJECTED",
+      "fdcId": null,
+      "reason": "Generic honey has no Manuka floral origin. It is not a canonical match for Manuka honey."
+    },
+    {
+      "targetId": "instant-coffee-plain-dry",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171893",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "kale-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169238",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "kidney-bean-canned-drained-rinsed",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "175243",
+      "reason": "Red kidney beans from the canned drained/rinsed edible-solids record; pack salt not separately claimed."
+    },
+    {
+      "targetId": "kombucha-plain-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate records exist in the bundle for this target (candidates array is empty)."
+    },
+    {
+      "targetId": "lentil-brown-or-green-boiled-drained-without-added-salt",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is lentils; all six candidates are leafy greens (dandelion greens, mustard greens, turnip greens, beet greens)."
+    },
+    {
+      "targetId": "lentil-brown-or-green-dry",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is dry mature lentils; candidates are sprouted lentils (raw or stir-fried), turnip/beet greens, and canned corn."
+    },
+    {
+      "targetId": "maraschino-liqueur-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is maraschino liqueur; candidates are canned drained maraschino cherries (167766) and three coffee liqueurs."
+    },
+    {
+      "targetId": "matcha-powder-dry",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is matcha green tea powder; candidates are baobab powder, tomato powder, cream substitute, cocoa powder, and chocolate breakfast powder."
+    },
+    {
+      "targetId": "oats-rolled-dry",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "2346396",
+      "reason": "Whole-grain rolled old-fashioned oats are the dry unprepared form. This approval is for old-fashioned rolled oats only, not instant or flavored oats."
+    },
+    {
+      "targetId": "olive-oil-extra-virgin-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "748608",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "onion-powder-dry-ground-or-powdered",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171327",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "onion-red-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "790577",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "onion-yellow-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "790646",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "orange-juice-pasteurized-not-fortified-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Not-fortified refrigerated no-pulp NFC juice is explicit, but pasteurized versus unpasteurized is not. From-concentrate and pulp differences require a defined baseline."
+    },
+    {
+      "targetId": "orange-liqueur-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is orange liqueur; all six candidates are raw oranges or raw orange peel."
+    },
+    {
+      "targetId": "paprika-smoked-dry-ground-or-powdered",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is paprika; all six candidates are smoked salmon or smoked turkey."
+    },
+    {
+      "targetId": "parsley-dried",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170930",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "parsley-fresh",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170416",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "pasta-wheat-enriched-cooked-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "169737",
+      "reason": "Cooked enriched pasta without added salt is explicit. This is the cooked pasta solids baseline; record does not describe soup or pasta in sauce."
+    },
+    {
+      "targetId": "pasta-wheat-enriched-dry",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2758998",
+      "reason": "Source is enriched dry spaghetti specifically. Use as an explicit default for dry enriched wheat pasta, not egg, whole-wheat, fresh or other shape-specific profiles."
+    },
+    {
+      "targetId": "pineapple-juice-100-percent-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Unsweetened juice is explicit, but 100% fruit juice concentration is not documented; distinguish juice from juice drink and record fortification baseline."
+    },
+    {
+      "targetId": "pinto-bean-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Boiled and no-salt are explicit, but drained solids versus cooking liquid is not established."
+    },
+    {
+      "targetId": "pinto-bean-canned-drained-not-rinsed",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "174286",
+      "reason": "Canned pinto bean drained solids explicit. Separately identified rinsed sibling SR 173797 supports the unqualified drained-solids record as not rinsed."
+    },
+    {
+      "targetId": "pinto-bean-canned-drained-rinsed",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173797",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "pinto-bean-dry",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is dry mature pinto beans; all candidates are either immature frozen seeds or sprouted pinto beans."
+    },
+    {
+      "targetId": "poblano-pepper-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2747662",
+      "reason": "Source is raw seeded poblano edible pepper. Seed-inclusive/whole-pod versions are not covered."
+    },
+    {
+      "targetId": "pomegranate-arils-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169134",
+      "reason": "Source names raw pomegranate. At import, confirm the per-100 g edible/reject portion represents arils (skin/membranes excluded), as the source description alone does not prove the aril mass basis."
+    },
+    {
+      "targetId": "potato-peeled-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "170440",
+      "reason": "Boiled flesh without skin/salt is explicit. This is cooked edible potato flesh after boiling, not broth or cooking liquid."
+    },
+    {
+      "targetId": "potato-white-with-skin-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170028",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "potato-with-skin-baked-without-added-fat",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "170093",
+      "reason": "Baked potato flesh and skin is explicit. Dry baking without fat is the selected standard; source does not support oil-coated or buttered potatoes."
+    },
+    {
+      "targetId": "pumpkin-puree-canned-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Canned pumpkin without salt is explicit, but puréed versus whole/chunk/cooked mass is not documented in the selected description. Verify reference commodity form."
+    },
+    {
+      "targetId": "quinoa-cooked-in-water-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Cooked quinoa is explicit, but cooking medium and no-added-salt state are unverified."
+    },
+    {
+      "targetId": "quinoa-dry",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "168874",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "raisin-dried-unsweetened",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source is dark seedless raisins; target does not select dark over golden/seeded, and no-added-sugar formulation is not stated."
+    },
+    {
+      "targetId": "rice-brown-long-grain-cooked-in-water-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Brown long-grain cooked rice is explicit, but water-only, no added salt preparation is not source-verified."
+    },
+    {
+      "targetId": "rice-brown-long-grain-dry",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169703",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "rice-jasmine-cooked-in-water-without-added-salt",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is jasmine rice; candidates are pork sausage rice links, brown medium-grain rice, generic enriched white long/medium/short-grain rice, and wild rice."
+    },
+    {
+      "targetId": "rice-jasmine-dry",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is dry jasmine rice; candidates are pork sausage rice links, rice cakes, brown rice, and generic enriched white long-grain rice."
+    },
+    {
+      "targetId": "rice-white-long-grain-enriched-cooked-in-water-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Enriched cooked white long-grain rice is explicit, but source does not establish unsalted water-only cooking; a salted sibling is insufficient alone."
+    },
+    {
+      "targetId": "rice-white-long-grain-enriched-dry",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "168877",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "rosemary-dried",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171333",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "rosemary-fresh",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173473",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "salmon-atlantic-farmed-cooked-dry-heat-without-added-fat",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "175168",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "salmon-atlantic-farmed-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "175167",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "salmon-pink-with-bones-canned-water-packed-drained",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate matches canned pink salmon with bones, water-packed, and drained: 173724 is 'without skin and bones', 173690 is 'total can contents' (undrained), 174225 is 'solids with bone and liquid' (undrained, without salt), and 174224 is chum salmon."
+    },
+    {
+      "targetId": "salmon-sockeye-wild-cooked-dry-heat-without-added-fat",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Cooked sockeye dry heat is explicit, but wild-caught state is not, unlike the related raw source."
+    },
+    {
+      "targetId": "salmon-sockeye-wild-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2684440",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "shrimp-peeled-cooked-moist-heat",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is moist-heat cooked peeled shrimp; candidates are raw citrus peels and four breaded and fried shrimp dishes."
+    },
+    {
+      "targetId": "shrimp-peeled-raw",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Raw mixed-species shrimp is explicit, but peeled state is not established and additives to retain moisture may materially affect sodium/water."
+    },
+    {
+      "targetId": "sparkling-water-plain-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "REJECTED",
+      "fdcId": null,
+      "reason": "Branded Gerolsteiner naturally sparkling mineral water has unusual mineral content; not a generic plain sparkling/seltzer water baseline."
+    },
+    {
+      "targetId": "spinach-boiled-drained-without-added-salt",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "168463",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "spinach-frozen-as-sold-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Frozen unprepared spinach is explicit, but absence of added salt is not verified."
+    },
+    {
+      "targetId": "spinach-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "168462",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "strawberry-frozen-unsweetened",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "168173",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "strawberry-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "167762",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "sugar-dark-muscovado-as-sold",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is muscovado or brown sugar; candidates are dark red kidney beans, smoked turkey, dark raisins, and chocolate candies."
+    },
+    {
+      "targetId": "sugar-granulated-white-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169655",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "sweet-corn-kernels-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source is yellow corn cooked from frozen; target does not specify frozen prior state or yellow versus white kernels."
+    },
+    {
+      "targetId": "sweet-corn-kernels-canned-drained",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source is yellow drained canned corn; catalog target does not select yellow versus white corn and the nutrient composition can vary by variety."
+    },
+    {
+      "targetId": "sweet-corn-kernels-frozen-as-sold-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source is yellow frozen unprepared corn; target does not select color and unsalted formulation is not explicit."
+    },
+    {
+      "targetId": "sweet-corn-kernels-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2710826",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "sweet-potato-orange-flesh-baked-without-added-fat",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source is baked sweet potato flesh with skin excluded at consumption, but does not explicitly establish orange flesh or without-added-fat preparation."
+    },
+    {
+      "targetId": "sweet-potato-orange-flesh-boiled-drained-without-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Source is boiled sweet potato without skin, but orange flesh, drained and salt-free preparation are not established."
+    },
+    {
+      "targetId": "sweet-potato-orange-flesh-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "2346404",
+      "reason": "Source is raw orange sweet-potato flesh without skin. Do not apply its values to skin-inclusive recipes."
+    },
+    {
+      "targetId": "thyme-dried",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170938",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "thyme-fresh",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173470",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "tomato-crushed-canned-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Canned crushed tomatoes are explicit, but no-added-salt formulation is not."
+    },
+    {
+      "targetId": "tomato-diced-canned-no-added-salt",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Canned diced red ripe tomatoes are explicit, but no-added-salt formulation is not."
+    },
+    {
+      "targetId": "tomato-juice-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "170458",
+      "reason": "Source explicitly selects canned tomato juice with added salt as the generic standard baseline; separately distinguish unsalted tomato juice SR 170545."
+    },
+    {
+      "targetId": "tomato-red-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "170457",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "tonic-water-diet-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is diet tonic water; candidate 171869 ('Beverages, carbonated, tonic water') is regular sugar-sweetened tonic water, and the remaining candidates are mayonnaise, candy, whipped cream substitute, and Diet Cran Cherry."
+    },
+    {
+      "targetId": "tonic-water-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "171869",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "trout-rainbow-farmed-cooked-dry-heat-without-added-fat",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173718",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "trout-rainbow-farmed-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173717",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "trout-steelhead-cooked-dry-heat-without-added-fat",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate is steelhead trout cooked by dry heat; the only steelhead candidates are dried flesh (168059) and boiled canned (168060), while 173718/175155 are rainbow trout (which has its own distinct catalog target)."
+    },
+    {
+      "targetId": "trout-steelhead-raw",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate is raw steelhead trout; the only steelhead-labeled candidates are dried (168059) and boiled/canned (168060), while 173717/175154 are rainbow trout."
+    },
+    {
+      "targetId": "tuna-albacore-canned-water-packed-drained",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "APPROVED",
+      "fdcId": "171988",
+      "reason": "US white tuna refers to albacore; source explicitly states water-packed drained solids without salt. This approval covers the unsalted canned white-tuna default."
+    },
+    {
+      "targetId": "tuna-light-canned-water-packed-drained",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173709",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "vanilla-extract-as-sold",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173471",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    },
+    {
+      "targetId": "vermouth-dry-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate records exist in the bundle for this target (candidates array is empty)."
+    },
+    {
+      "targetId": "vermouth-sweet-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is sweet vermouth; candidates are sweet potatoes and liquid fructose sweetener."
+    },
+    {
+      "targetId": "water-mineral-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "REJECTED",
+      "fdcId": null,
+      "reason": "Branded Gerolsteiner naturally sparkling mineral water does not represent generic still or carbonated mineral water, with brand-specific mineral profile."
+    },
+    {
+      "targetId": "water-purified-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate records exist in the bundle for this target (candidates array is empty)."
+    },
+    {
+      "targetId": "water-tap-ready-to-drink",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "173647",
+      "reason": "Tap drinking water only, not distilled/purified or mineral water."
+    },
+    {
+      "targetId": "wine-port-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is port wine; candidates are boiled leeks and grilled/broiled porterhouse steaks."
+    },
+    {
+      "targetId": "wine-red-dry-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is dry red wine; candidates are dry-mix gelatin desserts, dry nonfat milk, and dry ramen noodle soup."
+    },
+    {
+      "targetId": "wine-rose-dry-ready-to-drink",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Generic rose wine candidate does not identify dry sweetness or actual alcohol and residual sugar."
+    },
+    {
+      "targetId": "wine-sparkling-brut-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is sparkling brut wine; candidates are cooking wine, light wine, still red table wines (Gamay, Merlot), rose wine, and red wine vinegar."
+    },
+    {
+      "targetId": "wine-white-dry-ready-to-drink",
+      "geminiCategory": "UNRESOLVED",
+      "decision": "UNRESOLVED",
+      "fdcId": null,
+      "reason": "No candidate in the bundle is dry white wine; candidates are Martha White baking mixes, white frosting dry mixes, and dry white rice."
+    },
+    {
+      "targetId": "zucchini-cooked-without-added-fat",
+      "geminiCategory": "NEEDS_REVIEW",
+      "decision": "HELD",
+      "fdcId": null,
+      "reason": "Boiled, drained, without salt is a narrower cooking method than the generic cooked-without-added-fat target. Define a default preparation or a distinct boiled variant."
+    },
+    {
+      "targetId": "zucchini-raw",
+      "geminiCategory": "PROPOSED_MATCH",
+      "decision": "APPROVED",
+      "fdcId": "169291",
+      "reason": "Source description matches the stated target food identity and preparation state; the chosen record has no contrary material qualifiers in the supplied candidate evidence."
+    }
+  ]
+}
