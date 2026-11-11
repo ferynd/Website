@@ -3,7 +3,8 @@ import { mkdtemp, readFile, writeFile, symlink, rm, readdir } from 'node:fs/prom
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { readManifest, validateManifest, stateToDims, selectNextBatch } from './manifestReader';
+import { readManifest, validateManifest, stateToDims, selectNextBatch, waveOf } from './manifestReader';
+import { parentBatchIdFor } from '../../public/shared/nutrition/research/researchJob.js';
 import { readMatchTable, validateMatchTable } from './matchTable';
 import { readPinnedBulk, auditPinnedBulk, indexBulk, bulkCacheKey, createFdcBulkAdapter } from './fdcBulkReader';
 import { createFileResearchStore, createFileSourceCache, assertLocalPath } from './fileResearchStore';
@@ -30,6 +31,48 @@ it('validates the 1114 queued identities without values, using the shared state 
     expect(() => validateManifest({ schemaVersion: 1, entries: [entries[0], entries[0]] })).toThrow('Invalid manifest');
     expect(selectNextBatch(entries, [], {})).toHaveLength(25);
     expect(stateToDims('alien').needsReview).toBe(true);
+});
+// The authoritative A2 set (docs/nutrition/population-batch-a2-report.md,
+// Batch definition): generic usda-first priority-1 positions 26-50 in
+// (priority, category, id) order.
+const A2_IDS = [
+    'tamari-reduced-sodium-as-sold', 'tamari-regular-as-sold', 'tomato-paste-no-added-salt-as-sold', 'tomato-sauce-with-salt-as-sold',
+    'vinegar-balsamic-liquid-as-sold', 'vinegar-champagne-liquid-as-sold', 'vinegar-rice-seasoned-liquid-as-sold', 'vinegar-sherry-liquid-as-sold',
+    'cheddar-as-sold', 'goat-cheese-soft-chevre-as-sold', 'greek-yogurt-plain-2-percent-fat-as-sold', 'greek-yogurt-plain-5-percent-fat-as-sold',
+    'greek-yogurt-plain-nonfat-as-sold', 'half-and-half-as-sold', 'heavy-cream-36-percent-fat-as-sold', 'milk-reduced-fat-2-percent-as-sold',
+    'milk-whole-3-25-percent-fat-as-sold', 'mozzarella-low-moisture-part-skim-as-sold', 'parmesan-hard-as-sold', 'yogurt-plain-whole-milk-as-sold',
+    'chicken-egg-hard-boiled-cooked-without-added-fat', 'chicken-egg-poached-cooked-without-added-fat', 'chicken-egg-scrambled-cooked-without-added-fat',
+    'chicken-egg-white-cooked-without-added-fat', 'chicken-egg-white-raw',
+];
+const batchIdOf = (next: { id: string; priority: number; category: string }[]) => parentBatchIdFor({ priority: next[0]?.priority, category: next[0]?.category, manifestIds: next.map(e => e.id) });
+it('plans wave A as the usda-first lane: A1 on an empty store, then exactly the A2 25 after A1 is seeded', async () => {
+    const entries = await readManifest();
+    const coconut = entries.find(e => e.id === 'coconut-milk-canned-full-fat-as-sold')!;
+    const a1 = selectNextBatch(entries, [], { wave: 'A', max: 25 });
+    expect(a1).toHaveLength(25);
+    expect(await batchIdOf(a1)).toBe('rb-de5702452450983345068f40');
+    const seeded = a1.map(e => ({ target: { manifestId: e.id } }));
+    const a2 = selectNextBatch(entries, seeded, { wave: 'A', max: 25 });
+    expect(a2.map(e => e.id)).toEqual(A2_IDS);
+    expect(a2.map(e => e.id)).not.toContain('coconut-milk-canned-full-fat-as-sold');
+    const a2BatchId = await batchIdOf(a2);
+    expect(a2BatchId).toBe('rb-c61cabe465685a29a02ff753');
+    expect(a2BatchId).toBe(await parentBatchIdFor({ priority: 1, category: 'condiments-sauces', manifestIds: A2_IDS }));
+    expect(a2BatchId).not.toBe('rb-7136e61a94abc4f865f3f051');
+    // Wave A is exactly the documented eligible set; coconut milk is wave D.
+    const waveA = entries.filter(e => waveOf(e) === 'A');
+    expect(waveA).toHaveLength(225);
+    expect(waveA.every(e => e.priority === 1 && e.kind === 'generic' && e.sourceStrategy === 'usda-first')).toBe(true);
+    expect(coconut).toMatchObject({ kind: 'generic', sourceStrategy: 'manufacturer-first', priority: 1 });
+    expect(waveOf(coconut)).toBe('D');
+    // Coconut milk is never planned in wave A, however far the lane advances.
+    let jobs = seeded;
+    for (let i = 0; i < 9; i++) {
+        const next = selectNextBatch(entries, jobs, { wave: 'A', max: 25 });
+        expect(next.some(e => e.id === coconut.id)).toBe(false);
+        jobs = [...jobs, ...next.map(e => ({ target: { manifestId: e.id } }))];
+    }
+    expect(new Set(jobs.map(j => j.target.manifestId)).size).toBe(225);
 });
 it('ships a validated match table and requires reviewed unique matches or shared-source justification', async () => {
     // The shipped table carries the reviewed entries of the latest completed

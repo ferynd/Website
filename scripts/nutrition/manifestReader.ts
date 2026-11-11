@@ -34,7 +34,14 @@ export function validateManifest(raw: unknown, expectedCount?: number): Manifest
     return doc.entries;
 }
 export async function readManifest(file = 'docs/nutrition/ingredient-catalog.json', expectedCount = 1114) { return validateManifest(JSON.parse(await readFile(file, 'utf8')), expectedCount); }
-export function waveOf(e: ManifestEntry) { return e.kind === 'branded' ? 'E' : e.sourceStrategy === 'compound-reference' ? 'D' : e.priority === 1 ? 'A' : e.priority === 2 ? 'B' : 'C'; }
+// Waves A-C are the deterministic usda-first lanes (by priority). Every
+// non-branded entry that is not usda-first (compound-reference, or
+// manufacturer-first, i.e. formulation-dependent) belongs to wave D, matching
+// the playbook's "formulation-dependent" wave and the documented wave-A
+// eligible set (priority 1, generic, usda-first) used by batches A1 and A2.
+// Branded entries stay in E. coverageReport groups by this same function, so
+// its wave:* counts follow the planner's lanes.
+export function waveOf(e: ManifestEntry) { return e.kind === 'branded' ? 'E' : e.sourceStrategy !== 'usda-first' ? 'D' : e.priority === 1 ? 'A' : e.priority === 2 ? 'B' : 'C'; }
 export function selectNextBatch(entries: ManifestEntry[], jobs: {
     target: {
         manifestId?: string;
