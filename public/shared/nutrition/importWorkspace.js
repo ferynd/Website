@@ -10,6 +10,8 @@ import {
 import { PROFILE_FIELDS } from './research/profileFields.js';
 import { fitQuantities } from './fit.js';
 import { countedLines, nutrientBasis } from './calculate.js';
+import { IngredientWritesDisabledError, RevisionConflictError } from './ingredientStore.js';
+import { buildMealSnapshot } from './mealSnapshot.js';
 
 /** Save stays off until both Part B write flags are on. This module does not flip them. */
 export function workspaceCapabilities() {
@@ -434,8 +436,13 @@ export function instructionsWorkspace() {
     return { ...copy, modelCalls: 0 };
 }
 
-/** Export or copy only. Never commits a meal or diary entry while writes are off. */
-export function saveWorkspace(workspace) {
+/**
+ * Save the reviewed workspace. While save is off (either write flag false) this is export or copy only and
+ * synchronous: the export copy, `committed: false`, and the existing reason. While save is on it returns a
+ * Promise: build the meal snapshot and make one `ports.store.saveMealVersion()` call (versioning, dedupe,
+ * conflicts, and the pending-save outbox live in mealStore.js). It never logs the meal to the diary.
+ */
+export function saveWorkspace(workspace, ports = {}) {
     if (!workspace?.draft) return fail(workspace, 'import_required');
     const caps = workspaceCapabilities();
     const list = exportList(workspace);
@@ -444,7 +451,25 @@ export function saveWorkspace(workspace) {
     if (!caps.save) {
         return done(workspace, { stage: 'save', exportCopy, committed: false, save: { available: false, logged: false, reason: WORKSPACE_SAVE_REASON } });
     }
-    return fail(workspace, 'save_not_enabled', { exportCopy });
+    return commitSave(workspace, exportCopy, ports ?? {});
+}
+
+async function commitSave(workspace, exportCopy, ports) {
+    const refuse = (error, extra = {}) => ({ ok: false, error, committed: false, logged: false, writes: false, modelCalls: 0, exportCopy, ...extra });
+    const built = await buildMealSnapshot(workspace, { mealId: ports.mealId ?? null, title: ports.title ?? null, nestedMeals: ports.nestedMeals ?? [] });
+    if (!built.ok) return refuse(built.error, { blockers: built.blockers || [], errors: built.errors || [] });
+    if (!ports.store) return refuse('store_unavailable', { record: built.record });
+    try {
+        const saved = await ports.store.saveMealVersion(built.record, { baseVersion: ports.baseVersion ?? null });
+        const result = done(workspace, {
+            stage: 'save', exportCopy, committed: true, mealRef: saved.mealRef, save: { available: true, logged: false, deduped: saved.deduped },
+        });
+        return { ...result, committed: true, writes: !saved.deduped, logged: false, deduped: saved.deduped, modelCalls: 0, mealRef: saved.mealRef };
+    } catch (error) {
+        if (error instanceof IngredientWritesDisabledError) return refuse('writes_disabled');
+        if (error instanceof RevisionConflictError) return refuse('meal_conflict', { retained: true, record: built.record });
+        return refuse('save_failed', { message: String(error?.message || error), retained: true, record: built.record });
+    }
 }
 
 export function cancelWorkspace(workspace) {

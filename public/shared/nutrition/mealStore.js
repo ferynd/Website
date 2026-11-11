@@ -2,7 +2,7 @@ import { INGREDIENT_STORE_WRITES_ENABLED } from './capabilities.js';
 import { isValidFirestoreDocId } from './ingredientIds.js';
 import { IngredientWritesDisabledError, RevisionConflictError } from './ingredientStore.js';
 import { saveWorkspace, workspaceCapabilities } from './importWorkspace.js';
-import { buildMealSnapshot, mealRefOf, mealVersionIdFor, verifyMealRecord } from './mealSnapshot.js';
+import { mealRefOf, mealVersionIdFor, verifyMealRecord } from './mealSnapshot.js';
 
 /**
  * #64 Part B meal versions. Port-injected like createIngredientStore and gated on the same write flag;
@@ -87,29 +87,11 @@ export function createMealStore({ port, namespace, ownerUid, cache, now = Date.n
 /**
  * Save the reviewed workspace as a meal version. While save is off (both write flags false) this returns
  * exactly saveWorkspace(): the export copy, committed false, logged false, and the existing reason, and it
- * touches no store. With save on it builds the snapshot and commits it; it never logs to the diary.
+ * touches no store. With save on it delegates to saveWorkspace() with this store (snapshot build, one
+ * saveMealVersion call, error mapping) and always returns a Promise; it never logs to the diary.
  * Lines whose profiles do not exist yet come back as blockers; no profile is created here.
  */
 export function commitWorkspaceMeal({ store = null, workspace = undefined, baseVersion = null, mealId = null, title = null, nestedMeals = [] } = {}) {
     if (!workspaceCapabilities().save) return saveWorkspace(workspace);
-    return commitEnabled({ store, workspace, baseVersion, mealId, title, nestedMeals });
-}
-
-async function commitEnabled({ store, workspace, baseVersion, mealId, title, nestedMeals }) {
-    const refuse = (error, extra = {}) => ({ ok: false, error, committed: false, logged: false, writes: false, modelCalls: 0, ...extra });
-    const built = await buildMealSnapshot(workspace, { mealId, title, nestedMeals });
-    if (!built.ok) return refuse(built.error, { blockers: built.blockers || [], errors: built.errors || [] });
-    if (!store) return refuse('store_unavailable', { record: built.record });
-    try {
-        const saved = await store.saveMealVersion(built.record, { baseVersion });
-        return {
-            ok: true, committed: true, writes: !saved.deduped, deduped: saved.deduped, logged: false, modelCalls: 0,
-            mealRef: saved.mealRef,
-            workspace: { ...workspace, stage: 'save', committed: true, mealRef: saved.mealRef, save: { available: true, logged: false } },
-        };
-    } catch (error) {
-        if (error instanceof IngredientWritesDisabledError) return refuse('writes_disabled');
-        if (error instanceof RevisionConflictError) return refuse('meal_conflict', { retained: true, record: built.record });
-        return refuse('save_failed', { message: String(error?.message || error), retained: true, record: built.record });
-    }
+    return Promise.resolve(saveWorkspace(workspace, { store, baseVersion, mealId, title, nestedMeals }));
 }

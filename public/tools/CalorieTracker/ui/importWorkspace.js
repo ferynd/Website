@@ -175,8 +175,8 @@ export function wireImportWorkspace(getUid) {
         return reviewWorkspace(fitted.workspace);
     }));
     document.getElementById('import-export')?.addEventListener('click', () => run(async current => {
-        const result = saveWorkspace(current);
-        if (result.ok) await copyText(result.workspace.exportCopy?.text || '');
+        const result = await saveWorkspace(current);
+        if (result.ok && !result.workspace?.committed) await copyText(result.workspace.exportCopy?.text || '');
         return result;
     }));
     document.getElementById('import-cancel')?.addEventListener('click', () => run(current => cancelWorkspace(current), { abandon: true }));
