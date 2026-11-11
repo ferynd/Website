@@ -43,10 +43,13 @@ describe('selection', () => {
         expect(s).toMatchObject({ eligibleCount: 9, excludedPublishedCount: 1, excludedAssignedCount: 2 });
         expect(selectBundleTargets(await entries(), await table(), { count: 3, ...REPLAY }).selected.map(e => e.id)).toEqual(EXPECTED_ORDER.slice(0, 3));
     });
-    it('fails closed when a published id is outside the replayed batches', async () => {
+    it('skips a newly published id even if it is beyond the A1-A3 reservations', async () => {
         const raw = await json('match-table.json');
         raw.entries[0].manifestId = 'pear-raw';
-        await expect(validateMatchTable(raw).then(async t => selectBundleTargets(await entries(), t, REPLAY))).rejects.toThrow('outside the replayed batches');
+        const published = await validateMatchTable(raw);
+        const selected = selectBundleTargets(await entries(), published, REPLAY);
+        expect(selected.selected.map(e => e.id)).toEqual(EXPECTED_ORDER.filter(id => id !== 'pear-raw'));
+        expect(selected).toMatchObject({ excludedPublishedCount: 1, excludedAssignedCount: 3 });
     });
 });
 

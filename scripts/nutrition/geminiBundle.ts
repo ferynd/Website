@@ -90,12 +90,9 @@ export function selectBundleTargets(entries: ManifestEntry[], matchTable: Pick<M
         throw new Error(`Batch replay yielded ${assigned.length} ids, expected ${batchMax * batches}`);
     const published = new Set(matchTable.map(m => m.manifestId));
     const assignedSet = new Set(assigned);
-    // Sanity check: every published id was imported through one of the
-    // replayed batches. A published id outside them means the replay no longer
-    // reproduces the batches that were actually run.
-    const outside = [...published].filter(id => !assignedSet.has(id));
-    if (outside.length)
-        throw new Error('Published match-table ids outside the replayed batches: ' + outside.sort().join(', '));
+    // Published ids from *any* completed batch must be skipped, even after
+    // A4 or later imports. The replayed A1-A3 set is a separate reservation
+    // that also holds the unresolved ids; it is not a limit on future imports.
     const eligible = entries.filter(isEligible);
     const excludedPublishedCount = eligible.filter(e => published.has(e.id)).length;
     const excludedAssignedCount = eligible.filter(e => assignedSet.has(e.id) && !published.has(e.id)).length;
