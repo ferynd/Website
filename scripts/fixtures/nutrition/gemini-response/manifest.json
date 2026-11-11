@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Gemini response validator fixture: four eligible targets, no replayed batches",
+  "_fixture": "synthetic; not nutrition data",
+  "entries": [
+    { "id": "pear-raw", "name": "Pear, raw", "category": "fruits", "kind": "generic", "state": "raw", "priority": 1, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "plum-raw", "name": "Plum, raw", "category": "fruits", "kind": "generic", "state": "raw", "priority": 1, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "lentils-boiled-drained-without-added-salt", "name": "Lentils, mature seeds, boiled, without salt", "category": "legumes", "kind": "generic", "state": "boiled-drained-without-added-salt", "priority": 1, "sourceStrategy": "usda-first", "status": "queued" },
+    { "id": "milk-reduced-fat-2-percent-fat-as-sold", "name": "Milk, reduced fat, 2% fat", "category": "dairy", "kind": "generic", "state": "as-sold", "priority": 2, "sourceStrategy": "usda-first", "status": "queued" }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "_fixture": "synthetic; not nutrition data",
+  "FoundationFoods": [
+    {
+      "fdcId": 9930001,
+      "description": "Pears, raw",
+      "dataType": "Foundation",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 11 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 1.1 },
+        { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 1.2 },
+        { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 1.3 }
+      ]
+    },
+    {
+      "fdcId": 9930002,
+      "description": "Plums, raw",
+      "dataType": "Foundation",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 12 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 2.1 },
+        { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 2.2 },
+        { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 2.3 }
+      ]
+    },
+    {
+      "fdcId": 9930003,
+      "description": "Kale, raw",
+      "dataType": "Foundation",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 13 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 3.1 },
+        { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 3.2 },
+        { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 3.3 }
+      ]
+    }
+  ]
+}
