@@ -193,6 +193,8 @@ Found while running this batch. This PR changes no code, so all of these are doc
 
 ## Follow-ups: the import PR for this batch
 
+**Status (2026-11-11):** the import ran; see the [A2 import report](population-batch-a2-import.md). Issue #215 ANSWER Q-010 adjudicated the 18 flagged cases: 11 flagged proposals approved, with tomato paste switched to SR 170459 and plain whole-milk yogurt to SR 171284; 4 flagged proposals held (tamari-regular, Greek 2% and 5%, chèvre); and the 6 existing unresolved ids upheld. The 4 unflagged proposals passed the routine pinned-source checks. Final outcome: 15 reviewed entries, 15 profiles validated, approved, staged, and imported (catalog 14 to 29; V4 combine and append-only checks: 0 defects, preserved 14), 0 rejected at import, 10 unresolved. The plan below is kept for the record.
+
 The A2 import PR (`#63-A-2`, under the standing approval, with James's approval recorded in the PR) will contain:
 
 1. Adjudication of the 18 flagged cases through issue #215 **before** any table entry is written. Any proposal that is rejected moves to the unresolved list with its candidate references kept.
@@ -203,5 +205,7 @@ The A2 import PR (`#63-A-2`, under the standing approval, with James's approval 
 6. The 6 unresolved ids remain actionable blocked work. Champagne, sherry, and seasoned rice vinegar, and reduced-sodium tamari, need a label or supplemental source. Cooked egg white and no-added-fat scrambled egg need a reviewed recipe-time derivation from the raw record or another source.
 
 ## Re-run instructions
+
+**Do not use this section to rerun the reviewed A2 import.** It describes the earlier pre-adjudication dry run and old planner selection. The former CLI parent `rb-7136e61a94abc4f865f3f051` is retired and must not be reused. PR #220 corrected the A2 exact-set parent to `rb-c61cabe465685a29a02ff753`; PR #222 adds 15 reviewed source matches, so replaying the current pipeline no longer produces 25 `match_not_found` outcomes. Follow the [A2 import report's re-run instructions](population-batch-a2-import.md#re-run-instructions) instead. The original instructions below are retained only as historical evidence.
 
 The store and outputs are disposable. Remove `~/workspace/private-data/a2store/` and re-run the commands in [Method](#method), with the store under `~/workspace/private-data/` (not `/tmp`, which is a small tmpfs). `plan` re-derives the same parent batch ids from the same manifest ids: A1's `rb-de5702452450983345068f40` first, then the CLI's `rb-7136e61a94abc4f865f3f051`. Until the import PR adds A2 table entries, the `run` outcome is identical (25 `match_not_found`), and no approved value can change because none exists.
