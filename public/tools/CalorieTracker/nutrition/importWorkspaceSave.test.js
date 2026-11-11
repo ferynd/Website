@@ -159,4 +159,50 @@ describe('saveWorkspace with save on', () => {
         expect(result.exportCopy.text).toContain('alpha');
         expect(port.docs.size).toBe(0);
     });
+    it('retains the export in the workspace draft if a store rejects before queueing anything', async () => {
+        const unavailable = {
+            saveMealVersion: vi.fn(async () => { throw new Error('preflight failure'); }),
+            listPendingSaves: vi.fn(async () => []),
+        };
+        const result = await saveWorkspace(await bowl(), { store: unavailable });
+        expect(unavailable.saveMealVersion).toHaveBeenCalledTimes(1);
+        expect(result).toMatchObject({
+            ok: false, error: 'save_failed', committed: false, logged: false,
+            writes: false, retained: false, workspace: { stage: 'save', committed: false },
+        });
+        expect(result.workspace.exportCopy).toEqual(result.exportCopy);
+        expect(result.workspace.exportCopy.text).toContain('alpha');
+        expect(result.workspace.save.reason).toContain('Export copy is available');
+        expect(port.docs.size).toBe(0);
+        expect(pending.size).toBe(0);
+    });
+
+    it('reports a genuine transaction failure as retained when its pending save exists', async () => {
+        port.runTransaction = async () => { throw new Error('transaction unavailable'); };
+        const result = await saveWorkspace(await bowl(), { store });
+        expect(result).toMatchObject({
+            ok: false, error: 'save_failed', committed: false, logged: false,
+            writes: false, retained: true, workspace: { stage: 'save', committed: false },
+        });
+        expect(result.exportCopy.text).toContain('alpha');
+        expect(result.workspace.exportCopy).toEqual(result.exportCopy);
+        const saves = await store.listPendingSaves();
+        expect(saves).toHaveLength(1);
+        expect(saves[0].idempotencyKey).toBe(result.record.idempotencyKey);
+        expect(port.docs.size).toBe(0);
+    });
+
+    it('returns a copyable fallback even when building an invalid snapshot throws', async () => {
+        const workspace = await bowl();
+        const broken = { ...workspace, resolution: { ...workspace.resolution, lines: null } };
+        const result = await saveWorkspace(broken, { store });
+        expect(result).toMatchObject({
+            ok: false, error: 'save_failed', committed: false, logged: false,
+            writes: false, retained: false, workspace: { committed: false },
+        });
+        expect(result.workspace.exportCopy).toEqual(result.exportCopy);
+        expect(result.exportCopy.text).toContain('alpha');
+        expect(port.docs.size).toBe(0);
+    });
+
 });
