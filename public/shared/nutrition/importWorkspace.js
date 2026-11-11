@@ -455,8 +455,23 @@ export function saveWorkspace(workspace, ports = {}) {
 }
 
 async function commitSave(workspace, exportCopy, ports) {
-    const refuse = (error, extra = {}) => ({ ok: false, error, committed: false, logged: false, writes: false, modelCalls: 0, exportCopy, ...extra });
-    const built = await buildMealSnapshot(workspace, { mealId: ports.mealId ?? null, title: ports.title ?? null, nestedMeals: ports.nestedMeals ?? [] });
+    // Keep a copy in the workspace draft as well as the result, so UI failures never discard
+    // the only copy of the reviewed ingredient list.
+    const fallbackWorkspace = {
+        ...workspace, stage: 'save', exportCopy, committed: false, modelCalls: 0,
+        capabilities: workspaceCapabilities(),
+        save: { available: true, logged: false, reason: 'Save not completed. Export copy is available.' },
+    };
+    const refuse = (error, extra = {}) => ({
+        ok: false, error, workspace: fallbackWorkspace, committed: false, logged: false,
+        writes: false, modelCalls: 0, exportCopy, ...extra,
+    });
+    let built;
+    try {
+        built = await buildMealSnapshot(workspace, { mealId: ports.mealId ?? null, title: ports.title ?? null, nestedMeals: ports.nestedMeals ?? [] });
+    } catch (error) {
+        return refuse('save_failed', { message: String(error?.message || error), retained: false });
+    }
     if (!built.ok) return refuse(built.error, { blockers: built.blockers || [], errors: built.errors || [] });
     if (!ports.store) return refuse('store_unavailable', { record: built.record });
     try {
@@ -467,8 +482,16 @@ async function commitSave(workspace, exportCopy, ports) {
         return { ...result, committed: true, writes: !saved.deduped, logged: false, deduped: saved.deduped, modelCalls: 0, mealRef: saved.mealRef };
     } catch (error) {
         if (error instanceof IngredientWritesDisabledError) return refuse('writes_disabled');
-        if (error instanceof RevisionConflictError) return refuse('meal_conflict', { retained: true, record: built.record });
-        return refuse('save_failed', { message: String(error?.message || error), retained: true, record: built.record });
+        // A preflight, cache, or permission failure may occur *before* an outbox write.
+        // Do not claim durable retention unless the pending-save store confirms it.
+        let retained = false;
+        try {
+            const pending = await ports.store.listPendingSaves?.();
+            retained = Array.isArray(pending) && pending.some(item =>
+                item?.operation === 'saveMealVersion' && item.idempotencyKey === built.record.idempotencyKey);
+        } catch { /* The exportCopy is still preserved in fallbackWorkspace. */ }
+        if (error instanceof RevisionConflictError) return refuse('meal_conflict', { retained, record: built.record });
+        return refuse('save_failed', { message: String(error?.message || error), retained, record: built.record });
     }
 }
 
