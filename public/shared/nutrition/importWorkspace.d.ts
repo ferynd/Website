@@ -36,7 +36,9 @@ export function instructionsWorkspace(): any;
  * Save on: a Promise of the commit result. With `ports.store` it builds the meal snapshot and calls
  * `ports.store.saveMealVersion()` once (`committed`, `deduped`, `mealRef`, `logged: false`); failures resolve
  * to `ok: false` with `error` (`store_unavailable`, `writes_disabled`, `meal_conflict`, `save_failed`, or a
- * snapshot error with `blockers`) and keep `exportCopy`. Never logs to the diary.
+ * snapshot error with `blockers`) and keep `exportCopy` in both the result and workspace draft.
+ * `retained: true` means the pending-save outbox was verified; a failure before queueing returns
+ * `retained: false` but still preserves the export copy. Never logs to the diary.
  */
 export function saveWorkspace(workspace: any, ports?: any): any;
 /** Keeps research jobs, sets `committed: false`, and sets `notice` to `WORKSPACE_UNCHANGED_NOTICE`. */
