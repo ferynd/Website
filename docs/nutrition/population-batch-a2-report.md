@@ -204,7 +204,7 @@ The A2 import PR (`#63-A-2`, under the standing approval, with James's approval 
 5. **The V4 rule, before the import PR opens:** stage the batch with `stageCatalog`, then `combineCatalogs(published, staged)`, then `verifyCatalog(combined)` with 0 defects, then `verifyAppendOnly(published, combined)` with **0 defects**. `added` must equal exactly the A2 imported ids, and `preserved` must equal 14 (the published A1 profiles). Publish only the combined `{ manifest, files }`, and record its counts and the check output in the import report ([rule](catalog-integrity-verification.md#rule-for-a2-and-later-batches); CLI `catalogIntegrityCli.ts -- --combine <published> <staged>`, then `--previous <published> --next <combined>` on the written files).
 6. The 6 unresolved ids remain actionable blocked work. Champagne, sherry, and seasoned rice vinegar, and reduced-sodium tamari, need a label or supplemental source. Cooked egg white and no-added-fat scrambled egg need a reviewed recipe-time derivation from the raw record or another source.
 
-## Historical preparation re-run instructions (superseded)
+## Re-run instructions
 
 **Do not use this section to rerun the reviewed A2 import.** It describes the earlier pre-adjudication dry run and old planner selection. The former CLI parent `rb-7136e61a94abc4f865f3f051` is retired and must not be reused. PR #220 corrected the A2 exact-set parent to `rb-c61cabe465685a29a02ff753`; PR #222 adds 15 reviewed source matches, so replaying the current pipeline no longer produces 25 `match_not_found` outcomes. Follow the [A2 import report's re-run instructions](population-batch-a2-import.md#re-run-instructions) instead. The original instructions below are retained only as historical evidence.
 
