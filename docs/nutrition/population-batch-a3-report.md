@@ -203,6 +203,8 @@ Found while running this batch. This PR changes no code, so all of these are doc
 
 ## Follow-ups: the import PR for this batch
 
+**Status (2026-11-11):** the import ran; see the [A3 import report](population-batch-a3-import.md). Issue #215 ANSWER Q-015 adjudicated the 18 flagged cases. It approved 11 flagged proposals, with whole egg switched to SR 171287, applesauce to SR 167772 (with the added-vitamin-C disclosure), raw blueberry to SR 171711, and raw pineapple to SR 169124. It held 3 flagged proposals (oat flour, enriched all-purpose flour, and ripe banana) and upheld the 6 existing unresolved ids. The 5 unflagged proposals passed routine pinned-source checks, and the pear passed its pinned-basis check. 16 profiles were imported and 9 ids stay unresolved; the catalog went from 29 to 45 profiles.
+
 The A3 import PR (`#63-A-3`, under the standing approval, with James's approval recorded in the PR) will contain:
 
 1. Adjudication of the 18 flagged cases through issue #215 **before** any table entry is written. Any proposal that is rejected moves to the unresolved list with its candidate references kept.
@@ -213,5 +215,7 @@ The A3 import PR (`#63-A-3`, under the standing approval, with James's approval 
 6. The 6 unresolved ids remain actionable blocked work. Puréed banana and mango, frozen mango, dried unsweetened mango, puréed passion fruit pulp, and drained heavy-syrup pineapple need a label, a supplemental source, or a reviewed recipe-time derivation.
 
 ## Re-run instructions
+
+**Do not use this section to rerun the reviewed A3 import.** It describes the pre-adjudication dry run. The A3 import PR adds 16 reviewed source matches, so replaying the current pipeline no longer produces 25 `match_not_found` jobs. Use the [A3 import report's re-run instructions](population-batch-a3-import.md#re-run-instructions) instead.
 
 The store is disposable. Remove `~/workspace/private-data/a3store/` and re-run the commands in [Method](#method), with the store under `~/workspace/private-data/` (not `/tmp`, which is a small tmpfs). `plan` re-derives the same parent batch ids from the same manifest ids: A1's `rb-de5702452450983345068f40`, then A2's `rb-c61cabe465685a29a02ff753`, then A3's `rb-90e0df60cb523abc78291263`. Until the import PR adds A3 table entries, the `run` outcome is identical (25 `match_not_found`), and no approved value can change because none exists. `suggest` reads the pinned files read-only and gives the same candidates for the same pins.
