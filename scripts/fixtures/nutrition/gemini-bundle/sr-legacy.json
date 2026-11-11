@@ -1,0 +1,79 @@
+{
+  "_fixture": "synthetic; not nutrition data",
+  "SRLegacyFoods": [
+    {
+      "fdcId": 9920001,
+      "description": "Pears, cooked, boiled",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 21 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 4.1 },
+        { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 4.2 },
+        { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 4.3 },
+        { "nutrient": { "id": 1162, "number": "401", "name": "Vitamin C, total ascorbic acid", "unitName": "mg" }, "amount": 4.4 },
+        { "nutrient": { "id": 1087, "number": "301", "name": "Calcium, Ca", "unitName": "mg" }, "amount": 4.5 }
+      ]
+    },
+    {
+      "fdcId": 9920002,
+      "description": "Lentils, mature seeds, cooked, boiled, without salt",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 22 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 5.1 },
+        { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 5.2 },
+        { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 5.3 },
+        { "nutrient": { "id": 1079, "number": "291", "name": "Fiber, total dietary", "unitName": "g" }, "amount": 5.4 },
+        { "nutrient": { "id": 1089, "number": "303", "name": "Iron, Fe", "unitName": "mg" }, "amount": 5.5 },
+        { "nutrient": { "id": 1190, "number": "435", "name": "Folate, DFE", "unitName": "mcg" }, "amount": 5.6 }
+      ]
+    },
+    {
+      "fdcId": 9920003,
+      "description": "Milk, reduced fat, fluid, 2% milkfat, with added vitamin A and vitamin D",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 23 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 6.1 },
+        { "nutrient": { "id": 1087, "number": "301", "name": "Calcium, Ca", "unitName": "mg" }, "amount": 6.2 }
+      ]
+    },
+    {
+      "fdcId": 9920004,
+      "description": "Milk, lowfat, fluid, 1% milkfat, with added vitamin A and vitamin D",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 24 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 7.1 }
+      ]
+    },
+    {
+      "fdcId": 9920005,
+      "description": "Apple juice, canned or bottled, unsweetened, without added ascorbic acid",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 25 },
+        { "nutrient": { "id": 1005, "number": "205", "name": "Carbohydrate, by difference", "unitName": "g" }, "amount": 8.1 },
+        { "nutrient": { "id": 2000, "number": "269", "name": "Sugars, total including NLEA", "unitName": "g" }, "amount": 8.2 }
+      ]
+    },
+    {
+      "fdcId": 9920006,
+      "description": "Cherries, tart, dried, sweetened (Includes foods for USDA's Food Distribution Program)",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 26 },
+        { "nutrient": { "id": 1004, "number": "204", "name": "Total lipid (fat)", "unitName": "g" }, "amount": 9.1 }
+      ]
+    },
+    {
+      "fdcId": 9920007,
+      "description": "Apples, cooked, boiled, with skin, without added sugar",
+      "dataType": "SR Legacy",
+      "foodNutrients": [
+        { "nutrient": { "id": 1008, "number": "208", "name": "Energy", "unitName": "kcal" }, "amount": 27 },
+        { "nutrient": { "id": 1003, "number": "203", "name": "Protein", "unitName": "g" }, "amount": 10.1 }
+      ]
+    }
+  ]
+}

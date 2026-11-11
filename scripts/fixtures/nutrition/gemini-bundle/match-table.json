@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "_fixture": "synthetic; not nutrition data",
+  "entries": [
+    {
+      "manifestId": "apple-with-skin-raw",
+      "adapter": "fdc_bulk",
+      "dataType": "Foundation",
+      "fdcId": "9910001",
+      "release": "fixture-foundation-v1",
+      "description": "Apples, raw, with skin",
+      "stateEvidence": "raw",
+      "rationale": "Synthetic fixture entry",
+      "reviewer": "fixture-reviewer",
+      "reviewedAt": "2026-11-11",
+      "checklistVersion": 1
+    }
+  ]
+}
