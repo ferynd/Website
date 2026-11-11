@@ -175,8 +175,10 @@ export function wireImportWorkspace(getUid) {
         return reviewWorkspace(fitted.workspace);
     }));
     document.getElementById('import-export')?.addEventListener('click', () => run(async current => {
-        const result = saveWorkspace(current);
-        if (result.ok) await copyText(result.workspace.exportCopy?.text || '');
+        const result = await saveWorkspace(current);
+        // Even if saving failed (including store_unavailable), the reviewed export stays copyable.
+        const fallback = result.workspace?.exportCopy?.text ?? result.exportCopy?.text;
+        if (!result.committed && !result.workspace?.committed && typeof fallback === 'string') await copyText(fallback);
         return result;
     }));
     document.getElementById('import-cancel')?.addEventListener('click', () => run(current => cancelWorkspace(current), { abandon: true }));

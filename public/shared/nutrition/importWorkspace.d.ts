@@ -30,7 +30,16 @@ export function calculateWorkspace(workspace: any): any;
 export function fitWorkspace(workspace: any): any;
 export function reviewWorkspace(workspace: any): any;
 export function instructionsWorkspace(): any;
-/** Export only: `committed: false` and `save: { available: false, logged: false, reason: WORKSPACE_SAVE_REASON }`. */
-export function saveWorkspace(workspace: any): any;
+/**
+ * Save off (either write flag false): a synchronous export-only result with `committed: false` and
+ * `save: { available: false, logged: false, reason: WORKSPACE_SAVE_REASON }`.
+ * Save on: a Promise of the commit result. With `ports.store` it builds the meal snapshot and calls
+ * `ports.store.saveMealVersion()` once (`committed`, `deduped`, `mealRef`, `logged: false`); failures resolve
+ * to `ok: false` with `error` (`store_unavailable`, `writes_disabled`, `meal_conflict`, `save_failed`, or a
+ * snapshot error with `blockers`) and keep `exportCopy` in both the result and workspace draft.
+ * `retained: true` means the pending-save outbox was verified; a failure before queueing returns
+ * `retained: false` but still preserves the export copy. Never logs to the diary.
+ */
+export function saveWorkspace(workspace: any, ports?: any): any;
 /** Keeps research jobs, sets `committed: false`, and sets `notice` to `WORKSPACE_UNCHANGED_NOTICE`. */
 export function cancelWorkspace(workspace: any): any;
