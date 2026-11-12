@@ -272,10 +272,11 @@ describe('shipped catalog (#63 V4)', () => {
         // bundle positions 133-200) plus 25 third-pass H1 profiles (#63 H1, the first 25 of the
         // ChatGPT-approved third-pass source-identity pairs) plus 25 third-pass H2 profiles (#63 H2,
         // approved-326 positions 26-50) plus 25 third-pass H3 profiles (#63 H3, approved-326
-        // positions 51-75).
-        expect(s.profileCount).toBe(218);
-        expect(s.variantIds).toHaveLength(218);
-        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 218, defects: [] });
+        // positions 51-75) plus 24 third-pass H4 profiles (#63 H4, approved-326 positions 76-100;
+        // beef-tallow-as-sold held as a pipeline rejection).
+        expect(s.profileCount).toBe(242);
+        expect(s.variantIds).toHaveLength(242);
+        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 242, defects: [] });
         sameBytes(await combineCatalogs(shipped, await buildCatalogShards([])), shipped);
     });
 });
@@ -293,7 +294,7 @@ describe('catalogIntegrityCli (#63 V4)', () => {
     it('verifies the shipped catalog by default and prints counts only', async () => {
         let out = '';
         const summary = await main(['node', 'cli'], { write: t => { out += t; } });
-        expect(summary).toMatchObject({ profileCount: 218, defects: [] });
+        expect(summary).toMatchObject({ profileCount: 242, defects: [] });
         expect(JSON.parse(out)).not.toHaveProperty('variantIds');
     });
     it('checks --previous/--next and --combine without writing, and fails on defects', async () => {
