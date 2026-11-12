@@ -274,10 +274,11 @@ describe('shipped catalog (#63 V4)', () => {
         // approved-326 positions 26-50) plus 25 third-pass H3 profiles (#63 H3, approved-326
         // positions 51-75) plus 24 third-pass H4 profiles (#63 H4, approved-326 positions 76-100;
         // beef-tallow-as-sold held as a pipeline rejection) plus 24 third-pass H5 profiles (#63 H5,
-        // approved-326 positions 101-125; lard-as-sold held as a pipeline rejection).
-        expect(s.profileCount).toBe(266);
-        expect(s.variantIds).toHaveLength(266);
-        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 266, defects: [] });
+        // approved-326 positions 101-125; lard-as-sold held as a pipeline rejection) plus 25 third-pass
+        // H6 profiles (#63 H6, approved-326 positions 126-150).
+        expect(s.profileCount).toBe(291);
+        expect(s.variantIds).toHaveLength(291);
+        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 291, defects: [] });
         sameBytes(await combineCatalogs(shipped, await buildCatalogShards([])), shipped);
     });
 });
@@ -295,7 +296,7 @@ describe('catalogIntegrityCli (#63 V4)', () => {
     it('verifies the shipped catalog by default and prints counts only', async () => {
         let out = '';
         const summary = await main(['node', 'cli'], { write: t => { out += t; } });
-        expect(summary).toMatchObject({ profileCount: 266, defects: [] });
+        expect(summary).toMatchObject({ profileCount: 291, defects: [] });
         expect(JSON.parse(out)).not.toHaveProperty('variantIds');
     });
     it('checks --previous/--next and --combine without writing, and fails on defects', async () => {
