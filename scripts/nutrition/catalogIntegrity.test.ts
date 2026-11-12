@@ -267,10 +267,11 @@ describe('shipped catalog (#63 V4)', () => {
         expect(s.defects).toEqual([]);
         // 14 A1 profiles plus 15 A2 profiles (#63-A-2) plus 16 A3 profiles (#63-A-3)
         // plus 24 Gemini G1 profiles (#63 G1, ANSWER Q-018) plus 24 Gemini G2 profiles (#63 G2;
-        // 25 attempted, extra virgin olive oil held per ANSWER Q-021).
-        expect(s.profileCount).toBe(93);
-        expect(s.variantIds).toHaveLength(93);
-        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 93, defects: [] });
+        // 25 attempted, extra virgin olive oil held per ANSWER Q-021) plus 25 Gemini G3 profiles
+        // (#63 G3, original bundle positions 98-132).
+        expect(s.profileCount).toBe(118);
+        expect(s.variantIds).toHaveLength(118);
+        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 118, defects: [] });
         sameBytes(await combineCatalogs(shipped, await buildCatalogShards([])), shipped);
     });
 });
@@ -288,7 +289,7 @@ describe('catalogIntegrityCli (#63 V4)', () => {
     it('verifies the shipped catalog by default and prints counts only', async () => {
         let out = '';
         const summary = await main(['node', 'cli'], { write: t => { out += t; } });
-        expect(summary).toMatchObject({ profileCount: 93, defects: [] });
+        expect(summary).toMatchObject({ profileCount: 118, defects: [] });
         expect(JSON.parse(out)).not.toHaveProperty('variantIds');
     });
     it('checks --previous/--next and --combine without writing, and fails on defects', async () => {
