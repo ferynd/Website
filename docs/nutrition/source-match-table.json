@@ -6060,6 +6060,19 @@
       "reviewer": "pumpkin-h13-import",
       "reviewedAt": "2026-11-13",
       "checklistVersion": 1
+    },
+    {
+      "manifestId": "pear-asian-raw",
+      "adapter": "fdc_bulk",
+      "dataType": "SR Legacy",
+      "fdcId": "168177",
+      "release": "2018-04",
+      "description": "Pears, asian, raw",
+      "stateEvidence": "Raw Asian pears stated (NDB 9340, Pyrus pyrifolia); portions are 1 fruit 3-3/8\" high x 3\" diameter (275 g) and 1 fruit 2-1/4\" high x 2-1/2\" diameter (122 g). The sodium row (1093) is a source zero (uncoded), the source's own row, so it counts as present. Approved pair rationale (third-pass, source identity only): \"Source supports the specified physical food identity and material attributes under its pinned USDA description.\" Boundary: raw Asian pears only; raw pears (169118, Pyrus communis) are the source of pear-european-with-skin-raw, the SR Legacy raw bartlett (167776), red anjou (167777), bosc (167778), and green anjou (167779) records and the Foundation raw bartlett (746773) and green Anjou (2710836) records are European pear varieties, heavy syrup drained canned pears (168182) are the source of pear-canned-in-heavy-syrup-drained, dried sulfured uncooked pears (169121) are a different state, and raw prickly pears (167750), the source of prickly-pear-fruit-raw, are a different fruit matched only on the name; none may use these values.",
+      "rationale": "Third-pass verdict (APPROVED, source identity only): \"Source supports the specified physical food identity and material attributes under its pinned USDA description.\" Provenance: Gemini third-pass proposal (bundle 2 plus the 21 chunked batches), adjudicated APPROVED in ChatGPT third-pass adjudication (issue #215, 2026-11-11/12), selected for H14 as position 326 of the approved-326 file (bundle gemini-bundle-2026-11-11-717e51249110; this id at approved-file position 326). Joined on targetId and fdcId 168177 to the original candidate entry (dataset sr-legacy, release 2018-04, verbatim description) and re-verified at import against the pinned SR Legacy 2018-04 file: the record exists, its dataType is SR Legacy, its description equals the candidate description verbatim, and energy, protein, carbohydrate, total fat, and sodium rows are present in the pinned record.",
+      "reviewer": "pumpkin-h14-import",
+      "reviewedAt": "2026-11-13",
+      "checklistVersion": 1
     }
   ]
 }

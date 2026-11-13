@@ -281,10 +281,11 @@ describe('shipped catalog (#63 V4)', () => {
         // positions 201-225) plus 25 third-pass H10 profiles (#63 H10, approved-326 positions
         // 226-250) plus 25 third-pass H11 profiles (#63 H11, approved-326 positions 251-275) plus
         // 25 third-pass H12 profiles (#63 H12, approved-326 positions 276-300) plus 25 third-pass
-        // H13 profiles (#63 H13, approved-326 positions 301-325).
-        expect(s.profileCount).toBe(466);
-        expect(s.variantIds).toHaveLength(466);
-        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 466, defects: [] });
+        // H13 profiles (#63 H13, approved-326 positions 301-325) plus 1 third-pass H14 profile
+        // (#63 H14, approved-326 position 326, the final H-lane batch).
+        expect(s.profileCount).toBe(467);
+        expect(s.variantIds).toHaveLength(467);
+        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 467, defects: [] });
         sameBytes(await combineCatalogs(shipped, await buildCatalogShards([])), shipped);
         // Explicit timeout (#63 H12): reading and verifying the full shipped catalog (441 profiles)
         // took 3.9 s serially but 5.8 s under default file parallelism, past vitest's 5 s default.
@@ -304,7 +305,7 @@ describe('catalogIntegrityCli (#63 V4)', () => {
     it('verifies the shipped catalog by default and prints counts only', async () => {
         let out = '';
         const summary = await main(['node', 'cli'], { write: t => { out += t; } });
-        expect(summary).toMatchObject({ profileCount: 466, defects: [] });
+        expect(summary).toMatchObject({ profileCount: 467, defects: [] });
         expect(JSON.parse(out)).not.toHaveProperty('variantIds');
     });
     it('checks --previous/--next and --combine without writing, and fails on defects', async () => {
