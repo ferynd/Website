@@ -150,9 +150,11 @@ describe('nutrition JSON parser item cases', () => {
   });
 
   it('enforces plausible and tracker storage maxima while accepting the exact boundary', () => {
-    const atBoundary = parseItem(item({ nutrients: { ...nutrients(), calories: 900 } }));
+    const atBoundary = parseItem(item({ nutrients: { ...nutrients(), calories: 910, fat: 100 } }));
     expect(atBoundary.errors).toEqual([]);
-    expect(parseItem(item({ nutrients: { ...nutrients(), calories: 900.01 } })).errors.join(' ')).toContain('above the plausible maximum of 900 kcal');
+    expect(atBoundary.nutrients.calories).toBe(910);
+    expect(atBoundary.warnings.join(' ')).toContain('calories is high for a per-100 g food and needs review');
+    expect(parseItem(item({ nutrients: { ...nutrients(), calories: 910.01 } })).errors.join(' ')).toContain('above the plausible maximum of 910 kcal');
     expect(parseItem(item({ nutrients: { ...nutrients(), vitaminD: 400 } })).errors.join(' ')).toContain('above the plausible maximum of 300 mcg');
     expect(parseItem(item({ nutrients: { ...nutrients(), sodium: 38758 } })).errors.join(' ')).toContain('above the 23000 mg per 100 g the Nutrition Tracker can store');
   });
