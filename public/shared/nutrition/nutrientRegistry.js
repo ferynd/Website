@@ -265,7 +265,7 @@ const DEFINITIONS = [
   v2({ key: 'xylitol', label: 'Xylitol', unit: 'g', group: 'polyols', labels: ['Xylitol'] }),
   v2({ key: 'glycerol', label: 'Glycerol', unit: 'g', group: 'polyols', labels: ['Glycerol', 'Glycerin', 'Glycerine'] }),
   v2({ key: 'maltitol', label: 'Maltitol', unit: 'g', group: 'polyols', labels: ['Maltitol'] }),
-  v2({ key: 'fiberTotal', label: 'Fiber (total dietary)', unit: 'g', group: 'fiberDetail', labels: ['Fiber (total dietary)', 'Total dietary fiber', 'Dietary fibre (total)'] }),
+  v2({ key: 'fiberTotal', label: 'Fiber (total dietary)', unit: 'g', group: 'fiberDetail', labels: ['Fiber (total dietary)', 'Total dietary fiber', 'Dietary fiber (total)'] }),
   v2({ key: 'fiberSoluble', label: 'Soluble Fiber', unit: 'g', group: 'fiberDetail', labels: ['Soluble Fiber', 'Soluble fibre'] }),
   v2({ key: 'fiberInsoluble', label: 'Insoluble Fiber', unit: 'g', group: 'fiberDetail', labels: ['Insoluble Fiber', 'Insoluble fibre'] }),
   v2({ key: 'resistantStarch', label: 'Resistant Starch', unit: 'g', group: 'fiberDetail', optional: true, labels: ['Resistant Starch'] }),
