@@ -63,7 +63,9 @@ const DETAIL_ORDER = [
 ];
 
 function hardMaxFor(unit) {
-  if (unit === 'kcal') return 900;
+  // Specific Atwater factors can yield 902 kcal/100 g for pure animal fat.
+  // Keep a small validation margin, with review required above 900 below.
+  if (unit === 'kcal') return 910;
   if (unit === 'g') return 100;
   if (unit === 'mg') return 100000;
   if (unit === 'mcg') return 100000000;
@@ -113,6 +115,7 @@ function v2(spec) {
 const DEFINITIONS = [
   v1({
     key: 'calories', label: 'Calories', unit: 'kcal', group: 'macros', targetRole: 'floor', perUnitMax: 10000,
+    reviewAbove: 900,
     labels: ['Calories', 'Total Calories', 'Energy'],
     legacyAliases: ['calories', 'cal', 'kcal'],
   }),
@@ -262,7 +265,7 @@ const DEFINITIONS = [
   v2({ key: 'xylitol', label: 'Xylitol', unit: 'g', group: 'polyols', labels: ['Xylitol'] }),
   v2({ key: 'glycerol', label: 'Glycerol', unit: 'g', group: 'polyols', labels: ['Glycerol', 'Glycerin', 'Glycerine'] }),
   v2({ key: 'maltitol', label: 'Maltitol', unit: 'g', group: 'polyols', labels: ['Maltitol'] }),
-  v2({ key: 'fiberTotal', label: 'Fiber (total dietary)', unit: 'g', group: 'fiberDetail', labels: ['Fiber (total dietary)', 'Total dietary fiber', 'Dietary fiber (total)'] }),
+  v2({ key: 'fiberTotal', label: 'Fiber (total dietary)', unit: 'g', group: 'fiberDetail', labels: ['Fiber (total dietary)', 'Total dietary fiber', 'Dietary fibre (total)'] }),
   v2({ key: 'fiberSoluble', label: 'Soluble Fiber', unit: 'g', group: 'fiberDetail', labels: ['Soluble Fiber', 'Soluble fibre'] }),
   v2({ key: 'fiberInsoluble', label: 'Insoluble Fiber', unit: 'g', group: 'fiberDetail', labels: ['Insoluble Fiber', 'Insoluble fibre'] }),
   v2({ key: 'resistantStarch', label: 'Resistant Starch', unit: 'g', group: 'fiberDetail', optional: true, labels: ['Resistant Starch'] }),
