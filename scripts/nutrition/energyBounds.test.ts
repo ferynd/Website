@@ -12,8 +12,12 @@ import {
     LEGACY_V1_KEYS,
     NUTRIENT_REGISTRY_VERSION,
     toV2Fields,
+    V2_KEYS,
 } from '../../public/shared/nutrition/nutrientRegistry.js';
 import { buildRevisionDraft } from '../../public/shared/nutrition/ingredientProfile.js';
+import { createResearchJob } from '../../public/shared/nutrition/research/researchJob.js';
+import { validateProposal } from '../../public/shared/nutrition/research/researchValidator.js';
+import { applyReviewDecision, reviewContentHash } from '../../public/shared/nutrition/research/researchReview.js';
 
 // Synthetic test inputs only. These are not USDA records or import approvals.
 const SCHEMAS = [1, 2] as const;
@@ -30,7 +34,7 @@ const FIXTURE_SOURCE = {
 };
 
 function payload(schemaVersion: 1 | 2, calories: number | null): string {
-    const nutrients = Object.fromEntries(LEGACY_V1_KEYS.map(key => [key, 0]));
+    const nutrients: Record<string, number | null> = Object.fromEntries(LEGACY_V1_KEYS.map(key => [key, 0]));
     nutrients.calories = calories;
     nutrients.fat = 100;
     const identity = { ingredientId: 'synthetic-fat', name: 'Synthetic fat', assumptions: 'Test fixture only' };
@@ -57,6 +61,7 @@ function parseRow(schemaVersion: 1 | 2, calories: number | null): ParsedNutritio
 
 async function energyDraft(calories: number) {
     const staged = emptyStagedRecord();
+    for (const key of V2_KEYS) staged.quality[key] = { status: 'unknown', qualifier: 'gap:not_reported_by_source' };
     staged.values.calories = calories;
     staged.quality.calories = { status: 'calculated' };
     return buildRevisionDraft({
@@ -93,21 +98,38 @@ describe('energy validation contract (#63)', () => {
         staged.quality.calories = { status: 'calculated' };
         const saved = toV2Fields(staged);
         expect(saved.fields.calories).toBe(902);
-        expect(saved.nutrientMeta.quality.calories.status).toBe('calculated');
+        expect(saved.nutrientMeta.quality.calories?.status).toBe('calculated');
         expect(saved.fields.protein).toBeNull();
     });
 
     it('builds a synthetic 902 draft without changing source amount or derivation', async () => {
         const draft = await energyDraft(902);
         expect(draft.nutrients.calories).toBe(902);
-        expect(draft.nutrientMeta.quality.calories.status).toBe('calculated');
+        expect(draft.nutrientMeta.quality.calories?.status).toBe('calculated');
         expect(draft.fieldProvenance.calories).toMatchObject({ sourceNutrientId: '1008', sourceDerivationCode: 'NC' });
         expect(draft.nutrients.protein).toBeNull();
-        expect(checkPer100g('calories', draft.nutrients.calories)).toBe('review');
+        expect(checkPer100g('calories', draft.nutrients.calories!)).toBe('review');
     });
 
     it('still refuses a draft above the hard maximum', async () => {
         await expect(energyDraft(911)).rejects.toThrow('Invalid nutrient: calories');
+    });
+
+    it('requires acknowledgement of the actual 902 validation warning before approval', async () => {
+        const job = await createResearchJob({
+            scope: 'curated', targetKind: 'catalog', state: 'needs_review', sourceRelease: '2018-04',
+            target: { manifestId: 'synthetic-fat', canonicalName: 'Synthetic fat', dims: { state: 'as-sold' } },
+        });
+        job.proposal = { revisionDraft: await energyDraft(902), conversions: [], extractedStateWords: ['as-sold'] };
+        job.validation = await validateProposal(job);
+        expect(job.validation.errors).toEqual([]);
+        expect(job.validation.isValid).toBe(true);
+        expect(job.validation.warnings).toEqual(['Nutrient calories value 902 requires review (exceeds reviewAbove)']);
+        const decision = { decision: 'approve' as const, reviewer: 'synthetic-test', approvedContentHash: await reviewContentHash(job) };
+        await expect(applyReviewDecision(job, { ...decision, acknowledgedWarnings: [] })).rejects.toThrow('unacknowledged warnings');
+        const approved = await applyReviewDecision(job, { ...decision, acknowledgedWarnings: [...job.validation.warnings] });
+        expect(approved.state).toBe('approved');
+        expect(approved.proposal.revisionDraft.nutrients.calories).toBe(902);
     });
 });
 
