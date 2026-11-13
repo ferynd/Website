@@ -52,7 +52,8 @@ const spec = (
 
 /** Validation settings for all Nutrition Tracker nutrient keys. */
 export const NUTRIENT_INTAKE_SPEC: Record<TrackerNutrientKey, NutrientIntakeSpec> = {
-  calories: spec('calories', 900),
+  // Keep energy intake aligned with the shared per-100 g validation bound.
+  calories: spec('calories', getNutrient('calories')!.bounds.per100g.hardMax),
   protein: spec('protein', 100),
   carbs: spec('carbs', 100, 'total carbohydrate'),
   fat: spec('fat', 100),
@@ -493,6 +494,9 @@ export const parseNutritionJson = (raw: string, options?: { writeVersion?: 1 | 2
         if (limitMessage) {
           errors.push(limitMessage);
           continue;
+        }
+        if (key === 'calories' && checkPer100g(key, value) === 'review') {
+          rowWarnings.push(`${nutrientPath}: calories is high for a per-100 g food and needs review.`);
         }
         nutrients[key] = Object.is(value, -0) ? 0 : value;
       }
