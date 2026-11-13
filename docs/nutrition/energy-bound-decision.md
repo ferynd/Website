@@ -19,7 +19,7 @@ The 910 threshold is a small engineering validation margin. It is not a USDA sta
 A universal 900 kcal rejection rule incorrectly treats the general 9 kcal/g fat factor as an exact upper bound for every composition record.
 
 - [USDA FoodData Central FAQ](https://fdc.nal.usda.gov/faq/) explains that energy may use general Atwater factors or food-specific factors from USDA Agriculture Handbook 74.
-- [FAO, Food energy: methods of analysis and conversion factors, chapter 3](https://www.fao.org/4/y5022e/y5022e04.htm), section 3.1.2 and Table 3.1, describes food-specific factors. Fat factors extend to 9.02 kcal/g. This supports the plausibility of 902 kcal per 100 g of pure fat.
+- [FAO, Food energy: methods of analysis and conversion factors, chapter 3](https://www.fao.org/4/y5022e/y5022e04.htm), section 3.5.3 and Table 3.1, describes food-specific factors. Fat factors extend to 9.02 kcal/g. This supports the plausibility of 902 kcal per 100 g of pure fat.
 - The repository's [H4 import report](population-batch-h4-import.md) records beef tallow, FDC 171400, with pinned SR Legacy energy row 1008 = 902 kcal/100 g and derivation NC. The [H5 report](population-batch-h5-import.md) records the same energy/derivation for lard, FDC 171401. Both imports correctly stopped at the previous hard bound.
 
 Evidence limit: this correction independently checks the energy-factor rationale and code path. The two real USDA record values above are taken from the existing import reports. This session did not independently download and rehash the pinned USDA bulk files. Synthetic regression fixtures are explicitly labeled and do not replace raw-record verification.
