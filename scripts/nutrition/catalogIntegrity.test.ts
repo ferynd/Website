@@ -278,10 +278,11 @@ describe('shipped catalog (#63 V4)', () => {
         // H6 profiles (#63 H6, approved-326 positions 126-150) plus 25 third-pass H7 profiles
         // (#63 H7, approved-326 positions 151-175) plus 25 third-pass H8 profiles (#63 H8,
         // approved-326 positions 176-200) plus 25 third-pass H9 profiles (#63 H9, approved-326
-        // positions 201-225).
-        expect(s.profileCount).toBe(366);
-        expect(s.variantIds).toHaveLength(366);
-        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 366, defects: [] });
+        // positions 201-225) plus 25 third-pass H10 profiles (#63 H10, approved-326 positions
+        // 226-250).
+        expect(s.profileCount).toBe(391);
+        expect(s.variantIds).toHaveLength(391);
+        expect(await verifyAppendOnly(shipped, shipped)).toEqual({ added: [], preserved: 391, defects: [] });
         sameBytes(await combineCatalogs(shipped, await buildCatalogShards([])), shipped);
     });
 });
@@ -299,7 +300,7 @@ describe('catalogIntegrityCli (#63 V4)', () => {
     it('verifies the shipped catalog by default and prints counts only', async () => {
         let out = '';
         const summary = await main(['node', 'cli'], { write: t => { out += t; } });
-        expect(summary).toMatchObject({ profileCount: 366, defects: [] });
+        expect(summary).toMatchObject({ profileCount: 391, defects: [] });
         expect(JSON.parse(out)).not.toHaveProperty('variantIds');
     });
     it('checks --previous/--next and --combine without writing, and fails on defects', async () => {
