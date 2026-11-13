@@ -211,13 +211,32 @@ describe('nutrient registry', () => {
     expect([...NUTRIENT_STATUSES]).toEqual([...listed, 'legacy_unclassified']);
   });
 
-  it('per100g accepts pure-salt sodium 39,340 mg, KCl potassium and reduced iron; rejects 100,001 mg and 901 kcal', () => {
+  it('per100g accepts pure-salt sodium 39,340 mg, KCl potassium and reduced iron; rejects 100,001 mg and 911 kcal', () => {
     expect(checkPer100g('sodium', 39340)).toBe('ok');
     expect(checkPer100g('potassium', 52440)).toBe('ok');
     expect(checkPer100g('iron', 97000)).toBe('ok');
     expect(checkPer100g('sodium', 100001)).toBe('reject');
     expect(checkPer100g('iron', 100001)).toBe('reject');
-    expect(checkPer100g('calories', 901)).toBe('reject');
+    expect(checkPer100g('calories', 911)).toBe('reject');
+  });
+
+  it.each([
+    [900, 'ok'],
+    [900.000001, 'review'],
+    [901, 'review'],
+    [902, 'review'],
+    [910, 'review'],
+    [910.000001, 'reject'],
+    [911, 'reject'],
+    [-1, 'reject'],
+    [NaN, 'reject'],
+    [Infinity, 'reject'],
+  ])('per100g energy %s returns %s without changing legacy per-unit bounds', (value, expected) => {
+    expect(checkPer100g('calories', value)).toBe(expected);
+    expect(getNutrient('calories').bounds).toEqual({
+      perUnit: { max: 10000 },
+      per100g: { hardMax: 910, reviewAbove: 900 },
+    });
   });
 
   it('convertUnit handles g/mg/mcg/µg/μg, kJ→kcal and vitamin D IU; rejects vitamin A/E IU and folic acid→DFE', () => {
